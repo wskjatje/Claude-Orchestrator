@@ -32,6 +32,7 @@ import {
 import {
   getWorkbenchGitStatus,
   pullClaudeCodeFromGithub,
+  pullFromPersonalGithub,
   pushClaudeCodeToPersonalGithub,
   savePersonalGithubSettings,
 } from './workbench-git-sync.mjs'
@@ -344,10 +345,19 @@ export const handlers = {
     return r
   },
 
+  'workbench-git:pullPersonal': async (args) => {
+    const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+    const r = await pullFromPersonalGithub({
+      personalGithubRepo: body.personalGithubRepo,
+    })
+    return r
+  },
+
   'workbench-git:pushPersonal': async (args) => {
     const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
     const r = await pushClaudeCodeToPersonalGithub({
       clearPersonalConfig: body.clearPersonalConfig !== false,
+      reason: body.reason,
       message: body.message,
       personalGithubRepo: body.personalGithubRepo,
     })

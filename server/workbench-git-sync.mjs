@@ -48,14 +48,22 @@ function loadUpstreamSyncManifest() {
   }
 }
 
-async function resolveUpstreamRef(branch) {
-  const primary = `upstream/${branch}`
+async function resolveRemoteBranchRef(remoteName, branch) {
+  const primary = `${remoteName}/${branch}`
   const verify = await runGit(['rev-parse', '--verify', primary])
   if (verify.ok) return primary
-  const fallback = 'upstream/main'
+  const fallback = `${remoteName}/main`
   const verifyMain = await runGit(['rev-parse', '--verify', fallback])
   if (verifyMain.ok) return fallback
   return null
+}
+
+async function resolveUpstreamRef(branch) {
+  return resolveRemoteBranchRef('upstream', branch)
+}
+
+async function resolveOriginRef(branch) {
+  return resolveRemoteBranchRef('origin', branch)
 }
 
 function combineOutput(stdout, stderr) {
@@ -112,6 +120,37 @@ async function currentBranch() {
   return b && b !== 'HEAD' ? b : 'main'
 }
 
+async function readLocalGitConfig(key) {
+  const r = await runGit(['config', '--get', key])
+  if (!r.ok) return ''
+  return r.stdout.trim()
+}
+
+async function resolveGitIdentity(settings = loadChatSettings()) {
+  let name = String(settings.gitUserName || '').trim()
+  let email = String(settings.gitUserEmail || '').trim()
+  if (!name) name = await readLocalGitConfig('user.name')
+  if (!email) email = await readLocalGitConfig('user.email')
+  return { name, email }
+}
+
+/** Push 与个人 pull 共用同一份 Git 身份，写入本仓库 local config */
+async function ensureGitIdentity(settings = loadChatSettings()) {
+  const { name, email } = await resolveGitIdentity(settings)
+  if (!name || !email) {
+    return {
+      ok: false,
+      error:
+        '请在本页填写 Git 用户名与邮箱（推送与个人拉取共用），或先在终端配置 git config user.name / user.email',
+    }
+  }
+  const setName = await runGit(['config', 'user.name', name])
+  if (!setName.ok) return { ok: false, error: setName.combined || setName.error }
+  const setEmail = await runGit(['config', 'user.email', email])
+  if (!setEmail.ok) return { ok: false, error: setEmail.combined || setEmail.error }
+  return { ok: true, name, email }
+}
+
 async function ensureUpstreamRemote(upstreamUrl) {
   const url = (upstreamUrl || DEFAULT_UPSTREAM_REPO).trim()
   const remotes = await readRemotes()
@@ -162,6 +201,7 @@ export async function getWorkbenchGitStatus() {
   const dirty = Boolean(status.stdout.trim())
   const upstream = remotes.ok ? remotes.remotes.find((x) => x.name === 'upstream') : null
   const origin = remotes.ok ? remotes.remotes.find((x) => x.name === 'origin') : null
+  const identity = await resolveGitIdentity(settings)
   return {
     ok: true,
     repoRoot: PROJECT_ROOT,
@@ -171,10 +211,12 @@ export async function getWorkbenchGitStatus() {
     upstreamUrl: upstream?.url || settings.upstreamGithubRepo || DEFAULT_UPSTREAM_REPO,
     personalUrl: settings.personalGithubRepo?.trim() || origin?.url || '',
     originUrl: origin?.url || '',
+    gitUserName: settings.gitUserName?.trim() || identity.name || '',
+    gitUserEmail: settings.gitUserEmail?.trim() || identity.email || '',
     remotes: remotes.ok ? remotes.remotes : [],
     pullMode: 'path-scoped',
     syncScopeNote:
-      '同步官方 plugins/commands 等逻辑；不修改 server/web、.claudecode 与工作台配置',
+      '个人仓库与 Git 身份：推送与个人拉取共用；官方 pull 仅按路径同步 plugins/commands 等',
   }
 }
 
@@ -255,12 +297,134 @@ export async function pullClaudeCodeFromGithub(opts = {}) {
   }
 }
 
+export async function pullFromPersonalGithub(opts = {}) {
+  const settings = loadChatSettings()
+  const personalUrl = (opts.personalGithubRepo || settings.personalGithubRepo || '').trim()
+  if (!personalUrl) {
+    return { ok: false, error: '请先填写个人 GitHub 仓库地址' }
+  }
+
+  const ensure = await ensurePersonalOrigin(personalUrl)
+  if (!ensure.ok) return { ok: false, error: ensure.error, combined: ensure.error }
+
+  const identity = await ensureGitIdentity(settings)
+  if (!identity.ok) return { ok: false, error: identity.error, combined: identity.error }
+
+  const history = await ensureFullHistoryFromRemote('origin', { remoteUrl: personalUrl })
+  if (!history.ok) {
+    return { ok: false, error: history.error, combined: history.combined }
+  }
+
+  const branch = await currentBranch()
+  const fetch = await runGit(['fetch', 'origin'], { timeout: 600_000 })
+  if (!fetch.ok) return { ok: false, error: fetch.combined || fetch.error, combined: fetch.combined }
+
+  const originRef = await resolveOriginRef(branch)
+  if (!originRef) {
+    return {
+      ok: false,
+      error: `未找到 origin 分支（尝试过 origin/${branch} 与 origin/main）`,
+      combined: fetch.combined,
+    }
+  }
+
+  const merge = await runGit(['merge', '--no-edit', originRef])
+  if (!merge.ok) {
+    const conflict = /CONFLICT|Automatic merge failed/i.test(merge.combined || '')
+    return {
+      ok: false,
+      error: merge.combined || merge.error || '合并个人仓库失败',
+      combined: merge.combined,
+      conflict,
+      dirty: true,
+    }
+  }
+
+  const head = await runGit(['log', '-1', '--oneline'])
+  const lines = [
+    `已从个人仓库 ${originRef} 拉取并合并全部内容（完整同步）：`,
+    history.unshallowed ? history.combined : '',
+    merge.combined?.trim() || 'Merge successful',
+    head.stdout.trim() ? `\n当前 @ ${head.stdout.trim()}` : '',
+  ].filter(Boolean).join('\n')
+
+  return {
+    ok: true,
+    fullSync: true,
+    branch,
+    originRef,
+    headLine: head.stdout.trim(),
+    personalUrl: ensure.url,
+    combined: lines,
+  }
+}
+
+function buildPersonalCommitMessage(reason) {
+  const text = String(reason || '').trim().slice(0, 500)
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean)
+  const firstLine = lines[0] || ''
+  if (!firstLine) return null
+  const rest = lines.slice(1).join('\n')
+  if (rest) {
+    return `chore(workbench): ${firstLine.slice(0, 72)}\n\n${rest}`
+  }
+  return `chore(workbench): ${firstLine.slice(0, 72)}`
+}
+
+async function isShallowClone() {
+  return fs.existsSync(path.join(PROJECT_ROOT, '.git', 'shallow'))
+}
+
+/** Shallow clones reference missing parents; GitHub rejects the pack (index-pack failed). */
+async function ensureFullHistoryFromRemote(remoteName, opts = {}) {
+  if (!(await isShallowClone())) return { ok: true, unshallowed: false }
+
+  if (remoteName === 'origin') {
+    const url = String(opts.remoteUrl || loadChatSettings().personalGithubRepo || '').trim()
+    const ensure = await ensurePersonalOrigin(url)
+    if (!ensure.ok) return ensure
+  } else {
+    const upstreamUrl = (
+      opts.remoteUrl || loadChatSettings().upstreamGithubRepo || DEFAULT_UPSTREAM_REPO
+    ).trim()
+    const ensure = await ensureUpstreamRemote(upstreamUrl)
+    if (!ensure.ok) return ensure
+  }
+
+  const fetch = await runGit(['fetch', '--unshallow', remoteName], { timeout: 600_000 })
+  if (!fetch.ok) {
+    return {
+      ok: false,
+      error: `当前为浅克隆，缺少完整 Git 历史。请在终端执行：git fetch --unshallow ${remoteName}`,
+      combined: fetch.combined || fetch.error,
+    }
+  }
+  return {
+    ok: true,
+    unshallowed: true,
+    combined: (fetch.combined || `已从 ${remoteName} 补全完整 Git 历史。`).trim(),
+  }
+}
+
+async function ensureFullHistoryForPush() {
+  const settings = loadChatSettings()
+  return ensureFullHistoryFromRemote('origin', {
+    remoteUrl: settings.personalGithubRepo,
+  })
+}
+
 export async function pushClaudeCodeToPersonalGithub(opts = {}) {
   const clearPersonalConfig = opts.clearPersonalConfig !== false
-  const message =
-    typeof opts.message === 'string' && opts.message.trim()
-      ? opts.message.trim().slice(0, 500)
-      : 'chore(workbench): sync personal fork'
+  const reason =
+    typeof opts.reason === 'string' && opts.reason.trim()
+      ? opts.reason.trim()
+      : typeof opts.message === 'string' && opts.message.trim()
+        ? opts.message.trim()
+        : ''
+  const message = buildPersonalCommitMessage(reason)
+  if (!message) {
+    return { ok: false, error: '请填写推送说明，便于在个人仓库中区分版本历史' }
+  }
 
   const settings = loadChatSettings()
   const personalUrl = (opts.personalGithubRepo || settings.personalGithubRepo || '').trim()
@@ -275,6 +439,9 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     resetPersonalWorkbenchData()
   }
 
+  const identity = await ensureGitIdentity(loadChatSettings())
+  if (!identity.ok) return { ok: false, error: identity.error, combined: identity.error }
+
   const branch = await currentBranch()
   const add = await runGit(['add', '-A'])
   if (!add.ok) return { ok: false, error: add.combined || add.error, combined: add.combined }
@@ -285,27 +452,49 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
 
   const diffCached = await runGit(['diff', '--cached', '--quiet'])
   const nothingToCommit = diffCached.ok
-  if (nothingToCommit) {
+  let commitLog = ''
+  if (!nothingToCommit) {
+    const commit = await runGit(['commit', '-m', message])
+    if (!commit.ok) return { ok: false, error: commit.combined || commit.error, combined: commit.combined }
+    commitLog = commit.combined
+  }
+
+  const history = await ensureFullHistoryForPush()
+  if (!history.ok) {
+    return {
+      ok: false,
+      error: history.error,
+      combined: [commitLog, history.combined].filter(Boolean).join('\n'),
+      committed: Boolean(commitLog),
+      personalUrl: ensure.url,
+    }
+  }
+
+  const push = await runGit(['push', '-u', 'origin', branch])
+  if (!push.ok) {
+    const hint = /index-pack failed|did not receive expected object/i.test(
+      push.combined || push.error || '',
+    )
+      ? '\n\n提示：若仓库是浅克隆，请先执行 git fetch --unshallow upstream 后再推送。'
+      : ''
+    return {
+      ok: false,
+      error: (push.combined || push.error || '推送到个人仓库失败') + hint,
+      combined: [history.unshallowed ? history.combined : '', commitLog, push.combined]
+        .filter(Boolean)
+        .join('\n'),
+      committed: Boolean(commitLog),
+      personalUrl: ensure.url,
+    }
+  }
+
+  if (nothingToCommit && /everything up-to-date/i.test(push.combined || push.stdout || '')) {
     return {
       ok: true,
       pushed: false,
       nothingToCommit: true,
       clearedConfig: clearPersonalConfig,
-      combined: '没有需要提交的变更（已跳过 commit / push）。',
-      personalUrl: ensure.url,
-    }
-  }
-
-  const commit = await runGit(['commit', '-m', message])
-  if (!commit.ok) return { ok: false, error: commit.combined || commit.error, combined: commit.combined }
-
-  const push = await runGit(['push', '-u', 'origin', branch])
-  if (!push.ok) {
-    return {
-      ok: false,
-      error: push.combined || push.error || '推送到个人仓库失败',
-      combined: [commit.combined, push.combined].filter(Boolean).join('\n'),
-      committed: true,
+      combined: '没有需要提交的变更，且已与个人仓库同步。',
       personalUrl: ensure.url,
     }
   }
@@ -316,7 +505,9 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     clearedConfig: clearPersonalConfig,
     branch,
     personalUrl: ensure.url,
-    combined: [commit.combined, push.combined].filter(Boolean).join('\n'),
+    combined: [history.unshallowed ? history.combined : '', commitLog, push.combined]
+      .filter(Boolean)
+      .join('\n'),
   }
 }
 
@@ -339,6 +530,14 @@ export function savePersonalGithubSettings(body) {
       typeof body?.personalGithubRepo === 'string'
         ? body.personalGithubRepo.trim().slice(0, 500)
         : cur.personalGithubRepo || '',
+    gitUserName:
+      typeof body?.gitUserName === 'string'
+        ? body.gitUserName.trim().slice(0, 200)
+        : cur.gitUserName || '',
+    gitUserEmail:
+      typeof body?.gitUserEmail === 'string'
+        ? body.gitUserEmail.trim().slice(0, 320)
+        : cur.gitUserEmail || '',
     upstreamGithubRepo:
       typeof body?.upstreamGithubRepo === 'string' && body.upstreamGithubRepo.trim()
         ? body.upstreamGithubRepo.trim().slice(0, 500)

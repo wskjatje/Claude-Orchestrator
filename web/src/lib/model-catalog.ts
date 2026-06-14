@@ -146,6 +146,8 @@ export function chatSettingsPreservePayload(
     localModelCatalog: s.localModelCatalog ?? [],
     cloudProviderCatalog: s.cloudProviderCatalog ?? [],
     personalGithubRepo: s.personalGithubRepo ?? "",
+    gitUserName: s.gitUserName ?? "",
+    gitUserEmail: s.gitUserEmail ?? "",
     upstreamGithubRepo: s.upstreamGithubRepo ?? "https://github.com/anthropics/claude-code.git",
   };
 }

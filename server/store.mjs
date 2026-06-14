@@ -56,9 +56,12 @@ function defaultChatSettings() {
     localModelCatalog: [],
     cloudProviderCatalog: [],
     tokenPricing: {},
-    /** 个人 fork，push 目标（origin） */
+    /** 个人 fork：push 与个人 pull 共用（origin） */
     personalGithubRepo: '',
-    /** 官方 upstream，pull 来源 */
+    /** Git 提交身份：push / 个人 pull 共用 */
+    gitUserName: '',
+    gitUserEmail: '',
+    /** 官方 upstream，仅官方 path-scoped pull */
     upstreamGithubRepo: 'https://github.com/anthropics/claude-code.git',
   }
 }
@@ -249,6 +252,14 @@ export function saveChatSettings(body) {
       typeof body?.personalGithubRepo === 'string'
         ? body.personalGithubRepo.trim().slice(0, 500)
         : cur.personalGithubRepo || '',
+    gitUserName:
+      typeof body?.gitUserName === 'string'
+        ? body.gitUserName.trim().slice(0, 200)
+        : cur.gitUserName || '',
+    gitUserEmail:
+      typeof body?.gitUserEmail === 'string'
+        ? body.gitUserEmail.trim().slice(0, 320)
+        : cur.gitUserEmail || '',
     upstreamGithubRepo:
       typeof body?.upstreamGithubRepo === 'string' && body.upstreamGithubRepo.trim()
         ? body.upstreamGithubRepo.trim().slice(0, 500)
@@ -267,6 +278,8 @@ export function resetPersonalWorkbenchData() {
     claudeCliPath: cur.claudeCliPath,
     orchestrationMode: cur.orchestrationMode,
     personalGithubRepo: cur.personalGithubRepo || '',
+    gitUserName: cur.gitUserName || '',
+    gitUserEmail: cur.gitUserEmail || '',
     upstreamGithubRepo: cur.upstreamGithubRepo || defaults.upstreamGithubRepo,
     devMcpOrchDebug: false,
   })

@@ -281,9 +281,12 @@ export type DesktopApi = {
     localModelCatalog?: string[]
     /** Workbench「添加云模型」写入的 CC Switch 供应商 ID */
     cloudProviderCatalog?: string[]
-    /** 个人 fork（git push origin） */
+    /** 个人 fork：push 与个人 pull 共用（origin） */
     personalGithubRepo?: string
-    /** 官方 upstream（git pull） */
+    /** Git 提交身份：push / 个人 pull 共用 */
+    gitUserName?: string
+    gitUserEmail?: string
+    /** 官方 upstream：仅官方 path-scoped pull */
     upstreamGithubRepo?: string
   }>
   getUiPrefs?: () => Promise<{
@@ -332,6 +335,8 @@ export type DesktopApi = {
     localModelCatalog?: string[]
     cloudProviderCatalog?: string[]
     personalGithubRepo?: string
+    gitUserName?: string
+    gitUserEmail?: string
     upstreamGithubRepo?: string
   }) => Promise<unknown>
   ccSwitchStatus?: () => Promise<{ ok: boolean; installed: boolean; dbPath?: string; error?: string }>
@@ -553,6 +558,8 @@ export type DesktopApi = {
     upstreamUrl?: string
     personalUrl?: string
     originUrl?: string
+    gitUserName?: string
+    gitUserEmail?: string
     remotes?: { name: string; url: string }[]
     pullMode?: string
     syncScopeNote?: string
@@ -572,8 +579,21 @@ export type DesktopApi = {
     dirty?: boolean
     conflict?: boolean
   }>
+  workbenchGitPullPersonal: (payload?: { personalGithubRepo?: string }) => Promise<{
+    ok: boolean
+    branch?: string
+    headLine?: string
+    personalUrl?: string
+    originRef?: string
+    fullSync?: boolean
+    combined?: string
+    error?: string
+    dirty?: boolean
+    conflict?: boolean
+  }>
   workbenchGitPushPersonal: (payload?: {
     clearPersonalConfig?: boolean
+    reason?: string
     message?: string
     personalGithubRepo?: string
   }) => Promise<{
@@ -589,6 +609,8 @@ export type DesktopApi = {
   }>
   workbenchGitSaveGithubSettings: (body: {
     personalGithubRepo?: string
+    gitUserName?: string
+    gitUserEmail?: string
     upstreamGithubRepo?: string
   }) => Promise<{ ok: boolean; error?: string }>
   claudeCodeRunChainStep?: (payload: {

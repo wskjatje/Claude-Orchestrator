@@ -350,9 +350,12 @@ function SettingsAdvancedTab({
   onAgentOsQuality: () => void;
 }) {
   const [personalGithubRepo, setPersonalGithubRepo] = useState("");
+  const [gitUserName, setGitUserName] = useState("");
+  const [gitUserEmail, setGitUserEmail] = useState("");
   const [upstreamGithubRepo, setUpstreamGithubRepo] = useState("https://github.com/anthropics/claude-code.git");
   const [clearConfigOnPush, setClearConfigOnPush] = useState(true);
-  const [gitBusy, setGitBusy] = useState<"pull" | "push" | "save" | null>(null);
+  const [pushReason, setPushReason] = useState("");
+  const [gitBusy, setGitBusy] = useState<"pull" | "pullPersonal" | "push" | "save" | null>(null);
   const [gitLog, setGitLog] = useState("");
   const [gitStatus, setGitStatus] = useState<Awaited<
     ReturnType<NonNullable<ReturnType<typeof getDesktop>>["workbenchGitStatus"]>
@@ -368,25 +371,37 @@ function SettingsAdvancedTab({
   useEffect(() => {
     const api = getDesktop();
     if (!api || !desktop) return;
-    void api.getChatSettings().then((s) => {
+    void (async () => {
+      const s = await api.getChatSettings();
       setPersonalGithubRepo(s.personalGithubRepo?.trim() ?? "");
+      setGitUserName(s.gitUserName?.trim() ?? "");
+      setGitUserEmail(s.gitUserEmail?.trim() ?? "");
       setUpstreamGithubRepo(
         s.upstreamGithubRepo?.trim() || "https://github.com/anthropics/claude-code.git",
       );
-    });
-    void refreshGitStatus();
-  }, [desktop, refreshGitStatus]);
+      if (api.workbenchGitStatus) {
+        const st = await api.workbenchGitStatus();
+        setGitStatus(st);
+        if (!s.gitUserName?.trim() && st.gitUserName) setGitUserName(st.gitUserName);
+        if (!s.gitUserEmail?.trim() && st.gitUserEmail) setGitUserEmail(st.gitUserEmail);
+      }
+    })();
+  }, [desktop]);
+
+  const githubSettingsPayload = () => ({
+    personalGithubRepo: personalGithubRepo.trim(),
+    gitUserName: gitUserName.trim(),
+    gitUserEmail: gitUserEmail.trim(),
+    upstreamGithubRepo: upstreamGithubRepo.trim(),
+  });
 
   const saveGithubSettings = async () => {
     const api = getDesktop();
     if (!api?.workbenchGitSaveGithubSettings) return;
     setGitBusy("save");
     try {
-      await api.workbenchGitSaveGithubSettings({
-        personalGithubRepo: personalGithubRepo.trim(),
-        upstreamGithubRepo: upstreamGithubRepo.trim(),
-      });
-      setGitLog("已保存 GitHub 仓库配置。");
+      await api.workbenchGitSaveGithubSettings(githubSettingsPayload());
+      setGitLog("已保存 GitHub 配置（个人仓库与 Git 身份推送/拉取共用）。");
       await refreshGitStatus();
     } finally {
       setGitBusy(null);
@@ -409,22 +424,54 @@ function SettingsAdvancedTab({
     }
   };
 
+  const pullFromPersonal = async () => {
+    const api = getDesktop();
+    if (!api?.workbenchGitPullPersonal) return;
+    if (!personalGithubRepo.trim()) {
+      setGitLog("请先填写个人 GitHub 仓库地址。");
+      return;
+    }
+    if (!gitUserName.trim() || !gitUserEmail.trim()) {
+      setGitLog("请先填写 Git 用户名与邮箱（推送与个人拉取共用）。");
+      return;
+    }
+    setGitBusy("pullPersonal");
+    setGitLog("");
+    try {
+      await api.workbenchGitSaveGithubSettings(githubSettingsPayload());
+      const r = await api.workbenchGitPullPersonal({
+        personalGithubRepo: personalGithubRepo.trim(),
+      });
+      setGitLog(r.combined || r.error || (r.ok ? `已拉取：${r.headLine ?? ""}` : "拉取失败"));
+      await refreshGitStatus();
+    } finally {
+      setGitBusy(null);
+    }
+  };
+
   const pushToPersonal = async () => {
     const api = getDesktop();
     if (!api?.workbenchGitPushPersonal) return;
     if (!personalGithubRepo.trim()) {
-      setGitLog("请先填写并保存个人 GitHub 仓库地址。");
+      setGitLog("请先填写个人 GitHub 仓库地址。");
+      return;
+    }
+    if (!gitUserName.trim() || !gitUserEmail.trim()) {
+      setGitLog("请先填写 Git 用户名与邮箱（推送与个人拉取共用）。");
+      return;
+    }
+    const reason = pushReason.trim();
+    if (!reason) {
+      setGitLog("请填写推送说明，便于在个人仓库中区分版本历史。");
       return;
     }
     setGitBusy("push");
     setGitLog("");
     try {
-      await api.workbenchGitSaveGithubSettings({
-        personalGithubRepo: personalGithubRepo.trim(),
-        upstreamGithubRepo: upstreamGithubRepo.trim(),
-      });
+      await api.workbenchGitSaveGithubSettings(githubSettingsPayload());
       const r = await api.workbenchGitPushPersonal({
         clearPersonalConfig: clearConfigOnPush,
+        reason,
         personalGithubRepo: personalGithubRepo.trim(),
       });
       const msg = r.combined || r.error || (r.ok ? "推送完成" : "推送失败");
@@ -440,33 +487,62 @@ function SettingsAdvancedTab({
   return (
     <div className="mx-auto w-full max-w-3xl space-y-3">
       <p className="text-[12px] leading-relaxed text-muted-foreground">
-        同步官方 Claude Code 的插件、命令与 Hooks 逻辑；你的模型、会话、
-        <code className="font-mono text-[11px]">server/</code>、
-        <code className="font-mono text-[11px]">web/</code>、
-        <code className="font-mono text-[11px]">.claudecode/</code> 等工作台配置不会被覆盖。推送仅到个人 fork。
+        个人 GitHub 的仓库地址、Git 用户名与邮箱只需配置一次，推送与个人拉取共用。
+        官方 upstream 仅用于按路径同步插件与 Hooks；从个人仓库拉取时会完整合并 origin。
       </p>
 
       <Section
         title="源码仓库（GitHub）"
-        hint="按路径同步官方逻辑；push 到个人 fork，可选推送前清空工作台配置。"
+        hint="个人身份与仓库 push/个人 pull 共用；官方 upstream 仅同步官方逻辑。"
       >
         <div className="space-y-3">
-          <div>
-            <label className="mb-1 block text-[11.5px] font-medium text-muted-foreground">
-              个人 GitHub 仓库（push 目标）
-            </label>
-            <input
-              value={personalGithubRepo}
-              onChange={(e) => setPersonalGithubRepo(e.target.value)}
-              disabled={!desktop}
-              placeholder="https://github.com/你的用户名/claudecode.git"
-              spellCheck={false}
-              className="h-9 w-full rounded-lg border border-border bg-surface px-3 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
-            />
+          <div className="rounded-lg border border-border/80 bg-secondary/10 px-3 py-2.5">
+            <p className="text-[11.5px] font-medium text-foreground">个人 GitHub（推送与个人拉取共用）</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                  Git 用户名
+                </label>
+                <input
+                  value={gitUserName}
+                  onChange={(e) => setGitUserName(e.target.value)}
+                  disabled={!desktop}
+                  placeholder="与 GitHub 提交者名称一致"
+                  spellCheck={false}
+                  className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                  Git 邮箱
+                </label>
+                <input
+                  value={gitUserEmail}
+                  onChange={(e) => setGitUserEmail(e.target.value)}
+                  disabled={!desktop}
+                  placeholder="与 GitHub 账号邮箱一致"
+                  spellCheck={false}
+                  className="h-9 w-full rounded-lg border border-border bg-surface px-3 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
+                />
+              </div>
+            </div>
+            <div className="mt-2">
+              <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
+                个人仓库 URL
+              </label>
+              <input
+                value={personalGithubRepo}
+                onChange={(e) => setPersonalGithubRepo(e.target.value)}
+                disabled={!desktop}
+                placeholder="https://github.com/你的用户名/claudecode.git"
+                spellCheck={false}
+                className="h-9 w-full rounded-lg border border-border bg-surface px-3 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
+              />
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-[11.5px] font-medium text-muted-foreground">
-              官方 upstream（pull 来源）
+              官方 upstream（仅同步官方插件与逻辑）
             </label>
             <input
               value={upstreamGithubRepo}
@@ -505,6 +581,11 @@ function SettingsAdvancedTab({
                   origin → {gitStatus.originUrl}
                 </div>
               ) : null}
+              {gitStatus.gitUserName || gitStatus.gitUserEmail ? (
+                <div className="mt-0.5 truncate">
+                  Git 身份 → {gitStatus.gitUserName || "—"} &lt;{gitStatus.gitUserEmail || "—"}&gt;
+                </div>
+              ) : null}
             </div>
           ) : gitStatus?.error ? (
             <div className="text-[11.5px] text-destructive">
@@ -534,6 +615,24 @@ function SettingsAdvancedTab({
             </span>
           </label>
 
+          <div>
+            <label className="mb-1 block text-[11.5px] font-medium text-muted-foreground">
+              推送说明（必填）
+            </label>
+            <textarea
+              value={pushReason}
+              onChange={(e) => setPushReason(e.target.value)}
+              disabled={!desktop}
+              placeholder="例如：同步 agent 链 UI 与 Git 推送修复"
+              rows={2}
+              spellCheck={false}
+              className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              将作为 commit 说明写入个人仓库，便于在 GitHub 历史中区分各次推送。
+            </p>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -546,7 +645,16 @@ function SettingsAdvancedTab({
             </button>
             <button
               type="button"
-              disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim()}
+              disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim() || !gitUserName.trim() || !gitUserEmail.trim()}
+              onClick={() => void pullFromPersonal()}
+              className="btn-row"
+            >
+              <Download className={cn("h-3.5 w-3.5", gitBusy === "pullPersonal" && "animate-pulse")} />
+              {gitBusy === "pullPersonal" ? "拉取中…" : "从个人仓库拉取（全部）"}
+            </button>
+            <button
+              type="button"
+              disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim() || !gitUserName.trim() || !gitUserEmail.trim() || !pushReason.trim()}
               onClick={() => void pushToPersonal()}
               className="btn-row"
             >

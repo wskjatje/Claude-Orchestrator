@@ -167,6 +167,8 @@ export function installDesktopBridge() {
     workbenchGitStatus: () => rpc('workbench-git:status'),
     workbenchGitPullUpstream: (payload?: { upstreamGithubRepo?: string }) =>
     rpc('workbench-git:pullUpstream', payload ? [payload] : []),
+    workbenchGitPullPersonal: (payload?: { personalGithubRepo?: string }) =>
+    rpc('workbench-git:pullPersonal', payload ? [payload] : []),
     workbenchGitPushPersonal: (payload) => rpc('workbench-git:pushPersonal', payload ?? {}),
     workbenchGitSaveGithubSettings: (body) => rpc('workbench-git:saveGithubSettings', body),
     chooseClaudeCliExecutable: () => rpc('claude-code:chooseCliExecutable'),
