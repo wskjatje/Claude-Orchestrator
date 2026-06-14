@@ -1,2 +1,15 @@
 .DS_Store
 
+.claudecode/
+.tmp/
+
+# Dependencies & vendored bundles (install locally; do not push)
+node_modules/
+server/vendor/
+
+# Web UI (chatter-page-polish)
+web/node_modules/
+web/dist/
+web/.env
+web/.wrangler/
+web/.tanstack/

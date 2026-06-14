@@ -1,0 +1,29 @@
+{
+  "comment": "只同步官方 Claude Code 插件/命令/Hooks 逻辑；不碰 workbench 配置与 server/web",
+  "syncPaths": [
+    "plugins",
+    ".claude/commands",
+    ".claude-plugin",
+    "examples/hooks"
+  ],
+  "syncFiles": [
+    "scripts/auto-close-duplicates.ts",
+    "scripts/backfill-duplicate-comments.ts",
+    "scripts/comment-on-duplicates.sh",
+    "scripts/edit-issue-labels.sh",
+    "scripts/gh.sh",
+    "scripts/issue-lifecycle.ts",
+    "scripts/lifecycle-comment.ts",
+    "scripts/sweep.ts"
+  ],
+  "neverTouch": [
+    "examples/settings",
+    "examples/mdm",
+    ".claude/settings.json",
+    ".claudecode",
+    "server",
+    "web",
+    "node_modules",
+    ".tmp"
+  ]
+}

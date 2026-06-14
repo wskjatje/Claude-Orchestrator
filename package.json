@@ -1,0 +1,22 @@
+{
+  "name": "claudecode-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "anthropics/claude-code workspace with local web UI (frontend only)",
+  "scripts": {
+    "bridge": "node server/index.mjs",
+    "web:install": "npm --prefix web install",
+    "web:dev": "npm --prefix web run dev:electron",
+    "web:build": "npm --prefix web run build:electron",
+    "web:lint": "npm --prefix web run lint",
+    "postinstall": "node scripts/fix-node-pty-perms.mjs",
+    "web:dev:full": "bash scripts/dev-web-with-bridge.sh",
+    "vendor:install": "npm --prefix server/vendor/cad install --omit=dev && npm --prefix server/vendor/agent-os-runtime install --omit=dev",
+    "sync:cc-switch": "bash scripts/sync-cc-switch-to-workbench.sh",
+    "setup:yunmeng": "bash scripts/setup-yunmeng-cc-switch.sh"
+  },
+  "dependencies": {
+    "node-pty": "^1.0.0",
+    "ws": "^8.18.3"
+  }
+}

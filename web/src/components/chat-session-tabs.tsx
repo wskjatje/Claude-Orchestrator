@@ -1,0 +1,295 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  Clock,
+  Loader2,
+  MessageSquare,
+  MoreHorizontal,
+  PanelRightClose,
+  Plus,
+  TerminalSquare,
+  X,
+} from "lucide-react";
+import { ChatHistoryDropdown, type ChatHistoryScope } from "@/components/chat-history-dropdown";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import type { ChatHistoryListItem } from "@/lib/chat-history-groups";
+import { cn } from "@/lib/utils";
+
+type Session = { id: string; title: string; modelId?: string | null };
+
+type HistoryAnchor = "clock" | "empty";
+
+type Props = {
+  sessions: Session[];
+  activeId: string;
+  sendingSessions: Record<string, boolean>;
+  onSessionChange: (id: string) => void;
+  onNewSession: () => void;
+  onCloseSession: (id: string) => void;
+  hasDesktopApi: boolean;
+  onClosePanel: () => void;
+  terminalOpen?: boolean;
+  onToggleTerminal?: () => void;
+  projectHistoryItems: ChatHistoryListItem[];
+  allHistoryItems: ChatHistoryListItem[];
+  onSelectHistorySession: (sessionId: string) => void;
+  onHistoryOpen?: () => void;
+};
+
+export function ChatSessionTabs({
+  sessions,
+  activeId,
+  sendingSessions,
+  onSessionChange,
+  onNewSession,
+  onCloseSession,
+  hasDesktopApi,
+  onClosePanel,
+  terminalOpen,
+  onToggleTerminal,
+  projectHistoryItems,
+  allHistoryItems,
+  onSelectHistorySession,
+  onHistoryOpen,
+}: Props) {
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [historyAnchor, setHistoryAnchor] = useState<HistoryAnchor | null>(null);
+  const [historyScope, setHistoryScope] = useState<ChatHistoryScope>("project");
+
+  useEffect(() => {
+    const el = tabsRef.current?.querySelector<HTMLElement>(`[data-session-id="${activeId}"]`);
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeId, sessions.length]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (menuRef.current && !menuRef.current.contains(t)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [menuOpen]);
+
+  const onTabsWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = tabsRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  };
+
+  const toggleHistory = (anchor: HistoryAnchor, scope: ChatHistoryScope) => {
+    if (historyAnchor === anchor) {
+      setHistoryAnchor(null);
+      return;
+    }
+    setHistoryScope(scope);
+    setHistoryAnchor(anchor);
+    onHistoryOpen?.();
+  };
+
+  const closeHistory = () => setHistoryAnchor(null);
+
+  const handleSelectHistory = (sessionId: string) => {
+    onSelectHistorySession(sessionId);
+    closeHistory();
+  };
+
+  const historyDropdown = (
+    <ChatHistoryDropdown
+      scope={historyScope}
+      onScopeChange={setHistoryScope}
+      projectItems={projectHistoryItems}
+      allItems={allHistoryItems}
+      activeId={activeId}
+      sendingSessions={sendingSessions}
+      onSelectSession={handleSelectHistory}
+    />
+  );
+
+  return (
+    <div className="chat-session-tabs-bar group/chat-tabs flex h-[35px] min-h-[35px] shrink-0 items-stretch border-b border-border bg-card/90">
+      <div
+        ref={tabsRef}
+        onWheel={onTabsWheel}
+        className="chat-session-tabs-scroll flex min-w-0 flex-1 items-stretch"
+        role="tablist"
+        aria-label="聊天会话"
+      >
+        {sessions.map((s) => {
+          const active = s.id === activeId;
+          const sending = Boolean(sendingSessions[s.id]);
+          return (
+            <div
+              key={s.id}
+              data-session-id={s.id}
+              role="tab"
+              aria-selected={active}
+              className={cn(
+                "chat-session-tab group relative flex h-[35px] max-w-[200px] min-w-[72px] shrink-0 cursor-pointer items-center gap-1.5 border-r border-border/70 px-2 text-[11px] transition-colors",
+                active
+                  ? "bg-background text-foreground"
+                  : "bg-transparent text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+              )}
+              onClick={() => onSessionChange(s.id)}
+              title={s.title}
+            >
+              {sending ? (
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" aria-hidden />
+              ) : (
+                <MessageSquare className="h-3 w-3 shrink-0 opacity-50" aria-hidden />
+              )}
+              <span className="min-w-0 flex-1 truncate font-medium">{s.title}</span>
+              {sessions.length > 1 ? (
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground",
+                    active ? "opacity-70" : "opacity-0 group-hover:opacity-70",
+                  )}
+                  title="关闭会话"
+                  aria-label={`关闭 ${s.title}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCloseSession(s.id);
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+
+        <Popover
+          open={historyAnchor === "empty"}
+          onOpenChange={(open) => !open && historyAnchor === "empty" && closeHistory()}
+        >
+          <PopoverAnchor asChild>
+            <button
+              type="button"
+              disabled={!hasDesktopApi}
+              className={cn(
+                "chat-session-tabs-empty flex h-[35px] min-w-[32px] flex-1 items-center px-2 text-left transition",
+                historyAnchor === "empty" ? "bg-primary/8" : "hover:bg-secondary/30",
+                !hasDesktopApi && "cursor-not-allowed opacity-40",
+              )}
+              title="全部项目历史"
+              aria-label="全部项目历史"
+              onClick={() => toggleHistory("empty", "all")}
+            />
+          </PopoverAnchor>
+          <PopoverContent
+            align="start"
+            side="bottom"
+            sideOffset={6}
+            className="w-auto border-border/80 p-0 shadow-lg"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            {historyDropdown}
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-0.5 border-l border-border/70 px-1">
+        <button
+          type="button"
+          onClick={onNewSession}
+          disabled={!hasDesktopApi}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-40"
+          title="新对话"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+
+        <Popover
+          open={historyAnchor === "clock"}
+          onOpenChange={(open) => !open && historyAnchor === "clock" && closeHistory()}
+        >
+          <PopoverAnchor asChild>
+            <button
+              type="button"
+              onClick={() => toggleHistory("clock", "project")}
+              disabled={!hasDesktopApi}
+              className={cn(
+                "inline-flex h-7 w-7 items-center justify-center rounded-md transition",
+                historyAnchor === "clock"
+                  ? "bg-primary/12 text-primary"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                !hasDesktopApi && "opacity-40",
+              )}
+              title="当前项目历史"
+            >
+              <Clock className="h-3.5 w-3.5" />
+            </button>
+          </PopoverAnchor>
+          <PopoverContent
+            align="end"
+            side="bottom"
+            sideOffset={6}
+            className="w-auto border-border/80 p-0 shadow-lg"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            {historyDropdown}
+          </PopoverContent>
+        </Popover>
+
+        <div ref={menuRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            disabled={!hasDesktopApi || sessions.length <= 1}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-40"
+            title="更多"
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </button>
+          {menuOpen ? (
+            <div className="absolute right-0 top-full z-50 mt-1 w-40 rounded-md border border-border bg-popover py-1 shadow-lg">
+              {sessions.length > 1 ? (
+                <button
+                  type="button"
+                  className="block w-full px-3 py-1.5 text-left text-[11px] text-destructive transition hover:bg-secondary"
+                  onClick={() => {
+                    onCloseSession(activeId);
+                    setMenuOpen(false);
+                  }}
+                >
+                  关闭当前会话
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        {onToggleTerminal ? (
+          <button
+            type="button"
+            onClick={onToggleTerminal}
+            className={cn(
+              "inline-flex h-7 w-7 items-center justify-center rounded-md transition",
+              terminalOpen
+                ? "bg-primary/12 text-primary"
+                : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+            )}
+            title="终端（Ctrl+`）"
+            aria-pressed={terminalOpen}
+          >
+            <TerminalSquare className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={onClosePanel}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+          title="隐藏聊天面板"
+        >
+          <PanelRightClose className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}

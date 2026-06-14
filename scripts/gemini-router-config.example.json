@@ -1,0 +1,21 @@
+{
+  "LOG": true,
+  "LOG_LEVEL": "info",
+  "HOST": "127.0.0.1",
+  "PORT": 3456,
+  "API_TIMEOUT_MS": 600000,
+  "Providers": [
+    {
+      "name": "gemini",
+      "api_base_url": "https://generativelanguage.googleapis.com/v1beta/models/",
+      "api_key": "在此填写你的_GEMINI_API_KEY",
+      "models": ["gemini-2.5-flash", "gemini-2.0-flash"],
+      "transformer": { "use": ["gemini"] }
+    }
+  ],
+  "Router": {
+    "default": "gemini,gemini-2.5-flash",
+    "background": "gemini,gemini-2.5-flash",
+    "think": "gemini,gemini-2.5-flash"
+  }
+}

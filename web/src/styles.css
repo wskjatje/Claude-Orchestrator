@@ -1,0 +1,1646 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+@import "./fonts.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans:
+    "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono:
+    "JetBrains Mono", "SF Mono", ui-monospace, "Cascadia Mono", Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  --font-size-ui: 13px;
+  --font-size-sm: 12px;
+  --font-size-xs: 11px;
+  --font-size-code: 13px;
+  --line-height-ui: 1.5;
+  --line-height-code: 1.5;
+}
+
+/*
+ * Design system definition.
+ *
+ * The @theme inline block maps CSS custom properties to Tailwind utility
+ * classes (e.g. --color-primary -> bg-primary, text-primary).
+ *
+ * The :root and .dark blocks define the actual color values using oklch.
+ * All colors MUST use oklch format.
+ *
+ * To add a new semantic color:
+ * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-glow: var(--primary-glow);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-code-bg: var(--code-bg);
+  --color-diff-add: var(--diff-add);
+  --color-diff-add-fg: var(--diff-add-fg);
+  --color-diff-del: var(--diff-del);
+  --color-diff-del-fg: var(--diff-del-fg);
+  --color-diff-hunk: var(--diff-hunk);
+  --color-diff-hunk-fg: var(--diff-hunk-fg);
+  --color-tool-read: var(--tool-read);
+  --color-tool-edit: var(--tool-edit);
+  --color-tool-bash: var(--tool-bash);
+  --color-tool-web: var(--tool-web);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.985 0.005 60);
+  --foreground: oklch(0.22 0.02 30);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 30);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.02 30);
+  --primary: oklch(0.68 0.15 25);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-soft: oklch(0.94 0.04 25);
+  --primary-glow: oklch(0.78 0.13 28);
+  --secondary: oklch(0.96 0.008 60);
+  --secondary-foreground: oklch(0.28 0.02 30);
+  --muted: oklch(0.96 0.008 60);
+  --muted-foreground: oklch(0.52 0.02 30);
+  --accent: oklch(0.94 0.04 25);
+  --accent-foreground: oklch(0.4 0.13 25);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.92 0.01 40);
+  --input: oklch(0.92 0.01 40);
+  --ring: oklch(0.68 0.15 25);
+  --success: oklch(0.7 0.14 155);
+  --warning: oklch(0.78 0.14 70);
+  --info: oklch(0.65 0.13 240);
+  --surface: oklch(0.99 0.003 60);
+  --surface-elevated: oklch(1 0 0);
+  --code-bg: oklch(0.97 0.012 30);
+  --terminal-bg: var(--code-bg);
+  --terminal-fg: oklch(0.28 0.02 30);
+  --terminal-cursor: oklch(0.45 0.02 30);
+  --terminal-selection-bg: oklch(0.92 0.02 30);
+  --terminal-selection-fg: oklch(0.18 0.02 30);
+  --terminal-ansi-black: oklch(0.45 0.02 30);
+  --terminal-ansi-red: oklch(0.55 0.2 25);
+  --terminal-ansi-green: oklch(0.52 0.14 145);
+  --terminal-ansi-yellow: oklch(0.62 0.14 70);
+  --terminal-ansi-blue: oklch(0.52 0.14 240);
+  --terminal-ansi-magenta: oklch(0.55 0.16 295);
+  --terminal-ansi-cyan: oklch(0.52 0.1 195);
+  --terminal-ansi-white: oklch(0.28 0.02 30);
+  --terminal-ansi-bright-black: oklch(0.55 0.02 30);
+  --terminal-ansi-bright-red: oklch(0.58 0.22 25);
+  --terminal-ansi-bright-green: oklch(0.58 0.16 145);
+  --terminal-ansi-bright-yellow: oklch(0.68 0.15 70);
+  --terminal-ansi-bright-blue: oklch(0.58 0.14 240);
+  --terminal-ansi-bright-magenta: oklch(0.6 0.18 295);
+  --terminal-ansi-bright-cyan: oklch(0.58 0.12 195);
+  --terminal-chip-bg: oklch(0.94 0.04 195);
+  --terminal-chip-fg: oklch(0.42 0.1 195);
+  --terminal-chip-border: oklch(0.78 0.08 195 / 0.45);
+  --gradient-subtle: linear-gradient(180deg, oklch(0.99 0.004 60), oklch(0.97 0.008 50));
+  --shadow-xs: 0 1px 2px oklch(0.2 0.02 30 / 0.04);
+  --shadow-sm: 0 1px 3px oklch(0.2 0.02 30 / 0.06), 0 1px 2px oklch(0.2 0.02 30 / 0.04);
+  --shadow-md: 0 4px 12px oklch(0.2 0.02 30 / 0.06), 0 2px 4px oklch(0.2 0.02 30 / 0.04);
+  --shadow-lg: 0 12px 32px oklch(0.2 0.02 30 / 0.08), 0 4px 8px oklch(0.2 0.02 30 / 0.04);
+  --shadow-glow: 0 8px 24px oklch(0.68 0.15 25 / 0.18);
+  --gradient-primary: linear-gradient(135deg, oklch(0.72 0.16 22), oklch(0.64 0.15 34));
+  --transition-base: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Diff colors */
+  --diff-add: oklch(0.94 0.08 145);
+  --diff-add-fg: oklch(0.42 0.14 145);
+  --diff-del: oklch(0.94 0.07 25);
+  --diff-del-fg: oklch(0.5 0.18 25);
+  --diff-hunk: oklch(0.94 0.04 250);
+  --diff-hunk-fg: oklch(0.45 0.12 250);
+  /* Tool call colors */
+  --tool-read: oklch(0.65 0.13 240);
+  --tool-edit: oklch(0.7 0.16 60);
+  --tool-bash: oklch(0.6 0.18 295);
+  --tool-web: oklch(0.65 0.12 195);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.975 0.006 50);
+  --sidebar-foreground: oklch(0.3 0.02 30);
+  --sidebar-primary: oklch(0.68 0.15 25);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.94 0.04 25);
+  --sidebar-accent-foreground: oklch(0.4 0.13 25);
+  --sidebar-border: oklch(0.92 0.01 40);
+  --sidebar-ring: oklch(0.68 0.15 25);
+  --chat-panel: oklch(0.985 0.004 55);
+  /* VS Code / Cursor 资源管理器列表 */
+  --explorer-row-hover: oklch(0.955 0.004 50);
+  --explorer-row-active: oklch(0.905 0.006 50);
+  --explorer-row-active-fg: oklch(0.28 0.02 30);
+  --explorer-modified-dot: oklch(0.52 0.17 250);
+  --explorer-twistie: oklch(0.55 0.02 50);
+  --explorer-indent-guide: oklch(0.85 0.006 50);
+  --explorer-folder-icon: #c09553;
+  --explorer-git-modified: #895503;
+  --explorer-git-untracked: #0078d4;
+  --explorer-git-added: #107c10;
+  --explorer-git-deleted: #a1260d;
+  --explorer-git-renamed: #0078d4;
+}
+
+.dark {
+  /* 夜间分区：背景 / 侧栏 / 编辑器 / 顶栏 / 聊天 各有色相与明度差 */
+  --background: oklch(0.115 0.012 50);
+  --foreground: oklch(0.96 0.006 55);
+  --card: oklch(0.155 0.016 48);
+  --card-foreground: oklch(0.96 0.006 55);
+  --popover: oklch(0.19 0.016 46);
+  --popover-foreground: oklch(0.96 0.006 55);
+  --primary: oklch(0.72 0.17 25);
+  --primary-foreground: oklch(0.16 0.012 35);
+  --primary-soft: oklch(0.3 0.065 25);
+  --primary-glow: oklch(0.78 0.14 28);
+  --secondary: oklch(0.2 0.014 46);
+  --secondary-foreground: oklch(0.94 0.006 55);
+  --muted: oklch(0.2 0.014 46);
+  --muted-foreground: oklch(0.68 0.014 50);
+  --accent: oklch(0.26 0.05 25);
+  --accent-foreground: oklch(0.94 0.04 25);
+  --destructive: oklch(0.62 0.2 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(1 0 0 / 16%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.74 0.17 25);
+  --success: oklch(0.72 0.14 155);
+  --warning: oklch(0.8 0.14 70);
+  --info: oklch(0.7 0.13 240);
+  --surface: oklch(0.14 0.014 48);
+  --surface-elevated: oklch(0.185 0.018 44);
+  --code-bg: oklch(0.125 0.022 32);
+  --chat-panel: oklch(0.13 0.014 52);
+  --terminal-bg: var(--code-bg);
+  --terminal-fg: oklch(0.92 0.006 55);
+  --terminal-cursor: oklch(0.78 0.01 55);
+  --terminal-selection-bg: oklch(0.32 0.02 40);
+  --terminal-selection-fg: oklch(0.98 0.004 55);
+  --terminal-ansi-black: oklch(0.55 0.01 50);
+  --terminal-ansi-red: oklch(0.68 0.18 25);
+  --terminal-ansi-green: oklch(0.72 0.14 145);
+  --terminal-ansi-yellow: oklch(0.8 0.14 70);
+  --terminal-ansi-blue: oklch(0.7 0.13 240);
+  --terminal-ansi-magenta: oklch(0.72 0.16 295);
+  --terminal-ansi-cyan: oklch(0.72 0.1 195);
+  --terminal-ansi-white: oklch(0.92 0.006 55);
+  --terminal-ansi-bright-black: oklch(0.62 0.01 50);
+  --terminal-ansi-bright-red: oklch(0.72 0.2 25);
+  --terminal-ansi-bright-green: oklch(0.76 0.15 145);
+  --terminal-ansi-bright-yellow: oklch(0.84 0.14 70);
+  --terminal-ansi-bright-blue: oklch(0.74 0.14 240);
+  --terminal-ansi-bright-magenta: oklch(0.76 0.18 295);
+  --terminal-ansi-bright-cyan: oklch(0.76 0.12 195);
+  --terminal-ansi-bright-white: oklch(0.98 0.004 55);
+  --terminal-chip-bg: oklch(0.24 0.04 195 / 0.55);
+  --terminal-chip-fg: oklch(0.78 0.1 195);
+  --terminal-chip-border: oklch(0.55 0.1 195 / 0.35);
+  --gradient-primary: linear-gradient(135deg, oklch(0.7 0.17 22), oklch(0.64 0.17 34));
+  --gradient-subtle: linear-gradient(180deg, oklch(0.175 0.014 42), oklch(0.14 0.014 42));
+  --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.4);
+  --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.45), 0 1px 2px oklch(0 0 0 / 0.32);
+  --shadow-md: 0 4px 12px oklch(0 0 0 / 0.5), 0 2px 4px oklch(0 0 0 / 0.32);
+  --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.58), 0 4px 8px oklch(0 0 0 / 0.38);
+  --shadow-glow: 0 8px 24px oklch(0.72 0.17 25 / 0.38);
+  /* Diff & tool colors — dark variants */
+  --diff-add: oklch(0.32 0.07 145);
+  --diff-add-fg: oklch(0.78 0.14 145);
+  --diff-del: oklch(0.34 0.08 25);
+  --diff-del-fg: oklch(0.78 0.16 25);
+  --diff-hunk: oklch(0.3 0.05 250);
+  --diff-hunk-fg: oklch(0.78 0.13 250);
+  --tool-read: oklch(0.72 0.13 240);
+  --tool-edit: oklch(0.78 0.16 60);
+  --tool-bash: oklch(0.7 0.18 295);
+  --tool-web: oklch(0.72 0.12 195);
+  --chart-1: oklch(0.7 0.18 25);
+  --chart-2: oklch(0.7 0.14 160);
+  --chart-3: oklch(0.74 0.16 70);
+  --chart-4: oklch(0.65 0.2 300);
+  --chart-5: oklch(0.68 0.18 220);
+  --sidebar: oklch(0.148 0.02 58);
+  --sidebar-foreground: oklch(0.92 0.006 55);
+  --sidebar-primary: oklch(0.72 0.17 25);
+  --sidebar-primary-foreground: oklch(0.16 0.012 35);
+  --sidebar-accent: oklch(0.24 0.045 28);
+  --sidebar-accent-foreground: oklch(0.94 0.04 25);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.74 0.17 25);
+  --explorer-row-hover: oklch(0.2 0.012 50);
+  --explorer-row-active: oklch(0.28 0.014 50);
+  --explorer-row-active-fg: oklch(0.96 0.006 55);
+  --explorer-modified-dot: oklch(0.62 0.16 250);
+  --explorer-twistie: oklch(0.68 0.014 50);
+  --explorer-indent-guide: oklch(0.32 0.012 50);
+  --explorer-folder-icon: #dcb67a;
+  --explorer-git-modified: #e2c08d;
+  --explorer-git-untracked: #4fc1ff;
+  --explorer-git-added: #73c991;
+  --explorer-git-deleted: #f48771;
+  --explorer-git-renamed: #4fc1ff;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    overflow-x: hidden;
+    height: 100%;
+    height: 100dvh;
+  }
+
+  body {
+    height: 100%;
+    min-height: 100%;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-ui);
+    line-height: var(--line-height-ui);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-variation-settings: normal;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+    font-feature-settings: "calt" 1, "liga" 1;
+  }
+
+  ::selection {
+    background-color: var(--primary-soft);
+    color: var(--accent-foreground);
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+  .glass {
+    background-color: color-mix(in oklab, var(--surface-elevated) 75%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /** 主内容区轻微氛围光，贴近 Workbench 深色工作台观感 */
+  .main-canvas {
+    background-color: var(--color-background);
+    background-image:
+      radial-gradient(120% 80% at 100% 0%, oklch(0.72 0.17 25 / 0.07), transparent 55%),
+      radial-gradient(90% 60% at 0% 100%, oklch(0.78 0.14 70 / 0.045), transparent 50%);
+  }
+
+  .dark .main-canvas {
+    background-color: var(--background);
+    background-image: none;
+  }
+
+  /** 工作台整页高度链：避免三栏下方留白 */
+  .workbench-page,
+  .workbench-shell {
+    height: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  [data-panel] {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /** 工作台三栏分区 */
+  .workbench-editor-pane {
+    background-color: var(--code-bg);
+    border-right: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  }
+
+  .workbench-chat-pane {
+    background-color: var(--chat-panel, var(--card));
+    border-left: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+    isolation: isolate;
+    --chat-inline-padding: 12px;
+    --chat-user-bubble-max: 100%;
+    --chat-assistant-max: 100%;
+    --chat-user-bg: oklch(0.965 0.004 50);
+    --chat-user-border: oklch(0.9 0.006 50 / 0.85);
+    --chat-user-fg: var(--foreground);
+  }
+
+  .dark .workbench-chat-pane {
+    --chat-user-bg: oklch(0.31 0.008 285);
+    --chat-user-border: oklch(0.42 0.01 285 / 0.55);
+    --chat-user-fg: oklch(0.93 0.005 285);
+  }
+
+  .workbench-chat-mount {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+
+  .dark .workbench-code-gutter {
+    background-color: color-mix(in oklab, var(--code-bg) 88%, var(--surface-elevated) 12%);
+    border-right-color: color-mix(in oklab, var(--border) 90%, transparent);
+  }
+
+  .codemirror-workbench {
+    background-color: var(--code-bg);
+  }
+
+  .codemirror-workbench .cm-editor {
+    height: 100%;
+    background-color: transparent;
+  }
+
+  .codemirror-workbench .cm-focused {
+    outline: none;
+  }
+
+  .codemirror-workbench .cm-scroller {
+    min-height: 0;
+  }
+
+  .codemirror-workbench .cm-content {
+    caret-color: var(--foreground);
+  }
+
+  /** 语法高亮由 codemirror-cursor-theme（VS Code / Cursor token）驱动，勿用 .cm-* 覆盖 */
+
+  .cm-ide-hover {
+    max-width: 420px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+    background: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow: 0 8px 24px color-mix(in oklab, #000 28%, transparent);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .cm-ide-hover-title {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-weight: 600;
+    color: var(--primary);
+  }
+
+  .cm-ide-hover-meta {
+    margin-top: 2px;
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+
+  .cm-ide-hover-def {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cm-ide-hover-refs {
+    margin-top: 4px;
+    color: var(--muted-foreground);
+    font-size: 11px;
+  }
+
+  .cm-editor-context-menu {
+    font-family: var(--font-sans, system-ui, sans-serif);
+  }
+
+  .dark .page-list-pane {
+    background-color: var(--background);
+  }
+
+  .dark .page-detail-pane {
+    background-color: var(--card);
+  }
+
+  .dark .page-section {
+    background-color: var(--surface-elevated);
+    border-color: color-mix(in oklab, var(--border) 85%, transparent);
+  }
+
+  /** 表单/列表页：全宽左对齐平铺 */
+  .page-content {
+    @apply w-full px-4 py-4 sm:px-5 lg:px-6;
+  }
+
+  /** 设置等页：宽屏双列平铺 */
+  .page-grid-2 {
+    @apply grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-start;
+  }
+
+  .page-section {
+    @apply rounded-xl border border-border bg-surface-elevated p-4 shadow-xs;
+  }
+
+  .page-section-header {
+    @apply mb-3 flex flex-wrap items-center gap-1.5;
+  }
+
+  .page-toolbar {
+    @apply flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-elevated px-3 py-2;
+  }
+
+  .page-notice {
+    @apply rounded-lg border px-3 py-2 text-[12px] leading-relaxed;
+  }
+
+  .page-data-table th {
+    @apply whitespace-nowrap px-3 py-2;
+  }
+
+  .page-data-table td {
+    @apply px-3 py-2 align-middle;
+  }
+
+  .page-data-table tbody tr:hover {
+    background-color: color-mix(in oklab, var(--secondary) 45%, transparent);
+  }
+
+  /**
+   * 全宽平铺表格：列宽按单元格内容自适应，表格仍占满容器
+   */
+  .page-data-table--flat {
+    @apply w-full;
+  }
+
+  .page-data-table--flat table {
+    width: 100%;
+    table-layout: auto;
+  }
+
+  .page-data-table--flat .col-type,
+  .page-data-table--flat .col-key,
+  .page-data-table--flat .col-action {
+    width: 1%;
+    white-space: nowrap;
+  }
+
+  .page-data-table--flat .col-name {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .page-data-table--flat .col-endpoint,
+  .page-data-table--flat .col-model {
+    width: auto;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .page-data-table--flat .cell-2line {
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .page-data-table--flat .cell-1line {
+    white-space: nowrap;
+  }
+
+  /** 主操作按钮：渐变 + primary 底色兜底（浅色主题也可见） */
+  .btn-gradient-primary {
+    background-color: var(--primary);
+    background-image: var(--gradient-primary);
+    color: var(--primary-foreground);
+  }
+
+  .btn-row {
+    @apply inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium transition hover:bg-secondary disabled:opacity-40;
+  }
+
+  /** 覆盖 xterm 默认 #000 背景，跟随主题 token */
+  .workbench-xterm {
+    position: relative;
+    display: block;
+    height: 100%;
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-code);
+    line-height: var(--line-height-code);
+    font-feature-settings: "calt" 1, "liga" 1;
+  }
+
+  .workbench-xterm .xterm,
+  .workbench-xterm .xterm-rows {
+    font-family: var(--font-mono) !important;
+    font-feature-settings: "calt" 1, "liga" 1;
+  }
+
+  /* 仅保留一个 xterm 实例，避免叠层 */
+  .workbench-xterm > .xterm ~ .xterm {
+    display: none !important;
+  }
+
+  .workbench-xterm .xterm-viewport,
+  .workbench-xterm .xterm-screen {
+    background-color: var(--terminal-bg) !important;
+  }
+
+  .workbench-xterm .xterm-viewport {
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .workbench-xterm .xterm-viewport::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .workbench-xterm .xterm-viewport::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+    border-radius: 5px;
+  }
+
+  .workbench-bottom-panel {
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-sm);
+  }
+
+  .terminal-split-divider {
+    width: 1px;
+    flex-shrink: 0;
+    background: var(--border);
+  }
+
+  .terminal-pane--focused {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 25%, transparent);
+  }
+
+  .terminal-session-rail li + li {
+    border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+  }
+
+  .workbench-xterm--panel {
+    padding: 2px 0 0;
+  }
+
+  .workbench-xterm--panel .xterm {
+    padding: 0 8px;
+  }
+
+  /** 编辑器 / 文件预览 / 侧栏 diff — 与 Cursor 编辑器字号一致 */
+  .workbench-code,
+  .workbench-code pre {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-code);
+    line-height: var(--line-height-code);
+    font-feature-settings: "calt" 1, "liga" 1;
+    tab-size: 2;
+  }
+
+  /** VS Code 式代码面板：行号槽 + 语法高亮 */
+  .workbench-code-panel {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    background-color: var(--code-bg);
+    scrollbar-width: thin;
+  }
+
+  .workbench-code-gutter {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    flex-shrink: 0;
+    min-width: 3rem;
+    border-right: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    background-color: color-mix(in oklab, var(--code-bg) 92%, var(--muted) 8%);
+    padding: 8px 10px 8px 0;
+    text-align: right;
+    user-select: none;
+  }
+
+  .workbench-code-gutter-line {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-code);
+    line-height: var(--line-height-code);
+    color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
+  }
+
+  .workbench-code-block {
+    margin: 0;
+    min-width: 0;
+    flex: 1;
+    padding: 8px 16px 8px 12px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-code);
+    line-height: var(--line-height-code);
+    tab-size: 2;
+    white-space: pre;
+    color: var(--foreground);
+  }
+
+  .workbench-code-block code {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    background: transparent;
+  }
+
+  /* Prism token — 贴近 VS Code 浅色主题 */
+  .workbench-code-block .token.comment,
+  .workbench-code-block .token.prolog,
+  .workbench-code-block .token.doctype {
+    color: #6a9955;
+    font-style: italic;
+  }
+
+  .workbench-code-block .token.punctuation {
+    color: color-mix(in oklab, var(--foreground) 88%, transparent);
+  }
+
+  .workbench-code-block .token.property,
+  .workbench-code-block .token.tag,
+  .workbench-code-block .token.boolean,
+  .workbench-code-block .token.number,
+  .workbench-code-block .token.constant,
+  .workbench-code-block .token.symbol {
+    color: #098658;
+  }
+
+  .workbench-code-block .token.selector,
+  .workbench-code-block .token.attr-name,
+  .workbench-code-block .token.string,
+  .workbench-code-block .token.char,
+  .workbench-code-block .token.builtin {
+    color: #a31515;
+  }
+
+  .workbench-code-block .token.operator,
+  .workbench-code-block .token.entity,
+  .workbench-code-block .token.url,
+  .workbench-code-block .language-css .token.string {
+    color: color-mix(in oklab, var(--foreground) 90%, transparent);
+  }
+
+  .workbench-code-block .token.atrule,
+  .workbench-code-block .token.attr-value,
+  .workbench-code-block .token.keyword {
+    color: #0000ff;
+  }
+
+  .workbench-code-block .token.function,
+  .workbench-code-block .token.class-name {
+    color: #795e26;
+  }
+
+  .workbench-code-block .token.regex,
+  .workbench-code-block .token.important,
+  .workbench-code-block .token.variable {
+    color: #811f3f;
+  }
+
+  .dark .workbench-code-block .token.comment,
+  .dark .workbench-code-block .token.prolog,
+  .dark .workbench-code-block .token.doctype {
+    color: #6a9955;
+  }
+
+  .dark .workbench-code-block .token.keyword {
+    color: #569cd6;
+  }
+
+  .dark .workbench-code-block .token.string {
+    color: #ce9178;
+  }
+
+  .dark .workbench-code-block .token.function,
+  .dark .workbench-code-block .token.class-name {
+    color: #dcdcaa;
+  }
+
+  .dark .workbench-code-block .token.number,
+  .dark .workbench-code-block .token.boolean {
+    color: #b5cea8;
+  }
+
+  /**
+   * Markdown 预览统一版（对齐 Cursor Preview）
+   * 层次：标题 > 正文 > 引用；行内代码/代码块独立配色
+   */
+  .workbench-md-unified {
+    background-color: var(--code-bg);
+    color: #383a42;
+  }
+
+  .dark .workbench-md-unified {
+    color: #d4d4d4;
+  }
+
+  .workbench-md-body {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.7;
+    color: inherit;
+  }
+
+  .workbench-md-body h1 {
+    margin: 0 0 1rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    font-size: 1.625rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: #2b6b8f;
+  }
+
+  .workbench-md-body h2 {
+    margin: 1.75rem 0 0.75rem;
+    font-size: 1.35rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #2b6b8f;
+  }
+
+  .workbench-md-body h3 {
+    margin: 1.35rem 0 0.5rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #383a42;
+  }
+
+  .workbench-md-body h4 {
+    margin: 1rem 0 0.4rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #383a42;
+  }
+
+  .workbench-md-body p {
+    margin: 0 0 0.85rem;
+    color: inherit;
+  }
+
+  .workbench-md-body ul,
+  .workbench-md-body ol {
+    margin: 0 0 0.85rem;
+    padding-left: 1.35rem;
+    color: inherit;
+  }
+
+  .workbench-md-body li {
+    margin: 0.25rem 0;
+    color: inherit;
+  }
+
+  .workbench-md-body strong {
+    font-weight: 600;
+    color: inherit;
+  }
+
+  .workbench-md-body em {
+    font-style: italic;
+    color: inherit;
+  }
+
+  .workbench-md-body code:not(pre code) {
+    border-radius: 4px;
+    background-color: color-mix(in oklab, var(--muted) 30%, transparent);
+    padding: 0.12em 0.4em;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    color: #795e26;
+  }
+
+  .workbench-md-body blockquote {
+    margin: 0.85rem 0;
+    padding: 0.25rem 0 0.25rem 0.85rem;
+    border-left: 3px solid color-mix(in oklab, #008000 35%, var(--border));
+    color: #008000;
+    font-style: italic;
+  }
+
+  .workbench-md-body pre {
+    margin: 0.85rem 0;
+    border-radius: 6px;
+    border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+    background-color: color-mix(in oklab, var(--muted) 18%, var(--code-bg));
+  }
+
+  .dark .workbench-md-body h1,
+  .dark .workbench-md-body h2 {
+    color: #569cd6;
+    border-bottom-color: color-mix(in oklab, var(--border) 60%, transparent);
+  }
+
+  .dark .workbench-md-body h3,
+  .dark .workbench-md-body h4 {
+    color: #d4d4d4;
+  }
+
+  .dark .workbench-md-body code:not(pre code) {
+    color: #ce9178;
+    background-color: color-mix(in oklab, var(--muted) 22%, transparent);
+  }
+
+  .dark .workbench-md-body blockquote {
+    color: #6a9955;
+    border-left-color: color-mix(in oklab, #6a9955 40%, var(--border));
+  }
+
+  .chat-md {
+    font-family: var(--font-sans);
+    font-size: var(--font-size-ui);
+    line-height: var(--line-height-ui);
+  }
+
+  .chat-md code,
+  .chat-md pre {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-code);
+  }
+
+  /**
+   * 聊天栏：消息区占满输入框以上的空间，内容不得越过 composer 顶边
+   */
+  .chat-pane-layout {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .chat-pane-messages {
+    grid-row: 1;
+    position: relative;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .chat-pane-messages:has(.chat-sticky-user-header) {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /** Cursor 式：顶部固定栏承载用户提问（原列表内气泡移入此处） */
+  .chat-sticky-user-header {
+    z-index: 12;
+    flex-shrink: 0;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
+    background-color: var(--chat-panel, var(--card));
+    padding: 8px var(--chat-inline-padding, 10px);
+  }
+
+  .chat-sticky-user-header-bubble {
+    max-height: min(28vh, 220px);
+    overflow: auto;
+  }
+
+  .chat-sticky-user-header .chat-user-reply-btn {
+    opacity: 1;
+  }
+
+  .chat-sticky-user-header--editing {
+    padding: 8px var(--chat-inline-padding, 10px);
+    min-height: 120px;
+  }
+
+  .chat-sticky-user-header--editing .chat-composer-cursor--inline {
+    border-color: color-mix(in oklab, var(--primary) 22%, var(--border));
+  }
+
+  .chat-sticky-user-header--editing .chat-composer-body {
+    min-height: 52px;
+  }
+
+  .chat-composer-inline-hint {
+    border-style: dashed;
+  }
+
+  /** Cursor 式重新发起确认弹框 */
+  .chat-resend-confirm-dialog {
+    border-radius: 12px;
+    border-color: color-mix(in oklab, var(--border) 85%, transparent);
+    box-shadow:
+      0 16px 40px -12px color-mix(in oklab, var(--foreground) 22%, transparent),
+      0 0 0 1px color-mix(in oklab, var(--border) 40%, transparent);
+  }
+
+  /** Cursor 式聊天历史下拉 */
+  .chat-history-dropdown {
+    overflow: hidden;
+  }
+
+  .chat-session-tabs-empty {
+    border-right: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  }
+
+  .chat-history-dropdown-row:focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--ring) 70%, transparent);
+    outline-offset: 1px;
+  }
+
+  @media (min-width: 640px) {
+    .chat-sticky-user-header,
+    .chat-sticky-user-header--editing {
+      padding-inline: var(--chat-inline-padding, 12px);
+    }
+  }
+
+  .chat-pane-messages-scroll {
+    position: relative;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overflow-anchor: none;
+    scroll-padding-bottom: 12px;
+    -webkit-overflow-scrolling: touch;
+    transform: translateZ(0);
+    will-change: scroll-position;
+  }
+
+  .chat-pane-messages-scroll[data-layout-frozen] {
+    overflow-anchor: none;
+    pointer-events: auto;
+  }
+
+  .chat-messages-inner {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    padding: 8px var(--chat-inline-padding, 10px) 8px;
+  }
+
+  @media (min-width: 640px) {
+    .chat-messages-inner {
+      padding: 10px var(--chat-inline-padding, 12px) 8px;
+    }
+  }
+
+  .chat-session-meta {
+    margin-bottom: 12px;
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--muted-foreground);
+  }
+
+  .chat-session-tabs-bar {
+    scrollbar-width: thin;
+  }
+
+  .chat-session-tabs-bar::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  /** 会话 tab 横向滚动：不占高度，避免挤压 35px 顶栏 */
+  .chat-session-tabs-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .chat-session-tabs-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chat-session-tab {
+    user-select: none;
+  }
+
+  .chat-messages-list {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .chat-turn-section {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .chat-messages-anchor {
+    height: 1px;
+    width: 100%;
+    flex-shrink: 0;
+    scroll-margin-top: 16px;
+  }
+
+  .chat-jump-latest {
+    pointer-events: none;
+    position: absolute;
+    inset-inline: 0;
+    bottom: 8px;
+    z-index: 20;
+    display: flex;
+    justify-content: center;
+    padding-inline: 8px;
+  }
+
+  .chat-jump-latest-btn {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 9999px;
+    border: 1px solid var(--border);
+    background-color: color-mix(in oklab, var(--surface) 95%, transparent);
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--foreground);
+    box-shadow: 0 4px 12px -4px color-mix(in oklab, var(--foreground) 18%, transparent);
+    backdrop-filter: blur(8px);
+  }
+
+  .chat-jump-latest-btn:hover {
+    background-color: var(--secondary);
+  }
+
+  /** Cursor 式消息行 */
+  .chat-message-row {
+    display: flex;
+    width: 100%;
+    margin-bottom: 16px;
+  }
+
+  .chat-message-row--user {
+    justify-content: flex-start;
+  }
+
+  .chat-message-row--assistant {
+    justify-content: flex-start;
+  }
+
+  .chat-message-col {
+    min-width: 0;
+    width: 100%;
+    max-width: min(100%, var(--chat-assistant-max, 52rem));
+  }
+
+  .chat-message-row--user .chat-message-col {
+    width: 100%;
+    max-width: var(--chat-user-bubble-max, 100%);
+  }
+
+  .chat-message-col--wide {
+    max-width: min(100%, var(--chat-assistant-max, 52rem));
+  }
+
+  .chat-message-meta {
+    display: none;
+  }
+
+  .chat-bubble-user {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 10px;
+    border: 1px solid var(--chat-user-border);
+    background-color: var(--chat-user-bg);
+    padding: 10px 12px;
+    color: var(--chat-user-fg);
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .chat-bubble-user:has(.chat-user-body[role="button"]:hover),
+  .chat-bubble-user:has(.chat-user-body[role="button"]:focus-visible) {
+    border-color: color-mix(in oklab, var(--primary) 28%, var(--chat-user-border));
+  }
+
+  .dark .chat-bubble-user {
+    background-color: var(--chat-user-bg);
+    border-color: var(--chat-user-border);
+  }
+
+  .chat-user-body {
+    min-width: 0;
+  }
+
+  /** Cursor 式文件改动行（助手回复底部） */
+  .chat-file-edit-list {
+    border-top: 1px solid color-mix(in oklab, var(--border) 35%, transparent);
+    padding-top: 6px;
+  }
+
+  .chat-file-edit-row-btn {
+    min-height: 26px;
+  }
+
+  .chat-file-edit-badge {
+    display: inline-flex;
+    min-width: 1rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    background: color-mix(in oklab, var(--primary) 75%, transparent);
+    padding: 0 3px;
+    font-size: 8px;
+    font-weight: 700;
+    color: var(--primary-foreground);
+    line-height: 1.2;
+  }
+
+  .chat-file-edit-preview {
+    margin-left: 1.25rem;
+  }
+
+  .chat-file-edit-line--add {
+    background: color-mix(in oklab, var(--diff-add) 55%, transparent);
+    color: var(--diff-add-fg);
+    margin: 0 -0.625rem;
+    padding: 0 0.625rem;
+  }
+
+  .chat-file-edit-line--del {
+    background: color-mix(in oklab, var(--diff-del) 55%, transparent);
+    color: var(--diff-del-fg);
+    margin: 0 -0.625rem;
+    padding: 0 0.625rem;
+  }
+
+  .chat-composer-cursor {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .composer-cursor-footer {
+    min-height: 32px;
+  }
+
+  .composer-file-changes-bar {
+    backdrop-filter: blur(6px);
+  }
+
+  .chat-assistant-blocks .chat-md:first-child > :first-child {
+    margin-top: 0;
+  }
+
+  .chat-diff-block .token-line:has(.token-deleted),
+  .chat-diff-block code:has(> :first-child) {
+    /* fallback when no highlighter */
+  }
+
+  .chat-diff-block {
+    white-space: pre-wrap;
+  }
+
+  .chat-diff-block code {
+    display: block;
+  }
+
+  .chat-diff-block code::before {
+    content: none;
+  }
+
+  /** diff 行着色（Cursor 式 +/-） */
+  .chat-md pre.chat-diff-block code {
+    background: transparent;
+  }
+
+  .chat-md pre.chat-diff-block {
+    line-height: 1.45;
+  }
+
+  .chat-md pre.chat-diff-block code {
+    white-space: pre-wrap;
+  }
+
+  .chat-md pre.chat-diff-block code .diff-add,
+  .chat-md pre.chat-diff-block code .diff-del {
+    display: block;
+    margin: 0 -12px;
+    padding: 0 12px;
+  }
+
+  .chat-md pre.chat-diff-block code .diff-add {
+    background: color-mix(in oklab, var(--success) 12%, transparent);
+  }
+
+  .chat-md pre.chat-diff-block code .diff-del {
+    background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  }
+
+  .chat-bubble-assistant {
+    padding: 0;
+    width: 100%;
+  }
+
+  .chat-assistant-blocks .chat-md {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .chat-bubble-terminal {
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .chat-pane-composer {
+    grid-row: 2;
+    position: relative;
+    z-index: 10;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-shrink: 0;
+    overflow: visible;
+    padding: 8px var(--chat-inline-padding, 10px) 10px;
+  }
+
+  /** Cursor 式：输入框底栏左下角 Agent / Model（选择后仍固定展示） */
+  .composer-cursor-controls {
+    min-height: 28px;
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .composer-selector-slot {
+    position: relative;
+    z-index: 1;
+  }
+
+  .composer-agent-pill,
+  .composer-model-pill {
+    border: 0;
+    background: transparent;
+  }
+
+  .model-picker-menu {
+    border-radius: 10px;
+    box-shadow: var(--shadow-lg, 0 8px 30px oklch(0 0 0 / 0.12));
+  }
+
+  .model-picker-row:hover {
+    background-color: color-mix(in oklab, var(--secondary) 75%, transparent);
+  }
+
+  .model-picker-row--active,
+  .model-picker-row--active:hover {
+    background-color: color-mix(in oklab, var(--secondary) 90%, transparent);
+  }
+
+  /** Cursor 式终端上下文 chip（composer 内） */
+  .terminal-context-chip {
+    border: 1px solid var(--terminal-chip-border);
+    background-color: var(--terminal-chip-bg);
+    color: var(--terminal-chip-fg);
+  }
+
+  /** Cursor / VS Code 资源管理器树 */
+  .explorer-panel-toolbar {
+    min-height: 35px;
+  }
+
+  .explorer-section + .explorer-section {
+    margin-top: 2px;
+  }
+
+  .explorer-section-header-row {
+    height: 22px;
+    min-height: 22px;
+  }
+
+  .explorer-section-header {
+    user-select: none;
+    height: 22px;
+    min-height: 22px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: color-mix(in oklab, var(--sidebar-foreground) 88%, transparent);
+  }
+
+  .explorer-section-actions {
+    gap: 1px;
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .explorer-section-header-row:hover .explorer-section-actions,
+  .explorer-section-header-row:focus-within .explorer-section-actions {
+    opacity: 1;
+  }
+
+  .explorer-section-action {
+    display: flex;
+    height: 22px;
+    width: 22px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: color-mix(in oklab, var(--sidebar-foreground) 72%, transparent);
+  }
+
+  .explorer-section-action:hover {
+    background-color: var(--explorer-row-hover);
+    color: var(--sidebar-foreground);
+  }
+
+  .explorer-tree-root,
+  .explorer-tree-root ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .explorer-tree-node {
+    position: relative;
+  }
+
+  .explorer-tree-row {
+    position: relative;
+    height: 22px;
+    min-height: 22px;
+    cursor: pointer;
+    border-radius: 0;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 22px;
+    color: var(--sidebar-foreground);
+  }
+
+  .explorer-tree-guides {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+  }
+
+  .explorer-tree-guide {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: var(--explorer-indent-guide);
+    opacity: 0.55;
+  }
+
+  .explorer-tree-twistie {
+    width: 16px;
+    flex-shrink: 0;
+  }
+
+  .explorer-tree-folder-icon {
+    color: var(--explorer-folder-icon);
+    margin-right: 2px;
+  }
+
+  .explorer-tree-row:hover {
+    background-color: var(--explorer-row-hover);
+  }
+
+  .explorer-tree-row-active {
+    background-color: var(--explorer-row-active);
+    color: var(--explorer-row-active-fg);
+  }
+
+  .explorer-tree-row-active:hover {
+    background-color: var(--explorer-row-active);
+  }
+
+  .explorer-tree-row-active .explorer-git-label-neutral {
+    color: var(--explorer-row-active-fg) !important;
+  }
+
+  .explorer-tree-row-active .explorer-git-label-modified {
+    color: var(--explorer-git-modified) !important;
+  }
+
+  .explorer-tree-row-active .explorer-git-label-untracked {
+    color: var(--explorer-git-untracked) !important;
+  }
+
+  .explorer-tree-row-active .explorer-git-label-added {
+    color: var(--explorer-git-added) !important;
+  }
+
+  .explorer-tree-row-active .explorer-git-label-deleted {
+    color: var(--explorer-git-deleted) !important;
+  }
+
+  .explorer-tree-row-active .explorer-git-label-renamed {
+    color: var(--explorer-git-renamed) !important;
+  }
+
+  .explorer-tree-label {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-left: 2px;
+    color: var(--explorer-label-fg, #cccccc);
+  }
+
+  .explorer-tree-label-dimmed {
+    opacity: 0.72;
+  }
+
+  .explorer-git-label-neutral {
+    color: var(--explorer-label-fg, #cccccc) !important;
+  }
+
+  .explorer-git-label-modified {
+    color: var(--explorer-git-modified) !important;
+  }
+
+  .explorer-git-label-untracked {
+    color: var(--explorer-git-untracked) !important;
+  }
+
+  .explorer-git-label-added {
+    color: var(--explorer-git-added) !important;
+  }
+
+  .explorer-git-label-deleted {
+    color: var(--explorer-git-deleted) !important;
+    text-decoration: line-through;
+    opacity: 0.85;
+  }
+
+  .explorer-git-label-renamed {
+    color: var(--explorer-git-renamed) !important;
+  }
+
+  .explorer-tree-meta {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    padding-right: 8px;
+    margin-left: auto;
+  }
+
+  .explorer-tree-status {
+    min-width: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    text-align: center;
+  }
+
+  .explorer-tree-status-neutral {
+    color: var(--explorer-modified-dot);
+  }
+
+  .explorer-tree-status-modified {
+    color: var(--explorer-git-modified) !important;
+  }
+
+  .explorer-tree-status-untracked {
+    color: var(--explorer-git-untracked) !important;
+  }
+
+  .explorer-tree-status-added {
+    color: var(--explorer-git-added) !important;
+  }
+
+  .explorer-tree-status-deleted {
+    color: var(--explorer-git-deleted) !important;
+  }
+
+  .explorer-tree-status-renamed {
+    color: var(--explorer-git-renamed) !important;
+  }
+
+  .explorer-tree-modified {
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    background-color: var(--explorer-modified-dot);
+  }
+
+  /** Workbench 资源管理器 — 固定 Cursor/VS Code 深色侧栏（与应用主题无关） */
+  .workbench-explorer-sidebar {
+    --explorer-bg: #252526;
+    --explorer-border: #2b2b2b;
+    --sidebar-foreground: #cccccc;
+    --explorer-label-fg: #cccccc;
+    --explorer-twistie: #c5c5c5;
+    --explorer-row-hover: #2a2d2e;
+    --explorer-row-active: #37373d;
+    --explorer-row-active-fg: #ffffff;
+    --explorer-indent-guide: #404040;
+    --explorer-modified-dot: #3794ff;
+    /* Cursor / VS Code gitDecoration.* */
+    --explorer-git-modified: #e2c08d;
+    --explorer-git-untracked: #73b8ff;
+    --explorer-git-added: #73c991;
+    --explorer-git-deleted: #f48771;
+    --explorer-git-renamed: #73b8ff;
+    color: var(--sidebar-foreground);
+  }
+
+  .workbench-explorer-sidebar .explorer-panel-toolbar {
+    border-color: var(--explorer-border);
+  }
+
+  .workbench-explorer-sidebar .explorer-section-header,
+  .workbench-explorer-sidebar .explorer-tree-row {
+    color: var(--sidebar-foreground);
+  }
+
+  .workbench-explorer-sidebar .explorer-tree-icon-wrap {
+    width: 16px;
+    height: 16px;
+    margin-right: 2px;
+  }
+
+  .workbench-explorer-sidebar .explorer-tree-icon {
+    display: block;
+  }
+
+  .workbench-explorer-sidebar .explorer-section-action {
+    color: #cccccc99;
+  }
+
+  .workbench-explorer-sidebar .explorer-section-action:hover {
+    color: #cccccc;
+    background-color: var(--explorer-row-hover);
+  }
+}

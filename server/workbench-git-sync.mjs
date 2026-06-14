@@ -1,0 +1,347 @@
+import { execFile } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+import { promisify } from 'node:util'
+import { PROJECT_ROOT } from './paths.mjs'
+import {
+  loadChatSettings,
+  resetPersonalWorkbenchData,
+  saveChatSettings,
+} from './store.mjs'
+
+const execFileAsync = promisify(execFile)
+
+export const DEFAULT_UPSTREAM_REPO = 'https://github.com/anthropics/claude-code.git'
+
+/** Never stage these when pushing to a personal fork (local deps / runtime data). */
+const PUSH_EXCLUDE_PATHS = [
+  '.claudecode',
+  '.tmp',
+  'node_modules',
+  'server/vendor',
+]
+
+const DEFAULT_UPSTREAM_SYNC_MANIFEST = {
+  syncPaths: ['plugins', '.claude/commands', '.claude-plugin', 'examples/hooks'],
+  syncFiles: [
+    'scripts/auto-close-duplicates.ts',
+    'scripts/backfill-duplicate-comments.ts',
+    'scripts/comment-on-duplicates.sh',
+    'scripts/edit-issue-labels.sh',
+    'scripts/gh.sh',
+    'scripts/issue-lifecycle.ts',
+    'scripts/lifecycle-comment.ts',
+    'scripts/sweep.ts',
+  ],
+}
+
+function loadUpstreamSyncManifest() {
+  const manifestPath = path.join(PROJECT_ROOT, 'server/upstream-sync-manifest.json')
+  try {
+    const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    return {
+      syncPaths: Array.isArray(raw.syncPaths) ? raw.syncPaths.map(String) : DEFAULT_UPSTREAM_SYNC_MANIFEST.syncPaths,
+      syncFiles: Array.isArray(raw.syncFiles) ? raw.syncFiles.map(String) : DEFAULT_UPSTREAM_SYNC_MANIFEST.syncFiles,
+    }
+  } catch {
+    return DEFAULT_UPSTREAM_SYNC_MANIFEST
+  }
+}
+
+async function resolveUpstreamRef(branch) {
+  const primary = `upstream/${branch}`
+  const verify = await runGit(['rev-parse', '--verify', primary])
+  if (verify.ok) return primary
+  const fallback = 'upstream/main'
+  const verifyMain = await runGit(['rev-parse', '--verify', fallback])
+  if (verifyMain.ok) return fallback
+  return null
+}
+
+function combineOutput(stdout, stderr) {
+  return [String(stderr || '').trim(), String(stdout || '').trim()].filter(Boolean).join('\n')
+}
+
+async function runGit(args, opts = {}) {
+  const cwd = opts.cwd || PROJECT_ROOT
+  const timeout = opts.timeout ?? 180_000
+  try {
+    const r = await execFileAsync('git', args, {
+      cwd,
+      timeout,
+      maxBuffer: 8 * 1024 * 1024,
+    })
+    return {
+      ok: true,
+      stdout: String(r.stdout || ''),
+      stderr: String(r.stderr || ''),
+      combined: combineOutput(r.stdout, r.stderr),
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      stdout: String(e.stdout || ''),
+      stderr: String(e.stderr || e.message || ''),
+      combined: combineOutput(e.stdout, e.stderr || e.message),
+      error: e.message || String(e),
+    }
+  }
+}
+
+function isOfficialRemote(url) {
+  const u = String(url || '').trim().toLowerCase()
+  return u.includes('anthropics/claude-code')
+}
+
+async function readRemotes() {
+  const r = await runGit(['remote', '-v'])
+  if (!r.ok) return { ok: false, error: r.combined || r.error, remotes: [] }
+  const remotes = []
+  for (const line of r.stdout.split('\n')) {
+    const m = line.trim().match(/^(\S+)\s+(\S+)\s+\((fetch|push)\)$/)
+    if (!m || m[3] !== 'fetch') continue
+    remotes.push({ name: m[1], url: m[2] })
+  }
+  return { ok: true, remotes }
+}
+
+async function currentBranch() {
+  const r = await runGit(['rev-parse', '--abbrev-ref', 'HEAD'])
+  if (!r.ok) return 'main'
+  const b = r.stdout.trim()
+  return b && b !== 'HEAD' ? b : 'main'
+}
+
+async function ensureUpstreamRemote(upstreamUrl) {
+  const url = (upstreamUrl || DEFAULT_UPSTREAM_REPO).trim()
+  const remotes = await readRemotes()
+  if (!remotes.ok) return remotes
+  const upstream = remotes.remotes.find((x) => x.name === 'upstream')
+  if (upstream) {
+    if (upstream.url !== url) await runGit(['remote', 'set-url', 'upstream', url])
+    return { ok: true, url }
+  }
+  const origin = remotes.remotes.find((x) => x.name === 'origin')
+  if (origin && isOfficialRemote(origin.url)) {
+    await runGit(['remote', 'rename', 'origin', 'upstream'])
+    return { ok: true, url: origin.url }
+  }
+  const add = await runGit(['remote', 'add', 'upstream', url])
+  if (!add.ok) return { ok: false, error: add.combined || add.error }
+  return { ok: true, url }
+}
+
+async function ensurePersonalOrigin(personalUrl) {
+  const url = String(personalUrl || '').trim()
+  if (!url) return { ok: false, error: '请填写个人 GitHub 仓库地址' }
+  const remotes = await readRemotes()
+  if (!remotes.ok) return remotes
+
+  let origin = remotes.remotes.find((x) => x.name === 'origin')
+  if (origin && isOfficialRemote(origin.url)) {
+    await runGit(['remote', 'rename', 'origin', 'upstream'])
+    origin = null
+  }
+  if (origin) {
+    if (origin.url !== url) await runGit(['remote', 'set-url', 'origin', url])
+  } else {
+    const add = await runGit(['remote', 'add', 'origin', url])
+    if (!add.ok) return { ok: false, error: add.combined || add.error }
+  }
+  return { ok: true, url }
+}
+
+export async function getWorkbenchGitStatus() {
+  if (!fs.existsSync(path.join(PROJECT_ROOT, '.git'))) {
+    return { ok: false, error: '当前项目不是 Git 仓库' }
+  }
+  const settings = loadChatSettings()
+  const remotes = await readRemotes()
+  const branch = await currentBranch()
+  const status = await runGit(['status', '--porcelain'])
+  const dirty = Boolean(status.stdout.trim())
+  const upstream = remotes.ok ? remotes.remotes.find((x) => x.name === 'upstream') : null
+  const origin = remotes.ok ? remotes.remotes.find((x) => x.name === 'origin') : null
+  return {
+    ok: true,
+    repoRoot: PROJECT_ROOT,
+    branch,
+    dirty,
+    dirtySummary: status.stdout.trim().slice(0, 4000),
+    upstreamUrl: upstream?.url || settings.upstreamGithubRepo || DEFAULT_UPSTREAM_REPO,
+    personalUrl: settings.personalGithubRepo?.trim() || origin?.url || '',
+    originUrl: origin?.url || '',
+    remotes: remotes.ok ? remotes.remotes : [],
+    pullMode: 'path-scoped',
+    syncScopeNote:
+      '同步官方 plugins/commands 等逻辑；不修改 server/web、.claudecode 与工作台配置',
+  }
+}
+
+export async function pullClaudeCodeFromGithub(opts = {}) {
+  const settings = loadChatSettings()
+  const upstreamUrl =
+    (opts.upstreamGithubRepo || settings.upstreamGithubRepo || DEFAULT_UPSTREAM_REPO).trim()
+  const ensure = await ensureUpstreamRemote(upstreamUrl)
+  if (!ensure.ok) return { ok: false, error: ensure.error, combined: ensure.error }
+
+  const branch = await currentBranch()
+  const fetch = await runGit(['fetch', 'upstream'])
+  if (!fetch.ok) return { ok: false, error: fetch.combined || fetch.error, combined: fetch.combined }
+
+  const upstreamRef = await resolveUpstreamRef(branch)
+  if (!upstreamRef) {
+    return {
+      ok: false,
+      error: '未找到 upstream 分支（尝试过 upstream/' + branch + ' 与 upstream/main）',
+      combined: fetch.combined,
+    }
+  }
+
+  const manifest = loadUpstreamSyncManifest()
+  const targets = [...manifest.syncPaths, ...manifest.syncFiles]
+  const syncedPaths = []
+  const failedPaths = []
+
+  for (const target of targets) {
+    const checkout = await runGit(['checkout', upstreamRef, '--', target])
+    if (checkout.ok) {
+      syncedPaths.push(target)
+    } else {
+      failedPaths.push({
+        path: target,
+        error: (checkout.combined || checkout.error || 'checkout 失败').trim().slice(0, 500),
+      })
+    }
+  }
+
+  const head = await runGit(['log', '-1', '--oneline', upstreamRef])
+  const lines = [
+    `已从 ${upstreamRef} 同步官方逻辑（workbench 配置、server/web、.claudecode 未修改）：`,
+    ...syncedPaths.map((p) => `  ✓ ${p}`),
+  ]
+  if (failedPaths.length) {
+    lines.push('', '以下路径未能同步（可能 upstream 已移除）：')
+    for (const f of failedPaths) {
+      lines.push(`  ✗ ${f.path}${f.error ? ` — ${f.error.split('\n')[0]}` : ''}`)
+    }
+  }
+  if (head.stdout.trim()) lines.push('', `upstream @ ${head.stdout.trim()}`)
+
+  if (!syncedPaths.length) {
+    return {
+      ok: false,
+      pathScoped: true,
+      branch,
+      upstreamRef,
+      syncedPaths,
+      failedPaths,
+      error: '未能同步任何官方路径，请检查网络与 upstream 仓库结构。',
+      combined: lines.join('\n'),
+      upstreamUrl: ensure.url || upstreamUrl,
+    }
+  }
+
+  return {
+    ok: true,
+    pathScoped: true,
+    branch,
+    upstreamRef,
+    syncedPaths,
+    failedPaths,
+    headLine: head.stdout.trim(),
+    upstreamUrl: ensure.url || upstreamUrl,
+    combined: lines.join('\n'),
+  }
+}
+
+export async function pushClaudeCodeToPersonalGithub(opts = {}) {
+  const clearPersonalConfig = opts.clearPersonalConfig !== false
+  const message =
+    typeof opts.message === 'string' && opts.message.trim()
+      ? opts.message.trim().slice(0, 500)
+      : 'chore(workbench): sync personal fork'
+
+  const settings = loadChatSettings()
+  const personalUrl = (opts.personalGithubRepo || settings.personalGithubRepo || '').trim()
+  if (!personalUrl) {
+    return { ok: false, error: '请先填写个人 GitHub 仓库地址' }
+  }
+
+  const ensure = await ensurePersonalOrigin(personalUrl)
+  if (!ensure.ok) return { ok: false, error: ensure.error, combined: ensure.error }
+
+  if (clearPersonalConfig) {
+    resetPersonalWorkbenchData()
+  }
+
+  const branch = await currentBranch()
+  const add = await runGit(['add', '-A'])
+  if (!add.ok) return { ok: false, error: add.combined || add.error, combined: add.combined }
+
+  for (const excluded of PUSH_EXCLUDE_PATHS) {
+    await runGit(['reset', 'HEAD', '--', excluded])
+  }
+
+  const diffCached = await runGit(['diff', '--cached', '--quiet'])
+  const nothingToCommit = diffCached.ok
+  if (nothingToCommit) {
+    return {
+      ok: true,
+      pushed: false,
+      nothingToCommit: true,
+      clearedConfig: clearPersonalConfig,
+      combined: '没有需要提交的变更（已跳过 commit / push）。',
+      personalUrl: ensure.url,
+    }
+  }
+
+  const commit = await runGit(['commit', '-m', message])
+  if (!commit.ok) return { ok: false, error: commit.combined || commit.error, combined: commit.combined }
+
+  const push = await runGit(['push', '-u', 'origin', branch])
+  if (!push.ok) {
+    return {
+      ok: false,
+      error: push.combined || push.error || '推送到个人仓库失败',
+      combined: [commit.combined, push.combined].filter(Boolean).join('\n'),
+      committed: true,
+      personalUrl: ensure.url,
+    }
+  }
+
+  return {
+    ok: true,
+    pushed: true,
+    clearedConfig: clearPersonalConfig,
+    branch,
+    personalUrl: ensure.url,
+    combined: [commit.combined, push.combined].filter(Boolean).join('\n'),
+  }
+}
+
+export function savePersonalGithubSettings(body) {
+  const cur = loadChatSettings()
+  return saveChatSettings({
+    ollamaBase: cur.ollamaBase,
+    model: cur.model,
+    localOllamaModel: cur.localOllamaModel,
+    claudeCliPath: cur.claudeCliPath,
+    orchestrationMode: cur.orchestrationMode,
+    localAgentBasename: cur.localAgentBasename,
+    defaultConfirmWritePath: cur.defaultConfirmWritePath,
+    mcpConfigAbsolutePath: cur.mcpConfigAbsolutePath,
+    devMcpOrchDebug: cur.devMcpOrchDebug === true,
+    cloudModelCatalog: cur.cloudModelCatalog || [],
+    localModelCatalog: cur.localModelCatalog || [],
+    cloudProviderCatalog: cur.cloudProviderCatalog || [],
+    personalGithubRepo:
+      typeof body?.personalGithubRepo === 'string'
+        ? body.personalGithubRepo.trim().slice(0, 500)
+        : cur.personalGithubRepo || '',
+    upstreamGithubRepo:
+      typeof body?.upstreamGithubRepo === 'string' && body.upstreamGithubRepo.trim()
+        ? body.upstreamGithubRepo.trim().slice(0, 500)
+        : cur.upstreamGithubRepo || DEFAULT_UPSTREAM_REPO,
+  })
+}
