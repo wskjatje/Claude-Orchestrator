@@ -7,7 +7,6 @@ import {
   Clock,
   ScrollText,
   FileText,
-  Activity,
   Bot,
   Sparkles,
   Workflow,
@@ -43,7 +42,6 @@ const groups: NavGroup[] = [
       { to: "/overview", label: "概览", icon: LayoutDashboard },
       { to: "/scheduled", label: "定时任务", icon: Clock },
       { to: "/logs", label: "日志", icon: ScrollText },
-      { to: "/usage", label: "使用与用量", icon: Activity },
       { to: "/reports", label: "智能体执行日报", icon: FileText },
     ],
   },
@@ -51,7 +49,7 @@ const groups: NavGroup[] = [
     label: "编排",
     items: [
       { to: "/agents", label: "Agent", icon: Bot },
-      { to: "/skills", label: "技能", icon: Sparkles },
+      { to: "/skills", label: "Skill", icon: Sparkles },
       { to: "/chains", label: "任务链", icon: Workflow },
     ],
   },
@@ -111,7 +109,7 @@ export function AppShell({
             <span className="sr-only">{mobileNavOpen ? "关闭导航" : "打开导航"}</span>
           </button>
           <span className="truncate text-[11.5px] font-semibold tracking-tight text-foreground/90 sm:text-[12px]">
-            Claude Workbench
+            Claude Orchestrator
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -184,12 +182,12 @@ export function AppShell({
                 <Terminal className="h-4 w-4" />
               </div>
               <div className="flex flex-col leading-tight" translate="no">
-                <span className="text-[15px] font-semibold tracking-tight">Claude Workbench</span>
+                <span className="text-[15px] font-semibold tracking-tight">Claude Orchestrator</span>
                 <span className="text-[11px] text-muted-foreground">
                   {!mounted
                     ? "浏览器预览 · CLI 桥接"
                     : hasDesktop()
-                      ? "本机桌面 · Ollama / Claude Code"
+                      ? "桌面 · Claude Code"
                       : "浏览器预览 · CLI 桥接"}
                 </span>
               </div>
@@ -254,12 +252,17 @@ export function AppShell({
               workbench ? "hidden px-1 py-2 md:block" : "px-4 py-3",
             )}
           >
-            {(chainRunning || chainStatusBadge.tone === "paused") && !workbench && (
+            {(chainRunning ||
+              chainStatusBadge.tone === "paused" ||
+              chainStatusBadge.tone === "idle") &&
+              !workbench && (
               <div
                 className={cn(
                   "mb-2 inline-flex max-w-full items-center rounded-md border px-2 py-1 text-[10.5px] font-medium leading-snug",
                   chainStatusBadge.tone === "active" &&
                     "border-emerald-400/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                  chainStatusBadge.tone === "idle" &&
+                    "border-sky-400/40 bg-sky-500/10 text-sky-800 dark:text-sky-300",
                   chainStatusBadge.tone === "paused" &&
                     "border-amber-400/45 bg-amber-500/12 text-amber-800 dark:text-amber-300",
                 )}

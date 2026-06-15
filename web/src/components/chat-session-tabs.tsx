@@ -9,14 +9,12 @@ import {
   TerminalSquare,
   X,
 } from "lucide-react";
-import { ChatHistoryDropdown, type ChatHistoryScope } from "@/components/chat-history-dropdown";
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { ChatHistoryDropdown } from "@/components/chat-history-dropdown";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { ChatHistoryListItem } from "@/lib/chat-history-groups";
 import { cn } from "@/lib/utils";
 
 type Session = { id: string; title: string; modelId?: string | null };
-
-type HistoryAnchor = "clock" | "empty";
 
 type Props = {
   sessions: Session[];
@@ -54,8 +52,8 @@ export function ChatSessionTabs({
   const tabsRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [historyAnchor, setHistoryAnchor] = useState<HistoryAnchor | null>(null);
-  const [historyScope, setHistoryScope] = useState<ChatHistoryScope>("project");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyScope, setHistoryScope] = useState<"project" | "all">("project");
 
   useEffect(() => {
     const el = tabsRef.current?.querySelector<HTMLElement>(`[data-session-id="${activeId}"]`);
@@ -80,34 +78,10 @@ export function ChatSessionTabs({
     el.scrollLeft += e.deltaY;
   };
 
-  const toggleHistory = (anchor: HistoryAnchor, scope: ChatHistoryScope) => {
-    if (historyAnchor === anchor) {
-      setHistoryAnchor(null);
-      return;
-    }
-    setHistoryScope(scope);
-    setHistoryAnchor(anchor);
-    onHistoryOpen?.();
-  };
-
-  const closeHistory = () => setHistoryAnchor(null);
-
   const handleSelectHistory = (sessionId: string) => {
     onSelectHistorySession(sessionId);
-    closeHistory();
+    setHistoryOpen(false);
   };
-
-  const historyDropdown = (
-    <ChatHistoryDropdown
-      scope={historyScope}
-      onScopeChange={setHistoryScope}
-      projectItems={projectHistoryItems}
-      allItems={allHistoryItems}
-      activeId={activeId}
-      sendingSessions={sendingSessions}
-      onSelectSession={handleSelectHistory}
-    />
-  );
 
   return (
     <div className="chat-session-tabs-bar group/chat-tabs flex h-[35px] min-h-[35px] shrink-0 items-stretch border-b border-border bg-card/90">
@@ -145,10 +119,7 @@ export function ChatSessionTabs({
               {sessions.length > 1 ? (
                 <button
                   type="button"
-                  className={cn(
-                    "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition hover:bg-secondary hover:text-foreground",
-                    active ? "opacity-70" : "opacity-0 group-hover:opacity-70",
-                  )}
+                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-80 transition hover:bg-secondary hover:text-foreground group-hover:opacity-100"
                   title="关闭会话"
                   aria-label={`关闭 ${s.title}`}
                   onClick={(e) => {
@@ -163,34 +134,7 @@ export function ChatSessionTabs({
           );
         })}
 
-        <Popover
-          open={historyAnchor === "empty"}
-          onOpenChange={(open) => !open && historyAnchor === "empty" && closeHistory()}
-        >
-          <PopoverAnchor asChild>
-            <button
-              type="button"
-              disabled={!hasDesktopApi}
-              className={cn(
-                "chat-session-tabs-empty flex h-[35px] min-w-[32px] flex-1 items-center px-2 text-left transition",
-                historyAnchor === "empty" ? "bg-primary/8" : "hover:bg-secondary/30",
-                !hasDesktopApi && "cursor-not-allowed opacity-40",
-              )}
-              title="全部项目历史"
-              aria-label="全部项目历史"
-              onClick={() => toggleHistory("empty", "all")}
-            />
-          </PopoverAnchor>
-          <PopoverContent
-            align="start"
-            side="bottom"
-            sideOffset={6}
-            className="w-auto border-border/80 p-0 shadow-lg"
-            onOpenAutoFocus={(e) => e.preventDefault()}
-          >
-            {historyDropdown}
-          </PopoverContent>
-        </Popover>
+        <div className="chat-session-tabs-empty min-h-[35px] min-w-[8px] flex-1" aria-hidden />
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5 border-l border-border/70 px-1">
@@ -205,26 +149,32 @@ export function ChatSessionTabs({
         </button>
 
         <Popover
-          open={historyAnchor === "clock"}
-          onOpenChange={(open) => !open && historyAnchor === "clock" && closeHistory()}
+          open={historyOpen}
+          onOpenChange={(open) => {
+            setHistoryOpen(open);
+            if (open) {
+              setHistoryScope("project");
+              onHistoryOpen?.();
+            }
+          }}
         >
-          <PopoverAnchor asChild>
+          <PopoverTrigger asChild>
             <button
               type="button"
-              onClick={() => toggleHistory("clock", "project")}
               disabled={!hasDesktopApi}
               className={cn(
                 "inline-flex h-7 w-7 items-center justify-center rounded-md transition",
-                historyAnchor === "clock"
+                historyOpen
                   ? "bg-primary/12 text-primary"
                   : "text-muted-foreground hover:bg-secondary hover:text-foreground",
                 !hasDesktopApi && "opacity-40",
               )}
-              title="当前项目历史"
+              title="对话历史"
+              aria-label="对话历史"
             >
               <Clock className="h-3.5 w-3.5" />
             </button>
-          </PopoverAnchor>
+          </PopoverTrigger>
           <PopoverContent
             align="end"
             side="bottom"
@@ -232,7 +182,15 @@ export function ChatSessionTabs({
             className="w-auto border-border/80 p-0 shadow-lg"
             onOpenAutoFocus={(e) => e.preventDefault()}
           >
-            {historyDropdown}
+            <ChatHistoryDropdown
+              scope={historyScope}
+              onScopeChange={setHistoryScope}
+              projectItems={projectHistoryItems}
+              allItems={allHistoryItems}
+              activeId={activeId}
+              sendingSessions={sendingSessions}
+              onSelectSession={handleSelectHistory}
+            />
           </PopoverContent>
         </Popover>
 

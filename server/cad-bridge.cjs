@@ -17,6 +17,12 @@ const agentDailyReports = require('./agent-daily-reports.cjs')
 const agentExecRegistry = require('./agent-exec-registry.cjs')
 const projectLogs = require('./project-logs.cjs')
 const orchestrationChains = require('./orchestration-chains.cjs')
+const ccSwitch = require('./cc-switch.cjs')
+const {
+  isAutoModelSelection,
+  loadChatModelPools,
+  resolveExecutionModel,
+} = require('./resolve-execution-model.mjs')
 
 const { applyWorkspaceWriteFenceItems, ingestTextAndApplyWorkspaceWrite, bulkIngestAssistantTexts, collapseWrittenSummary, extractInvolvedSectionPaths } = workspaceWrite
 const { buildCrossAgentContextMarkdown } = require(path.join(CAD, 'memory-cross-agent.js'))
@@ -27,6 +33,8 @@ const {
   buildExecutableDelegationInstruction,
   buildTaskChainExecutableInstruction,
   appendStepSkillFilesToInstruction,
+  appendStepMcpsToInstruction,
+  appendStepChainMetaToInstruction,
   buildAgentRoutedInstruction,
 } = require(path.join(CAD, 'multi-agent-runtime.js'))
 
@@ -59,14 +67,65 @@ function loadChatSessionsDisk() {
   return { activeId: 's0', sessions: [] }
 }
 
+function countUserMessages(hist) {
+  return (Array.isArray(hist) ? hist : []).filter((m) => m?.role === 'user').length
+}
+
+function lastUserMessageTs(hist) {
+  const h = Array.isArray(hist) ? hist : []
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (h[i]?.role === 'user') return h[i].ts ?? 0
+  }
+  return 0
+}
+
+/** 落盘前合并，避免链式写入覆盖 UI 刚保存的用户消息 */
+function mergeSessionsPreferLongerHistory(local, disk) {
+  const localById = new Map((Array.isArray(local) ? local : []).map((s) => [s.id, s]))
+  const merged = []
+  for (const d of Array.isArray(disk) ? disk : []) {
+    const l = localById.get(d.id)
+    if (!l) {
+      merged.push(d)
+      continue
+    }
+    const lHist = Array.isArray(l.history) ? l.history : []
+    const dHist = Array.isArray(d.history) ? d.history : []
+    const keepLocal =
+      lHist.length > dHist.length ||
+      countUserMessages(lHist) > countUserMessages(dHist) ||
+      (lHist.length === dHist.length && lastUserMessageTs(lHist) >= lastUserMessageTs(dHist))
+    merged.push(
+      keepLocal
+        ? { ...d, ...l, title: d.title || l.title, history: lHist }
+        : { ...l, ...d, modelId: d.modelId || l.modelId, history: dHist },
+    )
+    localById.delete(d.id)
+  }
+  for (const l of localById.values()) merged.push(l)
+  return merged
+}
+
 function saveChatSessionsDisk(activeId, sessions) {
   if (typeof deps.saveChatSessions === 'function') {
     const disk = loadChatSessionsDisk()
+    const diskSessions = Array.isArray(disk?.sessions) ? disk.sessions : []
+    const incoming = Array.isArray(sessions) ? sessions : []
+    const mergedSessions = mergeSessionsPreferLongerHistory(incoming, diskSessions)
     const activeByWorkspace =
       disk?.activeByWorkspace && typeof disk.activeByWorkspace === 'object'
-        ? { ...disk.activeByWorkspace, '': activeId }
-        : { '': activeId }
-    return deps.saveChatSessions({ activeId, activeByWorkspace, sessions })
+        ? { ...disk.activeByWorkspace }
+        : {}
+    activeByWorkspace[''] = activeId
+    const pinned = mergedSessions.find((s) => s.id === activeId) ?? incoming.find((s) => s.id === activeId)
+    const wsPath = typeof pinned?.workspacePath === 'string' ? pinned.workspacePath.trim() : ''
+    if (wsPath) activeByWorkspace[wsPath] = activeId
+    return deps.saveChatSessions({
+      activeId,
+      activeByWorkspace,
+      sessions: mergedSessions,
+      composerDrafts: disk?.composerDrafts,
+    })
   }
   return { ok: false, error: 'saveChatSessions 不可用' }
 }
@@ -109,12 +168,12 @@ function newRequestId() {
   return `chain-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-async function runClaudeChainStep(agentName, taskId, instruction) {
+async function runClaudeChainStep(agentName, taskId, instruction, modelId) {
   const settings = loadChatSettings()
   const userLine = `【任务链 Agent 路由】global://${agentName}（任务 ${taskId || '—'}）\n${instruction}${CHAIN_REPLY_HINT}`
   const r = await deps.runClaudeCodePrint({
     prompt: userLine,
-    model: settings.model?.trim() || undefined,
+    model: modelId?.trim() || settings.model?.trim() || undefined,
     requestId: undefined,
     timeoutMs: 0,
   })
@@ -138,13 +197,14 @@ async function runClaudeChainStep(agentName, taskId, instruction) {
   return { ok: true, output, error: null }
 }
 
-async function runLocalChainStep({ priorMessages, userLine, modelId, requestId, agentName }) {
+async function runLocalChainStep({ priorMessages, userLine, modelId, requestId, agentName, allowedMcpServers }) {
   return runLocalOrch({
     priorMessages,
     userLine,
     orchestratorModel: modelId,
     requestId,
     agentBasenameOverride: agentName ? `${agentName}.md` : undefined,
+    allowedMcpServers,
   })
 }
 
@@ -156,9 +216,12 @@ async function orchestrationChainLoop() {
 
   try {
     const disk0 = loadChatSessionsDisk()
-    chainRunState.pinnedSessionId = disk0.activeId || disk0.sessions?.[0]?.id || 's0'
+    if (!chainRunState.pinnedSessionId) {
+      chainRunState.pinnedSessionId = disk0.activeId || disk0.sessions?.[0]?.id || 's0'
+    }
     const settings = loadChatSettings()
     const mode = settings.orchestrationMode === 'local-mcp' ? 'local-mcp' : 'claude-code'
+    const modelPools = await loadChatModelPools(settings, ccSwitch)
 
     while (!chainRunState.stopRequested) {
       const pinnedId = chainRunState.pinnedSessionId
@@ -171,8 +234,6 @@ async function orchestrationChainLoop() {
         break
       }
 
-      const modelId =
-        sess.modelId?.trim() || settings.model?.trim() || settings.localOllamaModel?.trim() || 'claude-code-cli'
       let hist = Array.isArray(sess.history) ? [...sess.history] : []
 
       const loaded = loadOrchestrationState()
@@ -202,8 +263,36 @@ async function orchestrationChainLoop() {
         break
       }
 
-      const instructionWithSkills = appendStepSkillFilesToInstruction(instruction, step)
-      const execInstruction = buildTaskChainExecutableInstruction(agentName, taskId, instructionWithSkills)
+      const rawModelId =
+        sess.modelId?.trim() || settings.model?.trim() || settings.localOllamaModel?.trim() || ''
+      const resolvedModel = await resolveChainStepModel({
+        settings,
+        sessionModelId: rawModelId,
+        agentName,
+        pools: modelPools,
+      })
+      if (!resolvedModel.ok) {
+        chainRunState.lastError = resolvedModel.error || '无法解析执行模型'
+        appendAppLog(`[chain-run] ${chainRunState.lastError}`)
+        hist = [
+          ...hist,
+          {
+            role: 'assistant',
+            content:
+              `任务链在第 ${idx + 1}/${steps.length} 步无法启动（流程未完成，已暂停）：${chainRunState.lastError}\n` +
+              `请在「设置 → 模型与连接」添加模型，或将会话模型从 Auto 改为具体模型后点击「继续执行」。`,
+            ts: Date.now(),
+            requestError: true,
+          },
+        ]
+        const nextSessions = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
+        saveChatSessionsDisk(pinnedId, nextSessions)
+        break
+      }
+      const execModelId = resolvedModel.modelId
+
+      const instructionWithMeta = appendStepChainMetaToInstruction(instruction, step)
+      const execInstruction = buildTaskChainExecutableInstruction(agentName, taskId, instructionWithMeta)
       const routedExecInstruction = buildAgentRoutedInstruction(agentName, execInstruction, mode)
       const stepMarker = `【任务链】第 ${idx + 1}/${steps.length} 步 · ${agentName}`
       const lastMsg = hist.length ? hist[hist.length - 1] : null
@@ -244,7 +333,7 @@ async function orchestrationChainLoop() {
       let res
 
       if (mode === 'claude-code') {
-        res = await runClaudeChainStep(agentName, taskId, routedExecInstruction)
+        res = await runClaudeChainStep(agentName, taskId, routedExecInstruction, execModelId)
       } else {
         const reqId = newRequestId()
         chainRunState.activeRequestId = reqId
@@ -255,9 +344,12 @@ async function orchestrationChainLoop() {
         res = await runLocalChainStep({
           priorMessages: priorForApi,
           userLine: routedExecInstruction,
-          modelId,
+          modelId: execModelId,
           requestId: reqId,
           agentName,
+          allowedMcpServers: Array.isArray(step.mcps)
+            ? step.mcps.map((x) => String(x ?? '').trim()).filter(Boolean)
+            : undefined,
         })
         chainRunState.activeRequestId = null
       }
@@ -434,6 +526,16 @@ function loadWorkspace() {
 
 function loadChatSettings() {
   return typeof deps.loadChatSettings === 'function' ? deps.loadChatSettings() : {}
+}
+
+async function resolveChainStepModel({ settings, sessionModelId, agentName, pools }) {
+  return resolveExecutionModel({
+    settings,
+    sessionModelId,
+    agentBasename: agentName ? `${agentName}.md` : undefined,
+    pools,
+    readAgentMarkdown: (basename) => support.readClaudeAgentMarkdownContent(basename),
+  })
 }
 
 function broadcast(channel, detail) {
@@ -631,13 +733,30 @@ async function runLocalOrch(payload) {
   const prior = Array.isArray(payload?.priorMessages) ? payload.priorMessages : []
   const userLineRaw = typeof payload?.userLine === 'string' ? payload.userLine : ''
   const userAttachments = Array.isArray(payload?.userAttachments) ? payload.userAttachments : []
-  const orchestratorModel =
+  let orchestratorModel =
     typeof payload?.orchestratorModel === 'string' ? payload.orchestratorModel.trim() : ''
   const overrideRaw =
     typeof payload?.agentBasenameOverride === 'string' ? payload.agentBasenameOverride.trim() : ''
   const agentBasenameForRead = overrideRaw || settings.localAgentBasename || ''
+  if (isAutoModelSelection(orchestratorModel)) {
+    const pools = await loadChatModelPools(settings, ccSwitch)
+    const resolved = await resolveExecutionModel({
+      settings,
+      sessionModelId: orchestratorModel || settings.model,
+      agentBasename: agentBasenameForRead || undefined,
+      pools,
+      readAgentMarkdown: (basename) => support.readClaudeAgentMarkdownContent(basename),
+    })
+    if (!resolved.ok) {
+      return { ok: false, content: '', error: resolved.error, aborted: false, toolWrittenPaths: [] }
+    }
+    orchestratorModel = resolved.modelId
+  }
   const agentMarkdown = support.readClaudeAgentMarkdownContent(agentBasenameForRead)
   const lockedAgentStem = support.stemFromAgentBasenameForOrchestration(agentBasenameForRead)
+  const allowedMcpServers = Array.isArray(payload?.allowedMcpServers)
+    ? payload.allowedMcpServers.map((x) => String(x ?? '').trim()).filter(Boolean)
+    : undefined
   const toolWritten = []
 
   const enriched = await chatImages.enrichUserLineForImages({
@@ -667,6 +786,7 @@ async function runLocalOrch(payload) {
       userImages: enriched.images,
       agentMarkdown,
       lockedAgentStem,
+      allowedMcpServers,
       crossAgentContext: buildCrossAgentContextMarkdown(),
       defaultOllamaModelHint: settings.localOllamaModel || '',
       devMcpOrchDebug: Boolean(settings.devMcpOrchDebug),
@@ -873,10 +993,26 @@ function createHandlers() {
       const payload = args?.[0] || {}
       const settings = loadChatSettings()
       const mode = settings.orchestrationMode === 'local-mcp' ? 'local-mcp' : 'claude-code'
-      const orchestratorModel =
+      const rawOrchestratorModel =
         typeof payload?.orchestratorModel === 'string' && payload.orchestratorModel.trim()
           ? payload.orchestratorModel.trim()
           : settings.model?.trim() || ''
+      const modelPools = await loadChatModelPools(settings, ccSwitch)
+      const resolvedOrchestrator = await resolveExecutionModel({
+        settings,
+        sessionModelId: rawOrchestratorModel,
+        pools: modelPools,
+        readAgentMarkdown: (basename) => support.readClaudeAgentMarkdownContent(basename),
+      })
+      if (!resolvedOrchestrator.ok) {
+        return {
+          ok: false,
+          error: resolvedOrchestrator.error || '无法解析执行模型',
+          stepResults: [],
+          synthesis: null,
+        }
+      }
+      const orchestratorModel = resolvedOrchestrator.modelId
 
       const rawText = typeof payload?.rawText === 'string' ? payload.rawText : ''
       let parsedObj =
@@ -1104,6 +1240,32 @@ function createHandlers() {
         return { ok: true, content: fs.readFileSync(target, 'utf8'), error: null }
       } catch (e) {
         return { ok: false, error: e?.message || String(e), content: null }
+      }
+    },
+
+    'claudeSkills:saveMarkdown': async (args) => {
+      const body = args?.[0] || {}
+      const basename = typeof body.basename === 'string' ? body.basename.trim() : ''
+      const content = typeof body.content === 'string' ? body.content : ''
+      if (!basename) return { ok: false, error: 'basename 不能为空' }
+      const skillsDir = path.resolve(path.join(os.homedir(), '.claude', 'skills'))
+      const target = path.resolve(path.join(skillsDir, basename))
+      if (path.relative(skillsDir, target).startsWith('..') || !basename.endsWith('.md')) {
+        return { ok: false, error: '文件名无效' }
+      }
+      if (body.createOnly === true && fs.existsSync(target)) {
+        return { ok: false, error: `已存在：${basename}` }
+      }
+      return support.writeClaudeSkillMarkdownContent(basename, content)
+    },
+
+    'agents:syncSkillsFromGithub': async (args) => {
+      const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+      try {
+        const { syncAgentSkillsFromGithub } = await import('./agent-skills-github.mjs')
+        return await syncAgentSkillsFromGithub(body)
+      } catch (e) {
+        return { ok: false, error: e?.message || String(e) }
       }
     },
 
@@ -1342,10 +1504,13 @@ category: 通用
     },
 
     /** 服务端后台跑链：RPC 立即返回，切换页签/HMR 不中断 Node 侧执行 */
-    'orchestration:startChainRun': async () => {
+    'orchestration:startChainRun': async (args) => {
       if (chainRunState.running) {
         return { ok: false, error: '任务链已在服务端执行中', started: false }
       }
+      const payload = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+      const pinned = String(payload.pinnedSessionId ?? '').trim()
+      if (pinned) chainRunState.pinnedSessionId = pinned
       void orchestrationChainLoop()
       return { ok: true, started: true, error: null }
     },

@@ -9,7 +9,7 @@ import {
 export type ChatComposerCursorProps = ChatComposerShellProps & {
   dockRef: RefObject<HTMLDivElement | null>;
   chainStatusLabel: string;
-  chainStatusTone: "active" | "paused" | "done" | "neutral";
+  chainStatusTone: "active" | "paused" | "done" | "neutral" | "idle";
 };
 
 /** Cursor 式 Composer：底部始终保留输入框；历史编辑在顶部内联 Composer。 */
@@ -65,6 +65,8 @@ export function ChatComposerCursor({
               "inline-flex max-w-full truncate rounded-full border px-2.5 py-0.5 text-[10.5px] font-medium",
               chainStatusTone === "active" &&
                 "border-emerald-400/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+              chainStatusTone === "idle" &&
+                "border-sky-400/40 bg-sky-500/10 text-sky-800 dark:text-sky-300",
               chainStatusTone === "paused" &&
                 "border-amber-400/45 bg-amber-500/12 text-amber-800 dark:text-amber-300",
               chainStatusTone === "done" &&

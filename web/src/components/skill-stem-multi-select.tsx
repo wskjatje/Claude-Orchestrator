@@ -8,6 +8,7 @@ import {
   type ClaudeSkillRow,
 } from "@/hooks/use-claude-skill-list";
 import { cn } from "@/lib/utils";
+import { dedupeSkillStems } from "@/lib/agent-skill-defaults";
 
 type Props = {
   value: string[];
@@ -38,8 +39,9 @@ export function SkillStemMultiSelect({
   const skipCommitRef = useRef(false);
 
   const selectedSet = useMemo(() => new Set(value), [value]);
+  const displayValue = useMemo(() => dedupeSkillStems(value), [value]);
   const filtered = useMemo(() => filterSkillsByQuery(skills, query), [skills, query]);
-  const showPlaceholder = value.length === 0 && !query;
+  const showPlaceholder = displayValue.length === 0 && !query;
 
   const addSkill = (stem: string) => {
     const s = stem.trim();
@@ -96,7 +98,7 @@ export function SkillStemMultiSelect({
           )}
           onClick={focusInput}
         >
-          {value.map((stem) => {
+          {displayValue.map((stem) => {
             const full = skillDisplayNameForStem(stem, skills);
             return (
               <span
@@ -137,9 +139,9 @@ export function SkillStemMultiSelect({
                 setOpen(false);
                 return;
               }
-              if (e.key === "Backspace" && !query && value.length) {
+              if (e.key === "Backspace" && !query && displayValue.length) {
                 e.preventDefault();
-                removeSkill(value[value.length - 1]!);
+                removeSkill(displayValue[displayValue.length - 1]!);
                 return;
               }
               if (e.key === "Enter") {

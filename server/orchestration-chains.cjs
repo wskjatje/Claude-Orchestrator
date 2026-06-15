@@ -39,6 +39,9 @@ function normalizeState(raw) {
         skills: Array.isArray(s?.skills)
           ? s.skills.map((x) => String(x ?? '').trim()).filter(Boolean)
           : [],
+        mcps: Array.isArray(s?.mcps)
+          ? s.mcps.map((x) => String(x ?? '').trim()).filter(Boolean)
+          : [],
       }))
       .filter((s) => s.agentName && s.instruction),
   }
@@ -126,6 +129,7 @@ function newChainId() {
 }
 
 function listOrchestrationChains() {
+  reconcileChainsIndex()
   const index = loadIndexRaw()
   const items = []
   for (const row of index.chains) {
@@ -136,6 +140,40 @@ function listOrchestrationChains() {
     items.push(summarizeChain(record))
   }
   return { ok: true, items, activeChainId: index.activeChainId, error: null }
+}
+
+/** 补齐 chains/*.json 未入索引的条目，并移除索引中已丢失的文件 */
+function reconcileChainsIndex() {
+  const index = loadIndexRaw()
+  const dir = orchestrationChainsDir()
+  let changed = false
+  const nextChains = []
+
+  for (const row of index.chains) {
+    const id = String(row?.id || '')
+    if (!id || !loadChainRecord(id)) {
+      changed = true
+      continue
+    }
+    nextChains.push(summarizeChain(loadChainRecord(id)))
+  }
+
+  if (fs.existsSync(dir)) {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.json')) continue
+      const id = f.slice(0, -5)
+      if (!id || nextChains.some((c) => c.id === id)) continue
+      const record = loadChainRecord(id)
+      if (!record) continue
+      nextChains.push(summarizeChain(record))
+      changed = true
+    }
+  }
+
+  if (changed) {
+    index.chains = nextChains
+    saveIndexRaw(index)
+  }
 }
 
 function getOrchestrationChain(id) {

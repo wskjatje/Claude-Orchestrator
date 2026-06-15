@@ -5,7 +5,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AUTO_MODEL_ID } from "@/lib/model-catalog";
+import { AUTO_MODEL_ID, isAutoModelSelection } from "@/lib/model-catalog";
 import { cn } from "@/lib/utils";
 
 type OrchMode = "claude-code" | "local-mcp";
@@ -97,8 +97,8 @@ export function ChatModelSelector({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const selectedModel = modelValue || modelFallback || "";
-  const isAutoSelected = isAutoModel(selectedModel);
-  const displayLabel = shortModelLabel(selectedModel, orchMode);
+  const isAutoSelected = isAutoModelSelection(selectedModel);
+  const displayLabel = isAutoSelected ? "Auto" : shortModelLabel(selectedModel, orchMode);
 
   const entries = useMemo(
     () => buildModelEntries(cloudModels, localModels),
@@ -148,7 +148,7 @@ export function ChatModelSelector({
             "data-[state=open]:bg-secondary/70",
           )}
         >
-          <span className="min-w-0 truncate">{isAutoSelected ? "Auto" : displayLabel}</span>
+          <span className="min-w-0 truncate">{displayLabel}</span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-55" />
         </button>
       </DropdownMenuTrigger>

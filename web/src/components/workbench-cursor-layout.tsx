@@ -13,6 +13,7 @@ import { WorkbenchLeftSidebar } from "@/components/workbench-side-panels";
 import { WorkbenchChatComposerBridge } from "@/components/workbench-chat-composer-bridge";
 import { ssrSafeLayoutStorage } from "@/lib/ssr-safe-layout-storage";
 import { initWorkbenchBottomPanels } from "@/lib/workbench-panel-init";
+import { useTheme } from "@/hooks/use-theme";
 import type { TerminalSelectionPayload } from "@/lib/terminal-selection-meta";
 
 /** v4：数字 = 像素，字符串 = 百分比；侧栏默认约 22% / 38% / 40% */
@@ -51,6 +52,7 @@ export function WorkbenchCursorLayout({
   rightOpen: boolean;
   onRightOpenChange: (open: boolean) => void;
 }) {
+  const { prefsLoaded } = useTheme();
   const leftPanelRef = usePanelRef();
   const chatPanelRef = usePanelRef();
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
@@ -88,6 +90,7 @@ export function WorkbenchCursorLayout({
         />
         <div className="workbench-shell flex min-h-0 flex-1 flex-col overflow-hidden">
           <ResizablePanelGroup
+            key={prefsLoaded ? "workbench-cursor-ready" : "workbench-cursor-boot"}
             orientation="horizontal"
             className="h-full min-h-0 flex-1"
             id="workbench-cursor-v3"

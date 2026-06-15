@@ -2,6 +2,7 @@ import { memo, useRef } from "react";
 import { ChatAssistantContent } from "@/components/chat-assistant-content";
 import { ChatMessageContextMenu } from "@/components/chat-message-context-menu";
 import { ChatUserMessageBody } from "@/components/chat-user-message-body";
+import { CopyTextButton } from "@/components/copy-text-button";
 import type { UserImageAttachment } from "@/lib/ollama-messages";
 import type { TerminalSelectionPayload } from "@/lib/terminal-selection-meta";
 
@@ -112,6 +113,19 @@ function MessageBubbleInner({
     >
     <div ref={rowRef} className="chat-message-row chat-message-row--assistant">
       <div className="group/bubble chat-message-col chat-message-col--wide">
+        <div className="chat-message-meta">
+          <span className="font-mono font-medium text-foreground">{m.name ?? "assistant"}</span>
+          {m.time ? <span className="chat-message-time">{m.time}</span> : null}
+          {m.content !== "__WAITING__" ? (
+            <CopyTextButton
+              text={m.content}
+              label="复制"
+              copiedLabel="已复制"
+              size="xs"
+              className="opacity-0 transition group-hover/bubble:opacity-100"
+            />
+          ) : null}
+        </div>
         <div className="chat-bubble-assistant">
           {m.content === "__WAITING__" ? (
             <WaitingReply modelName={m.name ?? "assistant"} />

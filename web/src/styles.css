@@ -197,35 +197,41 @@
 }
 
 .dark {
-  /* 夜间分区：背景 / 侧栏 / 编辑器 / 顶栏 / 聊天 各有色相与明度差 */
-  --background: oklch(0.115 0.012 50);
-  --foreground: oklch(0.96 0.006 55);
-  --card: oklch(0.155 0.016 48);
-  --card-foreground: oklch(0.96 0.006 55);
-  --popover: oklch(0.19 0.016 46);
-  --popover-foreground: oklch(0.96 0.006 55);
+  /* Cursor 夜间：背景 / 侧栏 / 编辑器 / 聊天 / 面板 分层 */
+  --background: oklch(0.128 0.006 285);
+  --foreground: oklch(0.92 0.004 285);
+  --card: oklch(0.17 0.008 285);
+  --card-foreground: oklch(0.92 0.004 285);
+  --popover: oklch(0.2 0.008 285);
+  --popover-foreground: oklch(0.92 0.004 285);
   --primary: oklch(0.72 0.17 25);
   --primary-foreground: oklch(0.16 0.012 35);
   --primary-soft: oklch(0.3 0.065 25);
   --primary-glow: oklch(0.78 0.14 28);
-  --secondary: oklch(0.2 0.014 46);
-  --secondary-foreground: oklch(0.94 0.006 55);
-  --muted: oklch(0.2 0.014 46);
-  --muted-foreground: oklch(0.68 0.014 50);
+  --secondary: oklch(0.205 0.01 285);
+  --secondary-foreground: oklch(0.92 0.004 285);
+  --muted: oklch(0.205 0.01 285);
+  --muted-foreground: oklch(0.72 0.012 285);
   --accent: oklch(0.26 0.05 25);
   --accent-foreground: oklch(0.94 0.04 25);
   --destructive: oklch(0.62 0.2 25);
   --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(1 0 0 / 16%);
-  --input: oklch(1 0 0 / 14%);
+  --border: oklch(1 0 0 / 24%);
+  --input: oklch(1 0 0 / 16%);
   --ring: oklch(0.74 0.17 25);
   --success: oklch(0.72 0.14 155);
   --warning: oklch(0.8 0.14 70);
   --info: oklch(0.7 0.13 240);
-  --surface: oklch(0.14 0.014 48);
-  --surface-elevated: oklch(0.185 0.018 44);
-  --code-bg: oklch(0.125 0.022 32);
-  --chat-panel: oklch(0.13 0.014 52);
+  --surface: oklch(0.145 0.008 285);
+  --surface-elevated: oklch(0.195 0.01 285);
+  --code-bg: oklch(0.205 0.006 285);
+  --chat-panel: oklch(0.162 0.01 285);
+  --font-size-ui: 15px;
+  --font-size-sm: 14px;
+  --font-size-xs: 13px;
+  --font-size-code: 15px;
+  --line-height-ui: 1.58;
+  --line-height-code: 1.58;
   --terminal-bg: var(--code-bg);
   --terminal-fg: oklch(0.92 0.006 55);
   --terminal-cursor: oklch(0.78 0.01 55);
@@ -273,20 +279,20 @@
   --chart-3: oklch(0.74 0.16 70);
   --chart-4: oklch(0.65 0.2 300);
   --chart-5: oklch(0.68 0.18 220);
-  --sidebar: oklch(0.148 0.02 58);
-  --sidebar-foreground: oklch(0.92 0.006 55);
+  --sidebar: oklch(0.195 0.008 285);
+  --sidebar-foreground: oklch(0.88 0.006 285);
   --sidebar-primary: oklch(0.72 0.17 25);
   --sidebar-primary-foreground: oklch(0.16 0.012 35);
   --sidebar-accent: oklch(0.24 0.045 28);
   --sidebar-accent-foreground: oklch(0.94 0.04 25);
-  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-border: oklch(1 0 0 / 18%);
   --sidebar-ring: oklch(0.74 0.17 25);
-  --explorer-row-hover: oklch(0.2 0.012 50);
-  --explorer-row-active: oklch(0.28 0.014 50);
-  --explorer-row-active-fg: oklch(0.96 0.006 55);
+  --explorer-row-hover: oklch(0.24 0.01 285);
+  --explorer-row-active: oklch(0.28 0.012 285);
+  --explorer-row-active-fg: oklch(0.98 0.004 285);
   --explorer-modified-dot: oklch(0.62 0.16 250);
-  --explorer-twistie: oklch(0.68 0.014 50);
-  --explorer-indent-guide: oklch(0.32 0.012 50);
+  --explorer-twistie: oklch(0.72 0.01 285);
+  --explorer-indent-guide: oklch(0.34 0.01 285);
   --explorer-folder-icon: #dcb67a;
   --explorer-git-modified: #e2c08d;
   --explorer-git-untracked: #4fc1ff;
@@ -405,9 +411,13 @@
   }
 
   .dark .workbench-chat-pane {
-    --chat-user-bg: oklch(0.31 0.008 285);
-    --chat-user-border: oklch(0.42 0.01 285 / 0.55);
-    --chat-user-fg: oklch(0.93 0.005 285);
+    --chat-inline-padding: 14px;
+    --chat-user-bg: oklch(0.28 0.012 285);
+    --chat-user-border: oklch(0.38 0.012 285 / 0.65);
+    --chat-user-fg: oklch(0.94 0.005 285);
+    background-color: var(--chat-panel);
+    border-left: 1px solid var(--border);
+    box-shadow: inset 1px 0 0 color-mix(in oklab, var(--foreground) 5%, transparent);
   }
 
   .workbench-chat-mount {
@@ -956,8 +966,23 @@
     overflow: hidden;
   }
 
+  .chat-pane-messages--sticky-user,
   .chat-pane-messages:has(.chat-sticky-user-header) {
     grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /** Cursor 式：列表内完整轮次（用户提问在上、回复在下），最新消息靠近底部输入框 */
+  .chat-turn-user {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .chat-turn-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
   }
 
   /** Cursor 式：顶部固定栏承载用户提问（原列表内气泡移入此处） */
@@ -1090,14 +1115,7 @@
     display: flex;
     flex-direction: column;
     gap: 20px;
-  }
-
-  .chat-turn-section {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    width: 100%;
-    min-width: 0;
+    justify-content: flex-start;
   }
 
   .chat-messages-anchor {
@@ -1169,6 +1187,28 @@
   }
 
   .chat-message-meta {
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted-foreground);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .chat-message-row:hover .chat-message-meta,
+  .chat-message-row:focus-within .chat-message-meta {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .chat-message-time {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .dark .chat-message-meta {
     display: none;
   }
 
@@ -1190,6 +1230,8 @@
   }
 
   .dark .chat-bubble-user {
+    padding: 12px 15px;
+    font-size: var(--font-size-ui);
     background-color: var(--chat-user-bg);
     border-color: var(--chat-user-border);
   }
@@ -1198,10 +1240,35 @@
     min-width: 0;
   }
 
-  /** Cursor 式文件改动行（助手回复底部） */
+  /** 文件改动列表（白天：分隔线；夜间：包在面板内） */
   .chat-file-edit-list {
+    padding: 0;
+  }
+
+  html:not(.dark) .chat-file-edit-list {
     border-top: 1px solid color-mix(in oklab, var(--border) 35%, transparent);
     padding-top: 6px;
+  }
+
+  .chat-file-edit-panel {
+    margin-top: 0;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .dark .chat-file-edit-panel {
+    margin-top: 10px;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+    background-color: color-mix(in oklab, var(--surface-elevated) 22%, var(--chat-panel));
+  }
+
+  .dark .chat-file-edit-panel .chat-file-edit-list {
+    border-top: 0;
+    padding: 4px 6px;
   }
 
   .chat-file-edit-row-btn {
@@ -1240,6 +1307,246 @@
     padding: 0 0.625rem;
   }
 
+  /** 夜间 Cursor 式文件改动卡片（内联 diff） */
+  .dark .chat-file-edit-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .dark .chat-file-edit-card--cursor {
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+    background-color: color-mix(in oklab, var(--code-bg) 72%, var(--chat-panel));
+  }
+
+  .dark .chat-file-edit-card-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 32px;
+    padding: 6px 10px 6px 8px;
+    border: 0;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
+    background-color: color-mix(in oklab, var(--surface-elevated) 18%, transparent);
+    text-align: left;
+  }
+
+  .dark .chat-file-edit-card-head--clickable {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .dark .chat-file-edit-card-head--clickable:hover {
+    background-color: color-mix(in oklab, var(--surface-elevated) 32%, transparent);
+  }
+
+  .dark .chat-file-edit-card-head-chevron {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
+    transition: transform 0.15s ease, color 0.15s ease;
+  }
+
+  .dark .chat-file-edit-card-head--clickable:hover .chat-file-edit-card-head-chevron {
+    color: var(--muted-foreground);
+  }
+
+  .dark .chat-file-edit-card-head-chevron--open {
+    transform: rotate(90deg);
+  }
+
+  .dark .chat-file-edit-card-chevron-spacer {
+    width: 12px;
+    flex-shrink: 0;
+  }
+
+  .dark .chat-file-edit-card-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: color-mix(in oklab, var(--info) 70%, var(--foreground));
+  }
+
+  .dark .chat-file-edit-card-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: color-mix(in oklab, var(--foreground) 92%, var(--muted-foreground));
+  }
+
+  .dark .chat-file-edit-stats {
+    margin-left: auto;
+    flex-shrink: 0;
+    font-size: 11.5px;
+  }
+
+  .dark .chat-file-edit-stat-add {
+    color: var(--diff-add-fg);
+  }
+
+  .dark .chat-file-edit-stat-del {
+    margin-left: 6px;
+    color: var(--diff-del-fg);
+  }
+
+  .dark .chat-file-edit-stat-muted {
+    font-size: 10.5px;
+    color: var(--muted-foreground);
+  }
+
+  .dark .chat-file-edit-card-body {
+    padding: 4px 0;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  /** Cursor 式可折叠内容区（文件 diff / 终端） */
+  .dark .chat-cursor-collapsible {
+    position: relative;
+  }
+
+  .dark .chat-cursor-collapsible-body {
+    position: relative;
+  }
+
+  .dark .chat-cursor-collapsible-body--collapsed {
+    --chat-collapsed-lines: 4;
+    max-height: calc(var(--chat-collapsed-lines) * 1.5 * 12px + 6px);
+    overflow: hidden;
+    padding-bottom: 16px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 18px), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 18px), transparent 100%);
+  }
+
+  .dark .chat-cursor-collapsible-body--expanded {
+    max-height: none;
+    overflow: visible;
+    padding-bottom: 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .dark .chat-cursor-collapsible--collapsed .chat-cursor-collapsible-toggle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    display: flex;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    padding: 0;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--code-bg) 0%, transparent),
+      color-mix(in oklab, var(--code-bg) 78%, var(--chat-panel))
+    );
+    color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+    cursor: pointer;
+    transition: color 0.15s ease;
+  }
+
+  .dark .chat-cursor-collapsible--collapsed .chat-cursor-collapsible-toggle:hover {
+    color: color-mix(in oklab, var(--muted-foreground) 95%, var(--foreground));
+  }
+
+  .dark .chat-cursor-collapsible--expanded .chat-cursor-collapsible-toggle {
+    position: static;
+    display: flex;
+    width: 100%;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+    cursor: pointer;
+    transition: color 0.15s ease;
+  }
+
+  .dark .chat-cursor-collapsible--expanded .chat-cursor-collapsible-toggle:hover {
+    color: color-mix(in oklab, var(--muted-foreground) 95%, var(--foreground));
+  }
+
+  .dark .chat-cursor-collapsible-chevron {
+    width: 12px;
+    height: 12px;
+    stroke-width: 2px;
+    transition: transform 0.15s ease;
+  }
+
+  .dark .chat-cursor-collapsible-chevron--open {
+    transform: rotate(180deg);
+  }
+
+  .dark .chat-file-edit-card--collapsed .chat-cursor-collapsible--collapsed .chat-cursor-collapsible-toggle {
+    background: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--code-bg) 0%, transparent),
+      color-mix(in oklab, var(--code-bg) 82%, var(--chat-panel))
+    );
+  }
+
+  .dark .chat-file-edit-line--cursor {
+    padding: 0 12px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .dark .chat-file-edit-line--cursor.chat-file-edit-line--add {
+    margin: 0;
+    background-color: color-mix(in oklab, var(--diff-add) 88%, transparent);
+    color: color-mix(in oklab, var(--foreground) 88%, var(--diff-add-fg));
+  }
+
+  .dark .chat-file-edit-line--cursor.chat-file-edit-line--del {
+    margin: 0;
+    background-color: color-mix(in oklab, var(--diff-del) 88%, transparent);
+    color: color-mix(in oklab, var(--foreground) 88%, var(--diff-del-fg));
+  }
+
+  .dark .chat-file-edit-line--cursor.chat-file-edit-line--ctx {
+    color: color-mix(in oklab, var(--muted-foreground) 82%, var(--foreground));
+  }
+
+  .dark .chat-diff-tok-keyword {
+    color: oklch(0.78 0.12 285);
+  }
+
+  .dark .chat-diff-tok-type {
+    color: oklch(0.82 0.1 185);
+  }
+
+  .dark .chat-diff-tok-string {
+    color: oklch(0.78 0.12 85);
+  }
+
+  .dark .chat-diff-tok-comment {
+    color: oklch(0.58 0.02 285);
+    font-style: italic;
+  }
+
+  .dark .chat-diff-tok-number {
+    color: oklch(0.76 0.11 55);
+  }
+
+  .dark .chat-diff-tok-heading {
+    color: oklch(0.84 0.08 285);
+    font-weight: 600;
+  }
+
   .chat-composer-cursor {
     box-sizing: border-box;
     width: 100%;
@@ -1252,6 +1559,17 @@
 
   .composer-file-changes-bar {
     backdrop-filter: blur(6px);
+  }
+
+  /** 助手正文容器 */
+  .chat-assistant-blocks {
+    width: 100%;
+  }
+
+  .chat-assistant-blocks--cursor {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .chat-assistant-blocks .chat-md:first-child > :first-child {
@@ -1304,13 +1622,193 @@
   }
 
   .chat-bubble-assistant {
-    padding: 0;
+    padding: 2px 2px 4px;
     width: 100%;
+    color: var(--foreground);
+  }
+
+  .dark .chat-bubble-assistant {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
   }
 
   .chat-assistant-blocks .chat-md {
     font-size: 13px;
     line-height: 1.55;
+  }
+
+  .dark .chat-assistant-blocks .chat-md {
+    font-size: var(--font-size-ui);
+    line-height: var(--line-height-ui);
+  }
+
+  /** 夜间 Cursor 式思考块 */
+  .dark .chat-thought-block {
+    margin: 2px 0 4px;
+  }
+
+  .dark .chat-thought-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 0;
+    background: transparent;
+    padding: 2px 0;
+    font-size: 12px;
+    font-weight: 500;
+    color: color-mix(in oklab, var(--muted-foreground) 92%, var(--foreground));
+    cursor: pointer;
+    transition: color 0.15s ease;
+  }
+
+  .dark .chat-thought-toggle:hover:not(:disabled) {
+    color: var(--foreground);
+  }
+
+  .dark .chat-thought-toggle:disabled {
+    cursor: default;
+  }
+
+  .dark .chat-thought-chevron {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: color-mix(in oklab, var(--muted-foreground) 85%, transparent);
+    transition: transform 0.15s ease;
+  }
+
+  .dark .chat-thought-chevron--open {
+    transform: rotate(90deg);
+  }
+
+  .dark .chat-thought-body {
+    margin-top: 6px;
+    padding-left: 14px;
+    border-left: 1px solid color-mix(in oklab, var(--border) 45%, transparent);
+  }
+
+  .dark .chat-thought-md {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: color-mix(in oklab, var(--muted-foreground) 88%, var(--foreground));
+  }
+
+  .dark .chat-thought-block,
+  .dark .chat-thought-toggle {
+    font-size: var(--font-size-sm);
+  }
+
+  .dark .chat-thought-md {
+    font-size: var(--font-size-sm);
+  }
+
+  /** 夜间 Cursor 式工具活动行 */
+  .dark .chat-tool-activity-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 4px 0;
+  }
+
+  .dark .chat-tool-activity-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 22px;
+    max-width: 100%;
+    font-size: 12px;
+    color: color-mix(in oklab, var(--muted-foreground) 90%, var(--foreground));
+  }
+
+  .dark .chat-tool-activity-icon {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    opacity: 0.72;
+  }
+
+  .dark .chat-tool-activity-name {
+    flex-shrink: 0;
+    font-weight: 500;
+    color: color-mix(in oklab, var(--foreground) 78%, var(--muted-foreground));
+  }
+
+  .dark .chat-tool-activity-arg {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11.5px;
+    color: color-mix(in oklab, var(--muted-foreground) 95%, var(--foreground));
+  }
+
+  .dark .chat-tool-activity-status {
+    margin-left: auto;
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    opacity: 0.65;
+  }
+
+  .dark .chat-tool-activity-status--fail {
+    border-radius: 999px;
+    background: var(--destructive);
+  }
+
+  .dark .chat-tool-activity-row {
+    font-size: var(--font-size-sm);
+  }
+
+  /** 夜间 Cursor 式终端输出块 */
+  .dark .chat-terminal-output {
+    margin: 6px 0;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+    background-color: color-mix(in oklab, var(--code-bg) 80%, var(--background));
+  }
+
+  .dark .chat-terminal-output-head {
+    padding: 6px 10px;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 45%, transparent);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .dark .chat-terminal-output-body {
+    margin: 0;
+    padding: 8px 10px;
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+
+  .dark .chat-terminal-output-body pre {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  .dark .chat-md h1 {
+    color: color-mix(in oklab, var(--foreground) 98%, var(--info));
+    font-size: 1.2rem;
+  }
+
+  .dark .chat-md h2 {
+    color: color-mix(in oklab, var(--foreground) 96%, var(--info));
+    font-size: 1.1rem;
+  }
+
+  .dark .chat-md h3,
+  .dark .chat-md h4 {
+    color: var(--foreground);
+  }
+
+  .dark .chat-md pre {
+    border-color: color-mix(in oklab, var(--border) 90%, transparent);
+    background-color: color-mix(in oklab, var(--code-bg) 85%, var(--background));
   }
 
   .chat-bubble-terminal {
@@ -1642,5 +2140,84 @@
   .workbench-explorer-sidebar .explorer-section-action:hover {
     color: #cccccc;
     background-color: var(--explorer-row-hover);
+  }
+
+  /** 夜间工作台：Cursor 式分区边框与字号 */
+  .dark .workbench-editor-pane {
+    background-color: var(--code-bg);
+    border-right: 1px solid var(--border);
+  }
+
+  .dark .workbench-bottom-panel {
+    background-color: var(--code-bg);
+    border-top: 1px solid var(--border);
+    font-size: var(--font-size-sm);
+  }
+
+  .dark .workbench-md-body {
+    font-size: 16px;
+  }
+
+  .dark .explorer-tree-row {
+    height: 26px;
+    min-height: 26px;
+    line-height: 26px;
+    font-size: 14px;
+  }
+
+  .dark .workbench-explorer-sidebar .explorer-tree-row {
+    height: 26px;
+    min-height: 26px;
+    line-height: 26px;
+    font-size: 14px;
+  }
+
+  .dark .explorer-section-header {
+    font-size: 12px;
+  }
+
+  .dark .chat-pane-composer {
+    padding: 10px var(--chat-inline-padding, 14px) 12px;
+    border-top: 1px solid var(--border);
+    background-color: color-mix(in oklab, var(--chat-panel) 92%, var(--surface-elevated));
+  }
+
+  .dark .composer-agent-pill,
+  .dark .composer-model-pill,
+  .dark .chat-composer-cursor {
+    font-size: var(--font-size-sm);
+  }
+
+  .dark .chat-sticky-user-header {
+    border-bottom-color: var(--border);
+    background-color: color-mix(in oklab, var(--chat-panel) 88%, var(--surface-elevated));
+  }
+
+  .dark [data-panel-resize-handle-enabled] {
+    background-color: color-mix(in oklab, var(--border) 80%, transparent);
+  }
+
+  .dark [data-panel-resize-handle-enabled]:hover,
+  .dark [data-panel-resize-handle-enabled][data-resize-handle-active] {
+    background-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+  }
+
+  .dark .workbench-empty-title {
+    font-size: 16px;
+    color: color-mix(in oklab, var(--foreground) 88%, var(--muted-foreground));
+  }
+
+  .dark .workbench-empty-desc {
+    font-size: 14px;
+    line-height: 1.58;
+  }
+
+  .dark .workbench-empty-state button {
+    font-size: 14px;
+  }
+
+  .dark .chat-session-meta,
+  .dark .chat-jump-latest-btn {
+    font-size: var(--font-size-sm);
   }
 }

@@ -24,12 +24,12 @@ import { toast } from "sonner";
 import {
   MCP_PRESETS,
   type McpPresetMeta,
-  presetCommandLine,
+  resolvePresetCommandLineForForm,
   resolveMcpCommandLine,
 } from "@/lib/mcp-presets";
 
 export const Route = createFileRoute("/comms")({
-  head: () => ({ meta: [{ title: "MCP 服务器 · 本地代码助手" }] }),
+  head: () => ({ meta: [{ title: "MCP 服务器 · Claude Orchestrator" }] }),
   component: McpPage,
 });
 
@@ -62,11 +62,20 @@ const EMPTY_FORM: McpForm = { name: "", transport: "stdio", commandLine: "", url
 
 type McpTemplate = McpPresetMeta;
 
-/** 常用 MCP：命令为固定版本，非泛化包名 */
+/** 内置 MCP 模板（不锁定版本） */
 const MCP_TEMPLATES: McpTemplate[] = MCP_PRESETS;
 
-function templateToForm(t: McpTemplate): McpForm {
-  return { name: t.name, transport: "stdio", commandLine: t.commandLine, url: "" };
+function mcpDisplayName(name: string): string {
+  return MCP_PRESETS.find((p) => p.name === name)?.label ?? name;
+}
+
+function templateToForm(t: McpTemplate, bundledLines?: Record<string, string>): McpForm {
+  return {
+    name: t.name,
+    transport: "stdio",
+    commandLine: resolvePresetCommandLineForForm(t.name, bundledLines) || t.commandLine,
+    url: "",
+  };
 }
 
 function buildUpsertPayload(form: McpForm): Parameters<
@@ -106,6 +115,29 @@ function parseStdioCommand(input: string): { command: string; args: string[] } |
     trimmed.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)?.map((p) => p.replace(/^['"]|['"]$/g, "")) ?? [];
   if (!parts.length) return null;
   return { command: parts[0], args: parts.slice(1) };
+}
+
+function applyHealthSnapshot(
+  rows: McpRow[],
+  snapshot: {
+    servers?: Record<
+      string,
+      { status?: string; error?: string | null; last_health_at?: string | null }
+    >;
+  } | null,
+): McpRow[] {
+  const servers = snapshot?.servers;
+  if (!servers || typeof servers !== "object") return rows;
+  return rows.map((row) => {
+    const hit = servers[row.name];
+    if (!hit) return row;
+    return {
+      ...row,
+      status: row.enabled ? String(hit.status || "unknown") : "disabled",
+      last_health_at: hit.last_health_at ?? row.last_health_at,
+      healthError: row.enabled ? hit.error ?? null : null,
+    };
+  });
 }
 
 function mcpServersFromClaudeJson(data: unknown, homeDir = ""): McpRow[] {
@@ -163,7 +195,7 @@ function McpPage() {
   const [toggling, setToggling] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [didAutoOpenCreate, setDidAutoOpenCreate] = useState(false);
+  const [bundledLines, setBundledLines] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -173,6 +205,10 @@ function McpPage() {
       setRows([]);
       setLoading(false);
       return;
+    }
+    if (api.bundledMcpCommandLines) {
+      const br = await api.bundledMcpCommandLines();
+      if (br.ok && br.lines) setBundledLines(br.lines);
     }
     const r = await api.readClaudeConfigJson("mcp.json");
     if (!r.ok) {
@@ -190,32 +226,16 @@ function McpPage() {
       setLocalErr(null);
       setConfigPath(r.path ?? null);
       const resolvedHome = typeof r.homeDir === "string" ? r.homeDir : "";
-      setRows(mcpServersFromClaudeJson(r.data, resolvedHome));
-      if (r.repaired) {
-        const detail = r.repairs?.length ? r.repairs.join("；") : "已修正已知配置问题";
-        toast.info(`已自动修复 MCP 配置：${detail}`);
+      let nextRows = mcpServersFromClaudeJson(r.data, resolvedHome);
+      if (api.mcpGetHealthSnapshot) {
+        const snap = await api.mcpGetHealthSnapshot();
+        if (snap.ok && snap.snapshot) {
+          nextRows = applyHealthSnapshot(nextRows, snap.snapshot);
+        }
       }
+      setRows(nextRows);
     }
     setLoading(false);
-
-    if (hasDesktopApi && api.mcpHealthCheckAll) {
-      setRows((prev) => prev.map((row) => ({ ...row, status: "checking" as string })));
-      const hr = await api.mcpHealthCheckAll();
-      if (hr.ok && hr.servers?.length) {
-        setRows((prev) =>
-          prev.map((row) => {
-            const hit = hr.servers!.find((s) => s.name === row.name);
-            if (!hit) return row;
-            return {
-              ...row,
-              status: row.enabled ? hit.status : "disabled",
-              last_health_at: hit.last_health_at ?? new Date().toISOString(),
-              healthError: row.enabled ? hit.error ?? null : null,
-            };
-          }),
-        );
-      }
-    }
   }, [hasDesktopApi]);
 
   const closeDrawer = () => {
@@ -244,14 +264,6 @@ function McpPage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (loading || !hasDesktopApi || localErr || didAutoOpenCreate) return;
-    if (rows.length === 0) {
-      openCreate();
-      setDidAutoOpenCreate(true);
-    }
-  }, [loading, hasDesktopApi, localErr, rows.length, didAutoOpenCreate]);
 
   const enabledCount = useMemo(() => rows.filter((r) => r.enabled).length, [rows]);
   const onlineCount = useMemo(() => rows.filter((r) => r.enabled && r.status === "ok").length, [rows]);
@@ -286,10 +298,28 @@ function McpPage() {
     return rows.filter(
       (s) =>
         s.name.toLowerCase().includes(term) ||
+        mcpDisplayName(s.name).toLowerCase().includes(term) ||
         (s.command ?? "").toLowerCase().includes(term) ||
         (s.url ?? "").toLowerCase().includes(term),
     );
   }, [rows, q]);
+
+  const missingTemplates = useMemo(() => {
+    const installed = new Set(rows.map((r) => r.name));
+    return MCP_TEMPLATES.filter((t) => !installed.has(t.name));
+  }, [rows]);
+
+  const filteredMissingTemplates = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return missingTemplates;
+    return missingTemplates.filter(
+      (t) =>
+        t.name.toLowerCase().includes(term) ||
+        t.label.toLowerCase().includes(term) ||
+        t.desc.toLowerCase().includes(term) ||
+        t.commandLine.toLowerCase().includes(term),
+    );
+  }, [missingTemplates, q]);
 
   const active = rows.find((s) => s.id === activeId) ?? null;
 
@@ -322,7 +352,7 @@ function McpPage() {
   const applyTemplate = (template: McpTemplate) => {
     setDrawerMode("create");
     setActiveId(null);
-    setForm(templateToForm(template));
+    setForm(templateToForm(template, bundledLines));
   };
 
   const addTemplate = async (template: McpTemplate) => {
@@ -332,7 +362,7 @@ function McpPage() {
       setDrawerMode("view");
       return;
     }
-    const built = buildUpsertPayload(templateToForm(template));
+    const built = buildUpsertPayload(templateToForm(template, bundledLines));
     if ("error" in built) {
       toast.warning(built.error);
       return;
@@ -390,6 +420,9 @@ function McpPage() {
       return;
     }
     setChecking(row.id);
+    setRows((arr) =>
+      arr.map((item) => (item.id === row.id ? { ...item, status: "checking" } : item)),
+    );
     try {
       const api = getDesktop();
       if (!api?.mcpHealthCheckOne) {
@@ -401,8 +434,12 @@ function McpPage() {
         toast.error(r.error || "健康检查失败");
         return;
       }
+      if (r.repaired) {
+        const detail = r.repairs?.length ? r.repairs.join("；") : "已修正已知配置问题";
+        toast.info(`已自动修复 MCP 配置：${detail}`);
+      }
       if (r.server.status === "ok") {
-        toast.success(`${row.name} 在线`);
+        toast.info(`${row.name} 在线`);
       } else {
         toast.error(r.server.error || `${row.name} 异常`);
       }
@@ -454,7 +491,7 @@ function McpPage() {
                 <code className="rounded bg-code-bg px-1 font-mono text-[11px]">
                   {configPath ? configPath.replace(/^\/Users\/[^/]+/, "~") : "~/.claude/mcp.json"}
                 </code>
-                ；支持模板、启停与健康检查。
+                ；启动时 Bridge 会自动检测并写入数据库；进入本页显示缓存结果，详情内「健康检查」仅测当前服务。
               </InfoHint>
             </>
           }
@@ -467,7 +504,7 @@ function McpPage() {
         )}
         {hasDesktopApi && !localErr && rows.length === 0 && !loading ? (
           <PageBanner>
-            尚未配置 MCP。点击「添加」选择内置模板（filesystem / fetch / memory 等），或手动填写启动命令。
+            尚未配置 MCP。点击「添加」选择内置模板，或点下方虚线卡片一键添加（含 filesystem / fetch / memory / 三省六部）。
           </PageBanner>
         ) : null}
         {localErr ? (
@@ -494,11 +531,17 @@ function McpPage() {
               />
             </div>
             <span className="text-[12px] text-muted-foreground">
-              共 <b className="text-foreground">{filtered.length}</b> 个
+              已配置 <b className="text-foreground">{filtered.length}</b> 个
+              {filteredMissingTemplates.length > 0 ? (
+                <>
+                  {" "}
+                  · 可添加 <b className="text-foreground">{filteredMissingTemplates.length}</b> 个内置模板
+                </>
+              ) : null}
             </span>
           </div>
 
-          {filtered.length === 0 && !loading ? (
+          {filtered.length === 0 && filteredMissingTemplates.length === 0 && !loading ? (
             <div className="rounded-xl border border-dashed border-border py-16 text-center">
               <Server className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
               <p className="text-[13px] font-medium text-foreground">
@@ -542,7 +585,10 @@ function McpPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-[12.5px] font-semibold text-foreground">{s.name}</span>
+                        <span className="truncate text-[12.5px] font-semibold text-foreground">
+                          {mcpDisplayName(s.name)}
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground">({s.name})</span>
                         <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
                           {transportLabel(s.transport)}
                         </span>
@@ -575,6 +621,39 @@ function McpPage() {
                   </div>
                 </button>
               ))}
+              {filteredMissingTemplates.map((t) => (
+                <div
+                  key={`preset-${t.name}`}
+                  className="rounded-xl border border-dashed border-primary/30 bg-primary/[0.03] p-4 shadow-xs"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Plus className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate text-[12.5px] font-semibold text-foreground">{t.label}</span>
+                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">内置模板</span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground">{t.desc}</p>
+                      <p className="mt-1 line-clamp-2 font-mono text-[10.5px] text-muted-foreground">
+                        {resolvePresetCommandLineForForm(t.name, bundledLines) || t.commandLine}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-2.5">
+                    <span className="font-mono text-[10px] text-muted-foreground">{t.name}</span>
+                    <button
+                      type="button"
+                      disabled={!hasDesktopApi || saving}
+                      onClick={() => void addTemplate(t)}
+                      className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-40"
+                    >
+                      一键添加
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -599,6 +678,7 @@ function McpPage() {
             onToggleEnabled={active ? () => void toggleEnabled(active) : undefined}
             onApplyTemplate={applyTemplate}
             onAddTemplate={(t) => void addTemplate(t)}
+            bundledLines={bundledLines}
           />
         ) : null}
       </PageRoot>
@@ -642,6 +722,7 @@ function McpDrawer({
   onToggleEnabled,
   onApplyTemplate,
   onAddTemplate,
+  bundledLines,
 }: {
   mode: DrawerMode;
   active: McpRow | null;
@@ -652,6 +733,7 @@ function McpDrawer({
   checking: string | null;
   toggling: string | null;
   hasDesktopApi: boolean;
+  bundledLines: Record<string, string>;
   onClose: () => void;
   onFormChange: (next: McpForm) => void;
   onSave: () => void;
@@ -698,6 +780,7 @@ function McpDrawer({
                 <McpTemplatePicker
                   templates={MCP_TEMPLATES}
                   existingNames={rows.map((r) => r.name)}
+                  bundledLines={bundledLines}
                   disabled={!hasDesktopApi || saving}
                   onFill={onApplyTemplate}
                   onAdd={onAddTemplate}
@@ -706,7 +789,7 @@ function McpDrawer({
               <McpFormFields
                 form={form}
                 nameDisabled={mode === "edit"}
-                commandPlaceholder={presetCommandLine(form.name.trim()) ?? ""}
+                commandPlaceholder={resolvePresetCommandLineForForm(form.name.trim(), bundledLines) || ""}
                 onChange={onFormChange}
               />
             </>
@@ -828,12 +911,14 @@ function McpDrawer({
 function McpTemplatePicker({
   templates,
   existingNames,
+  bundledLines,
   disabled,
   onFill,
   onAdd,
 }: {
   templates: McpTemplate[];
   existingNames: string[];
+  bundledLines?: Record<string, string>;
   disabled?: boolean;
   onFill: (t: McpTemplate) => void;
   onAdd: (t: McpTemplate) => void;
@@ -858,7 +943,9 @@ function McpTemplatePicker({
                   <span className="font-mono text-[11px] text-muted-foreground">({t.name})</span>
                 </div>
                 <div className="text-[11px] text-muted-foreground">{t.desc}</div>
-                <div className="mt-1 truncate font-mono text-[10.5px] text-foreground/80">{t.commandLine}</div>
+                <div className="mt-1 truncate font-mono text-[10.5px] text-foreground/80">
+                  {resolvePresetCommandLineForForm(t.name, bundledLines) || t.commandLine}
+                </div>
               </div>
               <button
                 type="button"
@@ -929,11 +1016,11 @@ function McpFormFields({
             value={form.commandLine}
             onChange={(e) => onChange({ ...form, commandLine: e.target.value })}
             rows={3}
-            placeholder={commandPlaceholder || "填写完整启动命令，例如 uvx mcp-server-fetch==2026.6.4"}
+            placeholder={commandPlaceholder || "例如 npx -y @modelcontextprotocol/server-memory"}
             className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] outline-none focus:border-primary"
           />
           <p className="mt-1 text-[11px] text-muted-foreground">
-            显示并保存配置文件中的实际命令；内置模板已带固定版本号。
+            保存后写入本机 mcp.json；内置模板默认使用最新包版本。
           </p>
         </div>
       ) : (

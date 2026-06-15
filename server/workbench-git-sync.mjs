@@ -13,13 +13,73 @@ const execFileAsync = promisify(execFile)
 
 export const DEFAULT_UPSTREAM_REPO = 'https://github.com/anthropics/claude-code.git'
 
-/** Never stage these when pushing to a personal fork (local deps / runtime data). */
+/** Never stage these when pushing to a personal fork (local deps / runtime / private data). */
 const PUSH_EXCLUDE_PATHS = [
   '.claudecode',
   '.tmp',
   'node_modules',
   'server/vendor',
+  'web/node_modules',
+  'web/dist',
+  'web/.env',
+  'web/.wrangler',
+  'web/.tanstack',
+  '.DS_Store',
 ]
+
+const SENSITIVE_STAGED_PATTERNS = [
+  /\bsk-[a-zA-Z0-9]{20,}\b/,
+  /\bAIza[0-9A-Za-z\-_]{35}\b/,
+  /\bANTHROPIC_API_KEY\s*=\s*['"]?[^\s'"]+/i,
+  /\bOPENAI_API_KEY\s*=\s*['"]?[^\s'"]+/i,
+  /\bapi[_-]?key\s*[:=]\s*['"]?[a-zA-Z0-9_\-]{16,}/i,
+  /\blocalSecret\s*[:=]\s*['"][^'"]{8,}/i,
+  /\bpersonalGithubRepo\s*[:=]\s*['"]https:\/\/github\.com\/[^'"]+/i,
+]
+
+async function unstageSensitivePaths() {
+  for (const excluded of PUSH_EXCLUDE_PATHS) {
+    await runGit(['reset', 'HEAD', '--', excluded])
+  }
+}
+
+async function scanStagedFilesForSecrets() {
+  const list = await runGit(['diff', '--cached', '--name-only'])
+  if (!list.ok) return { ok: true }
+  const files = list.stdout
+    .trim()
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const hits = []
+  for (const rel of files) {
+    if (PUSH_EXCLUDE_PATHS.some((p) => rel === p || rel.startsWith(`${p}/`))) continue
+    const abs = path.join(PROJECT_ROOT, rel)
+    try {
+      if (!fs.existsSync(abs)) continue
+      const stat = fs.statSync(abs)
+      if (!stat.isFile() || stat.size > 512_000) continue
+      const text = fs.readFileSync(abs, 'utf8')
+      if (text.includes('\0')) continue
+      for (const re of SENSITIVE_STAGED_PATTERNS) {
+        if (re.test(text)) {
+          hits.push(rel)
+          break
+        }
+      }
+    } catch {
+      /* ignore unreadable */
+    }
+  }
+  if (!hits.length) return { ok: true }
+  return {
+    ok: false,
+    error:
+      '暂存区含疑似密钥、个人仓库地址或其它敏感信息，已阻止推送。请检查以下文件并移除敏感内容后再试：\n' +
+      hits.map((p) => `  - ${p}`).join('\n'),
+    sensitivePaths: hits,
+  }
+}
 
 const DEFAULT_UPSTREAM_SYNC_MANIFEST = {
   syncPaths: ['plugins', '.claude/commands', '.claude-plugin', 'examples/hooks'],
@@ -284,6 +344,11 @@ export async function pullClaudeCodeFromGithub(opts = {}) {
     }
   }
 
+  const rev = await runGit(['rev-parse', upstreamRef])
+  if (rev.ok && rev.stdout.trim()) {
+    saveChatSettings({ lastUpstreamSyncSha: rev.stdout.trim() })
+  }
+
   return {
     ok: true,
     pathScoped: true,
@@ -294,6 +359,63 @@ export async function pullClaudeCodeFromGithub(opts = {}) {
     headLine: head.stdout.trim(),
     upstreamUrl: ensure.url || upstreamUrl,
     combined: lines.join('\n'),
+  }
+}
+
+export async function checkUpstreamUpdates(opts = {}) {
+  const settings = loadChatSettings()
+  const upstreamUrl =
+    (opts.upstreamGithubRepo || settings.upstreamGithubRepo || DEFAULT_UPSTREAM_REPO).trim()
+  const ensure = await ensureUpstreamRemote(upstreamUrl)
+  if (!ensure.ok) return { ok: false, error: ensure.error }
+
+  const fetch = await runGit(['fetch', 'upstream'], { timeout: 300_000 })
+  if (!fetch.ok) {
+    return {
+      ok: false,
+      error: fetch.combined || fetch.error || '无法连接官方 GitHub 仓库',
+    }
+  }
+
+  const branch = await currentBranch()
+  const upstreamRef = await resolveUpstreamRef(branch)
+  if (!upstreamRef) {
+    return { ok: false, error: `未找到 upstream 分支（尝试过 upstream/${branch} 与 upstream/main）` }
+  }
+
+  const rev = await runGit(['rev-parse', upstreamRef])
+  if (!rev.ok) return { ok: false, error: rev.combined || rev.error }
+  const upstreamSha = rev.stdout.trim()
+
+  const head = await runGit(['log', '-1', '--oneline', upstreamRef])
+  const headLine = head.stdout.trim()
+
+  const lastSha = String(settings.lastUpstreamSyncSha || '').trim()
+  let hasUpdates = !lastSha || lastSha !== upstreamSha
+
+  if (!lastSha) {
+    const manifest = loadUpstreamSyncManifest()
+    const targets = [...manifest.syncPaths, ...manifest.syncFiles]
+    hasUpdates = false
+    for (const target of targets) {
+      const diff = await runGit(['diff', '--quiet', upstreamRef, '--', target])
+      if (!diff.ok && !/fatal:/i.test(diff.combined || diff.error || '')) {
+        hasUpdates = true
+        break
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    hasUpdates,
+    upstreamRef,
+    upstreamSha,
+    headLine,
+    lastSyncSha: lastSha || null,
+    message: hasUpdates
+      ? '官方 Claude Code 有新版本，可点击「同步官方插件与逻辑」。'
+      : '官方同步范围内已与 upstream 最新一致。',
   }
 }
 
@@ -414,7 +536,6 @@ async function ensureFullHistoryForPush() {
 }
 
 export async function pushClaudeCodeToPersonalGithub(opts = {}) {
-  const clearPersonalConfig = opts.clearPersonalConfig !== false
   const reason =
     typeof opts.reason === 'string' && opts.reason.trim()
       ? opts.reason.trim()
@@ -435,19 +556,30 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
   const ensure = await ensurePersonalOrigin(personalUrl)
   if (!ensure.ok) return { ok: false, error: ensure.error, combined: ensure.error }
 
-  if (clearPersonalConfig) {
-    resetPersonalWorkbenchData()
-  }
-
-  const identity = await ensureGitIdentity(loadChatSettings())
+  const identity = await ensureGitIdentity(settings)
   if (!identity.ok) return { ok: false, error: identity.error, combined: identity.error }
+
+  const cleared = resetPersonalWorkbenchData()
+  const clearedNote = cleared.cleared?.length
+    ? `已清除本地敏感数据：${cleared.cleared.join('、')}。`
+    : '已清除本地敏感数据。'
 
   const branch = await currentBranch()
   const add = await runGit(['add', '-A'])
   if (!add.ok) return { ok: false, error: add.combined || add.error, combined: add.combined }
 
-  for (const excluded of PUSH_EXCLUDE_PATHS) {
-    await runGit(['reset', 'HEAD', '--', excluded])
+  await unstageSensitivePaths()
+
+  const secretScan = await scanStagedFilesForSecrets()
+  if (!secretScan.ok) {
+    return {
+      ok: false,
+      error: secretScan.error,
+      combined: [clearedNote, secretScan.error].filter(Boolean).join('\n\n'),
+      clearedConfig: true,
+      sensitivePaths: secretScan.sensitivePaths,
+      personalUrl: ensure.url,
+    }
   }
 
   const diffCached = await runGit(['diff', '--cached', '--quiet'])
@@ -493,8 +625,9 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
       ok: true,
       pushed: false,
       nothingToCommit: true,
-      clearedConfig: clearPersonalConfig,
-      combined: '没有需要提交的变更，且已与个人仓库同步。',
+      clearedConfig: true,
+      clearedItems: cleared.cleared,
+      combined: `${clearedNote}\n没有需要提交的变更，且已与个人仓库同步。`,
       personalUrl: ensure.url,
     }
   }
@@ -502,10 +635,11 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
   return {
     ok: true,
     pushed: true,
-    clearedConfig: clearPersonalConfig,
+    clearedConfig: true,
+    clearedItems: cleared.cleared,
     branch,
     personalUrl: ensure.url,
-    combined: [history.unshallowed ? history.combined : '', commitLog, push.combined]
+    combined: [clearedNote, history.unshallowed ? history.combined : '', commitLog, push.combined]
       .filter(Boolean)
       .join('\n'),
   }

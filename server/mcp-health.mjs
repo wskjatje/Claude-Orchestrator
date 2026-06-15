@@ -174,3 +174,15 @@ export async function checkAllMcpServers(configPath) {
   const okCount = servers.filter((s) => s.status === 'ok').length
   return { ok: true, servers, okCount, total: servers.length }
 }
+
+export async function checkOneMcpServer(configPath, nameKey) {
+  const name = String(nameKey || '').trim()
+  if (!name) return { ok: false, error: '缺少 name', server: null }
+  const parsed = readMcpServers(configPath)
+  if (!parsed.ok) return { ok: false, error: parsed.error, server: null }
+  if (parsed.missing) return { ok: false, error: '配置文件不存在', server: null }
+  const hit = parsed.servers.find((s) => s.name === name)
+  if (!hit) return { ok: false, error: `未找到 MCP：${name}`, server: null }
+  const server = await checkMcpServerEntry(hit.name, hit.cfg)
+  return { ok: true, server }
+}

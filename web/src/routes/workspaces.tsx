@@ -15,7 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/workspaces")({
-  head: () => ({ meta: [{ title: "工作目录 · 本地代码助手" }] }),
+  head: () => ({ meta: [{ title: "工作目录 · Claude Orchestrator" }] }),
   component: WorkspacesPage,
 });
 
@@ -176,7 +176,7 @@ function WorkspacesPage() {
               </div>
             </PageSection>
 
-            <PageSection title="打开记录" hint={<InfoHint>点击条目可快速切换；清空仅删除记录，不删磁盘文件夹</InfoHint>}>
+            <PageSection title="打开记录" hint={<InfoHint>存于本机 SQLite（.claudecode/workbench.db），换浏览器仍可恢复</InfoHint>}>
               {!history.length ? (
                 <div className="rounded-lg border border-dashed border-border bg-surface/50 px-4 py-8 text-center text-[12px] text-muted-foreground">
                   暂无打开记录。选择工作区后会自动记录。

@@ -184,7 +184,7 @@ function buildImportDeeplink(input) {
     opusModel: opus,
     icon: 'custom',
     enabled: 'false',
-    notes: String(input.notes || '由 Claude Workbench 添加').trim(),
+    notes: String(input.notes || '由 Claude Orchestrator 添加').trim(),
   })
   return `ccswitch://v1/import?${params.toString()}`
 }
@@ -240,7 +240,7 @@ function upsertProvider(input) {
 
     const now = Date.now()
     const website = String(input.homepage || input.websiteUrl || '').trim()
-    const notes = String(input.notes || `由 Workbench 添加/更新；模型 ${sonnet}`).trim()
+    const notes = String(input.notes || `由 Orchestrator 添加/更新；模型 ${sonnet}`).trim()
     const category = String(input.category || 'third_party').trim()
 
     if (existing) {

@@ -15,6 +15,7 @@ export type ChainTemplateStep = {
   taskId: string;
   instruction: string;
   skills?: string[];
+  mcps?: string[];
 };
 
 export type ChainTemplate = {
@@ -119,8 +120,10 @@ function sanshengliubuStep(
   taskId: string,
   body: string,
   skillsOverride?: string[],
+  mcpsOverride?: string[],
 ): ChainTemplateStep {
-  return step(stem, taskId, `${SANSHENGLIUBU_GOVERNANCE}\n${body}`, skillsOverride);
+  const base = step(stem, taskId, `${SANSHENGLIUBU_GOVERNANCE}\n${body}`, skillsOverride);
+  return { ...base, mcps: mcpsOverride ?? ["sanshengliubu"] };
 }
 
 function governancePipelineTemplate(
@@ -546,6 +549,7 @@ export function applyChainTemplate(
     taskId: substituteChainTemplateVars(s.taskId, vars),
     instruction: substituteChainTemplateVars(s.instruction, vars),
     skills: s.skills?.length ? [...s.skills] : skillFileStemsForAgent(s.agentName),
+    mcps: s.mcps?.length ? [...s.mcps] : [],
   }));
 }
 

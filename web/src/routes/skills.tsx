@@ -4,14 +4,16 @@ import { AppShell, PageHeader } from "@/components/app-shell";
 import { Sparkles, Search, FolderOpen, Power, AlertTriangle, X, FileCode2, Hash, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InfoHint } from "@/components/info-hint";
-import { getDesktop, hasDesktop } from "@/lib/desktop-api";
+import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { getDesktop } from "@/lib/desktop-api";
 
 export const Route = createFileRoute("/skills")({
-  head: () => ({ meta: [{ title: "技能 · 本地代码助手" }] }),
+  head: () => ({ meta: [{ title: "Skill · Claude Orchestrator" }] }),
   component: SkillsPage,
 });
 
 type Skill = {
+  stem: string;
   name: string;
   description: string;
   category: string;
@@ -20,37 +22,35 @@ type Skill = {
   warning?: string;
 };
 
-const SEED: Skill[] = [
-  { name: "code-review",     description: "对 diff 做行级评审，关注边界与安全。",         category: "工程",   enabled: true,  calls: 142 },
-  { name: "self-learning",   description: "把当次会话产出的经验写入知识库。",           category: "工程",   enabled: true,  calls: 23 },
-  { name: "translate",       description: "中英互译，保持术语一致。",                   category: "写作",   enabled: true,  calls: 318 },
-  { name: "summarize",       description: "把长文压成摘要 + 关键点 + 行动项。",         category: "写作",   enabled: true,  calls: 89 },
-  { name: "1password",       description: "从 1Password CLI 读取登录凭据。",            category: "集成",   enabled: false, calls: 0, warning: "缺少依赖：op CLI 未安装" },
-  { name: "apple-notes",     description: "读取 / 写入 macOS 备忘录。",                 category: "集成",   enabled: false, calls: 0, warning: "缺少依赖：osascript 权限" },
-  { name: "apple-reminders", description: "在系统提醒事项中创建条目。",                 category: "集成",   enabled: false, calls: 0, warning: "缺少依赖：osascript 权限" },
-  { name: "linear",          description: "读取 / 写入 Linear issue。",                 category: "集成",   enabled: true,  calls: 17 },
-  { name: "github-pr",       description: "在仓库内开 PR 并填写描述。",                 category: "集成",   enabled: true,  calls: 41 },
-  { name: "data-analysis",   description: "Python + pandas，给 CSV/JSON 出统计与图。",   category: "分析",   enabled: true,  calls: 12 },
-  { name: "playwright",      description: "录制 / 回放浏览器交互，生成测试。",          category: "分析",   enabled: true,  calls: 6 },
-  { name: "image-edit",      description: "本地 PIL 改图、抠图、加水印。",              category: "媒体",   enabled: true,  calls: 28 },
-];
-
 const CATS = ["全部", "工程", "写作", "集成", "分析", "媒体", "本机"] as const;
 
-function diskSkillRowToSkill(row: { basename: string; stem: string; description: string }): Skill {
+function diskSkillRowToSkill(row: {
+  basename: string;
+  stem: string;
+  description: string;
+  displayName?: string;
+  name?: string;
+  category?: "项目" | "通用" | "实验" | string;
+}): Skill {
+  const displayName =
+    row.displayName?.trim() ||
+    row.name?.trim() ||
+    row.stem;
   return {
-    name: row.stem,
+    stem: row.stem,
+    name: displayName,
     description:
       row.description.trim() ||
       "（可在 frontmatter 中加 description，或写好正文首段）",
-    category: "本机",
+    category: row.category?.trim() || "本机",
     enabled: true,
     calls: 0,
   };
 }
 
 function SkillsPage() {
-  const [items, setItems] = useState<Skill[]>(SEED);
+  const hasDesktopApi = useHasDesktop();
+  const [items, setItems] = useState<Skill[]>([]);
   const [listFromDisk, setListFromDisk] = useState(false);
   const [listErr, setListErr] = useState<string | null>(null);
   const [listLoading, setListLoading] = useState(false);
@@ -61,17 +61,20 @@ function SkillsPage() {
   const [skillMdErr, setSkillMdErr] = useState<string | null>(null);
 
   const filtered = items.filter(s =>
-    (cat === "全部" || s.category === cat) &&
-    (q === "" || s.name.includes(q.toLowerCase()) || s.description.includes(q))
+    (cat === "全部" || s.category === cat || (cat === "本机" && s.category === "项目")) &&
+    (q === "" ||
+      s.stem.includes(q.toLowerCase()) ||
+      s.name.includes(q) ||
+      s.description.includes(q))
   );
-  const toggle = (n: string) =>
-    setItems(arr => arr.map(s => s.name === n ? { ...s, enabled: !s.enabled } : s));
+  const toggle = (stem: string) =>
+    setItems(arr => arr.map(s => s.stem === stem ? { ...s, enabled: !s.enabled } : s));
 
   const reloadSkillList = useCallback(async () => {
     const api = getDesktop();
-    if (!api || !hasDesktop()) {
+    if (!api || !hasDesktopApi) {
       setListFromDisk(false);
-      setItems(SEED);
+      setItems([]);
       setListErr(null);
       return;
     }
@@ -86,12 +89,12 @@ function SkillsPage() {
     }
     setListFromDisk(true);
     setItems(r.items.map(diskSkillRowToSkill));
-  }, []);
+  }, [hasDesktopApi]);
 
   const openSkillsFolder = useCallback(async () => {
     const api = getDesktop();
     if (!api?.openClaudeUserSubdir) {
-      window.alert("当前环境无法打开系统文件夹，请使用「本地代码助手」桌面客户端。");
+      window.alert("当前环境无法打开系统文件夹，请使用「Claude Orchestrator」桌面客户端。");
       return;
     }
     const r = await api.openClaudeUserSubdir("skills");
@@ -99,18 +102,19 @@ function SkillsPage() {
   }, []);
 
   useEffect(() => {
+    if (!hasDesktopApi) return;
     void reloadSkillList();
-  }, [reloadSkillList]);
+  }, [hasDesktopApi, reloadSkillList]);
 
   useEffect(() => {
     let cancelled = false;
     const api = getDesktop();
-    if (!detail || !api || !hasDesktop()) {
+    if (!detail || !api || !hasDesktopApi) {
       setSkillMd(null);
       setSkillMdErr(null);
       return;
     }
-    void api.readClaudeSkillMarkdown(`${detail.name}.md`).then((r) => {
+    void api.readClaudeSkillMarkdown(`${detail.stem}.md`).then((r) => {
       if (cancelled) return;
       if (r.ok && r.content) {
         setSkillMd(r.content);
@@ -123,7 +127,7 @@ function SkillsPage() {
     return () => {
       cancelled = true;
     };
-  }, [detail?.name]);
+  }, [detail?.stem, hasDesktopApi]);
 
   const enabled = items.filter(s => s.enabled).length;
   const broken = items.filter(s => s.warning).length;
@@ -131,15 +135,15 @@ function SkillsPage() {
   return (
     <AppShell>
       <PageHeader
-        title="技能"
+        title="Skill"
         description="Skill 是可复用的提示 + 工具组合 — 来自 ~/.claude/skills/"
         actions={
           <>
             <button
               type="button"
               onClick={() => void reloadSkillList()}
-              disabled={listLoading || !hasDesktop()}
-              title={!hasDesktop() ? "仅在 Electron 桌面客户端可用" : undefined}
+              disabled={listLoading || !hasDesktopApi}
+              title={!hasDesktopApi ? "仅在 Electron 桌面客户端可用" : undefined}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", listLoading && "animate-spin")} /> 从本机刷新
@@ -147,8 +151,8 @@ function SkillsPage() {
             <button
               type="button"
               onClick={() => void openSkillsFolder()}
-              disabled={!hasDesktop()}
-              title={!hasDesktop() ? "仅在 Electron 桌面客户端可用" : "在访达中打开 ~/.claude/skills"}
+              disabled={!hasDesktopApi}
+              title={!hasDesktopApi ? "仅在 Electron 桌面客户端可用" : "在访达中打开 ~/.claude/skills"}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <FolderOpen className="h-3.5 w-3.5" /> 在 Finder 打开
@@ -158,7 +162,7 @@ function SkillsPage() {
         }
       />
 
-      {hasDesktop() && (
+      {hasDesktopApi && (
         <div className="border-b border-border bg-surface-elevated/80 px-4 py-2.5 sm:px-6 lg:px-7">
           <p className="text-[12px] leading-relaxed text-muted-foreground">
             {listFromDisk ? (
@@ -213,7 +217,7 @@ function SkillsPage() {
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map(s => (
             <button
-              key={s.name}
+              key={s.stem}
               onClick={() => setDetail(s)}
               className={cn(
                 "group rounded-xl border bg-surface-elevated p-4 text-left shadow-xs transition hover:border-primary/30",
@@ -229,14 +233,14 @@ function SkillsPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="truncate font-mono text-[12.5px] font-semibold text-foreground">{s.name}</span>
+                    <span className="truncate text-[12.5px] font-semibold text-foreground">{s.name}</span>
                     <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">{s.category}</span>
                   </div>
                   <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">{s.description}</p>
                 </div>
                 <span
                   role="button"
-                  onClick={(e) => { e.stopPropagation(); toggle(s.name); }}
+                  onClick={(e) => { e.stopPropagation(); toggle(s.stem); }}
                   className={cn(
                     "cursor-pointer rounded-md p-1.5 transition",
                     s.enabled ? "text-success hover:bg-success/10" : "text-muted-foreground hover:bg-secondary",
@@ -281,8 +285,8 @@ function SkillsPage() {
                   <Sparkles className="h-4 w-4" />
                 </div>
                 <div>
-                  <div className="font-mono text-[13px] font-semibold text-foreground">{detail.name}</div>
-                  <div className="text-[11px] text-muted-foreground">{detail.category}</div>
+                  <div className="text-[13px] font-semibold text-foreground">{detail.name}</div>
+                  <div className="text-[11px] text-muted-foreground">{detail.category} · {detail.stem}</div>
                 </div>
               </div>
               <button onClick={() => setDetail(null)} className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground">
@@ -313,7 +317,7 @@ function SkillsPage() {
                 <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   <FileCode2 className="h-3 w-3" /> 本机文件（平铺）
                 </div>
-                <code className="font-mono text-[12px] text-foreground">~/.claude/skills/{detail.name}.md</code>
+                <code className="font-mono text-[12px] text-foreground">~/.claude/skills/{detail.stem}.md</code>
                 {(skillMd || skillMdErr) && (
                   <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-code-bg/60 p-2 font-mono text-[11px] leading-relaxed">
                     {skillMdErr ? <span className="text-destructive">{skillMdErr}</span> : skillMd}
@@ -337,7 +341,7 @@ function SkillsPage() {
             </div>
             <div className="flex items-center gap-2 border-t border-border px-5 py-3">
               <button
-                onClick={() => { toggle(detail.name); setDetail(d => d ? { ...d, enabled: !d.enabled } : d); }}
+                onClick={() => { toggle(detail.stem); setDetail(d => d ? { ...d, enabled: !d.enabled } : d); }}
                 className={cn(
                   "flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold transition",
                   detail.enabled

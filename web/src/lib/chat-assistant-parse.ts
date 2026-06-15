@@ -10,7 +10,9 @@ const TOOL_LINE =
   /^(Read|Glob|Grep|Edit|Write|MultiEdit|Bash|WebFetch|WebSearch|Explored|Search)\s+(.+?)(?:\s*·|$)/i;
 
 const THOUGHT_HEAD =
-  /^(?:#{1,3}\s*)?(?:Thought(?:\s+for\s+[\d.]+s)?|思考(?:\s+[\d.]+秒)?)\s*$/i;
+  /^(?:#{1,3}\s*)?(?:Thought(?:\s+for\s+[\d.]+s)?|Thinking(?:\s+for\s+[\d.]+s)?|Reasoning|思考(?:\s+[\d.]+秒)?|思考中)\s*$/i;
+
+const THOUGHT_INLINE = /^>\s*(?:\*\*)?(?:Thought|Thinking|思考)(?:\*\*)?\s*$/i;
 
 /** 单行工具活动（Cursor CLI 常见输出） */
 function tryToolLine(line: string): AssistantBlock | null {
@@ -56,6 +58,14 @@ function tryTerminalBlock(lines: string[], start: number): { block: AssistantBlo
 export function parseAssistantContent(content: string): AssistantBlock[] {
   if (!content?.trim()) return [{ kind: "markdown", body: content }];
 
+  const xmlThinking = content.match(/<thinking>([\s\S]*?)<\/thinking>/i);
+  if (xmlThinking) {
+    const thoughtBody = xmlThinking[1]?.trim() ?? "";
+    const rest = content.replace(/<thinking>[\s\S]*?<\/thinking>/i, "").trim();
+    const restBlocks = rest ? parseAssistantContent(rest) : [];
+    return [{ kind: "thought", title: "Thought", body: thoughtBody }, ...restBlocks];
+  }
+
   const lines = content.split("\n");
   const blocks: AssistantBlock[] = [];
   let buf: string[] = [];
@@ -71,19 +81,20 @@ export function parseAssistantContent(content: string): AssistantBlock[] {
     const line = lines[i] ?? "";
     const trimmed = line.trim();
 
-    if (THOUGHT_HEAD.test(trimmed)) {
+    if (THOUGHT_HEAD.test(trimmed) || THOUGHT_INLINE.test(trimmed)) {
       flushMarkdown();
-      const title = trimmed.replace(/^#{1,3}\s*/, "") || "Thought";
+      const title = trimmed.replace(/^#{1,3}\s*/, "").replace(/^>\s*/, "").replace(/\*\*/g, "") || "Thought";
       const thoughtLines: string[] = [];
       i++;
       while (i < lines.length) {
         const tl = lines[i]?.trim() ?? "";
-        if (TOOL_LINE.test(tl) || THOUGHT_HEAD.test(tl) || /^【终端/.test(tl)) break;
+        if (TOOL_LINE.test(tl) || THOUGHT_HEAD.test(tl) || THOUGHT_INLINE.test(tl) || /^【终端/.test(tl)) break;
         if (tl === "---" || tl === "***") {
           i++;
           break;
         }
-        thoughtLines.push(lines[i]!);
+        const raw = lines[i] ?? "";
+        thoughtLines.push(/^>\s?/.test(raw) ? raw.replace(/^>\s?/, "") : raw);
         i++;
       }
       blocks.push({ kind: "thought", title, body: thoughtLines.join("\n").trim() });

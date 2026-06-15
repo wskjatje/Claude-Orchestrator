@@ -95,6 +95,30 @@ function resolveAgentMarkdownWritePath(basenameRaw) {
   return { ok: true, basename, target, agentsDir }
 }
 
+function writeClaudeSkillMarkdownContent(basenameRaw, content) {
+  const basename = typeof basenameRaw === 'string' ? basenameRaw.trim() : ''
+  if (!basename || !basename.toLowerCase().endsWith('.md')) {
+    return { ok: false, error: 'basename 须为 *.md' }
+  }
+  if (basename.includes('..') || /[/\\]/.test(basename)) {
+    return { ok: false, error: '文件名无效' }
+  }
+  const text = typeof content === 'string' ? content : ''
+  if (!text.trim()) return { ok: false, error: '内容不能为空' }
+  const skillsDir = path.resolve(path.join(os.homedir(), '.claude', 'skills'))
+  const target = path.resolve(path.join(skillsDir, basename))
+  if (path.relative(skillsDir, target).startsWith('..')) {
+    return { ok: false, error: '路径无效' }
+  }
+  try {
+    fs.mkdirSync(skillsDir, { recursive: true })
+    fs.writeFileSync(target, text.endsWith('\n') ? text : `${text}\n`, 'utf8')
+    return { ok: true, basename, path: target }
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) }
+  }
+}
+
 function writeClaudeAgentMarkdownContent(basenameRaw, content) {
   const resolved = resolveAgentMarkdownWritePath(basenameRaw)
   if (!resolved.ok) return resolved
@@ -151,6 +175,26 @@ function extractFrontmatterField(fm, field) {
   return m[1].trim().replace(/^["']|["']$/g, '').slice(0, 240)
 }
 
+function parseFrontmatterListField(fm, field) {
+  const rawLine = extractFrontmatterField(fm, field)
+  if (!rawLine) return []
+  const raw = rawLine.trim()
+  if (raw.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(raw.replace(/'/g, '"'))
+      if (Array.isArray(parsed)) {
+        return parsed.map((x) => String(x || '').trim()).filter(Boolean)
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return raw
+    .split(/[,，\s]+/)
+    .map((t) => t.trim().replace(/^["']|["']$/g, ''))
+    .filter(Boolean)
+}
+
 function hasCjkText(text) {
   return /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/.test(String(text || ''))
 }
@@ -190,6 +234,7 @@ function parseAgentMarkdownMeta(content) {
     }
   }
   const description = extractMarkdownDescription(s)
+  const skills = fm ? parseFrontmatterListField(fm, 'skills') : []
   return {
     name: extractFrontmatterField(fm, 'name'),
     nameZh:
@@ -201,6 +246,7 @@ function parseAgentMarkdownMeta(content) {
       extractFrontmatterField(fm, 'display_name'),
     description,
     heading,
+    skills,
   }
 }
 
@@ -268,6 +314,7 @@ function collectAgentMarkdownEntries() {
     let name = ''
     let nameZh = ''
     let heading = ''
+    let skills = []
     try {
       const raw = fs.readFileSync(full, 'utf8').slice(0, 32000)
       const meta = parseAgentMarkdownMeta(raw)
@@ -275,6 +322,7 @@ function collectAgentMarkdownEntries() {
       name = meta.name
       nameZh = meta.nameZh
       heading = meta.heading
+      skills = meta.skills || []
       category = extractAgentCategoryFromMarkdown(raw)
       displayName = resolveAgentDisplayName(meta, d.name.slice(0, -3))
     } catch {
@@ -291,6 +339,7 @@ function collectAgentMarkdownEntries() {
       ...(nameZh ? { nameZh } : {}),
       ...(heading ? { heading } : {}),
       ...(category ? { category } : {}),
+      ...(skills.length ? { skills } : {}),
     })
   }
 
@@ -305,6 +354,7 @@ function collectAgentMarkdownEntries() {
       let name = ''
       let nameZh = ''
       let heading = ''
+      let skills = []
       try {
         const raw = fs.readFileSync(full, 'utf8').slice(0, 32000)
         const meta = parseAgentMarkdownMeta(raw)
@@ -312,6 +362,7 @@ function collectAgentMarkdownEntries() {
         name = meta.name
         nameZh = meta.nameZh
         heading = meta.heading
+        skills = meta.skills || []
         category = extractAgentCategoryFromMarkdown(raw)
         displayName = resolveAgentDisplayName(meta, d.name.slice(0, -3))
       } catch {
@@ -327,6 +378,7 @@ function collectAgentMarkdownEntries() {
         ...(nameZh ? { nameZh } : {}),
         ...(heading ? { heading } : {}),
         ...(category ? { category } : {}),
+        ...(skills.length ? { skills } : {}),
       })
     }
   }
@@ -599,6 +651,7 @@ module.exports = {
   stripLargeAssistantArtifactsMain,
   readClaudeAgentMarkdownContent,
   writeClaudeAgentMarkdownContent,
+  writeClaudeSkillMarkdownContent,
   resolveAgentMarkdownWritePath,
   stemFromAgentBasenameForOrchestration,
   bundledOllamaMcpServerPath,

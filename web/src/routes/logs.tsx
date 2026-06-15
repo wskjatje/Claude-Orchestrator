@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
 import { PageRoot } from "@/components/page-layout";
 import { RefreshCw, Trash2, ChevronDown, Bot } from "lucide-react";
+import { ClaudeHooksPanel } from "@/components/claude-hooks-panel";
 import { getDesktop } from "@/lib/desktop-api";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,7 @@ const CLAUDE_SOURCES: { value: ClaudeSource; label: string }[] = [
 ];
 
 export const Route = createFileRoute("/logs")({
-  head: () => ({ meta: [{ title: "日志 · 本地代码助手" }] }),
+  head: () => ({ meta: [{ title: "日志 · Claude Orchestrator" }] }),
   validateSearch: (search: Record<string, unknown>) => ({
     tab: search.tab === "claude" || search.tab === "trace" ? (search.tab as LogTab) : ("workbench" as LogTab),
     stem: typeof search.stem === "string" ? search.stem : "",
@@ -76,7 +77,7 @@ function LogsPage() {
         const s = traceStem.trim();
         if (!s) {
           setText("");
-          setHint("请输入 Agent stem 或从「智能体执行日报」跳转");
+          setHint("请输入 Agent stem");
           return;
         }
         if (!api.readAgentExecutionLog) {
@@ -128,18 +129,7 @@ function LogsPage() {
   return (
     <AppShell variant="fill">
       <PageRoot>
-        <PageHeader
-          title="日志"
-          description="技术排障中心 · 完整原始 tail"
-          actions={
-            <Link
-              to="/reports"
-              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] font-medium hover:bg-secondary"
-            >
-              智能体执行日报 →
-            </Link>
-          }
-        />
+        <PageHeader title="日志" description="技术排障中心 · 完整原始 tail" />
 
         <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 lg:px-7">
           {!hasDesktopApi && (
@@ -147,6 +137,7 @@ function LogsPage() {
               Bridge 未连接：请运行 npm run web:dev:full。
             </p>
           )}
+
           {hint && (
             <p className="mb-3 shrink-0 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-[12px] text-muted-foreground">
               {hint}
@@ -224,6 +215,20 @@ function LogsPage() {
               </button>
             )}
           </div>
+
+          {tab === "claude" && (
+            <details className="mb-3 shrink-0 rounded-xl border border-border bg-surface-elevated/60">
+              <summary className="cursor-pointer px-4 py-2 text-[12px] font-medium text-foreground">
+                Claude Hooks（只读）
+                <span className="ml-2 font-normal text-muted-foreground">
+                  配置在 ~/.claude/settings.json，Orchestrator 无需单独配置
+                </span>
+              </summary>
+              <div className="border-t border-border px-4 py-3">
+                <ClaudeHooksPanel compact />
+              </div>
+            </details>
+          )}
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-xs">
             <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-secondary/30 px-4 py-2.5">

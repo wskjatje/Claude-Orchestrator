@@ -11,6 +11,7 @@ export type ClaudeAgentRow = {
   nameZh?: string;
   heading?: string;
   source: "root" | "sanshengliubu";
+  skills?: string[];
 };
 
 export function useClaudeAgentList() {
@@ -51,6 +52,7 @@ export function useClaudeAgentList() {
           nameZh: row.nameZh,
           heading: row.heading,
           source: row.source,
+          skills: row.skills?.length ? [...row.skills] : undefined,
         };
       }),
     );

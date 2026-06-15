@@ -1,28 +1,21 @@
+import { getUiPrefsCache, patchUiPrefsCache, saveUiPrefsToProjectDb, type TerminalShellId } from "@/lib/ui-prefs";
+
 export const TERMINAL_SHELL_PROFILES = [
   { id: "bash", label: "bash", path: "/bin/bash" },
   { id: "zsh", label: "zsh", path: "/bin/zsh" },
 ] as const;
 
-export type TerminalShellId = (typeof TERMINAL_SHELL_PROFILES)[number]["id"];
-
-const DEFAULT_SHELL_KEY = "workbench-terminal-default-shell";
+export type { TerminalShellId };
 
 export function getDefaultTerminalShell(): TerminalShellId {
-  try {
-    const v = localStorage.getItem(DEFAULT_SHELL_KEY);
-    if (v === "bash" || v === "zsh") return v;
-  } catch {
-    /* ignore */
-  }
+  const v = getUiPrefsCache().defaultTerminalShell;
+  if (v === "bash" || v === "zsh") return v;
   return "zsh";
 }
 
 export function setDefaultTerminalShell(id: TerminalShellId) {
-  try {
-    localStorage.setItem(DEFAULT_SHELL_KEY, id);
-  } catch {
-    /* ignore */
-  }
+  patchUiPrefsCache({ defaultTerminalShell: id });
+  void saveUiPrefsToProjectDb({ defaultTerminalShell: id });
 }
 
 export function resolveShellPath(shell?: string): string | undefined {

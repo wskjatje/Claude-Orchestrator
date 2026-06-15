@@ -23,7 +23,7 @@ import type { ScheduledTask } from "@/types/desktop";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/scheduled")({
-  head: () => ({ meta: [{ title: "定时任务 · 本地代码助手" }] }),
+  head: () => ({ meta: [{ title: "定时任务 · Claude Orchestrator" }] }),
   component: ScheduledPage,
 });
 

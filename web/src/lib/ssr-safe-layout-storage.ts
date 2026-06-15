@@ -1,21 +1,14 @@
 import type { LayoutStorage } from "react-resizable-panels";
+import { getUiPrefsCache, scheduleSaveUiPrefs } from "@/lib/ui-prefs";
 
-/** Avoid `useDefaultLayout` default `storage = localStorage` during SSR. */
+/** 面板布局持久化在项目 SQLite（ui_prefs.layoutStorage），不再使用 localStorage。 */
 export const ssrSafeLayoutStorage: LayoutStorage = {
   getItem(key: string) {
     if (typeof window === "undefined") return null;
-    try {
-      return window.localStorage.getItem(key);
-    } catch {
-      return null;
-    }
+    return getUiPrefsCache().layoutStorage[key] ?? null;
   },
   setItem(key: string, value: string) {
     if (typeof window === "undefined") return;
-    try {
-      window.localStorage.setItem(key, value);
-    } catch {
-      /* quota / private mode */
-    }
+    scheduleSaveUiPrefs({ layoutStorage: { [key]: value } });
   },
 };

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
 import {
   Workflow,
@@ -34,13 +34,17 @@ import {
 import { syncOfficialGenericChains } from "@/lib/sync-official-chains";
 import { toast } from "sonner";
 import { AgentStemCombobox } from "@/components/agent-stem-combobox";
-import { SkillStemMultiSelect } from "@/components/skill-stem-multi-select";
+import { McpNameMultiSelect } from "@/components/mcp-name-multi-select";
 import { useClaudeAgentList, agentDisplayNameForStem, type ClaudeAgentRow } from "@/hooks/use-claude-agent-list";
-import { useClaudeSkillList, type ClaudeSkillRow } from "@/hooks/use-claude-skill-list";
-import { suggestedSkillStemsForAgent } from "@/lib/agent-skill-defaults";
+import { useClaudeSkillList, type ClaudeSkillRow, skillDisplayNameForStem } from "@/hooks/use-claude-skill-list";
+import { useClaudeMcpList, type ClaudeMcpRow } from "@/hooks/use-claude-mcp-list";
+import { suggestedSkillStemsForAgent, resolveChainStepSkills, skillsUnionFromSteps } from "@/lib/agent-skill-defaults";
 
 export const Route = createFileRoute("/chains")({
-  head: () => ({ meta: [{ title: "任务链 · 本地代码助手" }] }),
+  head: () => ({ meta: [{ title: "任务链 · Claude Orchestrator" }] }),
+  validateSearch: (search: Record<string, unknown>) => ({
+    q: typeof search.q === "string" ? search.q : "",
+  }),
   component: ChainsPage,
 });
 
@@ -49,6 +53,7 @@ type ChainStep = {
   taskId: string;
   instruction: string;
   skills: string[];
+  mcps: string[];
 };
 
 type CategoryFilter = "全部" | "单 Agent" | "流水线" | "自定义";
@@ -66,30 +71,41 @@ type ChainListEntry =
   | { kind: "saved"; key: string; chain: SavedChainSummary };
 
 function emptyStep(): ChainStep {
-  return { agentName: "", taskId: "", instruction: "", skills: [] };
+  return { agentName: "", taskId: "", instruction: "", skills: [], mcps: [] };
 }
 
-function validSteps(steps: ChainStep[]): ChainStep[] {
+function validSteps(steps: ChainStep[], agents: ClaudeAgentRow[] = []): ChainStep[] {
   return steps
-    .map((s) => ({
-      agentName: s.agentName.trim(),
-      taskId: s.taskId.trim(),
-      instruction: s.instruction.trim(),
-      skills: s.skills.map((x) => x.trim()).filter(Boolean),
-    }))
+    .map((s) => {
+      const agentName = s.agentName.trim();
+      return {
+        agentName,
+        taskId: s.taskId.trim(),
+        instruction: s.instruction.trim(),
+        skills: resolveChainStepSkills(agentName, agents),
+        mcps: s.mcps.map((x) => x.trim()).filter(Boolean),
+      };
+    })
     .filter((s) => s.agentName && s.instruction);
 }
 
-function normalizeSteps(steps: SavedChainDetail["state"]["steps"] | undefined): ChainStep[] {
+function normalizeSteps(
+  steps: SavedChainDetail["state"]["steps"] | undefined,
+  agents: ClaudeAgentRow[] = [],
+): ChainStep[] {
   if (!Array.isArray(steps)) return [];
-  return steps.map((s) => ({
-    agentName: String(s.agentName ?? "").trim(),
-    taskId: String(s.taskId ?? "").trim(),
-    instruction: String(s.instruction ?? "").trim(),
-    skills: Array.isArray(s.skills)
-      ? s.skills.map((x) => String(x ?? "").trim()).filter(Boolean)
-      : [],
-  }));
+  return steps.map((s) => {
+    const agentName = String(s.agentName ?? "").trim();
+    return {
+      agentName,
+      taskId: String(s.taskId ?? "").trim(),
+      instruction: String(s.instruction ?? "").trim(),
+      skills: resolveChainStepSkills(agentName, agents),
+      mcps: Array.isArray(s.mcps)
+        ? s.mcps.map((x) => String(x ?? "").trim()).filter(Boolean)
+        : [],
+    };
+  });
 }
 
 function filterCategory(chain: SavedChainSummary, cat: CategoryFilter): boolean {
@@ -113,6 +129,7 @@ function matchesQuery(text: string, qq: string): boolean {
 function stepsFromTemplate(
   template: ChainTemplate,
   vars: Record<ChainTemplateVarKey, string>,
+  agents: ClaudeAgentRow[] = [],
 ): ChainStep[] {
   const partial: Partial<Record<ChainTemplateVarKey, string>> = {};
   for (const key of template.vars) partial[key] = vars[key];
@@ -120,14 +137,39 @@ function stepsFromTemplate(
     agentName: s.agentName,
     taskId: s.taskId,
     instruction: s.instruction,
-    skills: s.skills ?? [],
+    skills: resolveChainStepSkills(s.agentName, agents),
+    mcps: s.mcps ?? [],
   }));
 }
 
+function isWbsWorkspaceChain(chain: SavedChainSummary): boolean {
+  return chain.name.startsWith("WBS ·") || /WBS\s*来源：/i.test(chain.description ?? "");
+}
+
+function sortSavedChainsForDisplay(
+  chains: SavedChainSummary[],
+  activeId: string | null,
+): SavedChainSummary[] {
+  return [...chains].sort((a, b) => {
+    if (activeId) {
+      if (a.id === activeId) return -1;
+      if (b.id === activeId) return 1;
+    }
+    const aWbs = isWbsWorkspaceChain(a);
+    const bWbs = isWbsWorkspaceChain(b);
+    if (aWbs !== bWbs) return aWbs ? -1 : 1;
+    const at = a.updatedAt ?? a.createdAt ?? "";
+    const bt = b.updatedAt ?? b.createdAt ?? "";
+    return bt.localeCompare(at);
+  });
+}
+
 function ChainsPage() {
+  const { q: urlQ } = Route.useSearch();
   const hasDesktopApi = useHasDesktop();
   const { agents: agentList } = useClaudeAgentList();
   const { skills: skillList } = useClaudeSkillList();
+  const { mcps: mcpList } = useClaudeMcpList();
   const { chainRunning, runOrchestrationChain, stopChainExecution, syncExecutionState } =
     useOrchestrationExecution();
 
@@ -137,6 +179,7 @@ function ChainsPage() {
   const [listErr, setListErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<CategoryFilter>("全部");
+  const wbsAutoCatRef = useRef(false);
 
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
@@ -186,15 +229,29 @@ function ChainsPage() {
       return;
     }
     setDetail(r.chain);
-    setDetailSteps(normalizeSteps(r.chain.state?.steps));
+    setDetailSteps(normalizeSteps(r.chain.state?.steps, agentList));
     setDetailDirty(false);
-  }, []);
+  }, [agentList]);
 
   useEffect(() => {
     if (!hasDesktopApi) return;
     void syncOfficialGenericChains().then(() => reloadList());
     void syncExecutionState();
   }, [hasDesktopApi, reloadList, syncExecutionState]);
+
+  useEffect(() => {
+    if (urlQ.trim()) setQ(urlQ.trim());
+  }, [urlQ]);
+
+  useEffect(() => {
+    if (wbsAutoCatRef.current || !hasDesktopApi || items.length === 0) return;
+    if (q.trim()) return;
+    const hasWbs = items.some(isWbsWorkspaceChain);
+    if (hasWbs) {
+      wbsAutoCatRef.current = true;
+      setCat("自定义");
+    }
+  }, [hasDesktopApi, items, q]);
 
   useEffect(() => {
     if (!hasDesktopApi) return;
@@ -219,7 +276,7 @@ function ChainsPage() {
 
   const filteredSaved = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    return items.filter((c) => {
+    const filtered = items.filter((c) => {
       if (!filterCategory(c, cat)) return false;
       if (!qq) return true;
       return (
@@ -228,7 +285,13 @@ function ChainsPage() {
         matchesQuery(c.id, qq)
       );
     });
-  }, [items, cat, q]);
+    return sortSavedChainsForDisplay(filtered, activeChainId);
+  }, [items, cat, q, activeChainId]);
+
+  const wbsWorkspaceChains = useMemo(
+    () => filteredSaved.filter(isWbsWorkspaceChain),
+    [filteredSaved],
+  );
 
   const syncedOfficialTemplateIds = useMemo(
     () =>
@@ -272,7 +335,7 @@ function ChainsPage() {
       key: `saved:${c.id}`,
       chain: c,
     }));
-    return [...presets, ...saved];
+    return [...saved, ...presets];
   }, [filteredPresets, filteredSaved]);
 
   const selectedPreset = useMemo(
@@ -282,8 +345,8 @@ function ChainsPage() {
 
   useEffect(() => {
     if (!selectedPreset || presetStepsDirty) return;
-    setPresetDetailSteps(stepsFromTemplate(selectedPreset, presetDetailVars));
-  }, [selectedPreset, presetDetailVars, presetStepsDirty]);
+    setPresetDetailSteps(stepsFromTemplate(selectedPreset, presetDetailVars, agentList));
+  }, [selectedPreset, presetDetailVars, presetStepsDirty, agentList]);
 
   const enabledCount = items.filter((c) => c.enabled).length;
   const runningCount = chainRunning && activeChainId ? 1 : 0;
@@ -325,7 +388,7 @@ function ChainsPage() {
       return;
     }
 
-    const steps = validSteps(addSteps);
+    const steps = validSteps(addSteps, agentList);
     if (!steps.length) {
       toast.warning("至少添加一步：选好 Agent，并填写本步要做什么");
       return;
@@ -362,7 +425,7 @@ function ChainsPage() {
       return;
     }
     const chainName = name.trim() || template.name;
-    const valid = validSteps(steps);
+    const valid = validSteps(steps, agentList);
     if (!valid.length) {
       toast.warning("至少添加一步：选好 Agent，并填写本步要做什么");
       return;
@@ -395,12 +458,12 @@ function ChainsPage() {
     setPresetDetailVars(vars);
     setPresetCreateName(template.name);
     setPresetStepsDirty(false);
-    setPresetDetailSteps(stepsFromTemplate(template, vars));
+    setPresetDetailSteps(stepsFromTemplate(template, vars, agentList));
   };
 
   const regeneratePresetSteps = () => {
     if (!selectedPreset) return;
-    setPresetDetailSteps(stepsFromTemplate(selectedPreset, presetDetailVars));
+    setPresetDetailSteps(stepsFromTemplate(selectedPreset, presetDetailVars, agentList));
     setPresetStepsDirty(false);
     toast.info("已按模板信息重新生成步骤");
   };
@@ -409,7 +472,7 @@ function ChainsPage() {
     if (!detail) return;
     const api = getDesktop();
     if (!api?.orchestrationUpdateChain) return;
-    const steps = validSteps(detailSteps);
+    const steps = validSteps(detailSteps, agentList);
     if (!steps.length) {
       toast.warning("至少保留一步，并填好 Agent 与本步任务");
       return;
@@ -484,7 +547,7 @@ function ChainsPage() {
     if (!detail) return;
     const api = getDesktop();
     if (!api?.orchestrationUpdateChain) return;
-    const steps = normalizeSteps(detail.state?.steps);
+    const steps = normalizeSteps(detail.state?.steps, agentList);
     const r = await api.orchestrationUpdateChain({
       id: detail.id,
       state: { status: "idle", currentIndex: 0, steps },
@@ -568,6 +631,14 @@ function ChainsPage() {
           </div>
         </div>
 
+        {wbsWorkspaceChains.length > 0 && !q.trim() ? (
+          <div className="mb-3 rounded-lg border border-sky-400/35 bg-sky-500/8 px-3 py-2 text-[12px] leading-relaxed text-sky-950 dark:text-sky-100">
+            已找到 <strong>{wbsWorkspaceChains.length}</strong> 条工作区 WBS 任务链（如{" "}
+            <strong>{wbsWorkspaceChains[0]?.name}</strong>），已排在列表最前。若仍看不到，请选分类{" "}
+            <strong>自定义</strong> 或搜索 <strong>WBS</strong>。
+          </div>
+        ) : null}
+
         {unifiedList.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border py-16 text-center">
             <Workflow className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
@@ -630,6 +701,7 @@ function ChainsPage() {
                   className={cn(
                     "group rounded-xl border bg-surface-elevated p-4 text-left shadow-xs transition hover:border-primary/30",
                     c.enabled ? "border-border" : "border-border opacity-75",
+                    activeChainId === c.id && "border-primary/45 ring-1 ring-primary/20",
                     activeChainId === c.id && chainRunning && "border-success/40",
                   )}
                 >
@@ -656,6 +728,11 @@ function ChainsPage() {
                         >
                           {isOfficial ? "官方" : "我的"}
                         </span>
+                        {activeChainId === c.id ? (
+                          <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                            当前链
+                          </span>
+                        ) : null}
                       </div>
                       <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
                         {c.description || `${c.stepCount} 步 · ${st.progress}`}
@@ -701,6 +778,7 @@ function ChainsPage() {
           steps={addSteps}
           agents={agentList}
           skills={skillList}
+          mcps={mcpList}
           submitting={addSubmitting}
           onNameChange={setAddName}
           onDescChange={setAddDesc}
@@ -715,6 +793,7 @@ function ChainsPage() {
           template={selectedPreset}
           agents={agentList}
           skills={skillList}
+          mcps={mcpList}
           createName={presetCreateName}
           vars={presetDetailVars}
           steps={presetDetailSteps}
@@ -744,6 +823,7 @@ function ChainsPage() {
           steps={detailSteps}
           agents={agentList}
           skills={skillList}
+          mcps={mcpList}
           dirty={detailDirty}
           saving={detailSaving}
           running={chainRunning && activeChainId === detail.id}
@@ -778,6 +858,7 @@ function PresetChainDrawer({
   template,
   agents,
   skills,
+  mcps,
   createName,
   vars,
   steps,
@@ -794,6 +875,7 @@ function PresetChainDrawer({
   template: ChainTemplate;
   agents: ClaudeAgentRow[];
   skills: ClaudeSkillRow[];
+  mcps: ClaudeMcpRow[];
   createName: string;
   vars: Record<ChainTemplateVarKey, string>;
   steps: ChainStep[];
@@ -808,6 +890,7 @@ function PresetChainDrawer({
   onActivate: () => void;
 }) {
   const DrawerIcon = chainCategoryIcon(template.category);
+  const unionSkills = useMemo(() => skillsUnionFromSteps(steps, agents), [steps, agents]);
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={onClose} />
@@ -843,15 +926,19 @@ function PresetChainDrawer({
             </div>
           </div>
 
-          {template.skills.length > 0 ? (
+          {unionSkills.length > 0 ? (
             <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
               <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
-                关联 Skill（按步骤自动分配）
+                关联 Skill（来自各步 Agent 配置）
               </div>
               <div className="mt-1.5 flex flex-wrap gap-1">
-                {template.skills.map((s) => (
-                  <span key={s} className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-foreground/80">
-                    {s}
+                {unionSkills.map((s) => (
+                  <span
+                    key={s}
+                    title={s}
+                    className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-foreground/80"
+                  >
+                    {skillDisplayNameForStem(s, skills)}
                   </span>
                 ))}
               </div>
@@ -898,7 +985,7 @@ function PresetChainDrawer({
             <p className="mb-2 text-[11px] text-muted-foreground">
               可先填上方项目信息自动生成步骤，也可直接改 Agent 和每步任务说明。
             </p>
-            <ChainStepsEditor steps={steps} agents={agents} skills={skills} onStepsChange={onStepsChange} />
+            <ChainStepsEditor steps={steps} agents={agents} skills={skills} mcps={mcps} onStepsChange={onStepsChange} />
           </div>
         </div>
 
@@ -924,6 +1011,7 @@ function ChainStepsEditor({
   steps,
   agents,
   skills,
+  mcps,
   onStepsChange,
   disabled = false,
   currentIndex = 0,
@@ -933,6 +1021,7 @@ function ChainStepsEditor({
   steps: ChainStep[];
   agents: ClaudeAgentRow[];
   skills: ClaudeSkillRow[];
+  mcps: ClaudeMcpRow[];
   onStepsChange: (s: ChainStep[]) => void;
   disabled?: boolean;
   currentIndex?: number;
@@ -944,6 +1033,10 @@ function ChainStepsEditor({
   return (
     <div className="space-y-2">
       {steps.map((step, i) => {
+        const agentRow = agents.find((a) => a.stem === step.agentName);
+        const stepSkills = step.agentName
+          ? suggestedSkillStemsForAgent(step.agentName, availableSkillStems, agentRow?.skills)
+          : [];
         const isDone = showProgress && i < currentIndex;
         const isCurrent = showProgress && i === currentIndex && currentIndex < steps.length;
         return (
@@ -990,11 +1083,13 @@ function ChainStepsEditor({
                   onStepsChange(
                     steps.map((x, j) => {
                       if (j !== i) return x;
-                      const next = { ...x, agentName: stem };
-                      if (!x.skills.length && stem) {
-                        next.skills = suggestedSkillStemsForAgent(stem, availableSkillStems);
-                      }
-                      return next;
+                      const agentRow = agents.find((a) => a.stem === stem);
+                      const nextSkills = suggestedSkillStemsForAgent(
+                        stem,
+                        availableSkillStems,
+                        agentRow?.skills,
+                      );
+                      return { ...x, agentName: stem, skills: nextSkills };
                     }),
                   )
                 }
@@ -1009,13 +1104,36 @@ function ChainStepsEditor({
                 className="h-8 rounded-md border border-border bg-background px-2 font-mono text-[12px] outline-none focus:border-primary disabled:opacity-50"
               />
             </div>
-            <SkillStemMultiSelect
-              value={step.skills}
-              skills={skills}
+            <div>
+              <div className="mb-1 text-[11px] font-medium text-foreground/80">关联 Skill</div>
+              <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-border bg-secondary/30 px-2 py-1.5">
+                {stepSkills.length ? (
+                  stepSkills.map((stem) => (
+                    <span
+                      key={stem}
+                      title={stem}
+                      className="inline-flex max-w-[9.5rem] shrink-0 items-center rounded bg-secondary/80 px-1.5 py-0.5 text-[10.5px] text-foreground/90"
+                    >
+                      <span className="truncate">{skillDisplayNameForStem(stem, skills)}</span>
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-[12px] text-muted-foreground">
+                    {step.agentName ? "该 Agent 未配置 Skill" : "请先选择 Agent"}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-[10.5px] text-muted-foreground">
+                由所选 Agent 的 <code className="font-mono text-[10px]">skills:</code> 自动带入，不可修改
+              </p>
+            </div>
+            <McpNameMultiSelect
+              value={step.mcps}
+              mcps={mcps}
               disabled={disabled}
-              placeholder="关联 Skill（可选）"
-              onChange={(stems) =>
-                onStepsChange(steps.map((x, j) => (j === i ? { ...x, skills: stems } : x)))
+              placeholder="关联 MCP（可选）"
+              onChange={(names) =>
+                onStepsChange(steps.map((x, j) => (j === i ? { ...x, mcps: names } : x)))
               }
             />
             <textarea
@@ -1049,6 +1167,7 @@ function ChainAddDrawer({
   steps,
   agents,
   skills,
+  mcps,
   submitting,
   onNameChange,
   onDescChange,
@@ -1061,6 +1180,7 @@ function ChainAddDrawer({
   steps: ChainStep[];
   agents: ClaudeAgentRow[];
   skills: ClaudeSkillRow[];
+  mcps: ClaudeMcpRow[];
   submitting: boolean;
   onNameChange: (v: string) => void;
   onDescChange: (v: string) => void;
@@ -1110,9 +1230,9 @@ function ChainAddDrawer({
           <div>
             <div className="mb-2 text-[12px] font-medium">步骤 *</div>
             <p className="mb-2 text-[11px] text-muted-foreground">
-              每一步：① Agent；② Skill（可选）；③ 任务说明。多步时点「添加步骤」。官方请回列表点虚线卡片。
+              每一步：① Agent（Skill 自动带入）；② MCP（可选）；③ 任务说明。多步时点「添加步骤」。官方请回列表点虚线卡片。
             </p>
-            <ChainStepsEditor steps={steps} agents={agents} skills={skills} onStepsChange={onStepsChange} />
+            <ChainStepsEditor steps={steps} agents={agents} skills={skills} mcps={mcps} onStepsChange={onStepsChange} />
           </div>
         </div>
 
@@ -1139,6 +1259,7 @@ function ChainDetailDrawer({
   steps,
   agents,
   skills,
+  mcps,
   dirty,
   saving,
   running,
@@ -1156,6 +1277,7 @@ function ChainDetailDrawer({
   steps: ChainStep[];
   agents: ClaudeAgentRow[];
   skills: ClaudeSkillRow[];
+  mcps: ClaudeMcpRow[];
   dirty: boolean;
   saving: boolean;
   running: boolean;
@@ -1215,6 +1337,7 @@ function ChainDetailDrawer({
               steps={steps}
               agents={agents}
               skills={skills}
+              mcps={mcps}
               onStepsChange={onStepsChange}
               disabled={running}
               currentIndex={idx}

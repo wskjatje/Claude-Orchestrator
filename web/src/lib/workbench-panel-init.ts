@@ -10,5 +10,5 @@ export function initWorkbenchBottomPanels() {
   initialized = true;
   initKnownPorts();
   installDebugConsoleCapture();
-  appendOutput("workbench", "Claude Workbench 已就绪");
+  appendOutput("workbench", "Claude Orchestrator 已就绪");
 }

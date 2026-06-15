@@ -1,3 +1,5 @@
+import { sortSessionsByLatest } from "@/lib/chat-session-activity";
+
 export type WorkspaceScopedSession = {
   id: string;
   workspacePath?: string | null;
@@ -5,8 +7,22 @@ export type WorkspaceScopedSession = {
 
 /** Stable key for grouping chat sessions by opened folder. */
 export function workspaceSessionKey(path: string | null | undefined): string {
-  const p = typeof path === "string" ? path.trim() : "";
+  const p = typeof path === "string" ? path.trim().replace(/\/+$/, "") : "";
   return p || "";
+}
+
+/** sessionStorage 缓存是否可用于当前工作区（路径一致，或缓存内已有本会话） */
+export function chatSessionsCacheMatchesWorkspace(
+  cachedWorkspacePath: string | null | undefined,
+  workspacePath: string | null | undefined,
+  cachedSessions: WorkspaceScopedSession[] = [],
+): boolean {
+  if (workspaceSessionKey(cachedWorkspacePath) === workspaceSessionKey(workspacePath)) {
+    return true;
+  }
+  const key = workspaceSessionKey(workspacePath);
+  if (!key || !cachedSessions.length) return false;
+  return cachedSessions.some((s) => sessionMatchesWorkspaceTab(s, workspacePath));
 }
 
 export function sessionBelongsToWorkspace(
@@ -101,32 +117,86 @@ export function pruneDuplicateEmptySessions<T extends SessionWithHistory>(
   workspacePath: string | null | undefined,
   keepId: string,
 ): T[] {
-  let keptEmpty = false;
+  const keepIsEmpty = sessions.some(
+    (s) =>
+      s.id === keepId &&
+      sessionMatchesWorkspaceTab(s, workspacePath) &&
+      s.history.length === 0,
+  );
   return sessions.filter((s) => {
     if (!sessionMatchesWorkspaceTab(s, workspacePath)) return true;
     if (s.history.length > 0) return true;
-    if (s.id === keepId) {
-      keptEmpty = true;
-      return true;
-    }
-    if (!keptEmpty) {
-      keptEmpty = true;
-      return true;
-    }
-    return false;
+    /** 活动 tab 已有对话 → 移除工作区内全部空 tab */
+    if (!keepIsEmpty) return false;
+    /** 仅保留 keepId 对应的空 tab */
+    return s.id === keepId;
   });
 }
+
+/**
+ * 回到聊天页时恢复活动会话：优先 activeByWorkspace；
+ * 若当前指向空会话且存在有历史的会话，则恢复最近一条（除非用户刚主动点了「新对话」）。
+ */
+export function pickActiveSessionIdOnResume(
+  sessions: SessionWithHistory[],
+  activeByWorkspace: Record<string, string> | undefined,
+  workspacePath: string | null | undefined,
+  fallbackActiveId?: string,
+  explicitEmptySessionId?: string | null,
+  cachedActiveId?: string | null,
+): string {
+  const scoped = filterSessionsForWorkspaceTabs(sessions, workspacePath);
+
+  /** 跨路由返回：优先恢复离开聊天页时的活动 tab（含未发送的新空会话） */
+  if (cachedActiveId && scoped.some((s) => s.id === cachedActiveId)) {
+    return cachedActiveId;
+  }
+
+  const preferred = pickActiveSessionId(sessions, activeByWorkspace, workspacePath, fallbackActiveId);
+  const prefSess = scoped.find((s) => s.id === preferred);
+  if (prefSess && prefSess.history.length > 0) return preferred;
+  if (prefSess && prefSess.history.length === 0 && prefSess.id === explicitEmptySessionId) {
+    return preferred;
+  }
+  /** activeByWorkspace 指向空 tab，但存在有历史的会话 → 回到最近工作会话（避免发送后/remount 落到「新对话」） */
+  const withHistory = sortSessionsByLatest(scoped.filter((s) => s.history.length > 0));
+  if (withHistory.length > 0) return withHistory[0]!.id;
+  return preferred || scoped[0]?.id || "";
+}
+
+export type ResolveWorkspaceChatSessionsOptions = {
+  /** 恢复聊天页时为 true（含 HMR 后从 sessionStorage 恢复） */
+  resume?: boolean;
+  explicitEmptySessionId?: string | null;
+  cachedActiveId?: string | null;
+};
 
 export function resolveWorkspaceChatSessions<T extends SessionWithHistory>(
   sessions: T[],
   workspacePath: string | null | undefined,
   activeByWorkspace: Record<string, string>,
   createSession: () => T,
+  options?: ResolveWorkspaceChatSessionsOptions | null,
 ): { sessions: T[]; activeId: string; activeByWorkspace: Record<string, string> } {
   const wsKey = workspaceSessionKey(workspacePath);
+  const resume = Boolean(options?.resume);
+  const explicitEmptySessionId = options?.explicitEmptySessionId ?? null;
+  const cachedActiveId = options?.cachedActiveId ?? null;
+  const pickActive = (fallback?: string) =>
+    resume
+      ? pickActiveSessionIdOnResume(
+          list,
+          activeByWorkspace,
+          workspacePath,
+          fallback ?? activeByWorkspace[wsKey],
+          explicitEmptySessionId,
+          cachedActiveId,
+        )
+      : pickActiveSessionId(list, activeByWorkspace, workspacePath, fallback ?? activeByWorkspace[wsKey]);
+
   let list = sessions;
   let scoped = filterSessionsForWorkspaceTabs(list, workspacePath);
-  let activeId = pickActiveSessionId(list, activeByWorkspace, workspacePath);
+  let activeId = pickActive();
 
   if (!scoped.length) {
     const ns = createSession();
@@ -134,7 +204,21 @@ export function resolveWorkspaceChatSessions<T extends SessionWithHistory>(
     activeId = ns.id;
     scoped = [ns];
   } else if (!scoped.some((s) => s.id === activeId)) {
-    activeId = pickActiveSessionId(list, activeByWorkspace, workspacePath);
+    activeId = pickActive();
+  }
+
+  if (resume) {
+    const withHistory = sortSessionsByLatest(scoped.filter((s) => s.history.length > 0));
+    const activeSess = scoped.find((s) => s.id === activeId);
+    if (
+      withHistory.length > 0 &&
+      activeSess &&
+      activeSess.history.length === 0 &&
+      activeId !== explicitEmptySessionId &&
+      !(cachedActiveId && cachedActiveId === activeId)
+    ) {
+      activeId = withHistory[0]!.id;
+    }
   }
 
   list = pruneDuplicateEmptySessions(list, workspacePath, activeId);

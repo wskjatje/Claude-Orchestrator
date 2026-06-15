@@ -30,6 +30,7 @@ import {
   runClaudeDoctor,
 } from './claude-cli.mjs'
 import {
+  checkUpstreamUpdates,
   getWorkbenchGitStatus,
   pullClaudeCodeFromGithub,
   pullFromPersonalGithub,
@@ -40,9 +41,16 @@ import {
   aggregateClaudeProjectUsage,
   listRecentClaudeProjectSessions,
 } from './claude-projects.mjs'
-import { checkAllMcpServers } from './mcp-health.mjs'
+import {
+  checkAllMcpServersAndPersist,
+  checkOneMcpServerAndPersist,
+  loadMcpHealthSnapshot,
+  mcpConfigPathFromSettings,
+  resolvedMcpConfigFile,
+} from './mcp-health-persist.mjs'
 import {
   buildMcpServerConfig,
+  bundledMcpPresetCommandLines,
   readMcpConfigFile,
   removeMcpServer,
   setMcpServerEnabled,
@@ -66,6 +74,7 @@ const cadBridge = require('./cad-bridge.cjs')
 const ccSwitch = require('./cc-switch.cjs')
 const projectLogs = require('./project-logs.cjs')
 const agentExecRegistry = require('./agent-exec-registry.cjs')
+const usageStats = require('./usage-stats.cjs')
 
 const PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -199,6 +208,61 @@ export const handlers = {
     return r
   },
 
+  'usage:getSummary': async (args) => {
+    const body = args?.[0] || {}
+    const settings = loadChatSettings()
+    const startMs = Number(body.startMs) > 0 ? Number(body.startMs) : 0
+    const endMs = Number(body.endMs) > 0 ? Number(body.endMs) : Date.now()
+    const data = usageStats.getUsageSummary({ startMs, endMs })
+    const claude = aggregateClaudeProjectUsage({
+      workspacePath: null,
+      startMs,
+      endMs,
+      tokenPricing: settings.tokenPricing || {},
+    })
+    const sessionCloud = data.summary?.sessionCloudCostUsd ?? 0
+    const cliCloud = claude.costUsd ?? 0
+    const cloudCostUsd = cliCloud + sessionCloud
+    const cloudTotalTok = Math.max(
+      claude.totalTokens ?? 0,
+      data.summary?.cloudTotalTok ?? 0,
+    )
+    const summary = {
+      ...(data.summary || {}),
+      cloudCostUsd,
+      cliCostUsd: cliCloud,
+      sessionCloudCostUsd: sessionCloud,
+      localCostUsd: 0,
+      cloudTotalTok,
+      cloudTurns: Math.max(claude.turns ?? 0, data.summary?.cloudTurns ?? 0),
+      cloudCostFormatted: formatUsd(cloudCostUsd),
+      localCostFormatted: formatUsd(0),
+    }
+    return {
+      ok: true,
+      ...data,
+      summary,
+      claudeUsage: {
+        inputTokens: claude.inputTokens,
+        outputTokens: claude.outputTokens,
+        totalTokens: claude.totalTokens,
+        turns: claude.turns,
+        costUsd: cliCloud,
+        costUsdFormatted: formatUsd(cliCloud),
+      },
+    }
+  },
+
+  'usage:rebuild': async () => {
+    const sess = loadChatSessions()
+    const settings = loadChatSettings()
+    const reg = usageStats.rebuildFromSessions(sess.sessions || [], {
+      tokenPricing: settings.tokenPricing || {},
+      cloudModelCatalog: settings.cloudModelCatalog || [],
+    })
+    return { ok: true, lastBuiltAt: reg.lastBuiltAt ?? null }
+  },
+
   'claude-code:prompt': async (args) => {
     const p = args?.[0] || {}
     return runClaudeCodePrint({
@@ -311,21 +375,35 @@ export const handlers = {
   },
 
   'mcp:healthCheckAll': async () => {
-    const settings = loadChatSettings()
-    const configPath = settings.mcpConfigAbsolutePath?.trim() || ''
-    return checkAllMcpServers(configPath || undefined)
+    const configPath = mcpConfigPathFromSettings()
+    const result = await checkAllMcpServersAndPersist(configPath)
+    if (result.ok) {
+      broadcast('mcp-health:changed', {
+        configPath: result.path,
+        okCount: result.okCount,
+        total: result.total,
+      })
+    }
+    return result
   },
 
   'mcp:healthCheckOne': async (args) => {
     const name = String(args?.[0]?.name || '').trim()
     if (!name) return { ok: false, error: '缺少 name' }
-    const settings = loadChatSettings()
-    const configPath = settings.mcpConfigAbsolutePath?.trim() || ''
-    const all = await checkAllMcpServers(configPath || undefined)
-    if (!all.ok) return all
-    const entry = all.servers.find((s) => s.name === name)
-    if (!entry) return { ok: false, error: `未找到 MCP：${name}` }
-    return { ok: true, server: entry }
+    const configPath = mcpConfigPathFromSettings()
+    const result = await checkOneMcpServerAndPersist(configPath, name)
+    if (result.ok && result.server) {
+      broadcast('mcp-health:changed', { configPath: resolvedMcpConfigFile(configPath).path, name })
+    }
+    return result
+  },
+
+  'mcp:getHealthSnapshot': async () => {
+    const configPath = mcpConfigPathFromSettings()
+    const read = resolvedMcpConfigFile(configPath)
+    if (!read.ok) return { ok: false, error: read.error, snapshot: null, configPath: read.path ?? null }
+    const snapshot = loadMcpHealthSnapshot(read.path)
+    return { ok: true, configPath: read.path, snapshot, missing: read.missing === true }
   },
 
   'claude-code:chooseCliExecutable': async () => ({
@@ -336,6 +414,11 @@ export const handlers = {
   'claude-code:restartDesktop': async () => ({ ok: true }),
 
   'workbench-git:status': async () => getWorkbenchGitStatus(),
+
+  'workbench-git:checkUpstream': async (args) => {
+    const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+    return checkUpstreamUpdates({ upstreamGithubRepo: body.upstreamGithubRepo })
+  },
 
   'workbench-git:pullUpstream': async (args) => {
     const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
@@ -356,12 +439,15 @@ export const handlers = {
   'workbench-git:pushPersonal': async (args) => {
     const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
     const r = await pushClaudeCodeToPersonalGithub({
-      clearPersonalConfig: body.clearPersonalConfig !== false,
       reason: body.reason,
       message: body.message,
       personalGithubRepo: body.personalGithubRepo,
     })
-    if (r.ok && r.clearedConfig) broadcast('chat-settings:changed', {})
+    if (r.clearedConfig) {
+      broadcast('chat-settings:changed', {})
+      broadcast('chat-sessions:changed', {})
+      broadcast('workspace:changed', { workspace: null })
+    }
     return r
   },
 
@@ -400,6 +486,11 @@ export const handlers = {
     }
     return { ok: true }
   },
+
+  'claudeConfig:bundledMcpCommandLines': async () => ({
+    ok: true,
+    lines: bundledMcpPresetCommandLines(),
+  }),
 
   'claudeConfig:readJson': async (args) => {
     const name = args?.[0]
@@ -599,3 +690,14 @@ export async function dispatchRpc(channel, args = []) {
 }
 
 ensureDefaultWorkspace()
+
+try {
+  const sess = loadChatSessions()
+  const settings = loadChatSettings()
+  usageStats.rebuildFromSessions(sess.sessions || [], {
+    tokenPricing: settings.tokenPricing || {},
+    cloudModelCatalog: settings.cloudModelCatalog || [],
+  })
+} catch {
+  /* 启动时重建用量统计，失败不阻断 */
+}

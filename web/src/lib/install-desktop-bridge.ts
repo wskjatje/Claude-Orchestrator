@@ -161,10 +161,15 @@ export function installDesktopBridge() {
     claudeCodeDoctor: () => rpc('claude-code:doctor'),
     claudeProjectsListRecent: (opts) => rpc('claude-projects:listRecent', opts),
     claudeProjectsUsageSummary: (opts) => rpc('claude-projects:usageSummary', opts),
+    getUsageSummary: (opts) => rpc('usage:getSummary', opts),
+    rebuildUsageStats: () => rpc('usage:rebuild'),
     mcpHealthCheckAll: () => rpc('mcp:healthCheckAll'),
     mcpHealthCheckOne: (name) => rpc('mcp:healthCheckOne', { name }),
+    mcpGetHealthSnapshot: () => rpc('mcp:getHealthSnapshot'),
     claudeCodeCliUpdate: () => rpc('claude-code:cliUpdate'),
     workbenchGitStatus: () => rpc('workbench-git:status'),
+    workbenchGitCheckUpstream: (payload?: { upstreamGithubRepo?: string }) =>
+      rpc('workbench-git:checkUpstream', payload ? [payload] : []),
     workbenchGitPullUpstream: (payload?: { upstreamGithubRepo?: string }) =>
     rpc('workbench-git:pullUpstream', payload ? [payload] : []),
     workbenchGitPullPersonal: (payload?: { personalGithubRepo?: string }) =>
@@ -176,6 +181,8 @@ export function installDesktopBridge() {
     getLocalWallClock: () => rpc('system:localWallClock'),
     readClaudeAgentMarkdown: (basename) => rpc('claudeAgents:readMarkdown', basename),
     readClaudeSkillMarkdown: (basename) => rpc('claudeSkills:readMarkdown', basename),
+    saveClaudeSkillMarkdown: (body) => rpc('claudeSkills:saveMarkdown', body),
+    syncAgentSkillsFromGithub: (body) => rpc('agents:syncSkillsFromGithub', body ? [body] : []),
     readClaudeDotfileMarkdown: (basename) => rpc('claudeDotfiles:readMarkdown', basename),
     listClaudeAgentMarkdown: () => rpc('claudeAgents:listMarkdown'),
     openClaudeUserSubdir: (which) => rpc('claude:openUserSubdir', which),
@@ -185,6 +192,7 @@ export function installDesktopBridge() {
       rpc('claudeAgents:openMarkdownFile', basename),
     listClaudeSkillMarkdown: () => rpc('claudeSkills:listMarkdown'),
     readClaudeConfigJson: (name) => rpc('claudeConfig:readJson', name),
+    bundledMcpCommandLines: () => rpc('claudeConfig:bundledMcpCommandLines'),
     upsertClaudeMcpServer: (payload) => rpc('claudeConfig:upsertMcpServer', payload),
     removeClaudeMcpServer: (name) => rpc('claudeConfig:removeMcpServer', { name }),
     setClaudeMcpServerEnabled: (payload) => rpc('claudeConfig:setMcpServerEnabled', payload),
@@ -201,7 +209,8 @@ export function installDesktopBridge() {
     orchestrationDeleteChain: (id) => rpc('orchestration:deleteChain', { id }),
     orchestrationActivateChain: (id) => rpc('orchestration:activateChain', { id }),
     orchestrationToggleChainEnabled: (payload) => rpc('orchestration:toggleChainEnabled', payload),
-    orchestrationStartChainRun: () => rpc('orchestration:startChainRun'),
+    orchestrationStartChainRun: (payload?: { pinnedSessionId?: string }) =>
+      rpc('orchestration:startChainRun', payload),
     orchestrationStopChainRun: () => rpc('orchestration:stopChainRun'),
     orchestrationGetChainRunStatus: () => rpc('orchestration:getChainRunStatus'),
     multiAgentExecuteDelegation: (payload) =>

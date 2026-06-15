@@ -14,6 +14,7 @@ export type ReadWorkspaceTextResult = {
 
 const DEFAULT_WBS_CANDIDATE_PATHS = [
   "docs/wbs.md",
+  "docs/sprint-backlog.md",
   "docs/wbs_hie_egs.md",
   "docs/wbs_v1.2.md",
   "docs/wbs_v1.md",

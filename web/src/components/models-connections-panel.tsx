@@ -487,7 +487,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           onClick={() => void syncWorkbench()}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
         >
-          <Zap className="h-3.5 w-3.5" /> 同步 Workbench
+          <Zap className="h-3.5 w-3.5" /> 同步 Orchestrator
         </button>
       </div>
 

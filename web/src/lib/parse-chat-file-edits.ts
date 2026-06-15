@@ -6,6 +6,7 @@ import {
 export type ChatFileEditLine = { kind: "add" | "del" | "ctx"; text: string };
 
 export type ChatFileEdit = {
+  id: string;
   path: string;
   language: string;
   added: number;
@@ -46,7 +47,7 @@ export function fileBadgeFromPath(path: string): string {
   return ext.slice(0, 4);
 }
 
-function linesToAddPreview(content: string, maxLines = 14): ChatFileEditLine[] {
+function linesToAddPreview(content: string, maxLines = 28): ChatFileEditLine[] {
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   return lines.slice(0, maxLines).map((text) => ({ kind: "add", text }));
 }
@@ -61,7 +62,15 @@ function countLineStats(lines: ChatFileEditLine[]): { added: number; removed: nu
   return { added, removed };
 }
 
-function parseDiffBody(body: string, fallbackPath?: string): ChatFileEdit | null {
+function makeEdit(
+  seq: { n: number },
+  partial: Omit<ChatFileEdit, "id">,
+): ChatFileEdit {
+  seq.n += 1;
+  return { id: `${partial.path}::${seq.n}`, ...partial };
+}
+
+function parseDiffBody(body: string, fallbackPath: string | undefined, seq: { n: number }): ChatFileEdit | null {
   const lines = body.replace(/\r\n/g, "\n").split("\n");
   let path = fallbackPath ?? "";
   const previewLines: ChatFileEditLine[] = [];
@@ -82,13 +91,13 @@ function parseDiffBody(body: string, fallbackPath?: string): ChatFileEdit | null
 
   if (!path && previewLines.length === 0) return null;
   const stats = countLineStats(previewLines);
-  return {
+  return makeEdit(seq, {
     path: path || "file",
     language: languageFromPath(path || ""),
     added: stats.added,
     removed: stats.removed,
-    previewLines: previewLines.slice(0, 16),
-  };
+    previewLines: previewLines.slice(0, 32),
+  });
 }
 
 function parsePathFromCodeInfo(info: string): string | null {
@@ -102,7 +111,7 @@ function parsePathFromCodeInfo(info: string): string | null {
   return pathish?.[1]?.replace(/\\/g, "/") ?? null;
 }
 
-function parseInlineWrittenPaths(text: string): ChatFileEdit[] {
+function parseInlineWrittenPaths(text: string, seq: { n: number }): ChatFileEdit[] {
   const edits: ChatFileEdit[] = [];
   const seen = new Set<string>();
   const patterns = [
@@ -117,14 +126,16 @@ function parseInlineWrittenPaths(text: string): ChatFileEdit[] {
       const p = m[1]?.replace(/\\/g, "/").trim();
       if (!p || seen.has(p)) continue;
       seen.add(p);
-      edits.push({
-        path: p,
-        language: languageFromPath(p),
-        added: 0,
-        removed: 0,
-        previewLines: [],
-        summaryOnly: true,
-      });
+      edits.push(
+        makeEdit(seq, {
+          path: p,
+          language: languageFromPath(p),
+          added: 0,
+          removed: 0,
+          previewLines: [],
+          summaryOnly: true,
+        }),
+      );
     }
   }
   return edits;
@@ -137,7 +148,8 @@ function stripInlineWrittenClaims(text: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
-function parseWrittenPathSummary(text: string): ChatFileEdit[] {
+
+function parseWrittenPathSummary(text: string, seq: { n: number }): ChatFileEdit[] {
   const edits: ChatFileEdit[] = [];
   const blockRe = /【工作区已写入】[^\n]*\n((?:- `[^`\n]+`\n?)+)/g;
   let m: RegExpExecArray | null;
@@ -146,14 +158,16 @@ function parseWrittenPathSummary(text: string): ChatFileEdit[] {
     for (const raw of lines) {
       const p = raw.replace(/^- `|`$/g, "").trim();
       if (!p) continue;
-      edits.push({
-        path: p,
-        language: languageFromPath(p),
-        added: 0,
-        removed: 0,
-        previewLines: [],
-        summaryOnly: true,
-      });
+      edits.push(
+        makeEdit(seq, {
+          path: p,
+          language: languageFromPath(p),
+          added: 0,
+          removed: 0,
+          previewLines: [],
+          summaryOnly: true,
+        }),
+      );
     }
   }
   return edits;
@@ -163,20 +177,24 @@ function parseWrittenPathSummary(text: string): ChatFileEdit[] {
 export function parseChatFileEdits(text: string): { edits: ChatFileEdit[]; stripped: string } {
   if (!text?.trim()) return { edits: [], stripped: text };
 
-  const byPath = new Map<string, ChatFileEdit>();
+  const seq = { n: 0 };
+  const edits: ChatFileEdit[] = [];
   let stripped = text;
 
   for (const item of parseWorkspaceWriteItemsFromBubble(text)) {
     const previewLines = linesToAddPreview(item.content);
-    byPath.set(item.path, {
-      path: item.path,
-      language: languageFromPath(item.path),
-      added: item.content.split("\n").length,
-      removed: 0,
-      previewLines,
-    });
+    const lineCount = item.content.replace(/\r\n/g, "\n").split("\n").length;
+    edits.push(
+      makeEdit(seq, {
+        path: item.path,
+        language: languageFromPath(item.path),
+        added: lineCount,
+        removed: 0,
+        previewLines,
+      }),
+    );
   }
-  if (byPath.size > 0) {
+  if (edits.length > 0) {
     stripped = stripWorkspaceWriteFencesForHistory(stripped);
   }
 
@@ -184,8 +202,8 @@ export function parseChatFileEdits(text: string): { edits: ChatFileEdit[]; strip
   let dm: RegExpExecArray | null;
   const diffRemovals: { start: number; end: number }[] = [];
   while ((dm = diffRe.exec(text)) !== null) {
-    const edit = parseDiffBody(dm[1] ?? "");
-    if (edit) byPath.set(edit.path, edit);
+    const edit = parseDiffBody(dm[1] ?? "", undefined, seq);
+    if (edit) edits.push(edit);
     diffRemovals.push({ start: dm.index, end: dm.index + dm[0].length });
   }
   for (let i = diffRemovals.length - 1; i >= 0; i--) {
@@ -204,13 +222,15 @@ export function parseChatFileEdits(text: string): { edits: ChatFileEdit[]; strip
     const body = (cm[2] ?? "").replace(/\n$/, "");
     if (!body.trim()) continue;
     const previewLines = linesToAddPreview(body);
-    byPath.set(path, {
-      path,
-      language: languageFromPath(path),
-      added: body.split("\n").length,
-      removed: 0,
-      previewLines,
-    });
+    edits.push(
+      makeEdit(seq, {
+        path,
+        language: languageFromPath(path),
+        added: body.split("\n").length,
+        removed: 0,
+        previewLines,
+      }),
+    );
     codeRemovals.push({ start: cm.index, end: cm.index + cm[0].length });
   }
   for (let i = codeRemovals.length - 1; i >= 0; i--) {
@@ -218,11 +238,11 @@ export function parseChatFileEdits(text: string): { edits: ChatFileEdit[]; strip
     stripped = stripped.slice(0, start) + stripped.slice(end);
   }
 
-  for (const edit of parseWrittenPathSummary(text)) {
-    if (!byPath.has(edit.path)) byPath.set(edit.path, edit);
+  for (const edit of parseWrittenPathSummary(text, seq)) {
+    if (!edits.some((e) => e.path === edit.path)) edits.push(edit);
   }
-  for (const edit of parseInlineWrittenPaths(text)) {
-    if (!byPath.has(edit.path)) byPath.set(edit.path, edit);
+  for (const edit of parseInlineWrittenPaths(text, seq)) {
+    if (!edits.some((e) => e.path === edit.path)) edits.push(edit);
   }
 
   stripped = stripInlineWrittenClaims(stripped);
@@ -231,5 +251,43 @@ export function parseChatFileEdits(text: string): { edits: ChatFileEdit[]; strip
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  return { edits: Array.from(byPath.values()), stripped };
+  return { edits, stripped };
+}
+
+/** 按路径取下一个未使用的改动（用于 Cursor 式 inline 穿插） */
+export function takeEditForPath(
+  path: string,
+  pool: Map<string, ChatFileEdit[]>,
+  used: Set<string>,
+): ChatFileEdit | null {
+  const queue = pool.get(path);
+  if (!queue?.length) return null;
+  while (queue.length) {
+    const edit = queue.shift()!;
+    if (used.has(edit.id)) continue;
+    used.add(edit.id);
+    return edit;
+  }
+  return null;
+}
+
+export function buildEditPool(edits: ChatFileEdit[]): Map<string, ChatFileEdit[]> {
+  const pool = new Map<string, ChatFileEdit[]>();
+  for (const edit of edits) {
+    const list = pool.get(edit.path) ?? [];
+    list.push(edit);
+    pool.set(edit.path, list);
+  }
+  return pool;
+}
+
+export function summaryEditForPath(path: string, seq: { n: number }): ChatFileEdit {
+  return makeEdit(seq, {
+    path,
+    language: languageFromPath(path),
+    added: 0,
+    removed: 0,
+    previewLines: [],
+    summaryOnly: true,
+  });
 }

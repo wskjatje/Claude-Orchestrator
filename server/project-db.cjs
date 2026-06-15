@@ -90,9 +90,11 @@ function migrateLegacyIntoDb(db, legacyDir) {
 
   const pairs = [
     ['workspace', path.join(legacyDir, 'workspace.json')],
+    ['workspace_history', path.join(legacyDir, 'workspace-history.json')],
     ['chat_settings', path.join(legacyDir, 'chat-settings.json')],
     ['chat_sessions', path.join(legacyDir, 'chat-sessions.json')],
     ['scheduled_tasks', path.join(legacyDir, 'scheduled-tasks.json')],
+    ['ui_prefs', path.join(legacyDir, 'ui-prefs.json')],
   ]
 
   for (const [key, filePath] of pairs) {
@@ -101,6 +103,9 @@ function migrateLegacyIntoDb(db, legacyDir) {
     if (raw == null) continue
     if (key === 'workspace') {
       dbSet(db, key, raw)
+    } else if (key === 'workspace_history') {
+      const entries = Array.isArray(raw.entries) ? raw.entries : Array.isArray(raw) ? raw : []
+      dbSet(db, key, { version: 1, entries })
     } else if (key === 'scheduled_tasks') {
       const tasks = Array.isArray(raw.tasks) ? raw.tasks : Array.isArray(raw) ? raw : []
       dbSet(db, key, { version: 1, tasks })

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
 import {
   Bot, Search, Plus, FolderOpen, Power, Hash,
@@ -21,9 +21,22 @@ import {
   type ParsedAgentMarkdown,
 } from "@/lib/agent-markdown";
 import { optimizeAgentMarkdownViaWorkflow } from "@/lib/agent-self-learning-optimize";
+import { SkillStemMultiSelect } from "@/components/skill-stem-multi-select";
+import { useClaudeSkillList, type ClaudeSkillRow } from "@/hooks/use-claude-skill-list";
+import {
+  formatAgentToolsForDisplay,
+  parseAgentToolsFromInput,
+  defaultAgentToolLabels,
+  getAgentToolLabel,
+} from "@/lib/agent-tool-labels";
+import {
+  syncAgentSkillsAndTools,
+  syncAllKnownAgentSkillsAndTools,
+} from "@/lib/sync-agent-skills-tools";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/agents")({
-  head: () => ({ meta: [{ title: "智能体 · 本地代码助手" }] }),
+  head: () => ({ meta: [{ title: "智能体 · Claude Orchestrator" }] }),
   component: AgentsPage,
 });
 
@@ -129,6 +142,9 @@ function AgentsPage() {
   const [orchInvokeHint, setOrchInvokeHint] = useState<string>("");
   const [modelPools, setModelPools] = useState<ModelCatalogPools>({ cloudModels: [], localModels: [] });
   const [editorLoading, setEditorLoading] = useState(false);
+  const [skillsSyncing, setSkillsSyncing] = useState(false);
+  const autoSyncRanRef = useRef(false);
+  const { skills: skillList, reload: reloadSkillList } = useClaudeSkillList();
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -264,9 +280,27 @@ function AgentsPage() {
         : e,
     );
     const savedStem = stem || agentStemFromBasename(basename);
+    const wasCreate = editor.mode === "create";
+    const hadSkills = editor.meta.skills.length > 0;
     await reloadAgentList();
     setActiveId(savedStem);
-  }, [editor, reloadAgentList]);
+    if (api.syncAgentSkillsFromGithub || api.saveClaudeSkillMarkdown) {
+      void syncAgentSkillsAndTools(api, savedStem, basename).then(async (r) => {
+        if (r.ok) {
+          await reloadSkillList();
+          if (wasCreate || !hadSkills) {
+            const read = await api.readClaudeAgentMarkdown(basename);
+            const parsed = parseAgentMarkdown(read.ok && read.content ? read.content : "");
+            setEditor((e) =>
+              e && e.basename === basename
+                ? { ...e, meta: parsed, hint: `已保存并关联 ${r.skillStems.length} 个 Skill` }
+                : e,
+            );
+          }
+        }
+      });
+    }
+  }, [editor, reloadAgentList, reloadSkillList]);
 
   const runEditorSelfLearning = useCallback(async () => {
     const api = getDesktop();
@@ -307,10 +341,90 @@ function AgentsPage() {
     );
   }, [editor]);
 
+  const syncEditorSkillsAndTools = useCallback(async () => {
+    const api = getDesktop();
+    if (!api || !editor || editor.mode === "create") return;
+    const stem = stemFromBasenameInput(editor.stem);
+    const basename = editor.basename || (stem ? `${stem}.md` : "");
+    if (!stem || !basename) {
+      setEditor((e) => (e ? { ...e, error: "请先保存 Agent 文件名" } : e));
+      return;
+    }
+    setSkillsSyncing(true);
+    const r = await syncAgentSkillsAndTools(api, stem, basename);
+    setSkillsSyncing(false);
+    if (!r.ok) {
+      setEditor((e) => (e ? { ...e, error: r.error ?? "同步失败" } : e));
+      toast.error(r.error ?? "同步 Skill 与工具失败");
+      return;
+    }
+    const read = await api.readClaudeAgentMarkdown(basename);
+    const parsed = parseAgentMarkdown(read.ok && read.content ? read.content : "");
+    setEditor((e) =>
+      e
+        ? {
+            ...e,
+            meta: parsed,
+            dirty: false,
+            error: null,
+            hint: `已同步 ${r.skillStems.length} 个 Skill、tool ${formatAgentToolsForDisplay(r.tools)}${
+              r.createdSkills.length ? `（新建 ${r.createdSkills.length} 个 Skill 于 ~/.claude/skills/）` : ""
+            }`,
+          }
+        : e,
+    );
+    await reloadSkillList();
+    toast.success(
+      r.downloadedSkills?.length
+        ? `已从 GitHub 下载 ${r.downloadedSkills.length} 个 Skill 并写入 Agent 关联`
+        : r.createdSkills.length
+          ? `已创建 ${r.createdSkills.length} 个 Skill 并写入 Agent 关联`
+          : "Skill 已存在，已更新 Agent 关联与工具",
+    );
+  }, [editor, reloadSkillList]);
+
+  const syncAllAgentsSkillsAndTools = useCallback(async () => {
+    const api = getDesktop();
+    if (!api?.saveClaudeSkillMarkdown) {
+      toast.error("请重启 npm run web:dev:full 以加载 Skill 保存接口");
+      return;
+    }
+    const rows = items
+      .filter((a) => a.markdownFile)
+      .map((a) => ({
+        stem: routingStemForInvoke(a),
+        basename: agentMarkdownBasename(a),
+      }));
+    if (!rows.length) {
+      toast.info("没有可同步的智能体");
+      return;
+    }
+    setSkillsSyncing(true);
+    const results = await syncAllKnownAgentSkillsAndTools(api, rows);
+    setSkillsSyncing(false);
+    await reloadAgentList();
+    await reloadSkillList();
+    const created = results.reduce((n, r) => n + r.createdSkills.length, 0);
+    const failed = results.filter((r) => !r.ok).length;
+    if (failed) {
+      toast.warning(`完成 ${results.length - failed}/${results.length}；GitHub/模板 Skill ${created} 个`);
+    } else {
+      const downloaded = results.reduce((n, r) => n + (r.downloadedSkills?.length ?? 0), 0);
+      toast.success(
+        downloaded
+          ? `已同步 ${results.length} 个智能体：从 GitHub 下载 ${downloaded} 个 Skill（~/.claude/skills/）`
+          : `已同步 ${results.length} 个智能体，新建 Skill ${created} 个（位于 ~/.claude/skills/）`,
+      );
+    }
+    if (editor?.mode === "edit" && active) {
+      await loadEditorForAgent(active);
+    }
+  }, [items, editor, active, reloadAgentList, reloadSkillList, loadEditorForAgent]);
+
   const openAgentsFolder = useCallback(async () => {
     const api = getDesktop();
     if (!api?.openClaudeUserSubdir) {
-      window.alert("当前环境无法打开系统文件夹，请使用「本地代码助手」桌面客户端。");
+      window.alert("当前环境无法打开系统文件夹，请使用「Claude Orchestrator」桌面客户端。");
       return;
     }
     const r = await api.openClaudeUserSubdir("agents");
@@ -333,6 +447,25 @@ function AgentsPage() {
   useEffect(() => {
     void reloadAgentList();
   }, [reloadAgentList]);
+
+  useEffect(() => {
+    const api = getDesktop();
+    if (!api || !desktop || !listFromDisk || listLoading || autoSyncRanRef.current) return;
+    autoSyncRanRef.current = true;
+    const rows = items
+      .filter((a) => a.markdownFile)
+      .map((a) => ({
+        stem: routingStemForInvoke(a),
+        basename: agentMarkdownBasename(a),
+      }));
+    if (!rows.length) return;
+    void syncAllKnownAgentSkillsAndTools(api, rows, {
+      onlyMissing: true,
+      overwrite: false,
+    }).then(() => {
+      void reloadSkillList();
+    });
+  }, [desktop, listFromDisk, listLoading, items, reloadSkillList]);
 
   useEffect(() => {
     const api = getDesktop();
@@ -382,6 +515,15 @@ function AgentsPage() {
         description="浏览、编辑与试跑 ~/.claude/agents/ 下的角色规则"
         actions={
           <div className="flex max-w-full flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void syncAllAgentsSkillsAndTools()}
+              disabled={skillsSyncing || !desktop || listLoading}
+              title="按当前 ~/.claude/agents/ 列表全量同步 Skill 与 tools 关联（GitHub → 本地模板）"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
+            >
+              <SparkIcon className={cn("h-3.5 w-3.5", skillsSyncing && "animate-pulse")} /> 同步 Skill 与工具
+            </button>
             <button
               type="button"
               onClick={() => void reloadAgentList()}
@@ -509,7 +651,7 @@ function AgentsPage() {
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           {a.tools.map(t => (
                             <span key={t} className="inline-flex items-center gap-1 rounded bg-code-bg px-1.5 py-0.5 font-mono text-[10px] text-foreground/70">
-                              <Hash className="h-2.5 w-2.5" />{t}
+                              <Hash className="h-2.5 w-2.5" />{getAgentToolLabel(t)}
                             </span>
                           ))}
                         </div>
@@ -545,6 +687,7 @@ function AgentsPage() {
           editorLoading={editorLoading}
           active={active}
           modelPools={modelPools}
+          skills={skillList}
           onClose={closeEditorDrawer}
           onStemChange={(stem) =>
             setEditor((ed) => (ed ? { ...ed, stem, dirty: true, error: null } : ed))
@@ -552,6 +695,8 @@ function AgentsPage() {
           onPatchMeta={patchEditorMeta}
           onSave={() => void saveEditor()}
           onOptimize={() => void runEditorSelfLearning()}
+          onSyncSkillsTools={() => void syncEditorSkillsAndTools()}
+          skillsSyncing={skillsSyncing}
           onToggleActive={active ? () => toggle(active.id) : undefined}
           onTryRun={active ? () => openTryAgentDrawer() : undefined}
         />
@@ -726,11 +871,14 @@ function AgentEditorDrawer({
   editorLoading,
   active,
   modelPools,
+  skills,
   onClose,
   onStemChange,
   onPatchMeta,
   onSave,
   onOptimize,
+  onSyncSkillsTools,
+  skillsSyncing = false,
   onToggleActive,
   onTryRun,
 }: {
@@ -738,11 +886,14 @@ function AgentEditorDrawer({
   editorLoading: boolean;
   active: Agent | null;
   modelPools: ModelCatalogPools;
+  skills: ClaudeSkillRow[];
   onClose: () => void;
   onStemChange: (stem: string) => void;
   onPatchMeta: (patch: Partial<ParsedAgentMarkdown>) => void;
   onSave: () => void;
   onOptimize: () => void;
+  onSyncSkillsTools?: () => void;
+  skillsSyncing?: boolean;
   onToggleActive?: () => void;
   onTryRun?: () => void;
 }) {
@@ -845,7 +996,7 @@ function AgentEditorDrawer({
                       onChange={(e) => onPatchMeta({ model: e.target.value })}
                       className="h-9 w-full rounded-lg border border-border bg-surface-elevated px-2 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                     >
-                      <option value="inherit">inherit（跟随父级 / Auto）</option>
+                      <option value="inherit">inherit（跟随聊天所选模型）</option>
                       {modelPools.cloudModels.length > 0 ? (
                         <optgroup label="云端 · 模型与连接">
                           {modelPools.cloudModels.map((m) => (
@@ -876,24 +1027,39 @@ function AgentEditorDrawer({
 
                 <div>
                   <label className="mb-1 flex items-center gap-1 text-[11.5px] font-medium text-foreground/80">
-                    <Wrench className="h-3 w-3 text-muted-foreground" /> 工具
+                    <SparkIcon className="h-3 w-3 text-muted-foreground" /> 关联 Skill
+                  </label>
+                  <SkillStemMultiSelect
+                    value={editor.meta.skills}
+                    skills={skills}
+                    placeholder="选择 Skill（写入 frontmatter skills）"
+                    onChange={(stems) => onPatchMeta({ skills: stems })}
+                  />
+                  <p className="mt-1 text-[10.5px] text-muted-foreground">
+                    保存为 <code className="font-mono text-[10px]">skills:</code>；创建任务链时选择该 Agent 会默认带入。
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-1 flex items-center gap-1 text-[11.5px] font-medium text-foreground/80">
+                    <Wrench className="h-3 w-3 text-muted-foreground" /> tool
                     <span className="font-normal text-muted-foreground">（逗号分隔）</span>
                   </label>
                   <input
                     type="text"
-                    value={editor.meta.tools.join(", ")}
+                    value={formatAgentToolsForDisplay(editor.meta.tools)}
                     onChange={(e) =>
                       onPatchMeta({
-                        tools: e.target.value
-                          .split(/[,，\s]+/)
-                          .map((t) => t.trim())
-                          .filter(Boolean),
+                        tools: parseAgentToolsFromInput(e.target.value),
                       })
                     }
-                    placeholder="read, edit, bash"
+                    placeholder={defaultAgentToolLabels()}
                     spellCheck={false}
-                    className="h-9 w-full rounded-lg border border-border bg-surface-elevated px-3 font-mono text-[12.5px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    className="h-9 w-full rounded-lg border border-border bg-surface-elevated px-3 text-[12.5px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
+                  <p className="mt-1 text-[10.5px] text-muted-foreground">
+                    保存为 <code className="font-mono text-[10px]">tools:</code>（磁盘仍为英文 id，如 read / edit）。
+                  </p>
                 </div>
               </section>
 
@@ -927,8 +1093,20 @@ function AgentEditorDrawer({
               </div>
             )}
 
-            {!isCreate && (onOptimize || onTryRun || onToggleActive) ? (
+            {!isCreate && (onOptimize || onTryRun || onToggleActive || onSyncSkillsTools) ? (
               <div className="mb-2 flex flex-wrap gap-1.5">
+                {onSyncSkillsTools ? (
+                  <button
+                    type="button"
+                    disabled={skillsSyncing || !(stemPreview || editor.stem)}
+                    onClick={onSyncSkillsTools}
+                    title="按本 Agent 的 frontmatter 或 stem 同步 Skill 文件并写回关联（不依赖固定预设表）"
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
+                  >
+                    <SparkIcon className={cn("h-3 w-3", skillsSyncing && "animate-pulse")} />
+                    {skillsSyncing ? "同步中…" : "同步 Skill 与工具"}
+                  </button>
+                ) : null}
                 {onOptimize ? (
                   <button
                     type="button"

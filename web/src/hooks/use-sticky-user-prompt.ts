@@ -20,13 +20,23 @@ function findActiveTurnIndex(root: HTMLElement, turnElements: (HTMLElement | nul
   return active;
 }
 
-/** Cursor 式：顶部固定栏展示当前滚动区域对应的用户提问 */
+/** 用户提问气泡已滚出可视区顶部 → 顶部固定栏承接展示（Cursor 同款） */
+function isUserBubbleScrolledAway(root: HTMLElement, userEl: HTMLElement | null): boolean {
+  if (!userEl) return false;
+  const rootTop = root.getBoundingClientRect().top + SCROLL_ANCHOR_OFFSET;
+  return userEl.getBoundingClientRect().bottom < rootTop + 2;
+}
+
+/** Cursor 式：列表内按时间展示完整轮次；仅当提问滚出视口时顶部固定栏显示该轮提问 */
 export function useStickyUserPrompt(
   scrollAreaRef: RefObject<HTMLDivElement | null>,
   messages: ChatBubbleMessage[],
+  opts?: { forceSticky?: boolean },
 ) {
   const turnRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const userRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [activeTurnIndex, setActiveTurnIndex] = useState(-1);
+  const [showStickyHeader, setShowStickyHeader] = useState(false);
 
   const { leadingOrphans, turns } = useMemo(() => groupChatTurns(messages), [messages]);
 
@@ -37,55 +47,81 @@ export function useStickyUserPrompt(
     [],
   );
 
+  const setUserRef = useCallback(
+    (index: number) => (el: HTMLDivElement | null) => {
+      userRefs.current[index] = el;
+    },
+    [],
+  );
+
   useEffect(() => {
     turnRefs.current.length = turns.length;
+    userRefs.current.length = turns.length;
   }, [turns.length]);
 
-  useLayoutEffect(() => {
+  const syncStickyState = useCallback(() => {
     const root = scrollAreaRef.current;
     if (!root || turns.length === 0) {
       setActiveTurnIndex(-1);
+      setShowStickyHeader(false);
       return;
     }
-    setActiveTurnIndex(findActiveTurnIndex(root, turnRefs.current));
-  }, [scrollAreaRef, turns, messages.length]);
+
+    const nextActive = findActiveTurnIndex(root, turnRefs.current);
+    setActiveTurnIndex((prev) => (prev === nextActive ? prev : nextActive));
+
+    if (opts?.forceSticky) {
+      setShowStickyHeader(true);
+      return;
+    }
+
+    const userEl =
+      nextActive >= 0 && nextActive < userRefs.current.length
+        ? userRefs.current[nextActive]
+        : null;
+    const away = isUserBubbleScrolledAway(root, userEl);
+    setShowStickyHeader((prev) => (prev === away ? prev : away));
+  }, [scrollAreaRef, turns.length, opts?.forceSticky]);
+
+  useLayoutEffect(() => {
+    syncStickyState();
+  }, [syncStickyState, messages.length, turns]);
 
   useEffect(() => {
     const root = scrollAreaRef.current;
-    if (!root || turns.length === 0) {
-      setActiveTurnIndex(-1);
-      return;
-    }
+    if (!root) return;
 
-    const sync = () => {
-      const next = findActiveTurnIndex(root, turnRefs.current);
-      setActiveTurnIndex((prev) => (prev === next ? prev : next));
-    };
-
-    sync();
-    root.addEventListener("scroll", sync, { passive: true });
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(sync) : null;
+    syncStickyState();
+    root.addEventListener("scroll", syncStickyState, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncStickyState) : null;
     ro?.observe(root);
     for (const el of turnRefs.current) {
       if (el) ro?.observe(el);
     }
+    for (const el of userRefs.current) {
+      if (el) ro?.observe(el);
+    }
 
     return () => {
-      root.removeEventListener("scroll", sync);
+      root.removeEventListener("scroll", syncStickyState);
       ro?.disconnect();
     };
-  }, [scrollAreaRef, turns]);
+  }, [scrollAreaRef, syncStickyState, turns.length]);
 
-  const activeUser =
-    activeTurnIndex >= 0 && activeTurnIndex < turns.length
-      ? turns[activeTurnIndex]?.user ?? null
-      : null;
+  const stickyUser =
+    showStickyHeader && activeTurnIndex >= 0 && activeTurnIndex < turns.length
+      ? (turns[activeTurnIndex]?.user ?? null)
+      : opts?.forceSticky && turns.length > 0
+        ? (turns[turns.length - 1]?.user ?? null)
+        : null;
 
   return {
     leadingOrphans,
     turns,
     activeTurnIndex,
-    activeUser,
+    stickyUser,
+    showStickyHeader: Boolean(opts?.forceSticky || showStickyHeader),
     setTurnRef,
+    setUserRef,
   };
 }

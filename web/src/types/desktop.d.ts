@@ -1,5 +1,5 @@
 export type OrchestrationState = {
-  steps?: { agentName?: string; taskId?: string; instruction?: string; skills?: string[] }[]
+  steps?: { agentName?: string; taskId?: string; instruction?: string; skills?: string[]; mcps?: string[] }[]
   currentIndex?: number
   status?: string
 }
@@ -48,6 +48,43 @@ export type WorkspacePanelTreeNode = {
 }
 
 /** 与会话 JSON（sanitizeChatMessage）对齐的单条消息 */
+export type UsageStatsSummary = {
+  msgUser: number
+  msgAssistant: number
+  sessionsInRange: number
+  promptTok: number
+  completionTok: number
+  totalTok: number
+  apiTurns: number
+  errors: number
+  latencySumMs: number
+  latencySamples: number
+  workspaceWriteHints: number
+  throughputTokPerSec: number | null
+  avgTokPerMsg: number | null
+  errRate: number
+  topModel: string
+  modelCounts: Record<string, number>
+  /** 云端 API 回合（会话落库 + CLI 合并前） */
+  cloudTurns?: number
+  localTurns?: number
+  cloudPromptTok?: number
+  cloudCompletionTok?: number
+  localPromptTok?: number
+  localCompletionTok?: number
+  cloudTotalTok?: number
+  localTotalTok?: number
+  /** 会话消息按单价表估算的云端费用 */
+  sessionCloudCostUsd?: number
+  /** CLI ~/.claude/projects jsonl 估算云端费用 */
+  cliCostUsd?: number
+  /** 合并后的云端费用（cli + session） */
+  cloudCostUsd?: number
+  cloudCostFormatted?: string
+  localCostUsd?: number
+  localCostFormatted?: string
+}
+
 export type ChatHistoryMsg = {
   role: 'user' | 'assistant'
   content: string
@@ -62,6 +99,10 @@ export type ChatHistoryMsg = {
   latencyMs?: number
   /** Ollama/API 失败写入助手气泡时为 true */
   requestError?: boolean
+  /** 计费来源：云端 API 或本地 Ollama */
+  billingSource?: 'cloud' | 'local'
+  /** 本条助手消息使用的模型（用于费用估算） */
+  modelId?: string
   attachments?: {
     kind: 'image'
     name?: string
@@ -296,6 +337,9 @@ export type DesktopApi = {
       bridgeUrl: string
       localSecret?: string
       defaultSessionTag?: string
+      layoutStorage?: Record<string, string>
+      skipCheckpointConfirm?: boolean
+      defaultTerminalShell?: 'bash' | 'zsh'
     }
     error?: string
   }>
@@ -304,6 +348,9 @@ export type DesktopApi = {
     bridgeUrl?: string
     localSecret?: string
     defaultSessionTag?: string
+    layoutStorage?: Record<string, string>
+    skipCheckpointConfirm?: boolean
+    defaultTerminalShell?: 'bash' | 'zsh'
   }) => Promise<{
     ok: boolean
     prefs?: {
@@ -311,6 +358,9 @@ export type DesktopApi = {
       bridgeUrl: string
       localSecret?: string
       defaultSessionTag?: string
+      layoutStorage?: Record<string, string>
+      skipCheckpointConfirm?: boolean
+      defaultTerminalShell?: 'bash' | 'zsh'
     }
     error?: string
   }>
@@ -398,6 +448,14 @@ export type DesktopApi = {
     version?: number
     activeId: string
     activeByWorkspace?: Record<string, string>
+    composerDrafts?: Record<
+      string,
+      {
+        input?: string
+        pendingImages?: unknown[]
+        pendingTerminalSnippets?: unknown[]
+      }
+    >
     sessions: {
       id: string
       title: string
@@ -409,6 +467,14 @@ export type DesktopApi = {
   saveChatSessions: (payload: {
     activeId: string
     activeByWorkspace?: Record<string, string>
+    composerDrafts?: Record<
+      string,
+      {
+        input?: string
+        pendingImages?: unknown[]
+        pendingTerminalSnippets?: unknown[]
+      }
+    >
     sessions: {
       id: string
       title: string
@@ -524,6 +590,17 @@ export type DesktopApi = {
     sessionsInRange?: number
     error?: string
   }>
+  /** 从 workbench.db 读取已聚合的用量 KPI（按日/小时桶缓存） */
+  getUsageSummary?: (opts?: { startMs?: number; endMs?: number }) => Promise<{
+    ok: boolean
+    summary?: UsageStatsSummary
+    daily?: UsageStatsSummary & { date: string }[]
+    hourly?: UsageStatsSummary & { hourStartMs: number; label: string }[]
+    lastBuiltAt?: number | null
+    error?: string
+  }>
+  /** 从当前会话历史全量重建用量统计缓存 */
+  rebuildUsageStats?: () => Promise<{ ok: boolean; lastBuiltAt?: number | null; error?: string }>
   mcpHealthCheckAll: () => Promise<{
     ok: boolean
     missing?: boolean
@@ -535,6 +612,24 @@ export type DesktopApi = {
   mcpHealthCheckOne: (name: string) => Promise<{
     ok: boolean
     server?: { name: string; status: string; transport?: string; error?: string | null; last_health_at?: string }
+    repaired?: boolean
+    repairs?: string[]
+    error?: string
+  }>
+  /** 读取 workbench.db 中缓存的 MCP 健康快照（启动时或手动检查后写入） */
+  mcpGetHealthSnapshot: () => Promise<{
+    ok: boolean
+    configPath?: string | null
+    missing?: boolean
+    snapshot?: {
+      version?: number
+      configPath?: string
+      checkedAt?: string
+      servers?: Record<
+        string,
+        { status: string; transport?: string; error?: string | null; last_health_at?: string }
+      >
+    } | null
     error?: string
   }>
   /** 仅 npm 全局更新；返回是否确有版本变化（用于避免无谓提示刷新界面） */
@@ -563,6 +658,16 @@ export type DesktopApi = {
     remotes?: { name: string; url: string }[]
     pullMode?: string
     syncScopeNote?: string
+    error?: string
+  }>
+  workbenchGitCheckUpstream: (payload?: { upstreamGithubRepo?: string }) => Promise<{
+    ok: boolean
+    hasUpdates?: boolean
+    upstreamRef?: string
+    upstreamSha?: string
+    headLine?: string
+    lastSyncSha?: string | null
+    message?: string
     error?: string
   }>
   workbenchGitPullUpstream: (payload?: { upstreamGithubRepo?: string }) => Promise<{
@@ -667,7 +772,9 @@ export type DesktopApi = {
     enabled: boolean
   }) => Promise<{ ok: boolean; chain?: SavedChainDetail | null; error?: string | null }>
   /** 在 Bridge 服务端后台跑链（切换页签不中断） */
-  orchestrationStartChainRun?: () => Promise<{ ok: boolean; started?: boolean; error?: string | null }>
+  orchestrationStartChainRun?: (payload?: {
+    pinnedSessionId?: string
+  }) => Promise<{ ok: boolean; started?: boolean; error?: string | null }>
   orchestrationStopChainRun?: () => Promise<{ ok: boolean }>
   orchestrationGetChainRunStatus?: () => Promise<{
     ok: boolean
@@ -768,6 +875,29 @@ export type DesktopApi = {
   ) => Promise<{ ok: boolean; content?: string; error?: string }>
   readClaudeAgentMarkdown: (basename: string) => Promise<{ ok: boolean; content: string | null; error: string | null }>
   readClaudeSkillMarkdown: (basename: string) => Promise<{ ok: boolean; content: string | null; error: string | null }>
+  saveClaudeSkillMarkdown?: (body: {
+    basename: string
+    content: string
+    createOnly?: boolean
+  }) => Promise<{ ok: boolean; basename?: string; path?: string; error?: string }>
+  /** 从 GitHub（anthropics/skills 等）下载 Skill 并写入 ~/.claude/skills/，同步 Agent frontmatter */
+  syncAgentSkillsFromGithub?: (body?: {
+    agentStem?: string
+    agentBasename?: string
+    allAgents?: boolean
+    onlyMissing?: boolean
+    overwrite?: boolean
+  }) => Promise<{
+    ok: boolean
+    summary?: string
+    agents?: number
+    downloaded?: { stem: string; source?: string; action?: string }[]
+    templated?: { stem: string; error?: string; action?: string }[]
+    skipped?: { stem: string; action?: string }[]
+    failed?: { stem: string; error?: string; action?: string }[]
+    agentResults?: { agentStem: string; basename?: string; ok: boolean; skillStems?: string[]; tools?: string[]; error?: string }[]
+    error?: string
+  }>
   readClaudeDotfileMarkdown: (basename: string) => Promise<{ ok: boolean; content: string | null; error: string | null }>
   /** 扫描 ~/.claude/agents 下 .md（含 sanshengliubu 子目录中与根不重名的文件） */
   listClaudeAgentMarkdown: () => Promise<{
@@ -784,6 +914,8 @@ export type DesktopApi = {
       heading?: string
       /** frontmatter `category: 项目|通用|实验` */
       category?: '项目' | '通用' | '实验'
+      /** frontmatter `skills:` 关联的 Skill 文件 stem */
+      skills?: string[]
     }[]
     error?: string | null
   }>
@@ -840,6 +972,8 @@ export type DesktopApi = {
     homeDir?: string
     error?: string | null
   }>
+  /** Bridge 内置 MCP 预设的实际启动命令（如 sanshengliubu） */
+  bundledMcpCommandLines?: () => Promise<{ ok: boolean; lines?: Record<string, string>; error?: string | null }>
   /** 写入/更新 mcpServers 条目（遵循设置中的 MCP 配置文件路径） */
   upsertClaudeMcpServer: (payload: {
     name: string

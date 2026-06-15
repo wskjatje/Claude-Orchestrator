@@ -1,5 +1,6 @@
 import { memo, type RefObject } from "react";
 import { ArrowDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { MessageBubble, type ChatBubbleMessage } from "@/components/chat-message-bubble";
 import { ChatStickyUserHeader } from "@/components/chat-sticky-user-header";
 import type { ChatComposerShellProps } from "@/components/chat-composer-shell";
@@ -54,10 +55,25 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
   onEditUserMessage,
   onRequestResendUserMessage,
 }: ChatMessagesPaneProps) {
-  const { leadingOrphans, turns, activeUser, setTurnRef } = useStickyUserPrompt(scrollAreaRef, messages);
   const isEditingSticky =
     editHistoryIndex != null && editingUserMessage != null && inlineComposer != null;
-  const headerMessage = editingUserMessage ?? activeUser;
+
+  const { leadingOrphans, turns, stickyUser, showStickyHeader, setTurnRef, setUserRef } =
+    useStickyUserPrompt(scrollAreaRef, messages, { forceSticky: isEditingSticky });
+
+  const headerMessage = isEditingSticky ? editingUserMessage : stickyUser;
+
+  const renderUser = (m: ChatBubbleMessage, turnIndex: number) => (
+    <div key={`user:${m.historyIndex ?? turnIndex}`} ref={setUserRef(turnIndex)} className="chat-turn-user">
+      <MessageBubble
+        m={m}
+        hasDesktopApi={hasDesktopApi}
+        onWriteToWorkspace={onWriteToWorkspace}
+        onGenerateChain={onGenerateChain}
+        onEditUserMessage={onEditUserMessage}
+      />
+    </div>
+  );
 
   const renderAssistant = (i: number) => (
     <MessageBubble
@@ -71,8 +87,15 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
   );
 
   return (
-    <div className="chat-pane-messages">
-      {headerMessage ? (
+    <div
+      className={cn(
+        "chat-pane-messages",
+        (showStickyHeader && headerMessage) || isEditingSticky
+          ? "chat-pane-messages--sticky-user"
+          : null,
+      )}
+    >
+      {(showStickyHeader || isEditingSticky) && headerMessage ? (
         <ChatStickyUserHeader
           message={headerMessage}
           isEditing={isEditingSticky}
@@ -97,6 +120,7 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
                 ref={setTurnRef(turnIndex)}
                 className="chat-turn-section"
               >
+                {renderUser(turn.user, turnIndex)}
                 {turn.replyIndices.map((i) => renderAssistant(i))}
               </div>
             ))}

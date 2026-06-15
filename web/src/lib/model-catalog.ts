@@ -21,7 +21,7 @@ type ProviderCatalogEntry = {
   notes?: string;
 };
 
-/** 仅展示 Workbench 自主添加的云供应商；空 catalog 时一次性迁移 Workbench 备注或当前供应商 */
+/** 仅展示 Orchestrator 自主添加的云供应商；空 catalog 时一次性迁移 Orchestrator 备注或当前供应商 */
 export function resolveCloudProviderCatalog(
   catalog: string[] | undefined,
   providers: ProviderCatalogEntry[],
@@ -30,7 +30,7 @@ export function resolveCloudProviderCatalog(
   if (ids.length) return ids;
 
   const workbench = providers
-    .filter((p) => /Workbench/i.test(p.notes ?? ""))
+    .filter((p) => /Orchestrator|Workbench/i.test(p.notes ?? ""))
     .map((p) => p.id);
   if (workbench.length) return workbench;
 
@@ -47,7 +47,8 @@ export function parseAgentModelFromFrontmatter(content: string): string | undefi
   const fm = trimmed.slice(3, closeIdx);
   const match = fm.match(/^model:\s*['"]?([^'"\n#]+)['"]?\s*(?:#.*)?$/im);
   const model = match?.[1]?.trim();
-  return model || undefined;
+  if (!model || isInheritedAgentModel(model)) return undefined;
+  return model;
 }
 
 export function isAutoModelSelection(model: string | undefined): boolean {
@@ -55,18 +56,36 @@ export function isAutoModelSelection(model: string | undefined): boolean {
   return !id || id === AUTO_MODEL_ID;
 }
 
+/** Claude Code Agent frontmatter：未设置 / `inherit` / `auto` 表示跟随聊天所选模型 */
+export function isInheritedAgentModel(model: string | undefined): boolean {
+  const id = String(model || "").trim().toLowerCase();
+  return !id || id === "inherit" || id === AUTO_MODEL_ID;
+}
+
+/** 聊天区 modelId / settings.model：inherit / auto / 空 → 跟随 Auto 解析 */
+export function normalizeChatModelSelection(model: string | undefined): string {
+  const id = String(model || "").trim();
+  if (isAutoModelSelection(id) || isInheritedAgentModel(id)) return AUTO_MODEL_ID;
+  return id;
+}
+
 /**
- * 解析本轮实际执行的模型：Agent 指定 > 用户显式选择 > Auto（云模型优先，无云则用本地）
+ * 解析本轮实际执行的模型：
+ * 1. Agent frontmatter 显式 model → 使用该模型
+ * 2. 否则 → 聊天区所选模型（含 Auto：按 preferredMode 从云/本地池取首项）
  */
 export function resolveModelForExecution(input: {
   selectedModel: string | undefined;
   cloudModels: string[];
   localModels: string[];
   agentModel?: string;
+  /** 聊天 Auto 时的编排偏好（与底部模型选择器的 mode 一致） */
+  preferredMode?: OrchMode;
 }): ResolvedExecutionModel | null {
   const cloud = input.cloudModels.map((m) => m.trim()).filter(Boolean);
   const local = input.localModels.map((m) => m.trim()).filter(Boolean);
-  const agent = input.agentModel?.trim();
+  const agentRaw = input.agentModel?.trim();
+  const agent = agentRaw && !isInheritedAgentModel(agentRaw) ? agentRaw : undefined;
 
   if (agent) {
     if (cloud.includes(agent)) return { mode: "claude-code", modelId: agent };
@@ -74,7 +93,7 @@ export function resolveModelForExecution(input: {
     return { mode: "claude-code", modelId: agent };
   }
 
-  const selected = String(input.selectedModel || "").trim();
+  const selected = normalizeChatModelSelection(input.selectedModel);
   if (selected && !isAutoModelSelection(selected)) {
     if (local.includes(selected)) return { mode: "local-mcp", modelId: selected };
     if (cloud.includes(selected)) return { mode: "claude-code", modelId: selected };
@@ -88,6 +107,17 @@ export function resolveModelForExecution(input: {
         : null;
   }
 
+  return resolveAutoModelFromPools(cloud, local, input.preferredMode);
+}
+
+function resolveAutoModelFromPools(
+  cloud: string[],
+  local: string[],
+  preferredMode?: OrchMode,
+): ResolvedExecutionModel | null {
+  if (preferredMode === "local-mcp" && local.length) {
+    return { mode: "local-mcp", modelId: local[0]! };
+  }
   if (cloud.length) return { mode: "claude-code", modelId: cloud[0]! };
   if (local.length) return { mode: "local-mcp", modelId: local[0]! };
   return null;

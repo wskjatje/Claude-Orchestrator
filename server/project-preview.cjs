@@ -170,7 +170,7 @@ function findPythonServerEntry(workspaceDir) {
 }
 
 const PREVIEW_APP_TEMPLATE = `# src/backend/preview_app.py
-# 本地 API 预览服务（由 Claude Workbench 自动生成，可手动修改后重启预览）
+# 本地 API 预览服务（由 Claude Orchestrator 自动生成，可手动修改后重启预览）
 
 import importlib.util
 import sys
@@ -289,7 +289,7 @@ function buildPythonPreviewGuide(workspaceDir) {
     apiDoc ? `接口文档：\`${apiDoc}\`（可在右侧工作区点击打开）` : '',
     html ? `前端页面：\`${html.rel}\`（可一并浏览器预览）` : '',
     '',
-    'Workbench 可自动生成 `src/backend/preview_app.py` 并启动 Flask 预览 API（需本机已安装 `flask`：`pip install flask`）。',
+    'Claude Orchestrator 可自动生成 `src/backend/preview_app.py` 并启动 Flask 预览 API（需本机已安装 `flask`：`pip install flask`）。',
   ].filter(Boolean)
   return lines.join('\n')
 }

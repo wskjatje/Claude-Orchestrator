@@ -14,6 +14,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 const projectDb = require('./project-db.cjs')
+const usageStats = require('./usage-stats.cjs')
 
 const KV = {
   workspace: 'workspace',
@@ -28,6 +29,153 @@ const MAX_WORKSPACE_HISTORY = 30
 
 let migrationDone = false
 
+function readJsonFileIfExists(filePath) {
+  return projectDb.readJsonFileIfExists(filePath)
+}
+
+function countSessionMessages(sessions) {
+  if (!Array.isArray(sessions)) return 0
+  return sessions.reduce(
+    (n, s) => n + (Array.isArray(s?.history) ? s.history.length : 0),
+    0,
+  )
+}
+
+function countUserMessages(hist) {
+  return (Array.isArray(hist) ? hist : []).filter((m) => m?.role === 'user').length
+}
+
+function lastUserMessageTs(hist) {
+  const h = Array.isArray(hist) ? hist : []
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (h[i]?.role === 'user') return h[i].ts ?? 0
+  }
+  return 0
+}
+
+/** 落盘前合并，避免空数组或未 hydrate 的 UI 覆盖已有聊天记录 */
+function mergeSessionsOnSave(incoming, existing) {
+  const localById = new Map((Array.isArray(incoming) ? incoming : []).map((s) => [s.id, s]))
+  const merged = []
+  for (const d of Array.isArray(existing) ? existing : []) {
+    const l = localById.get(d.id)
+    if (!l) {
+      merged.push(d)
+      continue
+    }
+    const lHist = Array.isArray(l.history) ? l.history : []
+    const dHist = Array.isArray(d.history) ? d.history : []
+    const keepLocal =
+      lHist.length > dHist.length ||
+      countUserMessages(lHist) > countUserMessages(dHist) ||
+      (lHist.length === dHist.length && lastUserMessageTs(lHist) >= lastUserMessageTs(dHist))
+    merged.push(
+      keepLocal
+        ? { ...d, ...l, title: d.title || l.title, history: lHist }
+        : { ...l, ...d, modelId: d.modelId || l.modelId, history: dHist },
+    )
+    localById.delete(d.id)
+  }
+  for (const l of localById.values()) merged.push(l)
+  return merged
+}
+
+function normalizeComposerDrafts(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out = {}
+  for (const [sessionId, draft] of Object.entries(raw)) {
+    if (typeof sessionId !== 'string' || !sessionId.trim() || !draft || typeof draft !== 'object') continue
+    const input = typeof draft.input === 'string' ? draft.input.slice(0, 50_000) : ''
+    const pendingImages = Array.isArray(draft.pendingImages)
+      ? draft.pendingImages.slice(0, 12).map((img) => ({
+          kind: img?.kind === 'image' ? 'image' : 'image',
+          name: typeof img?.name === 'string' ? img.name.slice(0, 500) : '',
+          mime: typeof img?.mime === 'string' ? img.mime.slice(0, 120) : '',
+          dataUrl: typeof img?.dataUrl === 'string' ? img.dataUrl.slice(0, 2_000_000) : '',
+          id: typeof img?.id === 'string' ? img.id.slice(0, 80) : '',
+        }))
+      : []
+    const pendingTerminalSnippets = Array.isArray(draft.pendingTerminalSnippets)
+      ? draft.pendingTerminalSnippets.slice(0, 20).map((sn) => ({
+          id: typeof sn?.id === 'string' ? sn.id.slice(0, 80) : '',
+          text: typeof sn?.text === 'string' ? sn.text.slice(0, 20_000) : '',
+          sourceLabel: typeof sn?.sourceLabel === 'string' ? sn.sourceLabel.slice(0, 200) : '',
+          startLine: typeof sn?.startLine === 'number' ? sn.startLine : undefined,
+          endLine: typeof sn?.endLine === 'number' ? sn.endLine : undefined,
+        }))
+      : []
+    if (!input && !pendingImages.length && !pendingTerminalSnippets.length) continue
+    out[sessionId.trim().slice(0, 120)] = { input, pendingImages, pendingTerminalSnippets }
+  }
+  return out
+}
+
+function normalizeChatSessionsPayload(raw) {
+  const sessions = Array.isArray(raw?.sessions) ? raw.sessions : []
+  const activeId =
+    typeof raw?.activeId === 'string' && raw.activeId.trim()
+      ? raw.activeId.trim()
+      : sessions[0]?.id || `s-${Date.now()}`
+  const activeByWorkspace =
+    raw?.activeByWorkspace && typeof raw.activeByWorkspace === 'object'
+      ? raw.activeByWorkspace
+      : { '': activeId }
+  return {
+    version: 2,
+    activeId,
+    activeByWorkspace,
+    sessions: sessions.map((s) => ({
+      ...s,
+      workspacePath: s?.workspacePath ?? null,
+    })),
+    composerDrafts: normalizeComposerDrafts(raw?.composerDrafts),
+  }
+}
+
+/** 将 ~/.claude-workbench 旧 JSON 与会话工作区路径补进 SQLite（一次性/增量） */
+function ensureWorkbenchDataMigrated(conn) {
+  const legacySessionsPath = path.join(LEGACY_DATA_DIR, 'chat-sessions.json')
+  const legacyRaw = readJsonFileIfExists(legacySessionsPath)
+  const currentRaw = projectDb.loadKv(conn, KV.chatSessions, null)
+
+  let sessionsPayload = currentRaw
+  if (legacyRaw && Array.isArray(legacyRaw.sessions) && legacyRaw.sessions.length) {
+    const legacyCount = countSessionMessages(legacyRaw.sessions)
+    const currentCount = countSessionMessages(currentRaw?.sessions)
+    const currentEmpty = !currentRaw || !Array.isArray(currentRaw.sessions) || !currentRaw.sessions.length
+    if (currentEmpty || legacyCount > currentCount) {
+      sessionsPayload = normalizeChatSessionsPayload(legacyRaw)
+      projectDb.saveKv(conn, KV.chatSessions, sessionsPayload)
+    }
+  }
+
+  const historyEntries = readWorkspaceHistoryRaw()
+  if (!historyEntries.length) {
+    const sessions = Array.isArray(sessionsPayload?.sessions) ? sessionsPayload.sessions : []
+    const seen = new Set()
+    const seeded = []
+    for (const s of sessions) {
+      const wp = typeof s?.workspacePath === 'string' ? s.workspacePath.trim() : ''
+      if (!wp) continue
+      try {
+        const resolved = path.resolve(wp)
+        if (seen.has(resolved) || !fs.existsSync(resolved)) continue
+        seen.add(resolved)
+        const entry = normalizeWorkspaceHistoryEntry({ path: resolved, openedAt: Date.now() })
+        if (entry) seeded.push(entry)
+      } catch {
+        /* ignore */
+      }
+    }
+    const curWs = loadWorkspace()
+    if (curWs) {
+      const entry = normalizeWorkspaceHistoryEntry({ path: curWs, openedAt: Date.now() })
+      if (entry && !seen.has(entry.path)) seeded.unshift(entry)
+    }
+    if (seeded.length) saveWorkspaceHistoryEntries(seeded)
+  }
+}
+
 function db() {
   ensureProjectDataDir()
   if (!migrationDone) {
@@ -35,6 +183,7 @@ function db() {
     const orch = orchestrationChainPath()
     projectDb.ensureMigrated(conn, PROJECT_DB_PATH, PROJECT_DATA_DIR, LEGACY_DATA_DIR, orch.primary)
     migrationDone = true
+    ensureWorkbenchDataMigrated(conn)
   }
   return projectDb.getDb(PROJECT_DB_PATH, PROJECT_DATA_DIR)
 }
@@ -44,11 +193,11 @@ const CLAUDE_CODE_MODEL_ALIASES = ['sonnet', 'opus', 'haiku']
 function defaultChatSettings() {
   return {
     ollamaBase: 'http://127.0.0.1:11434',
-    model: globalDefaultModel(),
+    model: 'auto',
     localOllamaModel: 'qwen2.5-coder:14b',
     claudeCliPath: DEFAULT_CLAUDE_CLI,
     orchestrationMode: 'claude-code',
-    localAgentBasename: 'product-manager.md',
+    localAgentBasename: '',
     defaultConfirmWritePath: 'docs/prd.md',
     mcpConfigAbsolutePath: '',
     devMcpOrchDebug: false,
@@ -63,6 +212,8 @@ function defaultChatSettings() {
     gitUserEmail: '',
     /** 官方 upstream，仅官方 path-scoped pull */
     upstreamGithubRepo: 'https://github.com/anthropics/claude-code.git',
+    /** 上次 path-scoped 同步时的 upstream commit（用于检测官方更新） */
+    lastUpstreamSyncSha: '',
   }
 }
 
@@ -73,6 +224,10 @@ function defaultUiPrefs() {
     /** 仅保存在项目 SQLite，不上传 */
     localSecret: '',
     defaultSessionTag: 'claude:main',
+    /** react-resizable-panels 布局 JSON，key → value */
+    layoutStorage: {},
+    skipCheckpointConfirm: false,
+    defaultTerminalShell: 'zsh',
   }
 }
 
@@ -203,7 +358,17 @@ export function loadChatSettings() {
   try {
     const data = projectDb.loadKv(db(), KV.chatSettings, null)
     if (!data || typeof data !== 'object') return defaults
-    return { ...defaults, ...data }
+    const merged = { ...defaults, ...data }
+    const legacyAgent = String(merged.localAgentBasename || '')
+      .trim()
+      .toLowerCase()
+    if (legacyAgent === 'product-manager.md' || legacyAgent === 'product-manager') {
+      merged.localAgentBasename = ''
+      if (legacyAgent) {
+        projectDb.saveKv(db(), KV.chatSettings, { ...data, localAgentBasename: '' })
+      }
+    }
+    return merged
   } catch {
     return defaults
   }
@@ -227,7 +392,7 @@ export function saveChatSettings(body) {
     orchestrationMode:
       body?.orchestrationMode === 'local-mcp' ? 'local-mcp' : 'claude-code',
     localAgentBasename:
-      typeof body?.localAgentBasename === 'string' && body.localAgentBasename.trim()
+      typeof body?.localAgentBasename === 'string'
         ? body.localAgentBasename.trim().slice(0, 200)
         : cur.localAgentBasename,
     defaultConfirmWritePath:
@@ -264,15 +429,22 @@ export function saveChatSettings(body) {
       typeof body?.upstreamGithubRepo === 'string' && body.upstreamGithubRepo.trim()
         ? body.upstreamGithubRepo.trim().slice(0, 500)
         : cur.upstreamGithubRepo || defaultChatSettings().upstreamGithubRepo,
+    lastUpstreamSyncSha:
+      typeof body?.lastUpstreamSyncSha === 'string'
+        ? body.lastUpstreamSyncSha.trim().slice(0, 64)
+        : cur.lastUpstreamSyncSha || '',
   }
   projectDb.saveKv(db(), KV.chatSettings, next)
   return next
 }
 
-/** 推送到个人 GitHub 前清空模型/会话/工作区历史等本地配置（保留 CLI 路径与 GitHub 地址） */
+/** 推送到个人 GitHub 前清空本地敏感数据（保留 GitHub 身份与 CLI 路径） */
 export function resetPersonalWorkbenchData() {
   const cur = loadChatSettings()
   const defaults = defaultChatSettings()
+  const curUi = loadUiPrefs()
+  const uiDefaults = defaultUiPrefs()
+
   saveChatSettings({
     ...defaults,
     claudeCliPath: cur.claudeCliPath,
@@ -281,29 +453,57 @@ export function resetPersonalWorkbenchData() {
     gitUserName: cur.gitUserName || '',
     gitUserEmail: cur.gitUserEmail || '',
     upstreamGithubRepo: cur.upstreamGithubRepo || defaults.upstreamGithubRepo,
+    lastUpstreamSyncSha: cur.lastUpstreamSyncSha || '',
     devMcpOrchDebug: false,
   })
   saveChatSessions(defaultChatSessions())
+  saveWorkspace(null)
   clearWorkspaceHistory()
+  saveUiPrefs({
+    themeMode: curUi.themeMode,
+    bridgeUrl: uiDefaults.bridgeUrl,
+    localSecret: uiDefaults.localSecret,
+    defaultSessionTag: uiDefaults.defaultSessionTag,
+    layoutStorage: curUi.layoutStorage,
+    skipCheckpointConfirm: uiDefaults.skipCheckpointConfirm,
+    defaultTerminalShell: curUi.defaultTerminalShell,
+  })
+  saveScheduledTasks([])
   try {
     projectDb.saveKv(db(), 'agent_exec_registry', { version: 1, days: {} })
   } catch {
     /* ignore */
   }
-  return { ok: true }
+
+  return {
+    ok: true,
+    cleared: [
+      '云/本地模型与供应商',
+      '全部聊天会话与草稿',
+      '当前工作区路径',
+      '项目打开记录',
+      'Bridge 令牌与本机密钥',
+      '定时任务',
+      'Agent 执行统计',
+    ],
+  }
 }
 
 export function loadChatSessions() {
   const defaults = defaultChatSessions()
   try {
     const data = projectDb.loadKv(db(), KV.chatSessions, null)
-    if (!data || !Array.isArray(data.sessions) || !data.sessions.length) return defaults
+    if (!data || !Array.isArray(data.sessions) || !data.sessions.length) {
+      return { ...defaults, composerDrafts: {} }
+    }
+    const composerDrafts = normalizeComposerDrafts(data.composerDrafts)
     if (data.version >= 2 && data.activeByWorkspace && typeof data.activeByWorkspace === 'object') {
       return {
         version: 2,
         activeId: data.activeId || data.sessions[0].id,
         activeByWorkspace: data.activeByWorkspace,
         sessions: data.sessions,
+        composerDrafts,
       }
     }
     const activeId = data.activeId || data.sessions[0].id
@@ -315,29 +515,58 @@ export function loadChatSessions() {
         ...s,
         workspacePath: s?.workspacePath ?? null,
       })),
+      composerDrafts,
     }
   } catch {
-    return defaults
+    return { ...defaults, composerDrafts: {} }
   }
 }
 
 export function saveChatSessions(payload) {
   try {
-    const sessions = Array.isArray(payload?.sessions) ? payload.sessions : []
+    const cur = loadChatSessions()
+    const incoming = Array.isArray(payload?.sessions) ? payload.sessions : null
+    let sessions = incoming ?? cur.sessions
+    if (incoming) {
+      const curHasHistory = countSessionMessages(cur.sessions) > 0
+      const incomingHasHistory = countSessionMessages(incoming) > 0
+      if (!incoming.length && curHasHistory) {
+        sessions = cur.sessions
+      } else if (incoming.length && cur.sessions?.length) {
+        sessions = mergeSessionsOnSave(incoming, cur.sessions)
+      }
+      if (!incomingHasHistory && curHasHistory && countSessionMessages(sessions) === 0) {
+        sessions = cur.sessions
+      }
+    }
     const activeId =
       typeof payload?.activeId === 'string' && payload.activeId.trim()
         ? payload.activeId.trim()
-        : sessions[0]?.id
+        : cur.activeId || sessions[0]?.id
     const activeByWorkspace =
       payload?.activeByWorkspace && typeof payload.activeByWorkspace === 'object'
         ? payload.activeByWorkspace
-        : { '': activeId }
+        : cur.activeByWorkspace || { '': activeId }
+    const composerDrafts =
+      payload?.composerDrafts && typeof payload.composerDrafts === 'object'
+        ? normalizeComposerDrafts(payload.composerDrafts)
+        : cur.composerDrafts || {}
     projectDb.saveKv(db(), KV.chatSessions, {
       version: 2,
       activeId,
       activeByWorkspace,
       sessions,
+      composerDrafts,
     })
+    try {
+      const settings = loadChatSettings()
+      usageStats.rebuildFromSessions(sessions, {
+        tokenPricing: settings.tokenPricing || {},
+        cloudModelCatalog: settings.cloudModelCatalog || [],
+      })
+    } catch {
+      /* 用量统计失败不阻断会话保存 */
+    }
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
@@ -369,6 +598,18 @@ export function loadUiPrefs() {
       data.themeMode === 'light' || data.themeMode === 'dark' || data.themeMode === 'system'
         ? data.themeMode
         : defaults.themeMode
+    const layoutStorage =
+      data.layoutStorage && typeof data.layoutStorage === 'object' && !Array.isArray(data.layoutStorage)
+        ? Object.fromEntries(
+            Object.entries(data.layoutStorage)
+              .filter(([k, v]) => typeof k === 'string' && typeof v === 'string')
+              .map(([k, v]) => [k.slice(0, 200), v.slice(0, 20_000)]),
+          )
+        : defaults.layoutStorage
+    const defaultTerminalShell =
+      data.defaultTerminalShell === 'bash' || data.defaultTerminalShell === 'zsh'
+        ? data.defaultTerminalShell
+        : defaults.defaultTerminalShell
     return {
       themeMode,
       bridgeUrl: typeof data.bridgeUrl === 'string' ? data.bridgeUrl.trim() : defaults.bridgeUrl,
@@ -378,6 +619,9 @@ export function loadUiPrefs() {
         typeof data.defaultSessionTag === 'string' && data.defaultSessionTag.trim()
           ? data.defaultSessionTag.trim().slice(0, 120)
           : defaults.defaultSessionTag,
+      layoutStorage,
+      skipCheckpointConfirm: data.skipCheckpointConfirm === true,
+      defaultTerminalShell,
     }
   } catch {
     return defaults
@@ -390,6 +634,18 @@ export function saveUiPrefs(body) {
     body?.themeMode === 'light' || body?.themeMode === 'dark' || body?.themeMode === 'system'
       ? body.themeMode
       : cur.themeMode
+  const layoutStorage =
+    body?.layoutStorage && typeof body.layoutStorage === 'object' && !Array.isArray(body.layoutStorage)
+      ? Object.fromEntries(
+          Object.entries(body.layoutStorage)
+            .filter(([k, v]) => typeof k === 'string' && typeof v === 'string')
+            .map(([k, v]) => [k.slice(0, 200), v.slice(0, 20_000)]),
+        )
+      : cur.layoutStorage
+  const defaultTerminalShell =
+    body?.defaultTerminalShell === 'bash' || body?.defaultTerminalShell === 'zsh'
+      ? body.defaultTerminalShell
+      : cur.defaultTerminalShell
   const next = {
     themeMode,
     bridgeUrl:
@@ -400,6 +656,12 @@ export function saveUiPrefs(body) {
       typeof body?.defaultSessionTag === 'string' && body.defaultSessionTag.trim()
         ? body.defaultSessionTag.trim().slice(0, 120)
         : cur.defaultSessionTag,
+    layoutStorage,
+    skipCheckpointConfirm:
+      typeof body?.skipCheckpointConfirm === 'boolean'
+        ? body.skipCheckpointConfirm
+        : cur.skipCheckpointConfirm,
+    defaultTerminalShell,
   }
   projectDb.saveKv(db(), KV.uiPrefs, next)
   return next

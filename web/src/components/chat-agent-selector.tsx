@@ -11,6 +11,7 @@ import {
   agentMatchesDisplayQuery,
   resolveAgentDisplayName,
 } from "@/lib/agent-display-name";
+import { dedupeAgentRowsByStem } from "@/lib/dedupe-agent-rows";
 import { cn } from "@/lib/utils";
 
 const AUTO_AGENT_VALUE = "";
@@ -45,28 +46,30 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
     const r = await api.listClaudeAgentMarkdown();
     if (!r.ok || !r.items?.length) return;
     setAgents(
-      r.items.map((row) => {
-        const displayName =
-          row.displayName?.trim() ||
-          resolveAgentDisplayName({
-            stem: row.stem,
+      dedupeAgentRowsByStem(
+        r.items.map((row) => {
+          const displayName =
+            row.displayName?.trim() ||
+            resolveAgentDisplayName({
+              stem: row.stem,
+              basename: row.basename,
+              name: row.name,
+              nameZh: row.nameZh,
+              heading: row.heading,
+              description: row.description,
+            });
+          return {
             basename: row.basename,
+            stem: row.stem,
+            description: row.description ?? "",
+            displayName,
             name: row.name,
             nameZh: row.nameZh,
             heading: row.heading,
-            description: row.description,
-          });
-        return {
-          basename: row.basename,
-          stem: row.stem,
-          description: row.description ?? "",
-          displayName,
-          name: row.name,
-          nameZh: row.nameZh,
-          heading: row.heading,
-          source: row.source,
-        };
-      }),
+            source: row.source,
+          };
+        }),
+      ),
     );
   }, []);
 
@@ -75,11 +78,17 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
   }, [reload]);
 
   const activeAgent = agents.find((a) => a.stem === activeStem);
-  const subtitle = isAuto ? "Auto · 按关键词路由" : (activeAgent?.displayName ?? activeStem);
-  const buttonLabel = isAuto ? "Auto" : ((activeAgent?.displayName ?? activeStem) || "Agent");
+  const defaultAutoAgent = agents.find((a) => a.stem === "product-manager");
+  const defaultAutoLabel =
+    defaultAutoAgent?.displayName ??
+    resolveAgentDisplayName({ stem: "product-manager", nameZh: "全面的产品领导者" });
+  const subtitle = isAuto
+    ? `Agent · 默认与「${defaultAutoLabel}」对话`
+    : (activeAgent?.displayName ?? activeStem);
+  const buttonLabel = isAuto ? "Agent" : ((activeAgent?.displayName ?? activeStem) || "Agent");
 
   const q = query.trim().toLowerCase();
-  const showAuto = !q || q.includes("auto") || q.includes("自动") || q.includes("关键词");
+  const showAuto = !q || q.includes("auto") || q.includes("agent") || q.includes("自动") || q.includes("关键词");
 
   const filteredAgents = useMemo(() => {
     if (!q) return agents;
@@ -168,7 +177,9 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
             >
               <div className="min-w-0 flex-1">
                 <div className="font-medium">Auto</div>
-                <div className="text-[10.5px] text-muted-foreground">未指定时按关键词选择 Agent</div>
+                <div className="text-[10.5px] text-muted-foreground">
+                  自动模式 · 默认与「{defaultAutoLabel}」对话，并按关键词路由其它 Agent
+                </div>
               </div>
               {isAuto ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={2.25} /> : null}
             </button>

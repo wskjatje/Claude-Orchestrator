@@ -4,7 +4,7 @@
   "private": true,
   "description": "anthropics/claude-code workspace with local web UI (frontend only)",
   "scripts": {
-    "bridge": "node server/index.mjs",
+    "bridge": "MCP_STARTUP_HEALTH=delayed node server/index.mjs",
     "web:install": "npm --prefix web install",
     "web:dev": "npm --prefix web run dev:electron",
     "web:build": "npm --prefix web run build:electron",

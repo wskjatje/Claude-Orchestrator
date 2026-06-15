@@ -9,6 +9,7 @@ import {
 import { WorkbenchCenterPreview } from "@/components/workbench-side-panels";
 import { WorkbenchBottomPanel } from "@/components/workbench-bottom-panel";
 import { ssrSafeLayoutStorage } from "@/lib/ssr-safe-layout-storage";
+import { useTheme } from "@/hooks/use-theme";
 
 const CENTER_PANEL_IDS = ["workbench-center-preview", "workbench-center-terminal"] as const;
 const CENTER_FALLBACK = {
@@ -25,6 +26,7 @@ export function WorkbenchCenterPanel({
   onTerminalOpenChange: (open: boolean) => void;
   panelToggles?: ReactNode;
 }) {
+  const { prefsLoaded } = useTheme();
   const { errorCount } = useWorkbenchProblems();
   const prevErrorCountRef = useRef(0);
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
@@ -55,6 +57,7 @@ export function WorkbenchCenterPanel({
     <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       {panelToggles}
       <ResizablePanelGroup
+        key={prefsLoaded ? "workbench-center-ready" : "workbench-center-boot"}
         orientation="vertical"
         className="h-full min-h-0 flex-1"
         id="workbench-center-v1"

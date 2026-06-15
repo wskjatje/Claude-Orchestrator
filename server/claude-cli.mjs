@@ -92,7 +92,7 @@ function syncEnvDefaultModels(env, model) {
 /** Claude Code / DeepSeek API 实际使用的模型 ID（deepseek-chat 在 CLI 侧已不可用） */
 function mapApiModelId(model) {
   const m = String(model || '').trim()
-  if (!m) return m
+  if (!m || /^(inherit|auto)$/i.test(m)) return m
   if (/^deepseek-chat$/i.test(m)) return 'deepseek-v4-flash'
   if (/^deepseek-reasoner$/i.test(m)) return 'deepseek-v4-pro'
   return m
@@ -100,7 +100,7 @@ function mapApiModelId(model) {
 
 function resolveClaudeCliModel(model, env) {
   const m = typeof model === 'string' ? model.trim() : ''
-  if (!m) return undefined
+  if (!m || /^(inherit|auto)$/i.test(m)) return undefined
   if (/^(sonnet|opus|haiku)$/i.test(m)) return m.toLowerCase()
   const sonnet = String(env.ANTHROPIC_DEFAULT_SONNET_MODEL || '').trim()
   const haiku = String(env.ANTHROPIC_DEFAULT_HAIKU_MODEL || '').trim()
@@ -287,10 +287,12 @@ export async function runClaudeCodePrint({
       ? timeoutMs
       : defaultTimeoutMs(env)
 
-  const apiModel =
-    model && !/^(sonnet|opus|haiku)$/i.test(String(model).trim())
-      ? mapApiModelId(model)
-      : mapApiModelId(env.ANTHROPIC_DEFAULT_SONNET_MODEL || model || 'sonnet')
+  const rawModel = String(model || '').trim()
+  const useExplicitModel =
+    rawModel && !/^(sonnet|opus|haiku|inherit|auto)$/i.test(rawModel)
+  const apiModel = useExplicitModel
+    ? mapApiModelId(rawModel)
+    : mapApiModelId(env.ANTHROPIC_DEFAULT_SONNET_MODEL || 'sonnet')
 
   const preflightError = await preflightAnthropicEndpoint(
     env,

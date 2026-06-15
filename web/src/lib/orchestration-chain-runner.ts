@@ -4,7 +4,7 @@
 import { toast } from "sonner";
 import { getDesktop } from "@/lib/desktop-api";
 
-export type ChainRunOptions = { skipConfirm?: boolean };
+export type ChainRunOptions = { skipConfirm?: boolean; pinnedSessionId?: string };
 
 let chainRunning = false;
 const listeners = new Set<() => void>();
@@ -71,7 +71,9 @@ export async function runOrchestrationChainInBackground(opts?: ChainRunOptions) 
   }
 
   try {
-    const started = await api.orchestrationStartChainRun();
+    const started = await api.orchestrationStartChainRun({
+      pinnedSessionId: opts?.pinnedSessionId?.trim() || undefined,
+    });
     if (!started.ok) {
       toast.error(started.error || "启动任务链失败");
       return;

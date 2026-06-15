@@ -34,7 +34,7 @@ function MarkdownCodeBlock({
   if (!isBlock) {
     return (
       <code
-        className="rounded-md bg-muted/60 px-1.5 py-0.5 font-mono text-[12px] text-foreground"
+        className="rounded-md bg-muted/60 px-1.5 py-0.5 font-mono text-[length:var(--font-size-sm)] text-foreground"
         {...props}
       >
         {children}
@@ -74,7 +74,7 @@ function MarkdownCodeBlock({
       </div>
       <pre
         className={cn(
-          "overflow-x-auto rounded-lg border border-border/60 bg-code-bg px-3 py-2.5 pr-16 font-mono text-[12px] leading-relaxed text-foreground",
+          "overflow-x-auto rounded-lg border border-border/60 bg-code-bg px-3 py-2.5 pr-16 font-mono text-[length:var(--font-size-sm)] leading-relaxed text-foreground",
           isDiff && "chat-diff-block",
         )}
       >
@@ -89,7 +89,7 @@ function MarkdownCodeBlock({
 /** Cursor 式 Markdown：标题、列表、带复制按钮的代码块。 */
 export function ChatMarkdown({ content, className }: ChatMarkdownProps) {
   return (
-    <div className={cn("chat-md min-w-0 text-[13px] leading-relaxed text-foreground", className)}>
+    <div className={cn("chat-md min-w-0 leading-relaxed text-foreground", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -145,7 +145,7 @@ export function ChatMarkdown({ content, className }: ChatMarkdownProps) {
           ),
           table: ({ children }) => (
             <div className="my-2 overflow-x-auto rounded-lg border border-border/60">
-              <table className="w-full border-collapse text-[12.5px]">{children}</table>
+              <table className="w-full border-collapse text-[length:var(--font-size-sm)]">{children}</table>
             </div>
           ),
           th: ({ children }) => (

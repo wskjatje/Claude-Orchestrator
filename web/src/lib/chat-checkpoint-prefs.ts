@@ -1,12 +1,10 @@
-const SKIP_KEY = "chat-checkpoint-confirm-skip";
+import { getUiPrefsCache, patchUiPrefsCache, saveUiPrefsToProjectDb } from "@/lib/ui-prefs";
 
 export function shouldSkipCheckpointConfirm(): boolean {
-  if (typeof localStorage === "undefined") return false;
-  return localStorage.getItem(SKIP_KEY) === "1";
+  return getUiPrefsCache().skipCheckpointConfirm === true;
 }
 
 export function setSkipCheckpointConfirm(skip: boolean): void {
-  if (typeof localStorage === "undefined") return;
-  if (skip) localStorage.setItem(SKIP_KEY, "1");
-  else localStorage.removeItem(SKIP_KEY);
+  patchUiPrefsCache({ skipCheckpointConfirm: skip });
+  void saveUiPrefsToProjectDb({ skipCheckpointConfirm: skip });
 }

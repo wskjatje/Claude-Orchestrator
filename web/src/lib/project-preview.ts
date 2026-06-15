@@ -59,7 +59,7 @@ export function formatPreviewAssistantReply(res: {
       `【项目预览】未能启动。\n` +
         `- 原因：${res.error || "未知错误"}\n` +
         `- 静态页：确保存在 \`src/login.html\`；Node 项目需 \`package.json\` 的 \`dev\` 脚本。\n` +
-        `- Python 后端：需 \`pip install flask\`，Workbench 会生成 \`src/backend/preview_app.py\`。`,
+        `- Python 后端：需 \`pip install flask\`，Orchestrator 会生成 \`src/backend/preview_app.py\`。`,
     );
     return parts.join("\n\n");
   }

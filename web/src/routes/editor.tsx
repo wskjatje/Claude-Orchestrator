@@ -222,7 +222,7 @@ function EditorPage() {
       <div className="flex h-full flex-col">
         {/* 顶部工具栏 */}
         <div className="flex items-center gap-2 border-b px-4 py-2">
-          <h1 className="font-semibold">本地代码助手 - 编辑器</h1>
+          <h1 className="font-semibold">Claude Orchestrator - 编辑器</h1>
           <div className="flex-1" />
           <Button
             variant="ghost"

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
-import { PageBanner, PageRoot } from "@/components/page-layout";
+import { PageBanner } from "@/components/page-layout";
 import {
   Bot,
   RefreshCw,
@@ -13,6 +13,7 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InfoHint } from "@/components/info-hint";
@@ -22,7 +23,7 @@ import { resolveAgentDisplayName } from "@/lib/agent-display-name";
 import type { AgentExecRegistryEntry } from "@/types/desktop";
 
 export const Route = createFileRoute("/reports")({
-  head: () => ({ meta: [{ title: "智能体执行日报 · 本地代码助手" }] }),
+  head: () => ({ meta: [{ title: "智能体执行日报 · Claude Orchestrator" }] }),
   component: AgentDailyReportsPage,
 });
 
@@ -36,6 +37,9 @@ type AgentRow = {
 };
 
 type ViewTab = "agent" | "project";
+type StatusFilter = "全部" | "工作中" | "已执行" | "未执行";
+
+const STATUS_FILTERS: StatusFilter[] = ["全部", "工作中", "已执行", "未执行"];
 
 function todayIso(): string {
   const d = new Date();
@@ -89,7 +93,9 @@ function AgentDailyReportsPage() {
   const [listErr, setListErr] = useState<string | null>(null);
   const [listLoading, setListLoading] = useState(false);
   const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("全部");
   const [activeStem, setActiveStem] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [content, setContent] = useState("");
   const [draft, setDraft] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
@@ -135,10 +141,7 @@ function AgentDailyReportsPage() {
     }
     const next = diskItemsToRows(r.items);
     setRows(next);
-    setActiveStem((prev) => {
-      if (prev && next.some((x) => x.stem === prev)) return prev;
-      return next[0]?.stem ?? null;
-    });
+    setActiveStem((prev) => (prev && next.some((x) => x.stem === prev) ? prev : null));
   }, []);
 
   const loadAgentReport = useCallback(async (stem: string | null, d: string) => {
@@ -204,9 +207,13 @@ function AgentDailyReportsPage() {
   }, [hasDesktopApi, date, loadAgentRegistry]);
 
   useEffect(() => {
-    if (viewTab !== "agent" || !hasDesktopApi || !activeStem) return;
+    if (viewTab !== "agent" || !hasDesktopApi || !activeStem || !drawerOpen) return;
     void loadAgentReport(activeStem, date);
-  }, [activeStem, date, viewTab, loadAgentReport, hasDesktopApi]);
+  }, [activeStem, date, viewTab, loadAgentReport, hasDesktopApi, drawerOpen]);
+
+  useEffect(() => {
+    if (viewTab !== "agent") setDrawerOpen(false);
+  }, [viewTab]);
 
   useEffect(() => {
     if (viewTab !== "project" || !hasDesktopApi) return;
@@ -215,7 +222,7 @@ function AgentDailyReportsPage() {
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    const base = !qq
+    let base = !qq
       ? rows
       : rows.filter(
           (r) =>
@@ -223,6 +230,17 @@ function AgentDailyReportsPage() {
             r.displayName.toLowerCase().includes(qq) ||
             r.description.toLowerCase().includes(qq),
         );
+    if (statusFilter !== "全部") {
+      base = base.filter((r) => {
+        const meta = registry.get(r.stem);
+        const isWorking = meta?.status === "working";
+        const hasRun = Boolean(meta && (meta.execCount > 0 || isWorking));
+        if (statusFilter === "工作中") return isWorking;
+        if (statusFilter === "已执行") return hasRun;
+        if (statusFilter === "未执行") return !hasRun;
+        return true;
+      });
+    }
     return [...base].sort((a, b) => {
       const ra = registry.get(a.stem);
       const rb = registry.get(b.stem);
@@ -234,7 +252,7 @@ function AgentDailyReportsPage() {
       if (oa !== ob) return oa - ob;
       return a.displayName.localeCompare(b.displayName, "zh-CN");
     });
-  }, [rows, q, registry]);
+  }, [rows, q, registry, statusFilter]);
 
   const executedTodayCount = useMemo(
     () => [...registry.values()].filter((e) => e.execCount > 0 || e.status === "working").length,
@@ -246,6 +264,16 @@ function AgentDailyReportsPage() {
     [registry],
   );
 
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    setDraft(null);
+  };
+
+  const openAgentDrawer = (stem: string) => {
+    setActiveStem(stem);
+    setDraft(null);
+    setDrawerOpen(true);
+  };
   const activeRow = rows.find((r) => r.stem === activeStem) ?? null;
   const editing = draft ?? content;
   const isDirty = draft !== null;
@@ -322,9 +350,8 @@ function AgentDailyReportsPage() {
   };
 
   return (
-    <AppShell variant="fill">
-      <PageRoot>
-        <PageHeader
+    <AppShell>
+      <PageHeader
           title="智能体执行日报"
           description="按 Agent × 日期沉淀 Markdown；原始追踪见日志中心"
           actions={
@@ -405,158 +432,121 @@ function AgentDailyReportsPage() {
           </div>
         )}
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(240px,280px)_minmax(0,1fr)]">
+        <div className="px-4 py-5 sm:px-6 lg:px-7">
           {viewTab === "agent" ? (
             <>
-              <aside className="flex min-h-0 flex-col border-r border-border bg-surface-elevated/40">
-                <div className="border-b border-border p-3">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      value={q}
-                      onChange={(e) => setQ(e.target.value)}
-                      placeholder="搜索智能体…"
-                      className="h-8 w-full rounded-lg border border-border bg-surface pl-8 pr-2 text-[12px] outline-none focus:border-primary"
-                    />
-                  </div>
-                  <p className="mt-2 text-[11px] text-muted-foreground">
-                    {date} · {q.trim() ? `匹配 ${filtered.length} / 全部 ${rows.length}` : `全部 ${rows.length} 个`}
-                    {workingCount > 0 ? ` · 工作中 ${workingCount} 个（置顶）` : ""}
-                    {executedTodayCount > 0 ? ` · 今日已执行 ${executedTodayCount} 个` : ""}
-                  </p>
+              <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <StatCard label="全部智能体" value={rows.length} />
+                <StatCard label="今日已执行" value={executedTodayCount} valueClass="text-success" />
+                <StatCard
+                  label="工作中"
+                  value={workingCount}
+                  valueClass={workingCount ? "text-success" : undefined}
+                />
+                <StatCard label="列表显示" value={filtered.length} />
+              </div>
+
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[220px] max-w-md flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="搜索 Agent 名称或描述…"
+                    className="h-8 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-[12.5px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin p-2">
+                <div className="inline-flex flex-wrap gap-1 rounded-lg bg-secondary p-0.5">
+                  {STATUS_FILTERS.map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setStatusFilter(f)}
+                      className={cn(
+                        "rounded-md px-2.5 py-1 text-[11.5px] font-medium transition",
+                        statusFilter === f
+                          ? "bg-surface text-foreground shadow-xs"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+                <span className="ml-auto font-mono text-[11.5px] text-muted-foreground">{date}</span>
+              </div>
+
+              {filtered.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border py-16 text-center">
+                  <Bot className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
+                  <p className="text-[13px] font-medium text-foreground">无匹配的智能体</p>
+                  <p className="mt-1 text-[12px] text-muted-foreground">调整搜索或筛选条件</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
                   {filtered.map((r) => {
                     const meta = registry.get(r.stem);
                     const isWorking = meta?.status === "working";
                     const hasRun = Boolean(meta && (meta.execCount > 0 || isWorking));
+                    const isActive = r.stem === activeStem && drawerOpen;
+                    const statusLabel = isWorking ? "工作中" : hasRun ? "空闲" : "未执行";
                     return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveStem(r.stem);
-                        setDraft(null);
-                      }}
-                      className={cn(
-                        "mb-1 flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition",
-                        r.stem === activeStem ? "bg-primary-soft ring-1 ring-primary/20" : "hover:bg-secondary/60",
-                      )}
-                    >
-                      <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-secondary">
-                        <Bot className="h-3.5 w-3.5" />
-                        {isWorking ? (
-                          <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-success ring-2 ring-surface-elevated animate-pulse" />
-                        ) : null}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          {hasRun && meta ? (
-                            <span className="shrink-0 font-mono text-[9px] text-muted-foreground">#{meta.order}</span>
-                          ) : null}
-                          <div className="truncate text-[12px] font-semibold">{r.displayName}</div>
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => openAgentDrawer(r.stem)}
+                        className={cn(
+                          "group rounded-xl border bg-surface-elevated p-4 text-left shadow-xs transition",
+                          isActive
+                            ? "border-primary/50 ring-2 ring-primary/15"
+                            : "border-border hover:border-primary/30",
+                        )}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">
+                            <Bot className="h-4 w-4" />
+                            {isWorking ? (
+                              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-success ring-2 ring-surface-elevated animate-pulse" />
+                            ) : null}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {hasRun && meta ? (
+                                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">#{meta.order}</span>
+                              ) : null}
+                              <span className="truncate text-[12.5px] font-semibold text-foreground">{r.displayName}</span>
+                              <span className="shrink-0 truncate font-mono text-[10px] text-muted-foreground/80 max-w-[7rem]">
+                                {r.stem}
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
+                              {r.description}
+                            </p>
+                          </div>
                         </div>
-                        <div className="mt-0.5 flex items-center gap-1.5">
-                          <span className="truncate font-mono text-[10px] text-muted-foreground">{r.stem}</span>
-                          {meta ? (
-                            <span
-                              className={cn(
-                                "shrink-0 rounded px-1 py-px text-[9px] font-medium",
-                                isWorking
-                                  ? "bg-success/15 text-success"
-                                  : hasRun
-                                    ? "bg-secondary text-muted-foreground"
-                                    : "text-muted-foreground/60",
-                              )}
-                            >
-                              {isWorking ? "工作中" : hasRun ? "空闲" : "未执行"}
-                            </span>
-                          ) : (
-                            <span className="shrink-0 text-[9px] text-muted-foreground/60">未执行</span>
-                          )}
+                        <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5 text-[11px]">
+                          <span className="text-muted-foreground">{date}</span>
+                          <span
+                            className={cn(
+                              "font-medium",
+                              isWorking
+                                ? "text-success"
+                                : hasRun
+                                  ? "text-muted-foreground"
+                                  : "text-muted-foreground/60",
+                            )}
+                          >
+                            {statusLabel}
+                          </span>
                         </div>
-                      </div>
-                    </button>
+                      </button>
                     );
                   })}
                 </div>
-              </aside>
-
-              <div className="flex min-h-0 flex-col">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5 sm:px-5">
-                  <span className="truncate text-[12px] font-medium">
-                    {activeRow ? `${activeRow.displayName} · ${date}` : "—"}
-                    {missing && !isDirty ? (
-                      <span className="ml-2 text-[11px] font-normal text-muted-foreground">（尚无日报，可重建或编辑）</span>
-                    ) : null}
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      to="/logs"
-                      search={{ tab: "trace", stem: activeStem ?? undefined }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" /> 原始追踪
-                    </Link>
-                    <button
-                      type="button"
-                      disabled={!activeStem || !hasDesktopApi || Boolean(busy)}
-                      onClick={() => void buildFromEvents()}
-                      className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary disabled:opacity-40"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" /> 从 events 重建
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!activeStem || !hasDesktopApi || Boolean(busy)}
-                      onClick={() => void generateReport()}
-                      className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary disabled:opacity-40"
-                    >
-                      <Sparkles className="h-3.5 w-3.5" /> 生成日报
-                    </button>
-                    {isDirty ? (
-                      <button
-                        type="button"
-                        onClick={() => void saveAgent()}
-                        className="btn-gradient-primary inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold"
-                      >
-                        <Save className="h-3.5 w-3.5" /> 保存
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          disabled={!editing}
-                          onClick={() => void copyText(editing)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary disabled:opacity-40"
-                        >
-                          <ClipboardCopy className="h-3.5 w-3.5" /> 复制
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDraft(editing || `# ${activeStem} · ${date}\n`)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary"
-                        >
-                          编辑
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <textarea
-                  value={editing}
-                  readOnly={!isDirty}
-                  onChange={(e) => isDirty && setDraft(e.target.value)}
-                  className={cn(
-                    "min-h-0 flex-1 resize-none border-0 bg-code-bg/30 px-4 py-4 font-mono text-[12px] leading-relaxed outline-none sm:px-6",
-                    !isDirty && "text-foreground/90",
-                  )}
-                  placeholder={loading ? "加载中…" : "选择左侧智能体"}
-                />
-              </div>
+              )}
             </>
           ) : (
-            <div className="col-span-full flex min-h-0 flex-col lg:col-span-2">
+            <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-border bg-surface-elevated shadow-xs">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5 sm:px-5">
                 <span className="inline-flex items-center gap-2 text-[12px] font-medium">
                   <FileText className="h-4 w-4 text-muted-foreground" />
@@ -595,7 +585,175 @@ function AgentDailyReportsPage() {
             </div>
           )}
         </div>
-      </PageRoot>
+
+        {viewTab === "agent" && drawerOpen && activeStem ? (
+          <AgentReportDrawer
+            activeRow={activeRow}
+            activeStem={activeStem}
+            date={date}
+            missing={missing}
+            loading={loading}
+            editing={editing}
+            isDirty={isDirty}
+            busy={busy}
+            hasDesktopApi={hasDesktopApi}
+            onClose={closeDrawer}
+            onDraftChange={setDraft}
+            onSave={() => void saveAgent()}
+            onBuildFromEvents={() => void buildFromEvents()}
+            onGenerate={() => void generateReport()}
+            onCopy={() => void copyText(editing)}
+            onEdit={() => setDraft(editing || `# ${activeStem} · ${date}\n`)}
+          />
+        ) : null}
     </AppShell>
+  );
+}
+
+function AgentReportDrawer({
+  activeRow,
+  activeStem,
+  date,
+  missing,
+  loading,
+  editing,
+  isDirty,
+  busy,
+  hasDesktopApi,
+  onClose,
+  onDraftChange,
+  onSave,
+  onBuildFromEvents,
+  onGenerate,
+  onCopy,
+  onEdit,
+}: {
+  activeRow: AgentRow | null;
+  activeStem: string;
+  date: string;
+  missing: boolean;
+  loading: boolean;
+  editing: string;
+  isDirty: boolean;
+  busy: string | null;
+  hasDesktopApi: boolean;
+  onClose: () => void;
+  onDraftChange: (value: string) => void;
+  onSave: () => void;
+  onBuildFromEvents: () => void;
+  onGenerate: () => void;
+  onCopy: () => void;
+  onEdit: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={onClose} />
+      <div className="flex h-full max-h-screen w-full max-w-2xl flex-col border-l border-border bg-surface-elevated shadow-2xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-[14px] font-semibold text-foreground">
+                  {activeRow?.displayName ?? activeStem}
+                </div>
+                <div className="truncate font-mono text-[11px] text-muted-foreground">
+                  {activeStem} · {date}
+                  {missing && !isDirty ? " · 尚无日报" : ""}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                to="/logs"
+                search={{ tab: "trace", stem: activeStem }}
+                className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary"
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> 原始追踪
+              </Link>
+              <button
+                type="button"
+                disabled={!hasDesktopApi || Boolean(busy)}
+                onClick={onBuildFromEvents}
+                className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary disabled:opacity-40"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> 从 events 重建
+              </button>
+              <button
+                type="button"
+                disabled={!hasDesktopApi || Boolean(busy)}
+                onClick={onGenerate}
+                className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary disabled:opacity-40"
+              >
+                <Sparkles className="h-3.5 w-3.5" /> 生成日报
+              </button>
+              {isDirty ? (
+                <button
+                  type="button"
+                  onClick={onSave}
+                  className="btn-gradient-primary inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold"
+                >
+                  <Save className="h-3.5 w-3.5" /> 保存
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    disabled={!editing}
+                    onClick={onCopy}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary disabled:opacity-40"
+                  >
+                    <ClipboardCopy className="h-3.5 w-3.5" /> 复制
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary"
+                  >
+                    编辑
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <textarea
+          value={editing}
+          readOnly={!isDirty}
+          onChange={(e) => isDirty && onDraftChange(e.target.value)}
+          className={cn(
+            "min-h-0 flex-1 resize-none border-0 bg-code-bg/30 px-5 py-4 font-mono text-[12px] leading-relaxed outline-none",
+            !isDirty && "text-foreground/90",
+          )}
+          placeholder={loading ? "加载中…" : "（暂无内容）"}
+        />
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, valueClass }: { label: string; value: number | string; valueClass?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface-elevated p-4 shadow-xs">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={cn("mt-1 text-[22px] font-bold tracking-tight text-foreground", valueClass)}>{value}</div>
+    </div>
   );
 }

@@ -11,11 +11,18 @@ import { useLocation } from "@tanstack/react-router";
 import { getDesktop } from "@/lib/desktop-api";
 import { useDesktopReady } from "@/hooks/use-desktop-ready";
 import { syncOfficialGenericChains } from "@/lib/sync-official-chains";
+import {
+  buildChainWorkflowBadge,
+  type ChainWorkflowBadge,
+} from "@/lib/chain-workflow-badge";
+import {
+  requestStopChainExecution,
+  runOrchestrationChainInBackground,
+  setChainRunningFromServer,
+  type ChainRunOptions,
+} from "@/lib/orchestration-chain-runner";
 
-export type ChainStatusBadge = {
-  label: string;
-  tone: "neutral" | "active" | "paused" | "done";
-};
+export type ChainStatusBadge = ChainWorkflowBadge;
 
 type Ctx = {
   chainRunning: boolean;
@@ -70,19 +77,26 @@ export function OrchestrationExecutionProvider({ children }: { children: ReactNo
       const st = loaded.ok ? loaded.state : null;
       const total = Array.isArray(st?.steps) ? st.steps.length : 0;
       const idx = st?.currentIndex ?? 0;
-      if (!loaded.ok || total === 0) {
-        setChainStatusBadge({ label: "工作流：无任务链", tone: "neutral" });
-        return;
+
+      let lastError: string | null = null;
+      if (api.orchestrationGetChainRunStatus) {
+        try {
+          const runSt = await api.orchestrationGetChainRunStatus();
+          lastError = runSt?.lastError ?? null;
+        } catch {
+          /* ignore */
+        }
       }
-      if (idx >= total) {
-        setChainStatusBadge({ label: `工作流：已完成（${total}/${total}）`, tone: "done" });
-        return;
-      }
-      if (running) {
-        setChainStatusBadge({ label: `工作流：执行中（${idx + 1}/${total}）`, tone: "active" });
-        return;
-      }
-      setChainStatusBadge({ label: `工作流：已暂停（${idx + 1}/${total}）`, tone: "paused" });
+
+      setChainStatusBadge(
+        buildChainWorkflowBadge({
+          total,
+          currentIndex: idx,
+          running,
+          lastError,
+          loaded: loaded.ok && total > 0,
+        }),
+      );
     } catch {
       setChainStatusBadge({ label: "工作流：状态读取失败", tone: "neutral" });
     }

@@ -31,10 +31,10 @@ export function WorkbenchCenterEditor() {
 
   if (!ws.editorTabs.length) {
     return (
-      <div className="flex h-full min-h-0 flex-col items-center justify-center border-r border-border bg-code-bg/20 p-6 text-center">
+      <div className="workbench-empty-state flex h-full min-h-0 flex-col items-center justify-center border-r border-border bg-code-bg/20 p-6 text-center">
         <FileCode className="mb-3 h-10 w-10 text-muted-foreground/40" />
-        <p className="text-[13px] font-medium text-foreground/80">预览 / 编辑</p>
-        <p className="mt-1 max-w-sm text-[12px] text-muted-foreground">
+        <p className="workbench-empty-title text-[13px] font-medium text-foreground/80">预览 / 编辑</p>
+        <p className="workbench-empty-desc mt-1 max-w-sm text-[12px] text-muted-foreground">
           在左侧文件树中打开多个文件；点击「浏览器」可内嵌浏览网页。
         </p>
         <button

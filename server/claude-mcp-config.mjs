@@ -1,6 +1,9 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export function expandHome(p) {
   if (typeof p !== 'string') return p
@@ -22,26 +25,46 @@ function normalizeStoredArg(raw) {
   return collapseHome(expandHome(String(raw)))
 }
 
-/** 固定 npx 包版本，避免 ~/.npm/_npx 缓存拉取不完整导致 SDK 模块缺失 */
-export const PINNED_MCP_NPX_ARGS = {
-  '@modelcontextprotocol/server-filesystem': '@modelcontextprotocol/server-filesystem@2026.1.14',
-  '@modelcontextprotocol/server-memory': '@modelcontextprotocol/server-memory@2026.1.26',
+/** 已知 MCP 包：写入/读取时去掉版本号，由 npx/uvx 拉取最新 */
+function stripKnownMcpPackageVersion(command, arg) {
+  const s = String(arg)
+  if (command === 'npx') {
+    if (/^@modelcontextprotocol\/server-filesystem@/.test(s)) return '@modelcontextprotocol/server-filesystem'
+    if (/^@modelcontextprotocol\/server-memory@/.test(s)) return '@modelcontextprotocol/server-memory'
+  }
+  if (command === 'uvx' && /^mcp-server-fetch(==|$)/.test(s)) return 'mcp-server-fetch'
+  return s
 }
 
 /** 官方 fetch 为 Python 包（PyPI），无 npm 版 @modelcontextprotocol/server-fetch */
 export const CANONICAL_FETCH_MCP = {
   command: 'uvx',
-  args: ['mcp-server-fetch==2026.6.4'],
+  args: ['mcp-server-fetch'],
 }
 
 export const CANONICAL_FILESYSTEM_MCP = {
   command: 'npx',
-  args: ['-y', '@modelcontextprotocol/server-filesystem@2026.1.14', '~/'],
+  args: ['-y', '@modelcontextprotocol/server-filesystem', '~'],
 }
 
 export const CANONICAL_MEMORY_MCP = {
   command: 'npx',
-  args: ['-y', '@modelcontextprotocol/server-memory@2026.1.26'],
+  args: ['-y', '@modelcontextprotocol/server-memory'],
+}
+
+export function bundledSanshengliubuMcpServerPath() {
+  return path.join(__dirname, 'mcp-sanshengliubu', 'server.mjs')
+}
+
+export const CANONICAL_SANSHENGLIUBU_MCP = {
+  command: 'node',
+  args: [bundledSanshengliubuMcpServerPath()],
+}
+
+export function bundledMcpPresetCommandLines() {
+  return {
+    sanshengliubu: formatMcpCommandLine(CANONICAL_SANSHENGLIUBU_MCP),
+  }
 }
 
 function isBrokenFetchNpxEntry(cfg) {
@@ -65,11 +88,8 @@ export function normalizeMcpServerEntry(cfg) {
   if ((cmd === 'npx' || cmd === 'uvx') && Array.isArray(out.args)) {
     out.args = out.args.map((a) => {
       const s = String(a)
-      if (cmd === 'npx') {
-        const pinned = PINNED_MCP_NPX_ARGS[s]
-        if (pinned) return pinned
-      }
-      return normalizeStoredArg(s)
+      const stripped = stripKnownMcpPackageVersion(cmd, s)
+      return normalizeStoredArg(stripped)
     })
   }
   return out
@@ -107,7 +127,7 @@ export function repairMcpConfigData(data) {
       if (current !== canonical) {
         next = { ...CANONICAL_FILESYSTEM_MCP }
         if (raw.env && typeof raw.env === 'object') next.env = raw.env
-        repairs.push('filesystem: 使用固定版本 @2026.1.14 与 ~/ 路径')
+        repairs.push('filesystem: 使用 ~/ 路径与最新包名')
         changed = true
       }
     } else if (name === 'memory' && String(raw?.command || '').trim() === 'npx') {
@@ -117,7 +137,17 @@ export function repairMcpConfigData(data) {
       if (current !== canonical) {
         next = { ...CANONICAL_MEMORY_MCP }
         if (raw.env && typeof raw.env === 'object') next.env = raw.env
-        repairs.push('memory: 固定 @2026.1.26')
+        repairs.push('memory: 使用最新包名')
+        changed = true
+      }
+    } else if (name === 'sanshengliubu' && String(raw?.command || '').trim() === 'node') {
+      const normalized = normalizeMcpServerEntry(raw)
+      const canonical = JSON.stringify(CANONICAL_SANSHENGLIUBU_MCP)
+      const current = JSON.stringify({ command: normalized.command, args: normalized.args })
+      if (current !== canonical) {
+        next = { ...CANONICAL_SANSHENGLIUBU_MCP }
+        if (raw.env && typeof raw.env === 'object') next.env = raw.env
+        repairs.push('sanshengliubu: 使用内置 Bridge 脚本路径')
         changed = true
       }
     } else if (JSON.stringify(next) !== JSON.stringify(raw)) {
@@ -127,6 +157,11 @@ export function repairMcpConfigData(data) {
       changed = true
     }
     mcpServers[name] = next
+  }
+  if (!mcpServers.sanshengliubu && fs.existsSync(bundledSanshengliubuMcpServerPath())) {
+    mcpServers.sanshengliubu = { ...CANONICAL_SANSHENGLIUBU_MCP }
+    repairs.push('sanshengliubu: 已补全内置三省六部 MCP')
+    changed = true
   }
   return { data: { ...data, mcpServers }, changed, repairs }
 }

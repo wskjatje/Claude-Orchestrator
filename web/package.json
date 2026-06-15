@@ -4,8 +4,8 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev:electron": "npx -y node@22 ./node_modules/vite/bin/vite.js dev --host 127.0.0.1 --strictPort --port 5188",
-    "build:electron": "npx -y node@22 ./node_modules/vite/bin/vite.js build",
+    "dev:electron": "node ./node_modules/vite/bin/vite.js dev --host 127.0.0.1 --strictPort --port 5188",
+    "build:electron": "node ./node_modules/vite/bin/vite.js build",
     "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
