@@ -69,17 +69,16 @@ export const SETTINGS_TAB_HINT = {
   advanced: "与 GitHub 同步编排资产。",
 } as const;
 
-export const GIT_PUSH_HINT = "推送以本地为准，覆盖个人仓库远程。";
+export const GIT_PUSH_HINT = "推送：本机内容上传到 GitHub，会直接更新远程。";
 
 export const GIT_PUSH_HINT_DETAIL =
-  "推送前导出 Agent/Skill/链/MCP 到 docs/；无需先拉取。拉取仅用于从 GitHub 取回并「部署到本地」。";
+  "无需先拉取。上方说明可选，留空也会推送；会一并同步 Agent、Skill、任务链与 MCP 配置。";
 
-export const GIT_DEPLOY_HINT = "将 docs/ 与 .mcp.json 写入 ~/.claude 与 .claudecode。";
+export const GIT_DEPLOY_HINT = "部署到本地：从 GitHub 取回编排配置并写入本机。";
 
 export const GIT_PUSH_REASON_LABEL = "本次变更（可选）";
 
-export const GIT_PUSH_REASON_PLACEHOLDER =
-  "留空则仅推送「前端实现说明」；第一行作提交标题，其余行为变更要点";
+export const GIT_PUSH_REASON_PLACEHOLDER = "可写这次改了什么；留空也能推送";
 
 export const CHAINS_INFO_HINT = "官方链已内置；对话中用 /chain 调用。";
 

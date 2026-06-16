@@ -438,6 +438,7 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
         gitToast(briefGitError(r.error, "推送失败"), "error");
         return;
       }
+      setPushReason("");
       if (r.nothingToCommit) {
         gitToast("已与远程一致，无需推送。");
       } else {
