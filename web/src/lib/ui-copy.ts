@@ -69,10 +69,15 @@ export const SETTINGS_TAB_HINT = {
   advanced: "与 GitHub 同步编排资产。",
 } as const;
 
-export const GIT_PUSH_HINT = "推送 Agent、Skill、任务链与脱敏 MCP；本地聊天与日志不入库。";
+export const GIT_PUSH_HINT = "推送时自动生成前端应用说明；Agent/Skill/链/MCP 一并导出。";
 
 export const GIT_PUSH_HINT_DETAIL =
-  "推送前会清除本地模型、聊天、日志与 SQLite 中的 API Key；MCP 去掉密钥；任务链导出为 idle。数据库文件不会入库。";
+  "提交信息含各页面功能介绍（docs/claude-orchestrator-apps.md）。本地聊天、API Key 与数据库不入库。";
+
+export const GIT_PUSH_REASON_LABEL = "本次变更（可选）";
+
+export const GIT_PUSH_REASON_PLACEHOLDER =
+  "第一行作提交标题，其余行作「本次变更」；留空则仅推送应用说明目录";
 
 export const CHAINS_INFO_HINT = "官方链已内置；对话中用 /chain 调用。";
 

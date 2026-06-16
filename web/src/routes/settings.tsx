@@ -15,6 +15,8 @@ import {
   CONFIRM_WRITE_SECTION_HINT,
   GIT_PUSH_HINT,
   GIT_PUSH_HINT_DETAIL,
+  GIT_PUSH_REASON_LABEL,
+  GIT_PUSH_REASON_PLACEHOLDER,
   PAGE_DESC,
   SETTINGS_SAVED_PROJECT,
   SETTINGS_TAB_HINT,
@@ -405,10 +407,6 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
       return;
     }
     const reason = pushReason.trim();
-    if (!reason) {
-      gitToast("请填写推送说明。", "error");
-      return;
-    }
     setGitBusy("push");
     try {
       await api.workbenchGitSaveGithubSettings(githubSettingsPayload());
@@ -494,13 +492,15 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
           <div className="mt-3 rounded-xl border border-border bg-surface-elevated p-4 shadow-xs">
             <p className="mb-3 text-[13px] font-semibold text-foreground">个人仓库</p>
             <label className="block">
-              <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">推送说明</span>
+              <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">
+                {GIT_PUSH_REASON_LABEL}
+              </span>
               <textarea
                 value={pushReason}
                 onChange={(e) => setPushReason(e.target.value)}
                 disabled={!desktop}
-                placeholder="本次推送做了什么"
-                rows={2}
+                placeholder={GIT_PUSH_REASON_PLACEHOLDER}
+                rows={3}
                 spellCheck={false}
                 className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
               />
@@ -523,8 +523,7 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
                     gitBusy !== null ||
                     !personalGithubRepo.trim() ||
                     !gitUserName.trim() ||
-                    !gitUserEmail.trim() ||
-                    !pushReason.trim()
+                    !gitUserEmail.trim()
                   }
                   onClick={() => void pushToPersonal()}
                   className="btn-row"

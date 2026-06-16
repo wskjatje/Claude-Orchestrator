@@ -9,6 +9,10 @@ import {
   saveChatSettings,
 } from './store.mjs'
 import { exportPersonalGithubArtifacts } from './workbench-git-export.mjs'
+import {
+  buildFrontendAppsCommitSection,
+  exportFrontendAppsDoc,
+} from './frontend-app-catalog.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -553,15 +557,21 @@ export async function pullFromPersonalGithub(opts = {}) {
 }
 
 function buildPersonalCommitMessage(reason) {
-  const text = String(reason || '').trim().slice(0, 500)
+  const text = String(reason || '').trim().slice(0, 800)
   const lines = text.split('\n').map((line) => line.trim()).filter(Boolean)
   const firstLine = lines[0] || ''
-  if (!firstLine) return null
-  const rest = lines.slice(1).join('\n')
-  if (rest) {
-    return `chore(workbench): ${firstLine.slice(0, 72)}\n\n${rest}`
+  const subject = firstLine
+    ? `docs(frontend): ${firstLine.slice(0, 72)}`
+    : 'docs(frontend): 更新 Claude Orchestrator 前端应用说明'
+
+  const bodyParts = []
+  if (lines.length > 1) {
+    bodyParts.push('## 本次变更', ...lines.slice(1), '')
+  } else if (firstLine) {
+    bodyParts.push('## 本次变更', firstLine, '')
   }
-  return `chore(workbench): ${firstLine.slice(0, 72)}`
+  bodyParts.push(buildFrontendAppsCommitSection())
+  return `${subject}\n\n${bodyParts.join('\n').trimEnd()}`
 }
 
 async function isShallowClone() {
@@ -614,9 +624,6 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
         ? opts.message.trim()
         : ''
   const message = buildPersonalCommitMessage(reason)
-  if (!message) {
-    return { ok: false, error: '请填写推送说明，便于在个人仓库中区分版本历史' }
-  }
 
   const settings = loadChatSettings()
   const personalUrl = (opts.personalGithubRepo || settings.personalGithubRepo || '').trim()

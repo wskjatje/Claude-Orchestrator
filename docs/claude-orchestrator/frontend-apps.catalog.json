@@ -1,0 +1,102 @@
+{
+  "productName": "Claude Orchestrator",
+  "tagline": "本机优先的 AI 编排工作台：连接 Claude Code CLI，统一管理对话、Agent、Skill、任务链与 MCP 工具。",
+  "stack": "React · TanStack Router · Electron 桌面 · 本机 Bridge 服务",
+  "groups": [
+    {
+      "id": "workspace",
+      "label": "工作区",
+      "apps": [
+        {
+          "route": "/",
+          "name": "聊天",
+          "description": "与 Claude Code 对话；支持 Agent / Skill 切换、任务链执行、工作台文件树与终端。"
+        },
+        {
+          "route": "/workspaces",
+          "name": "工作目录",
+          "description": "选择项目根目录，供聊天写入、工作台浏览与任务链读写。"
+        },
+        {
+          "route": "/editor",
+          "name": "工作台编辑器",
+          "description": "聊天页内嵌代码/ Markdown 编辑与预览（由聊天路由进入）。"
+        }
+      ]
+    },
+    {
+      "id": "runtime",
+      "label": "运行",
+      "apps": [
+        {
+          "route": "/overview",
+          "name": "概览",
+          "description": "本机连接状态、今日用量 KPI 与运行概况。"
+        },
+        {
+          "route": "/scheduled",
+          "name": "定时任务",
+          "description": "本机进程内定时触发 Agent 或命令。"
+        },
+        {
+          "route": "/logs",
+          "name": "日志",
+          "description": "工作台、Claude CLI 与追踪日志，便于故障排查。"
+        },
+        {
+          "route": "/reports",
+          "name": "智能体执行日报",
+          "description": "按 Agent × 日期汇总 Markdown 执行记录。"
+        }
+      ]
+    },
+    {
+      "id": "orchestration",
+      "label": "编排",
+      "apps": [
+        {
+          "route": "/agents",
+          "name": "Agent",
+          "description": "浏览、编辑与试跑本机 Agent 角色规则（docs/agents/）。"
+        },
+        {
+          "route": "/skills",
+          "name": "Skill",
+          "description": "管理本机 Skill 目录中的可复用提示与工具组合。"
+        },
+        {
+          "route": "/chains",
+          "name": "任务链",
+          "description": "多步 Agent 流水线；对话中可用 /chain 调用。"
+        }
+      ]
+    },
+    {
+      "id": "integration",
+      "label": "集成",
+      "apps": [
+        {
+          "route": "/comms",
+          "name": "MCP 服务器",
+          "description": "配置 filesystem、fetch、memory 等 MCP 工具供编排使用。"
+        }
+      ]
+    },
+    {
+      "id": "system",
+      "label": "系统",
+      "apps": [
+        {
+          "route": "/settings",
+          "name": "应用设置",
+          "description": "模型与连接、GitHub 同步、聊天落盘等通用偏好。"
+        },
+        {
+          "route": "/help",
+          "name": "帮助与链接",
+          "description": "快捷键、外部文档与关于信息。"
+        }
+      ]
+    }
+  ]
+}

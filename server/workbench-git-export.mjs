@@ -12,6 +12,7 @@ import {
   normalizeMcpServerEntry,
   readMcpConfigFile,
 } from './claude-mcp-config.mjs'
+import { exportFrontendAppsDoc } from './frontend-app-catalog.mjs'
 
 const AGENTS_SRC = path.join(os.homedir(), '.claude', 'agents')
 const SKILLS_SRC = path.join(os.homedir(), '.claude', 'skills')
@@ -257,9 +258,11 @@ export function exportPersonalGithubArtifacts() {
   const skills = copyMarkdownTree(SKILLS_SRC, SKILLS_DEST)
   const chains = exportOrchestrationChains()
   const mcp = exportSanitizedMcpConfig()
+  const appsDoc = exportFrontendAppsDoc()
 
   const paths = [...agents, ...skills, ...(chains.chains || [])]
   if (mcp.exported && mcp.path) paths.push(mcp.path)
+  if (appsDoc.ok && appsDoc.path) paths.push(appsDoc.path)
 
   const summary = []
   if (agents.length) summary.push(`${agents.length} 个 Agent → docs/agents/`)
@@ -268,6 +271,7 @@ export function exportPersonalGithubArtifacts() {
     summary.push(`${chains.count} 条任务链 → docs/chains/`)
   }
   if (mcp.exported) summary.push(`${mcp.serverCount} 个 MCP → .mcp.json`)
+  if (appsDoc.ok) summary.push('前端应用说明 → docs/claude-orchestrator-apps.md')
   if (!summary.length) {
     summary.push('（未找到可导出的 Agent/Skill/任务链/MCP，仅推送其它已跟踪变更）')
   }
@@ -279,6 +283,7 @@ export function exportPersonalGithubArtifacts() {
     skills,
     chains,
     mcp,
+    appsDoc,
     paths,
     summary: summary.join('；'),
   }
