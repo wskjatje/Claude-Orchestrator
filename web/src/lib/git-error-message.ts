@@ -10,7 +10,7 @@ export function formatGitErrorMessage(error?: string, fallback = "操作失败")
 
   const rejected = lines.some((l) => /rejected|fetch first|non-fast-forward/i.test(l))
   if (rejected) {
-    return "远程仓库有新提交，请先在「个人仓库」点「拉取」，合并成功后再推送。"
+    return "推送被拒绝，请检查网络、权限或个人仓库地址。"
   }
 
   const errLine = lines.find((l) => /^error:/i.test(l))

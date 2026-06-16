@@ -352,7 +352,7 @@ export async function getWorkbenchGitStatus() {
     remotes: remotes.ok ? remotes.remotes : [],
     pullMode: 'path-scoped',
     syncScopeNote:
-      '个人仓库：推送导出 Agent/Skill/链/MCP 到 docs/；拉取合并后自动部署到 ~/.claude 与 .claudecode',
+      '个人仓库：推送以本地为准覆盖远程；拉取仅用于从 GitHub 取回并部署到本机',
   }
 }
 
@@ -708,15 +708,11 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     }
   }
 
-  const push = await runGit(['push', '-u', 'origin', branch])
+  const push = await runGit(['push', '--force', '-u', 'origin', branch])
   if (!push.ok) {
     const combined = push.combined || push.error || ''
     let errorMsg = combined || '推送到个人仓库失败'
-    if (/rejected|fetch first|non-fast-forward/i.test(combined)) {
-      errorMsg =
-        '远程仓库有新的提交，请先在「个人仓库」点「拉取」合并后再推送。' +
-        (commitLog ? '（本地提交已保存，拉取后再次推送即可。）' : '')
-    } else if (/index-pack failed|did not receive expected object/i.test(combined)) {
+    if (/index-pack failed|did not receive expected object/i.test(combined)) {
       errorMsg +=
         '\n\n提示：若仓库是浅克隆，请先执行 git fetch --unshallow origin 后再推送。'
     }
@@ -727,10 +723,11 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
         .filter(Boolean)
         .join('\n'),
       committed: Boolean(commitLog) || !nothingToCommit,
-      needsPull: /rejected|fetch first|non-fast-forward/i.test(combined),
       personalUrl: ensure.url,
     }
   }
+
+  const forceNote = '已以本地为准覆盖个人仓库远程分支。'
 
   if (nothingToCommit && /everything up-to-date/i.test(push.combined || push.stdout || '')) {
     return {
@@ -747,11 +744,12 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
   return {
     ok: true,
     pushed: true,
+    forcePushed: true,
     clearedConfig: true,
     clearedItems: cleared.cleared,
     branch,
     personalUrl: ensure.url,
-    combined: [clearedNote, exportNote, history.unshallowed ? history.combined : '', commitLog, push.combined]
+    combined: [clearedNote, exportNote, forceNote, history.unshallowed ? history.combined : '', commitLog, push.combined]
       .filter(Boolean)
       .join('\n'),
   }

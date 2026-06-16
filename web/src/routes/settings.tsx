@@ -436,9 +436,6 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
       });
       if (!r.ok) {
         gitToast(briefGitError(r.error, "推送失败"), "error");
-        if (r.needsPull) {
-          gitToast("请先点「拉取」合并远程，再重新推送。", "warning");
-        }
         return;
       }
       if (r.nothingToCommit) {

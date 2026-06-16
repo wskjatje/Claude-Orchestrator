@@ -69,10 +69,10 @@ export const SETTINGS_TAB_HINT = {
   advanced: "与 GitHub 同步编排资产。",
 } as const;
 
-export const GIT_PUSH_HINT = "推送时导出 Agent/Skill/链/MCP 到 docs/，并写入前端实现说明。";
+export const GIT_PUSH_HINT = "推送以本地为准，覆盖个人仓库远程。";
 
 export const GIT_PUSH_HINT_DETAIL =
-  "推送前从 ~/.claude 与 .claudecode 导出到 docs/agents、docs/skills、docs/chains、.mcp.json；拉取合并后会自动部署回本地。也可点「部署到本地」直接应用仓库内配置。";
+  "推送前导出 Agent/Skill/链/MCP 到 docs/；无需先拉取。拉取仅用于从 GitHub 取回并「部署到本地」。";
 
 export const GIT_DEPLOY_HINT = "将 docs/ 与 .mcp.json 写入 ~/.claude 与 .claudecode。";
 
