@@ -1,49 +1,54 @@
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/ui-copy";
 
+const MARK_SRC = "/logo-mark.png";
+
 type AppLogoProps = {
   className?: string;
-  /** full：通用；sidebar：侧栏品牌区（更大）；mark：顶栏图标裁切 */
+  /** full：图标 + 名称；sidebar：侧栏品牌区；mark：仅图标 */
   variant?: "full" | "sidebar" | "mark";
 };
 
-/** 项目主 logo（public/logo.png · 图一） */
-export function AppLogo({ className, variant = "full" }: AppLogoProps) {
-  if (variant === "mark") {
-    return (
-      <img
-        src="/logo.png"
-        alt={APP_NAME}
-        className={cn("h-7 w-7 shrink-0 rounded-md object-cover object-top", className)}
-        style={{ clipPath: "inset(0 0 42% 0)" }}
-        draggable={false}
-      />
-    );
-  }
-  if (variant === "sidebar") {
-    return (
-      <img
-        src="/logo.png"
-        alt={APP_NAME}
-        className={cn(
-          "mx-auto block h-[4.25rem] w-full max-w-[11.5rem] object-contain",
-          "mix-blend-multiply dark:mix-blend-normal dark:brightness-[1.08]",
-          className,
-        )}
-        draggable={false}
-      />
-    );
-  }
+function LogoMark({ className }: { className?: string }) {
   return (
     <img
-      src="/logo.png"
-      alt={APP_NAME}
-      className={cn(
-        "block h-11 w-auto max-w-[152px] shrink-0 object-contain object-left",
-        "mix-blend-multiply dark:mix-blend-normal dark:brightness-[1.08]",
-        className,
-      )}
+      src={MARK_SRC}
+      alt=""
+      aria-hidden
+      className={cn("shrink-0 object-contain", className)}
       draggable={false}
     />
+  );
+}
+
+/** 项目 logo：与 Electron 应用 icon 同一套 mark（透明底） */
+export function AppLogo({ className, variant = "full" }: AppLogoProps) {
+  if (variant === "mark") {
+    return <LogoMark className={cn("h-8 w-8", className)} />;
+  }
+
+  if (variant === "sidebar") {
+    return (
+      <div className={cn("flex min-w-0 items-center gap-2.5", className)}>
+        <LogoMark className="h-9 w-9 shrink-0" />
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="truncate text-[13px] font-semibold tracking-tight text-foreground" translate="no">
+            Claude
+          </div>
+          <div className="truncate text-[11px] font-medium text-muted-foreground" translate="no">
+            Orchestrator
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("flex min-w-0 items-center gap-2", className)}>
+      <LogoMark className="h-8 w-8 shrink-0" />
+      <span className="truncate text-[13px] font-semibold tracking-tight text-foreground" translate="no">
+        {APP_NAME}
+      </span>
+    </div>
   );
 }

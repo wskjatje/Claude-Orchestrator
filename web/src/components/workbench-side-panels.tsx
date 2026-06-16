@@ -65,7 +65,7 @@ function SideTabBtn({
         "inline-flex items-center gap-1 border-b-2 px-2.5 py-2 text-[11px] font-medium transition-colors",
         active
           ? "border-[var(--explorer-modified-dot)] text-[var(--explorer-row-active-fg)]"
-          : "border-transparent text-[#cccccc99] hover:text-[#cccccc]",
+          : "border-transparent text-muted-foreground hover:text-foreground",
       )}
     >
       <Icon className="h-3 w-3" />

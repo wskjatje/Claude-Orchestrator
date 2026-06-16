@@ -194,6 +194,9 @@
   --explorer-git-added: #107c10;
   --explorer-git-deleted: #a1260d;
   --explorer-git-renamed: #0078d4;
+  --explorer-bg: var(--code-bg);
+  --explorer-border: color-mix(in oklab, var(--border) 80%, transparent);
+  --explorer-label-fg: var(--sidebar-foreground);
 }
 
 .dark {
@@ -299,6 +302,9 @@
   --explorer-git-added: #73c991;
   --explorer-git-deleted: #f48771;
   --explorer-git-renamed: #4fc1ff;
+  --explorer-bg: #252526;
+  --explorer-border: #2b2b2b;
+  --explorer-label-fg: #cccccc;
 }
 
 @layer base {
@@ -2011,7 +2017,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     padding-left: 2px;
-    color: var(--explorer-label-fg, #cccccc);
+    color: var(--explorer-label-fg, var(--sidebar-foreground));
   }
 
   .explorer-tree-label-dimmed {
@@ -2019,7 +2025,7 @@
   }
 
   .explorer-git-label-neutral {
-    color: var(--explorer-label-fg, #cccccc) !important;
+    color: var(--explorer-label-fg, var(--sidebar-foreground)) !important;
   }
 
   .explorer-git-label-modified {
@@ -2093,8 +2099,12 @@
     background-color: var(--explorer-modified-dot);
   }
 
-  /** Workbench 资源管理器 — 固定 Cursor/VS Code 深色侧栏（与应用主题无关） */
+  /** Workbench 资源管理器 — 白天与预览/编辑区同色；夜间沿用 Cursor/VS Code 深色侧栏 */
   .workbench-explorer-sidebar {
+    color: var(--sidebar-foreground);
+  }
+
+  .dark .workbench-explorer-sidebar {
     --explorer-bg: #252526;
     --explorer-border: #2b2b2b;
     --sidebar-foreground: #cccccc;
@@ -2134,10 +2144,19 @@
   }
 
   .workbench-explorer-sidebar .explorer-section-action {
-    color: #cccccc99;
+    color: color-mix(in oklab, var(--sidebar-foreground) 60%, transparent);
   }
 
   .workbench-explorer-sidebar .explorer-section-action:hover {
+    color: var(--sidebar-foreground);
+    background-color: var(--explorer-row-hover);
+  }
+
+  .dark .workbench-explorer-sidebar .explorer-section-action {
+    color: #cccccc99;
+  }
+
+  .dark .workbench-explorer-sidebar .explorer-section-action:hover {
     color: #cccccc;
     background-color: var(--explorer-row-hover);
   }

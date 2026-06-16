@@ -55,7 +55,7 @@ import { buildConfirmWriteItems, isConfirmWriteOnlyMessage, isBulkWriteProjectMe
 import { performBulkWriteFromHistory } from "@/lib/bulk-write-from-history";
 import { runProjectFromChat } from "@/lib/run-project-in-terminal";
 import { MSG_BRIDGE_OFFLINE } from "@/lib/user-messages";
-import { BROWSER_MODE_CHAT_MESSAGE, LOCAL_ONLY_HINT } from "@/lib/ui-copy";
+import { BROWSER_MODE_CHAT_MESSAGE, COMPOSER_PLACEHOLDER, LOCAL_ONLY_HINT } from "@/lib/ui-copy";
 import {
   isProjectPreviewMessage,
   isStopPreviewMessage,
@@ -1721,7 +1721,7 @@ function ChatPage() {
     "视频生成": { placeholder: "添加照片，描述你想生成的视频…", chipIcon: Play, chipColor: "text-primary" },
   };
 
-  const composerPlaceholder = "规划任务，@ 引用上下文，/ 输入命令（如：生成项目任务链）";
+  const composerPlaceholder = COMPOSER_PLACEHOLDER;
 
   const handleInlineComposerPaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;

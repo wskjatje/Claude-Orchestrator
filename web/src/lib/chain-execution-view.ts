@@ -84,7 +84,7 @@ export function deriveChainExecutionView(opts: {
     pending: !r.done && !r.current,
   }));
 
-  let statusText = chainStatusBadge.label.replace(/^工作流：/, "");
+  let statusText = chainStatusBadge.label.replace(/^链：/, "");
   if (phase === "draft") statusText = "编辑中，保存后才会写入磁盘并允许执行";
   else if (phase === "empty") statusText = "可从下方模板套用，或手动添加步骤";
   else if (phase === "completed") statusText = `全部 ${total} 步已完成 · 磁盘 status=${diskStatus}`;

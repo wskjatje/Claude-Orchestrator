@@ -115,7 +115,7 @@ export function AppShell({
             <span className="sr-only">{mobileNavOpen ? "关闭导航" : "打开导航"}</span>
           </button>
           <AppLogo variant="mark" className="shrink-0 sm:hidden" />
-          <AppLogo variant="mark" className="hidden h-6 w-6 shrink-0 sm:block md:hidden" />
+          <AppLogo variant="mark" className="hidden shrink-0 sm:block md:hidden" />
           <span className="hidden truncate text-[11.5px] font-semibold tracking-tight text-foreground/90 md:inline sm:text-[12px]" translate="no">
             {APP_NAME}
           </span>
@@ -182,7 +182,7 @@ export function AppShell({
           )}
         >
           {!workbench ? (
-            <div className="border-b border-sidebar-border/70 px-3 py-3.5 sm:px-4">
+            <div className="border-b border-sidebar-border/70 px-3 py-2.5 sm:px-4">
               <AppLogo variant="sidebar" />
             </div>
           ) : (

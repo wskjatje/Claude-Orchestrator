@@ -129,7 +129,7 @@ export const CHOOSE_WORKSPACE_OFFLINE_DESC =
   "请启动 Claude Orchestrator 并刷新页面。";
 
 export const COMPOSER_PLACEHOLDER =
-  "输入任务或问题，@ 引用文件，/ 使用命令";
+  "输入内容，@ 引用文件，/ 使用命令";
 
 export const BROWSER_MODE_CHAT_MESSAGE =
   "请使用 Claude Orchestrator 桌面窗口打开，以使用完整聊天、工作区与对话记录。";

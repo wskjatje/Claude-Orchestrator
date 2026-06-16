@@ -58,7 +58,9 @@ export function ChatComposerCursor({
         variant="dock"
       />
 
-      {chainStatusLabel && chainStatusLabel !== "工作流：—" ? (
+      {chainStatusLabel &&
+      chainStatusLabel !== "链：—" &&
+      chainStatusTone !== "done" ? (
         <div className="mt-1.5 flex justify-start px-0.5">
           <span
             className={cn(

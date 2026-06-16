@@ -40,7 +40,7 @@ const OrchestrationContext = createContext<Ctx | null>(null);
 /** SSR / HMR 模块热重载间隙：避免 Provider 未挂载时整页崩溃 */
 const ORCHESTRATION_FALLBACK: Ctx = {
   chainRunning: false,
-  chainStatusBadge: { label: "工作流：—", tone: "neutral" },
+  chainStatusBadge: { label: "链：—", tone: "neutral" },
   sessionRevision: 0,
   runOrchestrationChain: async () => {},
   stopChainExecution: () => {},
@@ -55,7 +55,7 @@ export function OrchestrationExecutionProvider({ children }: { children: ReactNo
   const chainRunningRef = useRef(false);
   const [sessionRevision, setSessionRevision] = useState(0);
   const [chainStatusBadge, setChainStatusBadge] = useState<ChainStatusBadge>({
-    label: "工作流：检查中",
+    label: "链：检查中",
     tone: "neutral",
   });
 
@@ -68,7 +68,7 @@ export function OrchestrationExecutionProvider({ children }: { children: ReactNo
   const refreshChainStatusBadge = useCallback(async (opts?: { running?: boolean }) => {
     const api = getDesktop();
     if (!api?.orchestrationLoadChain) {
-      setChainStatusBadge({ label: "工作流：不可用", tone: "neutral" });
+      setChainStatusBadge({ label: "链：不可用", tone: "neutral" });
       return;
     }
     const running = opts?.running ?? chainRunningRef.current;
@@ -98,7 +98,7 @@ export function OrchestrationExecutionProvider({ children }: { children: ReactNo
         }),
       );
     } catch {
-      setChainStatusBadge({ label: "工作流：状态读取失败", tone: "neutral" });
+      setChainStatusBadge({ label: "链：状态读取失败", tone: "neutral" });
     }
   }, []);
 

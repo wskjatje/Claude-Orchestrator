@@ -16,16 +16,16 @@ export function buildChainWorkflowBadge(opts: {
   const { total, currentIndex: idx, running, lastError, loaded = true } = opts;
 
   if (!loaded || total === 0) {
-    return { label: "工作流：无任务链", tone: "neutral" };
+    return { label: "链：无", tone: "neutral" };
   }
   if (idx >= total) {
-    return { label: `工作流：已完成（${total}/${total}）`, tone: "done" };
+    return { label: "链：已完成", tone: "done" };
   }
   if (running) {
-    return { label: `工作流：执行中（${idx + 1}/${total}）`, tone: "active" };
+    return { label: `链：执行中 ${idx + 1}/${total}`, tone: "active" };
   }
   if (idx === 0 && !lastError?.trim()) {
-    return { label: "工作流：待执行", tone: "idle" };
+    return { label: "链：待执行", tone: "idle" };
   }
-  return { label: `工作流：已暂停（${idx + 1}/${total}）`, tone: "paused" };
+  return { label: `链：已暂停 ${idx + 1}/${total}`, tone: "paused" };
 }
