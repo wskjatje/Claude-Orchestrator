@@ -13,6 +13,13 @@ import {
   type WorkspaceHistoryEntry,
 } from "@/lib/workspace-history";
 import { cn } from "@/lib/utils";
+import {
+  PAGE_DESC,
+  WORKSPACE_API_MISSING,
+  WORKSPACE_BROWSE_HINT,
+  WORKSPACE_HISTORY_API_OFFLINE,
+  WORKSPACE_HISTORY_HINT,
+} from "@/lib/ui-copy";
 
 export const Route = createFileRoute("/workspaces")({
   head: () => ({ meta: [{ title: "工作目录 · Claude Orchestrator" }] }),
@@ -38,7 +45,7 @@ function WorkspacesPage() {
     }
     if (typeof api.getWorkspaceHistory !== "function") {
       setHistory(p ? [{ path: p, openedAt: Date.now() }] : []);
-      setHint("打开记录 API 未就绪，请刷新页面；若仍为空请重启 npm run web:dev:full。");
+      setHint(`${WORKSPACE_HISTORY_API_OFFLINE} 若仍为空，请刷新页面。`);
       return;
     }
     try {
@@ -47,7 +54,7 @@ function WorkspacesPage() {
       setHint("");
     } catch {
       setHistory(p ? [{ path: p, openedAt: Date.now() }] : []);
-      setHint("无法读取打开记录，请重启 npm run web:dev:full 后刷新本页。");
+      setHint(WORKSPACE_HISTORY_API_OFFLINE);
     }
   }, []);
 
@@ -121,18 +128,18 @@ function WorkspacesPage() {
       <PageRoot>
         <PageHeader
           title="工作目录"
-          description="选择项目根目录，供聊天、工作台与任务链读写"
+          description={PAGE_DESC.workspaces}
         />
         <SinglePaneLayout>
           <PageContent className="space-y-4">
             {desktopReady && !desktop && (
               <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-[12.5px] text-warning">
-                未检测到桌面 API。请先运行 <code className="font-mono">npm run web:dev:full</code> 并刷新本页。
+                {WORKSPACE_API_MISSING}
               </div>
             )}
             {desktopReady && desktop && isWebBridge() && (
               <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 text-[12.5px] text-muted-foreground">
-                Web 模式：点击「浏览目录」将弹出 macOS 本机文件夹选择框（由 Web Bridge 调用）。
+                {WORKSPACE_BROWSE_HINT}
               </div>
             )}
             {hint ? (
@@ -176,7 +183,7 @@ function WorkspacesPage() {
               </div>
             </PageSection>
 
-            <PageSection title="打开记录" hint={<InfoHint>存于本机 SQLite（.claudecode/workbench.db），换浏览器仍可恢复</InfoHint>}>
+            <PageSection title="打开记录" hint={<InfoHint>{WORKSPACE_HISTORY_HINT}</InfoHint>}>
               {!history.length ? (
                 <div className="rounded-lg border border-dashed border-border bg-surface/50 px-4 py-8 text-center text-[12px] text-muted-foreground">
                   暂无打开记录。选择工作区后会自动记录。

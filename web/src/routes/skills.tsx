@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { InfoHint } from "@/components/info-hint";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { getDesktop } from "@/lib/desktop-api";
+import { DEMO_LIST_BANNER, LOCAL_ONLY_HINT, PAGE_DESC, SKILLS_EDITOR_HINT } from "@/lib/ui-copy";
 
 export const Route = createFileRoute("/skills")({
   head: () => ({ meta: [{ title: "Skill · Claude Orchestrator" }] }),
@@ -136,14 +137,14 @@ function SkillsPage() {
     <AppShell>
       <PageHeader
         title="Skill"
-        description="Skill 是可复用的提示 + 工具组合 — 来自 ~/.claude/skills/"
+        description={PAGE_DESC.skills}
         actions={
           <>
             <button
               type="button"
               onClick={() => void reloadSkillList()}
               disabled={listLoading || !hasDesktopApi}
-              title={!hasDesktopApi ? "仅在 Electron 桌面客户端可用" : undefined}
+              title={!hasDesktopApi ? LOCAL_ONLY_HINT : undefined}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", listLoading && "animate-spin")} /> 从本机刷新
@@ -152,12 +153,12 @@ function SkillsPage() {
               type="button"
               onClick={() => void openSkillsFolder()}
               disabled={!hasDesktopApi}
-              title={!hasDesktopApi ? "仅在 Electron 桌面客户端可用" : "在访达中打开 ~/.claude/skills"}
+              title={!hasDesktopApi ? LOCAL_ONLY_HINT : "在访达中打开 ~/.claude/skills"}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <FolderOpen className="h-3.5 w-3.5" /> 在 Finder 打开
             </button>
-            <InfoHint side="left">技能从本机目录扫描，编辑请直接修改对应 Markdown / YAML 文件。</InfoHint>
+            <InfoHint side="left">{SKILLS_EDITOR_HINT}</InfoHint>
           </>
         }
       />
@@ -165,15 +166,7 @@ function SkillsPage() {
       {hasDesktopApi && (
         <div className="border-b border-border bg-surface-elevated/80 px-4 py-2.5 sm:px-6 lg:px-7">
           <p className="text-[12px] leading-relaxed text-muted-foreground">
-            {listFromDisk ? (
-              <>
-                列表已与{" "}
-                <code className="rounded bg-code-bg px-1 font-mono text-[11px]">~/.claude/skills/*.md</code>{" "}
-                同步（与 Claude Code CLI 共用目录）。
-              </>
-            ) : (
-              <>浏览器预览下为演示数据；Electron 中点击「从本机刷新」载入真实技能文件。</>
-            )}
+            {listFromDisk ? <>已与 Claude Code Skill 目录同步。</> : <>{DEMO_LIST_BANNER}</>}
             {listErr ? <span className="mt-1 block text-destructive">{listErr}</span> : null}
           </p>
         </div>

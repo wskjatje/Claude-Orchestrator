@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { getDesktop } from "@/lib/desktop-api";
 import { useDesktopReady } from "@/hooks/use-desktop-ready";
 import type { WorkspacePanelTreeNode } from "@/types/desktop";
+import { WORKSPACE_TREE_OFFLINE } from "@/lib/ui-copy";
 import {
   fileNameFromRel,
   isBrowserTab,
@@ -115,7 +116,7 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
   const refreshFiles = useCallback(async () => {
     const api = getDesktop();
     if (!api?.listWorkspacePanelTree) {
-      setFilesErr("当前环境不支持工作区树（请使用 Web Bridge）。");
+      setFilesErr(WORKSPACE_TREE_OFFLINE);
       setTree([]);
       return;
     }

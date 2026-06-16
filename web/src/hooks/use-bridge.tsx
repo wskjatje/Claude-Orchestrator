@@ -4,6 +4,11 @@ import { hasDesktop, isWebBridge } from "@/lib/desktop-api";
 import { useDesktopReady } from "@/hooks/use-desktop-ready";
 import { pingWebBridgeHealth } from "@/lib/install-desktop-bridge";
 import { loadUiPrefsFromProjectDb, saveUiPrefsToProjectDb } from "@/lib/ui-prefs";
+import {
+  BRIDGE_CONNECTED_VERSION,
+  BRIDGE_ELECTRON_VERSION,
+  BRIDGE_OFFLINE_VERSION,
+} from "@/lib/ui-copy";
 
 /**
  * Returns reactive Bridge connection state.
@@ -23,7 +28,7 @@ export function useBridge() {
         const ok = await pingWebBridgeHealth();
         if (cancelled) return;
         setStatus(ok ? "online" : "offline");
-        setVersion(ok ? "Web Bridge · Claude Code CLI" : "Web Bridge 离线");
+        setVersion(ok ? BRIDGE_CONNECTED_VERSION : BRIDGE_OFFLINE_VERSION);
       };
       void poll();
       const id = window.setInterval(poll, 4000);
@@ -35,7 +40,7 @@ export function useBridge() {
 
     if (hasDesktop()) {
       setStatus("online");
-      setVersion("Claude Code · Electron");
+      setVersion(BRIDGE_ELECTRON_VERSION);
       return;
     }
 

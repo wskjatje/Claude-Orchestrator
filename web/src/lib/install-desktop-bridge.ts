@@ -4,6 +4,7 @@
  */
 import type { DesktopApi } from '@/types/desktop'
 import { appendOutput } from '@/lib/workbench-output-log'
+import { RPC_CONNECTION_ERROR, RPC_CONNECTION_TIMEOUT_HINT } from '@/lib/ui-copy'
 
 const RPC_BASE = '/api'
 
@@ -34,9 +35,9 @@ async function rpc<T>(channel: string, ...args: unknown[]): Promise<T> {
     appendOutput('bridge', `RPC ${channel} 不可达: ${msg}`)
     const hint =
       /fetch failed|ECONNREFUSED|ETIMEDOUT|socket hang up|network/i.test(msg)
-        ? "（若 Bridge 健康但长任务失败，多为 Vite 代理超时：请重启 npm run web:dev:full 后再试，或缩短上下文）"
+        ? `（${RPC_CONNECTION_TIMEOUT_HINT}）`
         : ""
-    throw new Error(`Web Bridge 不可达：${msg}${hint}。请确认 npm run web:dev:full 正在运行。`)
+    throw new Error(`${RPC_CONNECTION_ERROR(msg)}${hint}`)
   }
   const text = await res.text()
   let data: unknown = text
@@ -74,6 +75,11 @@ function onEvent(channel: string, fn: EventHandler) {
   return () => eventHandlers.get(channel)?.delete(fn)
 }
 
+/** 订阅 Bridge WebSocket 推送（如 message_delta 流式输出） */
+export function onBridgeEvent(channel: string, fn: EventHandler) {
+  return onEvent(channel, fn)
+}
+
 function connectBridgeEvents() {
   if (typeof window === 'undefined') return
   const wsUrl =
@@ -104,6 +110,7 @@ function connectBridgeEvents() {
 
 export function installDesktopBridge() {
   if (typeof window === 'undefined') return
+  if (window.__ELECTRON_DESKTOP__) return
 
   const desktop: DesktopApi = {
     getWorkspace: () => rpc('workspace:get'),
@@ -248,6 +255,7 @@ export function installDesktopBridge() {
     onOrchestrationChainStatus: (fn) => onEvent('orchestration:chain-status', fn as EventHandler),
     getOpenclawGatewayToken: () =>
       Promise.resolve({ ok: false, error: '未配置', token: undefined }),
+    logout: () => rpc('reset:logout'),
   }
 
   if (window.desktop) {

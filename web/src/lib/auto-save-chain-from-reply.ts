@@ -5,6 +5,7 @@ import {
   DEFAULT_WBS_REL_PATH,
   persistWbsAndRegisterChain,
 } from "@/lib/wbs-chain-registry";
+import { MSG_API_NOT_READY } from "@/lib/ui-copy";
 
 export type AutoSaveChainResult =
   | {
@@ -89,6 +90,6 @@ export async function saveChainFromBubbleText(
   }
   if (r.reason === "unparseable") return { ok: false, error: r.error || "未能解析任务链" };
   if (r.reason === "save-failed") return { ok: false, error: r.error || "写入失败" };
-  if (r.reason === "no-api") return { ok: false, error: "当前无法写入任务链，请重启 npm run web:dev:full" };
+  if (r.reason === "no-api") return { ok: false, error: MSG_API_NOT_READY };
   return { ok: false, error: "气泡内容为空" };
 }

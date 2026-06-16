@@ -22,6 +22,15 @@ import { getDesktop } from "@/lib/desktop-api";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { toast } from "sonner";
 import {
+  BRIDGE_OFFLINE_BANNER,
+  BRIDGE_OFFLINE_TOAST,
+  MCP_EMPTY_BANNER,
+  MCP_INFO_HINT,
+  MSG_API_NOT_READY,
+  MSG_API_OUTDATED,
+  PAGE_DESC,
+} from "@/lib/ui-copy";
+import {
   MCP_PRESETS,
   type McpPresetMeta,
   resolvePresetCommandLineForForm,
@@ -96,7 +105,7 @@ function buildUpsertPayload(form: McpForm): Parameters<
 function mcpSaveErrorMessage(error: string | null | undefined): string {
   const msg = error?.trim() || "保存失败";
   if (msg.includes("未知 RPC")) {
-    return "Bridge 版本过旧：请停止终端里的 npm run web:dev:full，重新运行后再点保存。";
+    return MSG_API_OUTDATED;
   }
   return msg;
 }
@@ -201,7 +210,7 @@ function McpPage() {
     setLoading(true);
     const api = getDesktop();
     if (!api?.readClaudeConfigJson) {
-      setLocalErr("Bridge 未连接，请运行 npm run web:dev:full");
+      setLocalErr(BRIDGE_OFFLINE_TOAST);
       setRows([]);
       setLoading(false);
       return;
@@ -272,7 +281,7 @@ function McpPage() {
     async (payload: Parameters<NonNullable<ReturnType<typeof getDesktop>["upsertClaudeMcpServer"]>>[0]) => {
       const api = getDesktop();
       if (!api?.upsertClaudeMcpServer) {
-        toast.error("请重启 npm run web:dev:full 以加载保存接口");
+        toast.error(MSG_API_NOT_READY);
         return { ok: false as const };
       }
       setSaving(true);
@@ -333,7 +342,7 @@ function McpPage() {
     const api = getDesktop();
     if (!api?.upsertClaudeMcpServer) {
       setSaving(false);
-      toast.error("请重启 npm run web:dev:full 以加载保存接口");
+      toast.error(MSG_API_NOT_READY);
       return;
     }
     const r = await api.upsertClaudeMcpServer(built);
@@ -373,7 +382,7 @@ function McpPage() {
   const removeServer = async (row: McpRow) => {
     const api = getDesktop();
     if (!api?.removeClaudeMcpServer) {
-      toast.error("请重启 npm run web:dev:full");
+      toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
     const r = await api.removeClaudeMcpServer(row.name);
@@ -393,7 +402,7 @@ function McpPage() {
     e?.stopPropagation();
     const api = getDesktop();
     if (!api?.setClaudeMcpServerEnabled) {
-      toast.error("请重启 npm run web:dev:full 以加载停启用接口");
+      toast.error(MSG_API_NOT_READY);
       return;
     }
     setToggling(row.id);
@@ -426,7 +435,7 @@ function McpPage() {
     try {
       const api = getDesktop();
       if (!api?.mcpHealthCheckOne) {
-        toast.error("当前 Bridge 不支持健康检查");
+        toast.error("当前环境不支持健康检查");
         return;
       }
       const r = await api.mcpHealthCheckOne(row.name);
@@ -467,7 +476,7 @@ function McpPage() {
       <PageRoot>
         <PageHeader
           title="MCP 服务器"
-          description="为本机 AI 编排添加文件、网页、记忆等 MCP 工具"
+          description={PAGE_DESC.comms}
           actions={
             <>
               <button
@@ -486,26 +495,18 @@ function McpPage() {
               >
                 <Plus className="h-3.5 w-3.5" /> 添加
               </button>
-              <InfoHint side="left">
-                保存至{" "}
-                <code className="rounded bg-code-bg px-1 font-mono text-[11px]">
-                  {configPath ? configPath.replace(/^\/Users\/[^/]+/, "~") : "~/.claude/mcp.json"}
-                </code>
-                ；启动时 Bridge 会自动检测并写入数据库；进入本页显示缓存结果，详情内「健康检查」仅测当前服务。
-              </InfoHint>
+              <InfoHint side="left">{MCP_INFO_HINT}</InfoHint>
             </>
           }
         />
 
         {!hasDesktopApi && (
           <PageBanner className="border-warning/30 bg-warning/10 text-warning">
-            Bridge 未连接：请运行 npm run web:dev:full。
+            {BRIDGE_OFFLINE_BANNER}
           </PageBanner>
         )}
         {hasDesktopApi && !localErr && rows.length === 0 && !loading ? (
-          <PageBanner>
-            尚未配置 MCP。点击「添加」选择内置模板，或点下方虚线卡片一键添加（含 filesystem / fetch / memory / 三省六部）。
-          </PageBanner>
+          <PageBanner>{MCP_EMPTY_BANNER}</PageBanner>
         ) : null}
         {localErr ? (
           <PageBanner className="border-destructive/30 bg-destructive/10 text-destructive">

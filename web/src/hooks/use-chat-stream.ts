@@ -1,13 +1,18 @@
-import { useEffect, useRef } from "react";
-import { getBridge } from "@/lib/bridge-client";
+import { useEffect, useRef, type RefObject } from "react";
+import { onBridgeEvent } from "@/lib/install-desktop-bridge";
+
+type MessageDeltaDetail = {
+  requestId?: string;
+  content?: string;
+};
 
 /**
  * 订阅 Bridge 流式 delta；后端 emit message_delta 时实时更新当前会话气泡。
- * 若 daemon 未推送事件则静默无影响。
  */
 export function useChatStream(opts: {
   activeSessionId: string;
   requestId: string | null;
+  requestIdRef?: RefObject<string | null>;
   enabled: boolean;
   onDelta: (sessionId: string, content: string) => void;
 }) {
@@ -16,15 +21,18 @@ export function useChatStream(opts: {
 
   useEffect(() => {
     if (!opts.enabled) return;
-    const client = getBridge();
-    const off = client.on((ev) => {
-      if (ev.type !== "message_delta") return;
-      const { activeSessionId, requestId, onDelta } = optsRef.current;
-      if (!requestId) return;
-      const chunk = ev.payload.content ?? "";
+
+    const off = onBridgeEvent("message_delta", (detail) => {
+      const { activeSessionId, requestId, requestIdRef, onDelta } = optsRef.current;
+      const liveRequestId = requestIdRef?.current ?? requestId;
+      if (!liveRequestId) return;
+      const payload = (detail || {}) as MessageDeltaDetail;
+      if (payload.requestId !== liveRequestId) return;
+      const chunk = payload.content ?? "";
       if (!chunk) return;
       onDelta(activeSessionId, chunk);
     });
+
     return off;
   }, [opts.enabled]);
 }

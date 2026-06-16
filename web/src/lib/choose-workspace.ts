@@ -1,5 +1,9 @@
 import { toast } from 'sonner'
 import type { DesktopApi } from '@/types/desktop'
+import {
+  CHOOSE_WORKSPACE_OFFLINE_DESC,
+  CHOOSE_WORKSPACE_OFFLINE_TITLE,
+} from '@/lib/ui-copy'
 
 /** 工作区切换类提示共用同一 id，新提示替换旧提示，避免堆叠 */
 const WORKSPACE_TOAST_ID = 'workbench-workspace-toast'
@@ -29,8 +33,8 @@ export async function chooseWorkspaceWithFeedback(
     const msg = e instanceof Error ? e.message : String(e)
     if (/Bridge|ECONNREFUSED|500|fetch/i.test(msg)) {
       workspaceToastError(
-        'Web Bridge 未连接',
-        '请先运行 npm run web:dev:full 或 npm run bridge，然后刷新页面。',
+        CHOOSE_WORKSPACE_OFFLINE_TITLE,
+        CHOOSE_WORKSPACE_OFFLINE_DESC,
         8000,
       )
       return null

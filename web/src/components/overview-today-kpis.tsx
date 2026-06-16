@@ -5,6 +5,7 @@ import {
   Clock,
   BarChart3,
 } from "lucide-react";
+import { TODAY_KPIS_DESC } from "@/lib/ui-copy";
 import { hasDesktop } from "@/lib/desktop-api";
 import {
   OverviewKpiCard,
@@ -28,7 +29,7 @@ export function OverviewTodayKpis({ kpis }: OverviewTodayKpisProps) {
   return (
     <OverviewSection
       title="运行概况"
-      description="今日运行状态与关键指标快照"
+      description={TODAY_KPIS_DESC}
     >
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {kpis.map((k) => (
@@ -43,7 +44,7 @@ export function OverviewTodayKpis({ kpis }: OverviewTodayKpisProps) {
         ))}
       </div>
       <OverviewStatLine
-        items={["消息与会话来自今日落库统计", "云端费用 = CLI transcript + 会话 usage 估算"]}
+        items={["消息与会话来自今日统计", "云端费用为 API 用量估算"]}
         className="mt-3"
       />
     </OverviewSection>
@@ -52,10 +53,10 @@ export function OverviewTodayKpis({ kpis }: OverviewTodayKpisProps) {
 
 export function offlineTodayKpis(): TodayKpiItem[] {
   return [
-    { label: "今日费用", value: "$0.00", caption: "Bridge 离线", icon: Activity, tint: "text-info" },
-    { label: "活跃会话", value: "—", caption: "连接 Bridge 后同步", icon: MessageSquare, tint: "text-primary" },
-    { label: "技能就绪", value: "—", caption: "本机 ~/.claude/skills", icon: Sparkles, tint: "text-warning" },
-    { label: "定时任务", value: "—", caption: "Bridge 内查看", icon: Clock, tint: "text-success" },
+    { label: "今日费用", value: "$0.00", caption: "未连接本机", icon: Activity, tint: "text-info" },
+    { label: "活跃会话", value: "—", caption: "连接后同步", icon: MessageSquare, tint: "text-primary" },
+    { label: "技能就绪", value: "—", caption: "本机 Skill 目录", icon: Sparkles, tint: "text-warning" },
+    { label: "定时任务", value: "—", caption: "连接后查看", icon: Clock, tint: "text-success" },
   ];
 }
 

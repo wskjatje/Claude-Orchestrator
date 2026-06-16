@@ -18,8 +18,13 @@ import {
 import { cn } from "@/lib/utils";
 import { InfoHint } from "@/components/info-hint";
 import { getDesktop } from "@/lib/desktop-api";
+import { BRIDGE_OFFLINE_BANNER, PAGE_DESC, REPORTS_API_OFFLINE, REPORTS_INFO_HINT } from "@/lib/ui-copy";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { resolveAgentDisplayName } from "@/lib/agent-display-name";
+import {
+  mergeAgentRowsWithRegistry,
+  resolveRegistryEntry,
+} from "@/lib/agent-exec-registry-match";
 import type { AgentExecRegistryEntry } from "@/types/desktop";
 
 export const Route = createFileRoute("/reports")({
@@ -34,6 +39,7 @@ type AgentRow = {
   displayName: string;
   description: string;
   source: "root" | "sanshengliubu";
+  registryOnly?: boolean;
 };
 
 type ViewTab = "agent" | "project";
@@ -153,7 +159,7 @@ function AgentDailyReportsPage() {
     }
     const api = getDesktop();
     if (!api?.agentDailyReportsGet) {
-      setLoadErr("请重启 npm run web:dev:full 以加载日报 API");
+      setLoadErr(REPORTS_API_OFFLINE);
       return;
     }
     setLoading(true);
@@ -220,11 +226,16 @@ function AgentDailyReportsPage() {
     void loadProjectReport(date);
   }, [date, viewTab, loadProjectReport, hasDesktopApi]);
 
+  const listRows = useMemo(
+    () => mergeAgentRowsWithRegistry(rows, registry),
+    [rows, registry],
+  );
+
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     let base = !qq
-      ? rows
-      : rows.filter(
+      ? listRows
+      : listRows.filter(
           (r) =>
             r.stem.toLowerCase().includes(qq) ||
             r.displayName.toLowerCase().includes(qq) ||
@@ -232,7 +243,7 @@ function AgentDailyReportsPage() {
         );
     if (statusFilter !== "全部") {
       base = base.filter((r) => {
-        const meta = registry.get(r.stem);
+        const meta = resolveRegistryEntry(registry, r.stem);
         const isWorking = meta?.status === "working";
         const hasRun = Boolean(meta && (meta.execCount > 0 || isWorking));
         if (statusFilter === "工作中") return isWorking;
@@ -242,8 +253,8 @@ function AgentDailyReportsPage() {
       });
     }
     return [...base].sort((a, b) => {
-      const ra = registry.get(a.stem);
-      const rb = registry.get(b.stem);
+      const ra = resolveRegistryEntry(registry, a.stem);
+      const rb = resolveRegistryEntry(registry, b.stem);
       const wa = ra?.status === "working" ? 0 : 1;
       const wb = rb?.status === "working" ? 0 : 1;
       if (wa !== wb) return wa - wb;
@@ -252,7 +263,7 @@ function AgentDailyReportsPage() {
       if (oa !== ob) return oa - ob;
       return a.displayName.localeCompare(b.displayName, "zh-CN");
     });
-  }, [rows, q, registry, statusFilter]);
+  }, [listRows, q, registry, statusFilter]);
 
   const executedTodayCount = useMemo(
     () => [...registry.values()].filter((e) => e.execCount > 0 || e.status === "working").length,
@@ -353,7 +364,7 @@ function AgentDailyReportsPage() {
     <AppShell>
       <PageHeader
           title="智能体执行日报"
-          description="按 Agent × 日期沉淀 Markdown；原始追踪见日志中心"
+          description={PAGE_DESC.reports}
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
@@ -412,16 +423,14 @@ function AgentDailyReportsPage() {
                 <RefreshCw className={cn("h-3.5 w-3.5", listLoading && "animate-spin")} />
                 刷新
               </button>
-              <InfoHint side="left">
-                聊天 /agent 与任务链会写入 agent_exec，并自动追加到当日 Agent 日报「今日活动」。
-              </InfoHint>
+              <InfoHint side="left">{REPORTS_INFO_HINT}</InfoHint>
             </div>
           }
         />
 
         {!hasDesktopApi && (
           <PageBanner className="border-warning/30 bg-warning/10 text-warning">
-            Bridge 未连接：请运行 npm run web:dev:full。
+            {BRIDGE_OFFLINE_BANNER}
           </PageBanner>
         )}
         {(hint || listErr || loadErr) && (
@@ -485,11 +494,12 @@ function AgentDailyReportsPage() {
               ) : (
                 <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
                   {filtered.map((r) => {
-                    const meta = registry.get(r.stem);
+                    const meta = resolveRegistryEntry(registry, r.stem);
                     const isWorking = meta?.status === "working";
                     const hasRun = Boolean(meta && (meta.execCount > 0 || isWorking));
                     const isActive = r.stem === activeStem && drawerOpen;
                     const statusLabel = isWorking ? "工作中" : hasRun ? "空闲" : "未执行";
+                    const registryOnly = Boolean(r.registryOnly);
                     return (
                       <button
                         key={r.id}

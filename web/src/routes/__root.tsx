@@ -48,13 +48,15 @@ export const Route = createRootRoute({
       { property: "og:description", content: "桌面编排、任务链与 Claude Code" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "Claude Orchestrator" },
       { name: "twitter:description", content: "桌面编排、任务链与 Claude Code" },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8f772484-e426-414e-855a-a7aea50501d3/id-preview-78976d9b--7e6c6797-dcb1-433a-b840-c3197023ebe4.lovable.app-1776852206304.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8f772484-e426-414e-855a-a7aea50501d3/id-preview-78976d9b--7e6c6797-dcb1-433a-b840-c3197023ebe4.lovable.app-1776852206304.png" },
     ],
     links: [
+      {
+        rel: "icon",
+        href: "/favicon.png",
+        type: "image/png",
+      },
       {
         rel: "stylesheet",
         href: appCss,

@@ -43,13 +43,18 @@ function UserMessageBody({
 
 function WaitingReply({ modelName }: { modelName: string }) {
   return (
-    <div className="chat-waiting flex items-center gap-2 py-1 text-muted-foreground">
-      <span className="inline-flex items-center gap-1">
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.2s]" />
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.1s]" />
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70" />
-      </span>
-      <span className="text-[12px]">{modelName}</span>
+    <div className="chat-waiting flex flex-col gap-1.5 py-1 text-muted-foreground">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1" aria-hidden>
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.2s]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.1s]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70" />
+        </span>
+        <span className="text-[12px]">思考中 · {modelName}</span>
+      </div>
+      <p className="text-[11.5px] leading-relaxed text-muted-foreground/85">
+        Claude Code 正在执行：工具调用、思考与回复将在此实时显示。
+      </p>
     </div>
   );
 }

@@ -3,6 +3,7 @@
  */
 import { toast } from "sonner";
 import { getDesktop } from "@/lib/desktop-api";
+import { MSG_API_NOT_READY } from "@/lib/ui-copy";
 
 export type ChainRunOptions = { skipConfirm?: boolean; pinnedSessionId?: string };
 
@@ -66,7 +67,7 @@ export async function runOrchestrationChainInBackground(opts?: ChainRunOptions) 
   }
 
   if (typeof api.orchestrationStartChainRun !== "function") {
-    toast.error("当前 Bridge 未提供服务端任务链接口，请重启 npm run web:dev:full。");
+    toast.error(MSG_API_NOT_READY);
     return;
   }
 

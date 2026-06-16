@@ -32,6 +32,7 @@ import {
   inferTerminalSourceLabel,
 } from "@/lib/terminal-selection-meta";
 import { TerminalAddToChatButton } from "@/components/terminal-add-to-chat-button";
+import { TERMINAL_OFFLINE } from "@/lib/ui-copy";
 
 const MIN_TERMINAL_COLS = 24;
 const MIN_TERMINAL_ROWS = 2;
@@ -303,7 +304,7 @@ export const WorkspaceTerminal = forwardRef<
         setCwdLabel(shortenHomeInPath(ws));
       } else {
         setCwdFull(null);
-        setCwdLabel("（未选择工作区，使用 Bridge 默认目录）");
+        setCwdLabel("（未选择工作区，使用默认目录）");
       }
     } catch {
       if (mountGen !== mountGenRef.current) return;
@@ -573,7 +574,7 @@ export const WorkspaceTerminal = forwardRef<
   if (!hasDesktop) {
     return (
       <div className="p-4 text-[12px] text-muted-foreground">
-        浏览器预览模式无法打开本机终端。请通过 Web Bridge（npm run web:dev:full）使用。
+        {TERMINAL_OFFLINE}
       </div>
     );
   }

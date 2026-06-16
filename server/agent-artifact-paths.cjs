@@ -125,6 +125,40 @@ function defaultArtifactPathForAgent(agentName) {
   return `docs/agents/${stem}.md`
 }
 
+/** 与 web/src/lib/agent-artifact-paths.ts UPSTREAM_ARTIFACTS 保持同步 */
+const UPSTREAM_ARTIFACTS = {
+  'project-manager': ['docs/prd.md', 'docs/sprint-backlog.md'],
+  'software-architect': ['docs/prd.md', 'docs/wbs.md', 'docs/sprint-backlog.md'],
+  'frontend-engineer': [
+    'docs/prd.md',
+    'docs/architecture-note.md',
+    'docs/ui-spec.md',
+    'docs/ux-architecture.md',
+  ],
+  'backend-engineer': ['docs/prd.md', 'docs/architecture-note.md', 'docs/wbs.md'],
+  'qa-engineer': ['docs/prd.md', 'docs/frontend-implementation.md', 'docs/api-summary.md'],
+  'devops-engineer': ['docs/architecture-note.md', 'docs/release-plan.md'],
+  'code-reviewer': ['docs/frontend-implementation.md', 'docs/api-summary.md'],
+  'design-ui-designer': ['docs/prd.md', 'docs/ux-architecture.md'],
+  'design-ux-architect': ['docs/prd.md'],
+  'ui-ux-designer': ['docs/prd.md', 'docs/ux-architecture.md'],
+  'product-sprint-prioritizer': ['docs/prd.md'],
+}
+
+function upstreamArtifactPathsForAgent(agentName) {
+  const stem = resolveCanonicalStem(normalizeAgentStem(agentName))
+  const upstream =
+    UPSTREAM_ARTIFACTS[stem] ?? UPSTREAM_ARTIFACTS[normalizeAgentStem(agentName)] ?? []
+  return [...new Set(upstream)].filter(Boolean)
+}
+
+function relatedArtifactPathsForAgent(agentName) {
+  const stem = resolveCanonicalStem(normalizeAgentStem(agentName))
+  const own = defaultArtifactPathForAgent(stem)
+  const upstream = upstreamArtifactPathsForAgent(agentName)
+  return [...new Set([...upstream, own])].filter(Boolean)
+}
+
 function buildAgentArtifactPathHint(stemRaw) {
   const stem = normalizeAgentStem(stemRaw)
   if (!stem) return ''
@@ -142,7 +176,10 @@ function buildAgentArtifactPathHint(stemRaw) {
 module.exports = {
   AGENT_ARTIFACT_PATHS,
   AGENT_STEM_ALIASES,
+  UPSTREAM_ARTIFACTS,
   normalizeAgentStem,
   defaultArtifactPathForAgent,
+  upstreamArtifactPathsForAgent,
+  relatedArtifactPathsForAgent,
   buildAgentArtifactPathHint,
 }

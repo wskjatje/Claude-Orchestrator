@@ -5,6 +5,7 @@ import {
 } from "@/lib/agent-skill-catalog";
 import { parseAgentMarkdown, serializeAgentMarkdown } from "@/lib/agent-markdown";
 import { serializeSkillMarkdown } from "@/lib/skill-markdown";
+import { MSG_API_NOT_READY } from "@/lib/ui-copy";
 
 export type SyncAgentSkillsResult = {
   ok: boolean;
@@ -78,7 +79,7 @@ async function syncAgentSkillsLocalFallback(
       skillStems: [],
       tools: [],
       agentUpdated: false,
-      error: "请重启 npm run web:dev:full 以加载 Skill 保存接口",
+      error: MSG_API_NOT_READY,
     };
   }
 

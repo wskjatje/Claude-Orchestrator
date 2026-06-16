@@ -1,5 +1,10 @@
 /** 与 web/src/lib/model-catalog.ts 对齐：解析 Auto / inherit → 实际可调用模型 ID */
 
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const cloudProviders = require('./cloud-providers.cjs')
+
 export const AUTO_MODEL_ID = 'auto'
 
 export function isAutoModelSelection(model) {
@@ -68,23 +73,21 @@ export function resolveModelForExecution(input) {
   return resolveAutoModelFromPools(cloud, local, input.preferredMode)
 }
 
-export async function loadChatModelPools(settings, ccSwitch) {
+export async function loadChatModelPools(settings) {
   const localModels = [
     ...new Set((settings?.localModelCatalog ?? []).map((m) => String(m || '').trim()).filter(Boolean)),
   ]
   const cloudSet = new Set(
     (settings?.cloudModelCatalog ?? []).map((m) => String(m || '').trim()).filter(Boolean),
   )
-  if (ccSwitch?.collectCloudModelPool) {
-    try {
-      const pool = await ccSwitch.collectCloudModelPool({ settings, fetchRemote: false })
-      for (const m of pool?.models ?? []) {
-        const id = String(m || '').trim()
-        if (id) cloudSet.add(id)
-      }
-    } catch {
-      /* 离线时仅用 catalog */
+  try {
+    const pool = await cloudProviders.collectCloudModelPool({ settings, fetchRemote: false })
+    for (const m of pool?.models ?? []) {
+      const id = String(m || '').trim()
+      if (id) cloudSet.add(id)
     }
+  } catch {
+    /* 离线时仅用 catalog */
   }
   const localHint = String(settings?.localOllamaModel || '').trim()
   if (localHint && !localModels.includes(localHint)) localModels.unshift(localHint)
@@ -105,7 +108,7 @@ export async function resolveExecutionModel({
     const content = readAgentMarkdown(stem ? `${stem}.md` : agentBasename)
     if (content) agentModel = parseAgentModelFromFrontmatter(content)
   }
-  const modelPools = pools || (await loadChatModelPools(settings, null))
+  const modelPools = pools || (await loadChatModelPools(settings))
   const resolved = resolveModelForExecution({
     selectedModel: sessionModelId || settings?.model,
     cloudModels: modelPools.cloudModels,

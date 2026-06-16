@@ -15,15 +15,21 @@ import {
   BookOpen,
   Menu,
   PanelLeftClose,
-  Terminal,
   Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { AppLogo } from "@/components/app-logo";
+import { SidebarFooter } from "@/components/sidebar-footer";
+import { APP_NAME } from "@/lib/ui-copy";
 import { useBridge } from "@/hooks/use-bridge";
 import { useDesktopReady } from "@/hooks/use-desktop-ready";
 import { useOrchestrationExecution } from "@/hooks/use-orchestration-execution";
 import { hasDesktop, isWebBridge } from "@/lib/desktop-api";
+import {
+  BRIDGE_OFFLINE_BANNER,
+  BRIDGE_OFFLINE_LEGACY,
+} from "@/lib/ui-copy";
 
 type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavGroup = { label: string; items: NavItem[] };
@@ -108,8 +114,10 @@ export function AppShell({
             )}
             <span className="sr-only">{mobileNavOpen ? "关闭导航" : "打开导航"}</span>
           </button>
-          <span className="truncate text-[11.5px] font-semibold tracking-tight text-foreground/90 sm:text-[12px]">
-            Claude Orchestrator
+          <AppLogo variant="mark" className="shrink-0 sm:hidden" />
+          <AppLogo variant="mark" className="hidden h-6 w-6 shrink-0 sm:block md:hidden" />
+          <span className="hidden truncate text-[11.5px] font-semibold tracking-tight text-foreground/90 md:inline sm:text-[12px]" translate="no">
+            {APP_NAME}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -140,12 +148,12 @@ export function AppShell({
         <div translate="no" className="flex h-7 shrink-0 items-center justify-center gap-2 border-b border-warning/30 bg-warning/10 text-[11.5px] text-warning">
           <span className="h-1.5 w-1.5 rounded-full bg-warning" />
           {isWebBridge() ? (
-            <>Web Bridge 离线 — 请在终端运行 npm run web:dev:full 后刷新</>
+            <>{BRIDGE_OFFLINE_BANNER}</>
           ) : (
             <>
-              <span translate="no">桥接服务</span> 离线 — 当前仅显示缓存数据。请配置本机桥接服务以启用真实 Claude CLI 接入
+              {BRIDGE_OFFLINE_LEGACY}
               <Link to="/overview" className="ml-1 underline hover:no-underline">
-                前往配置
+                查看连接状态
               </Link>
             </>
           )}
@@ -174,23 +182,8 @@ export function AppShell({
           )}
         >
           {!workbench ? (
-            <div className="flex items-center gap-2.5 px-4 py-4 sm:px-5 sm:py-5">
-              <div
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-primary-foreground shadow-[var(--shadow-glow)]"
-                style={{ backgroundImage: "var(--gradient-primary)" }}
-              >
-                <Terminal className="h-4 w-4" />
-              </div>
-              <div className="flex flex-col leading-tight" translate="no">
-                <span className="text-[15px] font-semibold tracking-tight">Claude Orchestrator</span>
-                <span className="text-[11px] text-muted-foreground">
-                  {!mounted
-                    ? "浏览器预览 · CLI 桥接"
-                    : hasDesktop()
-                      ? "桌面 · Claude Code"
-                      : "浏览器预览 · CLI 桥接"}
-                </span>
-              </div>
+            <div className="border-b border-sidebar-border/70 px-3 py-3.5 sm:px-4">
+              <AppLogo variant="sidebar" />
             </div>
           ) : (
             <div className="hidden h-2 shrink-0 md:block" aria-hidden />
@@ -246,83 +239,18 @@ export function AppShell({
             ))}
           </nav>
 
-          <div
-            className={cn(
-              "border-t border-border text-[11px] text-muted-foreground",
-              workbench ? "hidden px-1 py-2 md:block" : "px-4 py-3",
-            )}
-          >
-            {(chainRunning ||
-              chainStatusBadge.tone === "paused" ||
-              chainStatusBadge.tone === "idle") &&
-              !workbench && (
-              <div
-                className={cn(
-                  "mb-2 inline-flex max-w-full items-center rounded-md border px-2 py-1 text-[10.5px] font-medium leading-snug",
-                  chainStatusBadge.tone === "active" &&
-                    "border-emerald-400/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-                  chainStatusBadge.tone === "idle" &&
-                    "border-sky-400/40 bg-sky-500/10 text-sky-800 dark:text-sky-300",
-                  chainStatusBadge.tone === "paused" &&
-                    "border-amber-400/45 bg-amber-500/12 text-amber-800 dark:text-amber-300",
-                )}
-                title="切换页签不会中断任务链；可在聊天页停止"
-              >
-                {chainStatusBadge.label}
-              </div>
-            )}
-            {workbench ? (
-              <div className="flex justify-center" title={bridge.online ? "桥接已连接" : "桥接离线"}>
-                <span className="relative flex h-2 w-2">
-                  {bridge.online && (
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
-                  )}
-                  <span
-                    className={cn(
-                      "relative inline-flex h-2 w-2 rounded-full",
-                      bridge.online ? "bg-success" : "bg-muted-foreground/40",
-                    )}
-                  />
-                </span>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="relative flex h-1.5 w-1.5">
-                    {bridge.online && (
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
-                    )}
-                    <span
-                      className={cn(
-                        "relative inline-flex h-1.5 w-1.5 rounded-full",
-                        bridge.online ? "bg-success" : "bg-muted-foreground/40",
-                      )}
-                    />
-                  </span>
-                  {!mounted
-                    ? "检查连接中…"
-                    : hasDesktop()
-                      ? bridge.online
-                        ? `Claude Code · ${bridge.version ?? "桌面"}`
-                        : "桌面 API 不可用"
-                      : bridge.online
-                        ? `CLI 桥接 · ${bridge.version ?? "v1.x"}`
-                        : "桥接服务未连接"}
-                </div>
-                <button
-                  type="button"
-                  className="mt-1 inline-block text-left text-primary hover:underline"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const url = hasDesktop() ? "https://code.claude.com/docs" : "https://code.claude.com/docs";
-                    void window.desktop?.openExternal(url);
-                  }}
-                >
-                  Claude Code 文档 ↗
-                </button>
-              </>
-            )}
-          </div>
+          <SidebarFooter
+            mounted={mounted}
+            online={bridge.online}
+            workbench={workbench}
+            chainStatusBadge={chainStatusBadge}
+            showChainBadge={
+              (chainRunning ||
+                chainStatusBadge.tone === "paused" ||
+                chainStatusBadge.tone === "idle") &&
+              !workbench
+            }
+          />
         </aside>
 
         {/* Main */}
@@ -337,6 +265,7 @@ export function AppShell({
           </div>
         </main>
       </div>
+
     </div>
   );
 }

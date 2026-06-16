@@ -30,7 +30,7 @@ function sendWs(obj) {
 
 // 将 store 层 broadcast 桥接到 WebSocket
 import { subscribeEvent } from './handlers.mjs'
-for (const ch of ['workspace:changed', 'chat-sessions:changed', 'chat-settings:changed', 'scheduler:toast', 'scheduled-tasks:changed', 'orchestration:chain-status', 'workspace:preview-changed', 'agent-exec:changed', 'mcp-health:changed']) {
+for (const ch of ['workspace:changed', 'chat-sessions:changed', 'chat-settings:changed', 'scheduler:toast', 'scheduled-tasks:changed', 'orchestration:chain-status', 'workspace:preview-changed', 'agent-exec:changed', 'mcp-health:changed', 'message_delta']) {
   subscribeEvent(ch, (detail) => {
     sendWs({ type: 'event', channel: ch, detail })
   })

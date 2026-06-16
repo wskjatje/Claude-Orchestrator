@@ -320,7 +320,7 @@ export type DesktopApi = {
     cloudModelCatalog?: string[]
     /** 用户在「模型与连接」中手动添加的本地 Ollama 模型 */
     localModelCatalog?: string[]
-    /** Workbench「添加云模型」写入的 CC Switch 供应商 ID */
+    /** Workbench「添加云模型」写入的项目内供应商 ID */
     cloudProviderCatalog?: string[]
     /** 个人 fork：push 与个人 pull 共用（origin） */
     personalGithubRepo?: string
@@ -992,6 +992,7 @@ export type DesktopApi = {
     token?: string
     error?: string | null
   }>
+  logout: () => Promise<{ ok: boolean; cleared?: string[]; error?: string | null }>
 }
 
 declare global {

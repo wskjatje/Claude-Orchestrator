@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { getDesktop } from "@/lib/desktop-api";
 import { chatSettingsPreservePayload, resolveCloudProviderCatalog } from "@/lib/model-catalog";
+import { BRIDGE_OFFLINE_TOAST, MODELS_EMPTY_HINT, MODELS_PANEL_FOOTER } from "@/lib/ui-copy";
 
 export type CcSwitchProvider = {
   id: string;
@@ -48,7 +49,6 @@ type Props = {
 
 export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   const desktop = useHasDesktop();
-  const [installed, setInstalled] = useState<boolean | null>(null);
   const [providers, setProviders] = useState<CcSwitchProvider[]>([]);
   const [busy, setBusy] = useState<"load" | "save" | "sync" | "activate" | "local" | null>(null);
 
@@ -101,8 +101,6 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     if (!api?.ccSwitchListProviders) return;
     setBusy("load");
     try {
-      const status = await api.ccSwitchStatus?.();
-      if (status) setInstalled(status.installed);
       const r = await api.ccSwitchListProviders();
       if (!r.ok) {
         toast.error(r.error || "读取云模型失败");
@@ -191,7 +189,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   const saveCloudProvider = async () => {
     const api = getDesktop();
     if (!api?.ccSwitchUpsertProvider) {
-      toast.error("未连接本机 Bridge，请确认 npm run web:dev:full 正在运行");
+      toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
     const { name, providerId, endpoint, apiKey, homepage, defaultModel: dm, extraModels, setAsCurrent } =
@@ -313,7 +311,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     }
     const api = getDesktop();
     if (!api?.ccSwitchDeleteProvider) {
-      toast.error("未连接本机 Bridge，请确认 npm run web:dev:full 正在运行");
+      toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
     if (!window.confirm(`确定删除云模型「${p.name}」？此操作不可撤销。`)) return;
@@ -442,9 +440,9 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
 
   return (
     <div className="w-full space-y-4">
-      {installed === false && (
-        <p className="rounded-lg border border-border bg-warning/10 px-3 py-2 text-[12px] text-warning">
-          未检测到 ~/.cc-switch/cc-switch.db。云模型供应商需先安装 CC Switch，或在终端运行 setup 脚本。
+      {providers.length === 0 && (
+        <p className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-2 text-[12px] text-muted-foreground">
+          {MODELS_EMPTY_HINT}
         </p>
       )}
 
@@ -487,7 +485,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           onClick={() => void syncWorkbench()}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
         >
-          <Zap className="h-3.5 w-3.5" /> 同步 Orchestrator
+          <Zap className="h-3.5 w-3.5" /> 同步到 Claude CLI
         </button>
       </div>
 
@@ -606,9 +604,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         </table>
       </div>
 
-      <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-        聊天页模型下拉与本页列表同步：仅展示通过「添加云模型」与「配置本地模型」自主添加的条目；当前使用的模型不可删除。
-      </p>
+      <p className="text-[11.5px] text-muted-foreground">{MODELS_PANEL_FOOTER}</p>
 
       {drawerOpen ? (
         <div className="fixed inset-0 z-50 flex">
@@ -625,7 +621,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                 </div>
                 <div className="text-[11px] text-muted-foreground">
                   {cloudDrawer
-                    ? "写入 CC Switch，并合并到聊天页云模型列表"
+                    ? "保存到项目并合并到聊天页云模型列表"
                     : "测试 Ollama 连接后，勾选模型并点击完成添加到列表"}
                 </div>
               </div>

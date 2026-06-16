@@ -33,4 +33,15 @@ npm run web:dev         # http://127.0.0.1:5188/
 
 Bridge 数据目录：`~/.claude-workbench/`（工作区路径、聊天会话、设置）。
 
+### 桌面助手（Electron）
+
+独立窗口运行，无需手动打开浏览器：
+
+```bash
+npm run desktop:install   # 首次
+npm run desktop           # Bridge + Web UI + Electron 窗口
+```
+
+详见 [desktop/README.md](desktop/README.md)。
+
 详见 `web/BRIDGE.md`。

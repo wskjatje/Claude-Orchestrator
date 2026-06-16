@@ -192,7 +192,9 @@ function normalizeAgentStem(raw: string | undefined | null): string {
   if (t === "qa-engineer" || t === "qa engineer") return "qa-engineer";
   if (t === "code-reviewer" || t === "code reviewer") return "code-reviewer";
   if (t === "devops-engineer" || t === "devops engineer") return "devops-engineer";
-  if (/^[a-z0-9][a-z0-9-]*$/.test(t)) return t;
+  // 纯数字多为 WBS 行号/编号，不能当作 Agent stem
+  if (/^\d+$/.test(t)) return "";
+  if (/^[a-z][a-z0-9-]*$/.test(t)) return t;
   return "";
 }
 

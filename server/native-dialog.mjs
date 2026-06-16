@@ -43,3 +43,52 @@ if ($dlg.ShowDialog() -eq 'OK') { Write-Output $dlg.SelectedPath }
   }
   return null
 }
+
+/**
+ * 本机文件选择（引用附件 / 图片）。
+ * @returns {{ canceled: boolean, filePaths: string[] }}
+ */
+export function pickReferenceFilesNative(opts = {}) {
+  const title = String(opts.title || '选择引用文件').replace(/"/g, '\\"')
+  const multiple = opts.multiple === true
+  const onlyImages = opts.onlyImages === true
+
+  if (process.platform === 'darwin') {
+    const typeClause = onlyImages
+      ? ' of type {"public.image", "PNG", "JPEG", "GIF", "WebP", "TIFF", "BMP"}'
+      : ''
+    const script = multiple
+      ? `(POSIX path of (choose file with prompt "${title}"${typeClause} with multiple selections allowed))`
+      : `(POSIX path of (choose file with prompt "${title}"${typeClause}))`
+    const r = spawnSync('osascript', ['-e', script], { encoding: 'utf8' })
+    if (r.status !== 0 || !r.stdout?.trim()) {
+      return { canceled: true, filePaths: [] }
+    }
+    const paths = r.stdout
+      .trim()
+      .split(', ')
+      .map((p) => p.trim())
+      .filter(Boolean)
+    return { canceled: false, filePaths: paths }
+  }
+
+  if (process.platform === 'linux') {
+    const args = ['--file-selection', `--title=${title}`]
+    if (multiple) args.push('--multiple')
+    if (onlyImages) args.push('--file-filter=Images | *.png *.jpg *.jpeg *.gif *.webp')
+    const r = spawnSync('zenity', args, { encoding: 'utf8' })
+    if (r.status !== 0 || !r.stdout?.trim()) {
+      return { canceled: true, filePaths: [] }
+    }
+    return {
+      canceled: false,
+      filePaths: r.stdout
+        .trim()
+        .split('|')
+        .map((p) => p.trim())
+        .filter(Boolean),
+    }
+  }
+
+  return { canceled: true, filePaths: [] }
+}

@@ -7,6 +7,7 @@ import { OverviewTodayKpis, buildDesktopTodayKpis } from "@/components/overview-
 import { UsageAnalyticsSection } from "@/components/usage-analytics-section";
 import { useUsageStats } from "@/hooks/use-usage-stats";
 import { getDesktop, hasDesktop } from "@/lib/desktop-api";
+import { OVERVIEW_INFO_HINT, PAGE_DESC } from "@/lib/ui-copy";
 import {
   formatTokenCount,
   parseUsageRange,
@@ -126,11 +127,9 @@ function OverviewPage() {
     <AppShell>
       <PageHeader
         title="概览"
-        description="桥接状态、运行概况与用量统计"
+        description={PAGE_DESC.overview}
         actions={
-          <InfoHint side="left">
-            修改工作区 → 工作目录；模型与编排 → 应用设置；MCP → MCP 服务器。
-          </InfoHint>
+          <InfoHint side="left">{OVERVIEW_INFO_HINT}</InfoHint>
         }
       />
 

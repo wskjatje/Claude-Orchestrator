@@ -33,6 +33,7 @@ import {
 } from "@/lib/chain-templates";
 import { syncOfficialGenericChains } from "@/lib/sync-official-chains";
 import { toast } from "sonner";
+import { BRIDGE_OFFLINE_BANNER, BRIDGE_OFFLINE_TOAST, CHAINS_INFO_HINT, MSG_API_NOT_READY, PAGE_DESC } from "@/lib/ui-copy";
 import { AgentStemCombobox } from "@/components/agent-stem-combobox";
 import { McpNameMultiSelect } from "@/components/mcp-name-multi-select";
 import { useClaudeAgentList, agentDisplayNameForStem, type ClaudeAgentRow } from "@/hooks/use-claude-agent-list";
@@ -355,7 +356,7 @@ function ChainsPage() {
     e?.stopPropagation();
     const api = getDesktop();
     if (!api?.orchestrationToggleChainEnabled) {
-      toast.error("请先运行 npm run web:dev:full，再刷新页面");
+      toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
     const r = await api.orchestrationToggleChainEnabled({ id: chain.id, enabled: !chain.enabled });
@@ -379,7 +380,7 @@ function ChainsPage() {
   const submitAdd = async () => {
     const api = getDesktop();
     if (!api?.orchestrationCreateChain) {
-      toast.error("请先运行 npm run web:dev:full，再刷新页面");
+      toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
     const name = addName.trim();
@@ -421,7 +422,7 @@ function ChainsPage() {
   const activatePreset = async (template: ChainTemplate, name: string, steps: ChainStep[]) => {
     const api = getDesktop();
     if (!api?.orchestrationCreateChain) {
-      toast.error("请先运行 npm run web:dev:full，再刷新页面");
+      toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
     const chainName = name.trim() || template.name;
@@ -499,7 +500,7 @@ function ChainsPage() {
     if (!detail) return;
     const api = getDesktop();
     if (!api?.orchestrationActivateChain || !api.orchestrationStartChainRun) {
-      toast.error("请先运行 npm run web:dev:full，再刷新页面");
+      toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
     if (!detail.enabled) {
@@ -563,7 +564,7 @@ function ChainsPage() {
     <AppShell>
       <PageHeader
         title="任务链"
-        description="官方通用任务链与自定义链统一管理；对话中可用 /chain 调用"
+        description={PAGE_DESC.chains}
         actions={
           <>
             <button
@@ -582,16 +583,14 @@ function ChainsPage() {
             >
               <RefreshCw className={cn("h-3.5 w-3.5", listLoading && "animate-spin")} /> 刷新
             </button>
-            <InfoHint side="left">
-              官方通用任务链已自动同步，可在对话中用 /chain list 与 /chain run 调用。虚线卡片为尚未同步的模板；实线卡片可编辑、启用与执行。
-            </InfoHint>
+            <InfoHint side="left">{CHAINS_INFO_HINT}</InfoHint>
           </>
         }
       />
 
       {!hasDesktopApi && (
         <div className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-[12px] text-warning">
-          Bridge 未连接：请先运行 npm run web:dev:full，再刷新本页。
+          {BRIDGE_OFFLINE_BANNER}
         </div>
       )}
 

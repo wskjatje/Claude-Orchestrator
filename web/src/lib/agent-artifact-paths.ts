@@ -162,11 +162,19 @@ export function defaultArtifactPathForAgent(agentName: string): string {
   return `docs/agents/${stem}.md`;
 }
 
-/** 任务链执行 / 追问时，优先从工作区注入的相关产物路径（去重，不含重复读取自身） */
+/** 跑链 / /agent 前应优先阅读的上游产物（不含本 Agent 默认落盘路径） */
+export function upstreamArtifactPathsForAgent(agentName: string): string[] {
+  const stem = resolveCanonicalStem(normalizeAgentStem(agentName));
+  const upstream =
+    UPSTREAM_ARTIFACTS[stem] ?? UPSTREAM_ARTIFACTS[normalizeAgentStem(agentName)] ?? [];
+  return [...new Set(upstream)].filter(Boolean);
+}
+
+/** 任务链执行 / 追问时，优先从工作区注入的相关产物路径（去重，含本 Agent 默认路径） */
 export function relatedArtifactPathsForAgent(agentName: string): string[] {
   const stem = resolveCanonicalStem(normalizeAgentStem(agentName));
   const own = defaultArtifactPathForAgent(stem);
-  const upstream = UPSTREAM_ARTIFACTS[stem] ?? UPSTREAM_ARTIFACTS[normalizeAgentStem(agentName)] ?? [];
+  const upstream = upstreamArtifactPathsForAgent(agentName);
   return [...new Set([...upstream, own])].filter(Boolean);
 }
 

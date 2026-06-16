@@ -4,6 +4,8 @@ declare global {
   interface Window {
     /** Web Bridge 垫片注入时标记，区别于 Electron preload */
     __WEB_BRIDGE__?: boolean
+    /** Electron 桌面客户端 preload 注入 */
+    __ELECTRON_DESKTOP__?: boolean
   }
 }
 
@@ -32,7 +34,7 @@ export function isWebBridge(): boolean {
 
 /** Electron 桌面客户端 preload */
 export function isElectronDesktop(): boolean {
-  return hasDesktop() && !window.__WEB_BRIDGE__
+  return hasDesktop() && (!!window.__ELECTRON_DESKTOP__ || !window.__WEB_BRIDGE__)
 }
 
 export function getDesktop(): DesktopApi | null {

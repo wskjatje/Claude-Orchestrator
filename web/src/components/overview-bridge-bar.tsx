@@ -6,6 +6,7 @@ import { getDesktop, hasDesktop, isWebBridge } from "@/lib/desktop-api";
 import { loadUiPrefsFromProjectDb, saveUiPrefsToProjectDb } from "@/lib/ui-prefs";
 import { pingWebBridgeHealth } from "@/lib/install-desktop-bridge";
 import { toast } from "sonner";
+import { MSG_BRIDGE_OFFLINE, OPENCLAW_TOKEN_PLACEHOLDER, OPENCLAW_TOKEN_UNAVAILABLE } from "@/lib/ui-copy";
 
 const DEFAULT_BRIDGE_URL = "ws://127.0.0.1:18789";
 
@@ -35,7 +36,7 @@ export function OverviewBridgeBar() {
   const loadGatewayToken = useCallback(async () => {
     const api = getDesktop();
     if (!api?.getOpenclawGatewayToken) {
-      setTokenHint("Web Bridge 模式下 OpenClaw 令牌不可用。");
+      setTokenHint(OPENCLAW_TOKEN_UNAVAILABLE);
       return "";
     }
     const r = await api.getOpenclawGatewayToken();
@@ -83,7 +84,7 @@ export function OverviewBridgeBar() {
     if (isWebBridge()) {
       const ok = await pingWebBridgeHealth();
       toast[ok ? "success" : "error"](
-        ok ? "Bridge 在线" : "Bridge 离线，请确认 npm run web:dev:full 正在运行",
+        ok ? "本机服务已连接" : MSG_BRIDGE_OFFLINE,
         { id: "overview-bridge" },
       );
       return;
@@ -91,13 +92,13 @@ export function OverviewBridgeBar() {
     const latest = await loadGatewayToken();
     const finalToken = (latest || bridgeToken).trim();
     bridge.setUrl(buildBridgeUrlWithToken(bridgeUrl, finalToken));
-    toast.success("已保存桥接地址", { id: "overview-bridge" });
+      toast.success("已保存连接地址", { id: "overview-bridge" });
   }, [bridge, bridgeToken, bridgeUrl, buildBridgeUrlWithToken, loadGatewayToken, persistOverviewPrefs]);
 
   const runDoctor = useCallback(async () => {
     const api = getDesktop();
     if (!api?.claudeCodeDoctor) {
-      toast.error("claude doctor 不可用，请重启 npm run web:dev:full");
+      toast.error("诊断工具不可用，请先连接本机服务");
       return;
     }
     setDoctorRunning(true);
@@ -124,8 +125,8 @@ export function OverviewBridgeBar() {
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-xs">
       <div className="border-b border-border/60 px-5 py-3">
-        <h2 className="text-sm font-semibold tracking-tight text-foreground">桥接服务</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">WebSocket 连接与 CLI 健康检查</p>
+        <h2 className="text-sm font-semibold tracking-tight text-foreground">本机服务</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">连接状态与 Claude Code 健康检查</p>
       </div>
       <div className="flex flex-wrap items-center gap-3 px-5 py-3.5">
         <div className="flex items-center gap-2">
@@ -135,7 +136,7 @@ export function OverviewBridgeBar() {
             )}
             <span className={cn("relative inline-flex h-2 w-2 rounded-full", statusColor)} />
           </span>
-          <span className={cn("text-[13px] font-semibold", statusText)}>桥接服务 {status}</span>
+          <span className={cn("text-[13px] font-semibold", statusText)}>本机服务 {status}</span>
         </div>
         <div className="hidden h-4 w-px bg-border md:block" />
         <code className="max-w-[12rem] truncate font-mono text-[12px] text-muted-foreground sm:max-w-xs">
@@ -204,7 +205,7 @@ export function OverviewBridgeBar() {
               onToggle={() => setShowToken(!showToken)}
               value={bridgeToken}
               onChange={setBridgeToken}
-              placeholder={isWebBridge() ? "Web Bridge 模式下可选" : "自动读取 ~/.openclaw/openclaw.json"}
+              placeholder={isWebBridge() ? OPENCLAW_TOKEN_PLACEHOLDER : "自动读取 ~/.openclaw/openclaw.json"}
             />
             <div className="mt-1 flex items-center justify-between gap-2">
               <span className="truncate text-[11px] text-muted-foreground">

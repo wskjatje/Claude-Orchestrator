@@ -8,6 +8,7 @@ import {
   resetPersonalWorkbenchData,
   saveChatSettings,
 } from './store.mjs'
+import { exportPersonalGithubArtifacts } from './workbench-git-export.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -30,16 +31,77 @@ const PUSH_EXCLUDE_PATHS = [
 const SENSITIVE_STAGED_PATTERNS = [
   /\bsk-[a-zA-Z0-9]{20,}\b/,
   /\bAIza[0-9A-Za-z\-_]{35}\b/,
-  /\bANTHROPIC_API_KEY\s*=\s*['"]?[^\s'"]+/i,
-  /\bOPENAI_API_KEY\s*=\s*['"]?[^\s'"]+/i,
-  /\bapi[_-]?key\s*[:=]\s*['"]?[a-zA-Z0-9_\-]{16,}/i,
-  /\blocalSecret\s*[:=]\s*['"][^'"]{8,}/i,
-  /\bpersonalGithubRepo\s*[:=]\s*['"]https:\/\/github\.com\/[^'"]+/i,
+  /\bANTHROPIC_API_KEY\s*=\s*['"]?[a-zA-Z0-9_\-]{12,}/i,
+  /\bOPENAI_API_KEY\s*=\s*['"]?[a-zA-Z0-9_\-]{12,}/i,
+  /\bapi[_-]?key\s*[:=]\s*['"]([^'"]{16,})['"]/i,
+  /\b"apiKey"\s*:\s*"([^"]{12,})"/i,
+  /\blocalSecret\s*[:=]\s*['"]([^'"]{12,})['"]/i,
+  /\bpersonalGithubRepo\s*:\s*['"]https:\/\/github\.com\/[^'"]+['"]/i,
 ]
+
+/** Source trees contain setting field names, not live secrets — skip text scan. */
+const SECRET_SCAN_SKIP_PREFIXES = [
+  'server/',
+  'web/src/',
+  'web/e2e/',
+  'desktop/',
+  'plugins/',
+  'examples/',
+  'scripts/',
+  '.github/',
+]
+
+const BINARY_PUSH_BLOCK_EXT = ['.db', '.sqlite', '.sqlite3', '.sqlite-wal', '.sqlite-shm']
+
+const PLACEHOLDER_SECRET =
+  /^(YOUR_|xxx|placeholder|changeme|replace-?me|<|\*{2,}|•{2,}|sk-fake|example)/i
+
+function extractSensitiveMatch(re, text) {
+  const m = re.exec(text)
+  if (!m) return null
+  const captured = m[1]
+  if (captured && PLACEHOLDER_SECRET.test(captured.trim())) return null
+  if (/\bYOUR_[A-Z0-9_]+\b/.test(m[0])) return null
+  return m[0]
+}
+
+function fileContainsSecrets(text) {
+  for (const re of SENSITIVE_STAGED_PATTERNS) {
+    re.lastIndex = 0
+    if (extractSensitiveMatch(re, text)) return true
+  }
+  return false
+}
+
+function isSqliteFile(abs) {
+  try {
+    const fd = fs.openSync(abs, 'r')
+    const buf = Buffer.alloc(16)
+    fs.readSync(fd, buf, 0, 16, 0)
+    fs.closeSync(fd)
+    return buf.toString('utf8', 0, 15) === 'SQLite format 3'
+  } catch {
+    return false
+  }
+}
 
 async function unstageSensitivePaths() {
   for (const excluded of PUSH_EXCLUDE_PATHS) {
     await runGit(['reset', 'HEAD', '--', excluded])
+  }
+  const list = await runGit(['diff', '--cached', '--name-only'])
+  if (!list.ok) return
+  const dbLike = list.stdout
+    .trim()
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((rel) => {
+      const lower = rel.toLowerCase()
+      return BINARY_PUSH_BLOCK_EXT.some((ext) => lower.endsWith(ext))
+    })
+  for (const rel of dbLike) {
+    await runGit(['reset', 'HEAD', '--', rel])
   }
 }
 
@@ -54,29 +116,38 @@ async function scanStagedFilesForSecrets() {
   const hits = []
   for (const rel of files) {
     if (PUSH_EXCLUDE_PATHS.some((p) => rel === p || rel.startsWith(`${p}/`))) continue
+    const lower = rel.toLowerCase()
+    if (BINARY_PUSH_BLOCK_EXT.some((ext) => lower.endsWith(ext))) {
+      hits.push(rel)
+      continue
+    }
+    if (SECRET_SCAN_SKIP_PREFIXES.some((p) => rel.startsWith(p))) continue
     const abs = path.join(PROJECT_ROOT, rel)
     try {
       if (!fs.existsSync(abs)) continue
       const stat = fs.statSync(abs)
       if (!stat.isFile() || stat.size > 512_000) continue
+      if (isSqliteFile(abs)) {
+        hits.push(rel)
+        continue
+      }
       const text = fs.readFileSync(abs, 'utf8')
       if (text.includes('\0')) continue
-      for (const re of SENSITIVE_STAGED_PATTERNS) {
-        if (re.test(text)) {
-          hits.push(rel)
-          break
-        }
-      }
+      if (fileContainsSecrets(text)) hits.push(rel)
     } catch {
       /* ignore unreadable */
     }
   }
   if (!hits.length) return { ok: true }
+  const hasDb = hits.some((p) =>
+    BINARY_PUSH_BLOCK_EXT.some((ext) => p.toLowerCase().endsWith(ext)),
+  )
+  const prefix = hasDb
+    ? '暂存区含数据库或其它二进制敏感文件，已阻止推送。请检查以下路径：\n'
+    : '暂存区含疑似密钥、个人仓库地址或其它敏感信息，已阻止推送。请检查以下文件并移除敏感内容后再试：\n'
   return {
     ok: false,
-    error:
-      '暂存区含疑似密钥、个人仓库地址或其它敏感信息，已阻止推送。请检查以下文件并移除敏感内容后再试：\n' +
-      hits.map((p) => `  - ${p}`).join('\n'),
+    error: prefix + hits.map((p) => `  - ${p}`).join('\n'),
     sensitivePaths: hits,
   }
 }
@@ -564,6 +635,18 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     ? `已清除本地敏感数据：${cleared.cleared.join('、')}。`
     : '已清除本地敏感数据。'
 
+  const exported = exportPersonalGithubArtifacts()
+  if (!exported.ok) {
+    return {
+      ok: false,
+      error: exported.error || '导出 Agent/Skill/MCP 失败',
+      combined: [clearedNote, exported.error].filter(Boolean).join('\n\n'),
+      clearedConfig: true,
+      personalUrl: ensure.url,
+    }
+  }
+  const exportNote = exported.summary ? `已导出可共享配置：${exported.summary}` : ''
+
   const branch = await currentBranch()
   const add = await runGit(['add', '-A'])
   if (!add.ok) return { ok: false, error: add.combined || add.error, combined: add.combined }
@@ -575,7 +658,7 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     return {
       ok: false,
       error: secretScan.error,
-      combined: [clearedNote, secretScan.error].filter(Boolean).join('\n\n'),
+      combined: [clearedNote, exportNote, secretScan.error].filter(Boolean).join('\n\n'),
       clearedConfig: true,
       sensitivePaths: secretScan.sensitivePaths,
       personalUrl: ensure.url,
@@ -627,7 +710,7 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
       nothingToCommit: true,
       clearedConfig: true,
       clearedItems: cleared.cleared,
-      combined: `${clearedNote}\n没有需要提交的变更，且已与个人仓库同步。`,
+      combined: `${clearedNote}\n${exportNote}\n没有需要提交的变更，且已与个人仓库同步。`,
       personalUrl: ensure.url,
     }
   }
@@ -639,7 +722,7 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     clearedItems: cleared.cleared,
     branch,
     personalUrl: ensure.url,
-    combined: [clearedNote, history.unshallowed ? history.combined : '', commitLog, push.combined]
+    combined: [clearedNote, exportNote, history.unshallowed ? history.combined : '', commitLog, push.combined]
       .filter(Boolean)
       .join('\n'),
   }

@@ -10,8 +10,11 @@ import {
   Sparkles,
   Workflow,
   Server,
+  Keyboard,
+  Info,
   type LucideIcon,
 } from "lucide-react";
+import { HELP_SECTION_DESC, PAGE_DESC } from "@/lib/ui-copy";
 import { openExternalUrl } from "@/lib/open-external";
 
 export const Route = createFileRoute("/help")({
@@ -19,17 +22,26 @@ export const Route = createFileRoute("/help")({
   component: HelpPage,
 });
 
-type ExternalLinkItem = { label: string; href: string; desc: string };
+type CardItem = {
+  label: string;
+  desc: string;
+  href?: string;
+  keys?: string;
+  value?: string;
+  onClick?: () => void;
+};
 
-const externalLinkGroups: {
+type CardGroup = {
   title: string;
   icon: LucideIcon;
-  links: ExternalLinkItem[];
-}[] = [
+  items: CardItem[];
+};
+
+const externalLinkGroups: CardGroup[] = [
   {
     title: "官方文档",
     icon: BookOpen,
-    links: [
+    items: [
       { label: "Claude Code 文档", href: "https://docs.claude.com", desc: "官方手册与 API" },
       { label: "Anthropic 控制台", href: "https://console.anthropic.com", desc: "API Key 与用量" },
       { label: "MCP 协议规范", href: "https://modelcontextprotocol.io", desc: "工具协议与示例" },
@@ -38,7 +50,7 @@ const externalLinkGroups: {
   {
     title: "本机运行时",
     icon: Server,
-    links: [
+    items: [
       { label: "Ollama", href: "https://ollama.com", desc: "本机模型守护进程" },
       { label: "Ollama GitHub", href: "https://github.com/ollama/ollama", desc: "源码与模型库" },
       {
@@ -51,8 +63,8 @@ const externalLinkGroups: {
   {
     title: "社区",
     icon: MessageSquare,
-    links: [
-      { label: "claudecodeui", href: "https://github.com/siteboon/claudecodeui", desc: "前端参考实现" },
+    items: [
+      { label: "Claude Code 社区", href: "https://github.com/anthropics/claude-code", desc: "官方仓库与讨论" },
       {
         label: "awesome-claude-code",
         href: "https://github.com/hesreallyhim/awesome-claude-code",
@@ -63,178 +75,153 @@ const externalLinkGroups: {
   },
 ];
 
-const guides: {
-  title: string;
-  icon: LucideIcon;
-  where: string;
-  bullets: string[];
-}[] = [
+const shortcutGroups: CardGroup[] = [
+  {
+    title: "对话与导航",
+    icon: MessageSquare,
+    items: [
+      { label: "命令面板", keys: "⌘K", desc: "搜索会话、技能与命令" },
+      { label: "新建对话", keys: "⌘N", desc: "开启空白会话" },
+      { label: "折叠侧栏", keys: "⌘B", desc: "扩大主工作区" },
+    ],
+  },
+  {
+    title: "输入与技能",
+    icon: Sparkles,
+    items: [
+      { label: "发送", keys: "⌘⏎", desc: "提交当前输入" },
+      { label: "切换技能", keys: "⌘⇧P", desc: "在支持场景下切换 Skill" },
+      { label: "清空对话", keys: "⌘⇧K", desc: "清除当前会话消息" },
+    ],
+  },
+  {
+    title: "界面与设置",
+    icon: Keyboard,
+    items: [
+      { label: "应用设置", keys: "⌘,", desc: "打开设置页" },
+      { label: "深/浅色", keys: "⌘D", desc: "切换主题模式" },
+      { label: "Windows 提示", desc: "将 ⌘ 换为 Ctrl 使用相同快捷键" },
+    ],
+  },
+];
+
+const aboutGroups: CardGroup[] = [
+  {
+    title: "产品定位",
+    icon: Info,
+    items: [
+      {
+        label: "Claude Orchestrator",
+        desc: "本机优先：连接 Claude Code，在本地执行对话与工具调用",
+      },
+      {
+        label: "编排能力",
+        desc: "统一管理会话、Agent、Skill、任务链与 MCP 工具",
+      },
+      {
+        label: "数据边界",
+        desc: "敏感配置与日志保存在本机，不会随 Git 推送",
+      },
+    ],
+  },
+  {
+    title: "版本与运行时",
+    icon: Server,
+    items: [
+      { label: "应用版本", value: "0.4.2", desc: "当前工作台版本" },
+      { label: "Claude CLI", value: "≥ 1.0", desc: "建议保持 claude 命令为最新版" },
+      { label: "本机服务", value: "已启用", desc: "对话、终端与文件读写依赖本机连接" },
+    ],
+  },
+  {
+    title: "反馈与支持",
+    icon: Github,
+    items: [
+      {
+        label: "Anthropic 支持",
+        href: "https://support.anthropic.com",
+        desc: "Claude 与 API 相关问题",
+      },
+      {
+        label: "Claude Code",
+        href: "https://docs.claude.com/en/docs/claude-code",
+        desc: "CLI 使用说明与故障排查",
+      },
+      {
+        label: "编排说明",
+        desc: "见本页「编排与集成」区块",
+      },
+    ],
+  },
+];
+
+const guideGroups: CardGroup[] = [
   {
     title: "Agent",
     icon: Bot,
-    where: "侧栏 Agent · 聊天 /agent",
-    bullets: [
-      "角色定义在 ~/.claude/agents/<stem>.md，Agent 页可编辑并关联 Skill。",
-      "聊天输入 /agent <stem> 需求，或短别名如 /pm；底部也可选 Agent。",
-      "云端走 Claude Code CLI，本地由 Ollama 编排并注入 Agent 正文。",
+    items: [
+      { label: "定义位置", desc: "~/.claude/agents/<stem>.md，Agent 页可编辑" },
+      { label: "聊天入口", desc: "/agent <stem> 或底部 Agent 选择器" },
+      { label: "执行方式", desc: "云端 Claude Code CLI；本地 Ollama 编排" },
     ],
   },
   {
-    title: "Skill",
-    icon: Sparkles,
-    where: "侧栏 Skill · Agent · 任务链",
-    bullets: [
-      "技能文件在 ~/.claude/skills/<stem>.md，Skill 页可搜索预览。",
-      "Agent 勾选技能后自动带入；任务链每步可单独指定。",
-      "⌘⇧P 可在支持场景下切换技能。",
-    ],
-  },
-  {
-    title: "任务链",
+    title: "Skill · 任务链",
     icon: Workflow,
-    where: "侧栏 任务链 · WBS",
-    bullets: [
-      "多步流水线：每步配 Agent、任务 ID、指令，可选 Skill / MCP。",
-      "「后台执行」按序运行；WBS 可保存为链并在页内搜索找回。",
+    items: [
+      { label: "Skill 文件", desc: "~/.claude/skills/<stem>.md，Skill 页可搜索" },
+      { label: "关联方式", desc: "Agent 勾选后自动带入；任务链每步可指定" },
+      { label: "任务链", desc: "多步流水线，WBS 可保存并在页内搜索" },
     ],
   },
   {
     title: "MCP",
     icon: Server,
-    where: "侧栏 MCP 服务器",
-    bullets: [
-      "为模型提供文件、抓取、记忆等工具；配置在 ~/.claude。",
-      "添加预设、健康检查后启用；任务链可限定单步可用 MCP。",
+    items: [
+      { label: "配置位置", desc: "~/.claude 或项目 .mcp.json" },
+      { label: "管理能力", desc: "MCP 页添加预设、健康检查与启用" },
+      { label: "任务链", desc: "可为单步限定可用 MCP 工具集" },
     ],
   },
-];
-
-const shortcuts: { keys: string; label: string }[] = [
-  { keys: "⌘K", label: "命令面板" },
-  { keys: "⌘N", label: "新建对话" },
-  { keys: "⌘⇧P", label: "切换技能" },
-  { keys: "⌘B", label: "折叠侧栏" },
-  { keys: "⌘⏎", label: "发送" },
-  { keys: "⌘⇧K", label: "清空对话" },
-  { keys: "⌘,", label: "应用设置" },
-  { keys: "⌘D", label: "深/浅色" },
 ];
 
 function HelpPage() {
   return (
     <AppShell>
-      <PageHeader title="帮助与链接" description="编排上手、快捷键与外部文档" />
+      <PageHeader title="帮助与链接" description={PAGE_DESC.help} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-5 px-4 py-5 sm:px-6 lg:px-7">
-        <OverviewSection
-          title="编排与集成"
-          description="Agent、Skill、任务链、MCP 的常用入口与操作方式"
-          className="flex-1"
-        >
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {guides.map((g) => (
-              <GuideCard key={g.title} {...g} />
-            ))}
-          </div>
+        <OverviewSection title="编排与集成" description={HELP_SECTION_DESC.guide}>
+          <CardGroupGrid groups={guideGroups} />
         </OverviewSection>
 
-        <div className="grid gap-5 lg:grid-cols-5">
-          <OverviewSection
-            title="键盘快捷键"
-            description="macOS；Windows 将 ⌘ 换为 Ctrl"
-            className="lg:col-span-3"
-          >
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-4">
-              {shortcuts.map((s) => (
-                <ShortcutChip key={s.keys} keys={s.keys} label={s.label} />
-              ))}
-            </div>
-          </OverviewSection>
+        <OverviewSection title="外部资源" description={HELP_SECTION_DESC.external}>
+          <CardGroupGrid groups={externalLinkGroups} />
+        </OverviewSection>
 
-          <OverviewSection title="关于本应用" className="lg:col-span-2">
-            <p className="text-sm leading-relaxed text-foreground/85">
-              本机优先的 Claude Orchestrator：Bridge 连接本地 CLI，prompt 与工具调用在本地执行，UI 负责会话与编排。
-            </p>
-            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-              <MetaItem label="版本" value="0.4.2" />
-              <MetaItem label="CLI" value="≥ 1.0" />
-              <MetaItem label="Bridge" value=":18789" />
-              <MetaItem label="构建" value="2026.04" />
-            </dl>
-            <button
-              type="button"
-              onClick={() => void openExternalUrl("https://github.com/siteboon/claudecodeui")}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-secondary"
-            >
-              <Github className="h-3.5 w-3.5" />
-              GitHub 反馈
-            </button>
-          </OverviewSection>
-        </div>
+        <OverviewSection title="键盘快捷键" description={HELP_SECTION_DESC.shortcuts}>
+          <CardGroupGrid groups={shortcutGroups} />
+        </OverviewSection>
 
-        <OverviewSection title="外部资源" description="官方文档、运行时与社区链接">
-          <div className="grid gap-4 lg:grid-cols-3">
-            {externalLinkGroups.map((group) => (
-              <ExternalLinkGroup key={group.title} {...group} />
-            ))}
-          </div>
+        <OverviewSection title="关于本应用" description={HELP_SECTION_DESC.about}>
+          <CardGroupGrid groups={aboutGroups} />
         </OverviewSection>
       </div>
     </AppShell>
   );
 }
 
-function GuideCard({
-  title,
-  icon: Icon,
-  where,
-  bullets,
-}: {
-  title: string;
-  icon: LucideIcon;
-  where: string;
-  bullets: string[];
-}) {
+function CardGroupGrid({ groups }: { groups: CardGroup[] }) {
   return (
-    <div className="flex h-full flex-col rounded-xl border border-border/70 bg-surface/50 p-4">
-      <div className="flex items-center gap-2">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary">
-          <Icon className="h-4 w-4 text-foreground/70" />
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-foreground">{title}</h3>
-          <p className="text-[11px] text-muted-foreground">{where}</p>
-        </div>
-      </div>
-      <ul className="mt-3 flex-1 space-y-1.5 text-[12px] leading-relaxed text-foreground/80">
-        {bullets.map((b) => (
-          <li key={b}>{b}</li>
-        ))}
-      </ul>
+    <div className="grid gap-4 lg:grid-cols-3">
+      {groups.map((group) => (
+        <CardGroupPanel key={group.title} {...group} />
+      ))}
     </div>
   );
 }
 
-function ShortcutChip({ keys, label }: { keys: string; label: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/70 bg-surface/50 px-3 py-2">
-      <span className="truncate text-xs text-foreground">{label}</span>
-      <kbd className="shrink-0 rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-        {keys}
-      </kbd>
-    </div>
-  );
-}
-
-function ExternalLinkGroup({
-  title,
-  icon: Icon,
-  links,
-}: {
-  title: string;
-  icon: LucideIcon;
-  links: ExternalLinkItem[];
-}) {
+function CardGroupPanel({ title, icon: Icon, items }: CardGroup) {
   return (
     <div className="flex h-full flex-col rounded-xl border border-border/70 bg-surface/40">
       <div className="flex items-center gap-2 border-b border-border/50 px-4 py-3">
@@ -242,9 +229,9 @@ function ExternalLinkGroup({
         <h3 className="text-[13px] font-medium text-foreground">{title}</h3>
       </div>
       <ul className="flex-1 divide-y divide-border/60">
-        {links.map((link) => (
-          <li key={link.href}>
-            <ExternalLinkRow {...link} />
+        {items.map((item) => (
+          <li key={`${title}:${item.label}`}>
+            <CardGroupRow {...item} />
           </li>
         ))}
       </ul>
@@ -252,27 +239,43 @@ function ExternalLinkGroup({
   );
 }
 
-function ExternalLinkRow({ label, href, desc }: ExternalLinkItem) {
-  return (
-    <button
-      type="button"
-      onClick={() => void openExternalUrl(href)}
-      className="group flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-secondary/40"
-    >
+function CardGroupRow({ label, desc, href, keys, value, onClick }: CardItem) {
+  const trailing = keys ? (
+    <kbd className="shrink-0 rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+      {keys}
+    </kbd>
+  ) : value ? (
+    <span className="shrink-0 font-mono text-[11px] text-foreground">{value}</span>
+  ) : href ? (
+    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary" />
+  ) : null;
+
+  const content = (
+    <>
       <div className="min-w-0">
         <div className="text-[13px] font-medium text-foreground group-hover:text-primary">{label}</div>
         <div className="truncate text-[11px] text-muted-foreground">{desc}</div>
       </div>
-      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary" />
-    </button>
+      {trailing}
+    </>
   );
-}
 
-function MetaItem({ label, value }: { label: string; value: string }) {
+  if (href || onClick) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          if (onClick) onClick();
+          else if (href) void openExternalUrl(href);
+        }}
+        className="group flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-secondary/40"
+      >
+        {content}
+      </button>
+    );
+  }
+
   return (
-    <div>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 font-mono text-foreground">{value}</dd>
-    </div>
+    <div className="flex items-center justify-between gap-3 px-4 py-2.5">{content}</div>
   );
 }

@@ -6,6 +6,8 @@ import {
   LEGACY_DATA_DIR,
   PROJECT_DATA_DIR,
   PROJECT_DB_PATH,
+  appLogFilePath,
+  dailyReportsDir,
   ensureProjectDataDir,
   globalDefaultModel,
   orchestrationChainPath,
@@ -470,7 +472,57 @@ export function resetPersonalWorkbenchData() {
   })
   saveScheduledTasks([])
   try {
+    const conn = db()
+    conn.prepare('DELETE FROM log_entries').run()
+  } catch {
+    /* ignore */
+  }
+  try {
+    projectDb.saveKv(db(), 'cloud_providers', { version: 1, currentProviderId: '', providers: {} })
+  } catch {
+    /* ignore */
+  }
+  try {
+    projectDb.saveKv(db(), 'usage_stats_registry', { version: 1, days: {}, lastBuiltAt: null })
+  } catch {
+    /* ignore */
+  }
+  try {
+    projectDb.saveKv(db(), 'mcp_health_snapshot', {
+      version: 1,
+      configPath: '',
+      checkedAt: null,
+      servers: {},
+    })
+  } catch {
+    /* ignore */
+  }
+  try {
     projectDb.saveKv(db(), 'agent_exec_registry', { version: 1, days: {} })
+  } catch {
+    /* ignore */
+  }
+  try {
+    const reportsDir = dailyReportsDir()
+    if (fs.existsSync(reportsDir)) {
+      fs.rmSync(reportsDir, { recursive: true, force: true })
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const { primary } = orchestrationChainPath()
+    if (fs.existsSync(primary)) {
+      fs.unlinkSync(primary)
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const logPath = appLogFilePath()
+    if (fs.existsSync(logPath)) {
+      fs.writeFileSync(logPath, '', 'utf8')
+    }
   } catch {
     /* ignore */
   }
@@ -478,13 +530,15 @@ export function resetPersonalWorkbenchData() {
   return {
     ok: true,
     cleared: [
-      '云/本地模型与供应商',
+      '云/本地模型与供应商（含 SQLite cloud_providers）',
       '全部聊天会话与草稿',
-      '当前工作区路径',
-      '项目打开记录',
+      '当前工作区路径与打开记录',
       'Bridge 令牌与本机密钥',
       '定时任务',
-      'Agent 执行统计',
+      'Agent 执行统计与智能体执行日报',
+      '应用日志与用量统计',
+      'MCP 健康检查快照',
+      '任务链运行进度（任务链定义保留，供导出后推送）',
     ],
   }
 }

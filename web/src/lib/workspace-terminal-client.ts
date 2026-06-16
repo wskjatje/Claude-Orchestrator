@@ -1,3 +1,5 @@
+import { BRIDGE_OFFLINE_TOAST } from "@/lib/ui-copy";
+
 const WS_URL =
   (import.meta.env.VITE_BRIDGE_WS_URL as string | undefined) || "ws://127.0.0.1:18789";
 
@@ -82,7 +84,7 @@ export function connectWorkspaceTerminal(handlers: {
   };
 
   ws.onerror = () => {
-    handlers.onError?.("WebSocket 连接失败，请确认 Bridge 已启动（npm run web:dev:full）");
+    handlers.onError?.(`连接失败：${BRIDGE_OFFLINE_TOAST}`);
   };
 
   ws.onclose = () => {

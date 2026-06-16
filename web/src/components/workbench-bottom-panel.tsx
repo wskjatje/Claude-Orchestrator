@@ -630,7 +630,7 @@ function NewTerminalSplitButton({
           </DropdownMenuSub>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onClick={() => toast.message("请在设置页配置 Bridge 与工作区路径")}
+            onClick={() => toast.message("请在设置页配置本机连接与工作目录")}
           >
             配置终端设置…
           </DropdownMenuItem>

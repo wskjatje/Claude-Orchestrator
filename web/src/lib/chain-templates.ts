@@ -4,6 +4,7 @@
  */
 
 import { defaultArtifactPathForAgent } from "@/lib/agent-artifact-paths";
+import { buildChainStepReadBlock, buildChainStepWriteBlock } from "@/lib/chain-step-instruction";
 import { allSkillFilesForAgentStems, skillFileStemsForAgent } from "@/lib/agent-skill-defaults";
 
 export type ChainTemplateVarKey = "projectName" | "featureDesc" | "featureSummary";
@@ -75,11 +76,10 @@ function step(
   body: string,
   skillsOverride?: string[],
 ): ChainTemplateStep {
-  const outPath = artifactPath(stem);
   return {
     agentName: stem,
     taskId,
-    instruction: `${stepAgentHeader(stem)}\n${body}\n\n【落盘】workspace-write → \`${outPath}\`（本 Agent 默认路径；代码另写 src/ 并在交付说明中列出）`,
+    instruction: `${stepAgentHeader(stem)}\n${body}\n\n${buildChainStepReadBlock(stem)}\n\n${buildChainStepWriteBlock(stem)}`,
     skills: skillsOverride ?? skillFileStemsForAgent(stem),
   };
 }
@@ -388,17 +388,17 @@ export const CHAIN_TEMPLATES: ChainTemplate[] = [
       sanshengliubuStep(
         "product-manager",
         "REQ-摘要",
-        "基于前文与用户已书面确认的需求，输出最终需求摘要、验收口径与风险列表（不写具体业务实现代码）。",
+        `${GENERIC_CTX}\n\n【任务】目标用户与验收口径、非目标与风险列表（不写 WBS/代码/UI 稿）`,
       ),
       sanshengliubuStep(
         "product-sprint-prioritizer",
         "SPRINT-排序",
-        `【输入】\`${artifactPath("product-manager")}\`\n\n【任务】MoSCoW/RICE 排序的用户故事与本冲刺范围`,
+        `${GENERIC_CTX}\n\n【任务】MoSCoW/RICE 排序的用户故事与本冲刺范围\n\n【禁止】不写页面布局/HTML`,
       ),
       sanshengliubuStep(
         "project-manager",
         "WBS-拆解执行",
-        `【输入】\`${artifactPath("product-manager")}\`、\`${artifactPath("product-sprint-prioritizer")}\`\n\n阅读工作区 CLAUDE.md 与上一步摘要；将需求拆解为工作包（执行 Agent stem、依赖、DoD），再按链内后续步骤或当场约定驱动 MCP 工具链执行（遵守确认门禁）。`,
+        `${GENERIC_CTX}\n\n【任务】WBS 表格：编号 | 摘要 | Agent | 依赖 | DoD\n\n阅读工作区 CLAUDE.md；遵守确认门禁；再按链内后续步骤驱动 MCP 工具链。`,
       ),
     ],
   ),
@@ -411,27 +411,27 @@ export const CHAIN_TEMPLATES: ChainTemplate[] = [
       sanshengliubuStep(
         "project-manager",
         "WBS-链-01",
-        "阅读当前工作区根目录 CLAUDE.md。将用户本轮需求拆成工作包表（含执行 Agent stem、计划周期、依赖、DoD）；禁止编写业务实现代码。",
+        `${GENERIC_CTX}\n\n【任务】WBS 表格：编号 | 摘要 | Agent | 依赖 | DoD\n\n【禁止】不写代码/UI`,
       ),
       sanshengliubuStep(
         "software-architect",
         "WBS-链-02",
-        "基于上一步工作包，给出模块边界与核心接口草案（文字即可）；不写具体源文件实现。",
+        `${GENERIC_CTX}\n\n【任务】模块边界、接口契约、数据流与技术选型\n\n【禁止】不写具体页面 HTML/CSS`,
       ),
       sanshengliubuStep(
         "backend-engineer",
         "WBS-链-03",
-        `【输入】\`${artifactPath("software-architect")}\`\n${GENERIC_DELIVERY}\n\n按架构草案在工作区内落地约定的服务端骨架（路由/models 等），保证可运行或可通过静态检查；完成后简述变更路径。`,
+        `${GENERIC_DELIVERY}\n\n【任务】在架构边界内落地服务端骨架（路由/models 等），保证可运行或可通过静态检查；代码写 src/，说明落默认 md`,
       ),
       sanshengliubuStep(
         "code-reviewer",
         "WBS-链-04",
-        "针对本轮链式任务已改动的文件做代码评审：风险点与必须修改项列表；不代替用户合并。",
+        "【附加上游】本轮链式任务已改动的 src/ 与 server/ 文件\n\n【任务】代码评审：风险点与必须修改项列表；不代替用户合并",
       ),
       sanshengliubuStep(
         "qa-engineer",
         "WBS-链-05",
-        `【输入】\`${artifactPath("product-manager")}\`（若有）、\`${artifactPath("backend-engineer")}\` + server/ 改动\n\n【任务】对照验收标准出 QA 报告与阻塞项`,
+        "【附加上游】server/ 与 src/ 本轮改动\n\n【任务】对照验收标准出 QA 报告与阻塞项",
       ),
     ],
   ),
@@ -460,42 +460,42 @@ export const CHAIN_TEMPLATES: ChainTemplate[] = [
       sanshengliubuStep(
         "product-sprint-prioritizer",
         "SLB-0b",
-        `【输入】\`${artifactPath("product-manager")}\`\n\n【任务】MoSCoW/RICE 排序的用户故事与冲刺范围`,
+        `${GENERIC_CTX}\n\n【任务】MoSCoW/RICE 排序的用户故事与冲刺范围\n\n【禁止】不写页面布局/HTML`,
       ),
       sanshengliubuStep(
         "project-manager",
         "SLB-1",
-        `【输入】\`${artifactPath("product-manager")}\`、\`${artifactPath("product-sprint-prioritizer")}\`\n\n【任务】WBS：编号 | 摘要 | Agent | 依赖 | DoD`,
+        `${GENERIC_CTX}\n\n【任务】WBS：编号 | 摘要 | Agent | 依赖 | DoD`,
       ),
       sanshengliubuStep(
         "software-architect",
         "SLB-2",
-        `【输入】\`${artifactPath("product-manager")}\`、\`${artifactPath("project-manager")}\`\n\n【任务】模块边界、接口契约与技术选型；须用户确认后再进入实现`,
+        `${GENERIC_CTX}\n\n【任务】模块边界、接口契约与技术选型；须用户确认后再进入实现`,
       ),
       sanshengliubuStep(
         "ui-ux-designer",
         "SLB-2b",
-        `【输入】\`${artifactPath("product-manager")}\`、\`${artifactPath("software-architect")}\`\n\n【任务】若有 UI 需求：交互流程与视觉规范；无 UI 需求则说明跳过`,
+        `${GENERIC_CTX}\n\n【任务】若有 UI 需求：交互流程与视觉规范；无 UI 需求则说明跳过`,
       ),
       sanshengliubuStep(
         "backend-engineer",
         "SLB-3",
-        `【输入】\`${artifactPath("software-architect")}\`\n${GENERIC_DELIVERY}\n\n【任务】按架构落地服务端；代码写 src/，说明落默认 md`,
+        `${GENERIC_DELIVERY}\n\n【任务】按架构落地服务端；代码写 src/，说明落默认 md`,
       ),
       sanshengliubuStep(
         "frontend-engineer",
         "SLB-4",
-        `【输入】\`${artifactPath("product-manager")}\`、\`${artifactPath("software-architect")}\`、\`${artifactPath("ui-ux-designer")}\`（若有）\n${GENERIC_DELIVERY}\n\n【任务】实现页面与交互；代码写 src/`,
+        `${GENERIC_DELIVERY}\n\n【任务】实现页面与交互；代码写 src/`,
       ),
       sanshengliubuStep(
         "code-reviewer",
         "SLB-5",
-        "【输入】本轮链式任务已改动文件\n\n【任务】安全/正确性评审；输出必须修改项列表",
+        "【附加上游】本轮链式任务已改动的 src/ 与 server/ 文件\n\n【任务】安全/正确性评审；输出必须修改项列表",
       ),
       sanshengliubuStep(
         "qa-engineer",
         "SLB-6",
-        `【输入】\`${artifactPath("product-manager")}\` + 本轮改动\n\n【任务】对照验收标准出 QA 报告与阻塞项`,
+        "【附加上游】本轮 src/ 与 server/ 改动\n\n【任务】对照验收标准出 QA 报告与阻塞项",
       ),
       sanshengliubuStep(
         "devops-engineer",

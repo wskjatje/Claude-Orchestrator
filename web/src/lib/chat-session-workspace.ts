@@ -34,15 +34,37 @@ export function sessionBelongsToWorkspace(
   return sessionKey === key;
 }
 
-/** 顶栏 tab：已绑定工作区的会话严格匹配；未绑定的 legacy 会话仅出现在当前打开的项目下 */
+/** 顶栏 tab：仅展示已绑定且与当前工作区一致的会话（未绑定 legacy 会话不出现在项目 tab 中） */
 export function sessionMatchesWorkspaceTab(
   session: WorkspaceScopedSession,
   workspacePath: string | null | undefined,
 ): boolean {
   const key = workspaceSessionKey(workspacePath);
   const sessionKey = workspaceSessionKey(session.workspacePath);
-  if (sessionKey) return sessionKey === key;
-  return Boolean(key);
+  if (!sessionKey) return false;
+  return sessionKey === key;
+}
+
+/** 用 activeByWorkspace 反查 legacy 会话所属工作区（加载磁盘数据时一次性回填） */
+export function backfillSessionWorkspaceFromActiveMap<T extends WorkspaceScopedSession>(
+  sessions: T[],
+  activeByWorkspace: Record<string, string> | undefined,
+): T[] {
+  if (!activeByWorkspace) return sessions;
+  const sessionToWorkspace = new Map<string, string>();
+  for (const [wsKey, sessionId] of Object.entries(activeByWorkspace)) {
+    if (!wsKey || !sessionId) continue;
+    if (!sessionToWorkspace.has(sessionId)) sessionToWorkspace.set(sessionId, wsKey);
+  }
+  let changed = false;
+  const next = sessions.map((s) => {
+    if (workspaceSessionKey(s.workspacePath)) return s;
+    const ws = sessionToWorkspace.get(s.id);
+    if (!ws) return s;
+    changed = true;
+    return { ...s, workspacePath: ws };
+  });
+  return changed ? next : sessions;
 }
 
 export function filterSessionsForWorkspace<T extends WorkspaceScopedSession>(

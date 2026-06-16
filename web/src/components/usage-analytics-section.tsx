@@ -8,6 +8,7 @@ import {
   OverviewSegmented,
   OverviewToolbar,
 } from "@/components/overview-ui";
+import { USAGE_SECTION_DESC } from "@/lib/ui-copy";
 
 type UsageAnalyticsSectionProps = {
   id?: string;
@@ -30,7 +31,7 @@ export function UsageAnalyticsSection({ id = "usage", range, onRangeChange }: Us
     <OverviewSection
       id={id}
       title="用量统计"
-      description="汇总云端 API 与本地 Ollama 用量；云端费用含 CLI transcript 与 usage 估算。"
+      description={USAGE_SECTION_DESC}
     >
       <OverviewToolbar onRefresh={() => void reload(true)} refreshing={loading}>
         <OverviewSegmented

@@ -32,6 +32,7 @@ export function useChatScroll({
   const layoutFreezeRef = useRef(false);
   const savedScrollTopRef = useRef(0);
   const freezeTimerRef = useRef(0);
+  const scrollFollowLockUntilRef = useRef(0);
   const showJumpLatestRef = useRef(false);
   const [composerDockHeight, setComposerDockHeight] = useState(200);
   const [showJumpLatest, setShowJumpLatest] = useState(false);
@@ -49,27 +50,40 @@ export function useChatScroll({
     else el.removeAttribute("data-layout-frozen");
   }, []);
 
-  const syncScrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+  const pinScrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = scrollAreaRef.current;
-    if (!el || layoutFreezeRef.current) return;
+    if (layoutFreezeRef.current || !el) return;
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
     if (top <= 0) {
       if (el.scrollTop !== 0) el.scrollTop = 0;
       return;
     }
-    if (Math.abs(el.scrollTop - top) <= 2) return;
-    if (behavior === "smooth") el.scrollTo({ top, behavior });
+    if (behavior === "smooth") el.scrollTo({ top, behavior: "smooth" });
     else el.scrollTop = top;
   }, []);
 
+  const syncScrollToBottom = useCallback(
+    (behavior: ScrollBehavior = "auto") => {
+      pinScrollToBottom(behavior);
+    },
+    [pinScrollToBottom],
+  );
+
   const updateScrollPinnedState = useCallback(() => {
     if (layoutFreezeRef.current) return;
+    if (Date.now() < scrollFollowLockUntilRef.current) return;
     const el = scrollAreaRef.current;
     if (!el) return;
     const atBottom = isNearBottom(el);
     userScrolledAwayRef.current = !atBottom;
     setJumpLatestVisible(!atBottom && messages.length > 0);
   }, [messages.length, setJumpLatestVisible]);
+
+  const cancelLayoutFreeze = useCallback(() => {
+    window.clearTimeout(freezeTimerRef.current);
+    layoutFreezeRef.current = false;
+    markScrollContainer(false);
+  }, [markScrollContainer]);
 
   const startLayoutFreeze = useCallback(() => {
     const el = scrollAreaRef.current;
@@ -84,16 +98,16 @@ export function useChatScroll({
       layoutFreezeRef.current = false;
       markScrollContainer(false);
       const scrollEl = scrollAreaRef.current;
-      if (scrollEl) {
-        scrollEl.scrollTop = savedScrollTopRef.current;
-        if (!userScrolledAwayRef.current && isNearBottom(scrollEl)) {
-          setJumpLatestVisible(false);
-        } else {
-          updateScrollPinnedState();
-        }
+      if (!scrollEl) return;
+      if (!userScrolledAwayRef.current) {
+        syncScrollToBottom("auto");
+        setJumpLatestVisible(false);
+        return;
       }
+      scrollEl.scrollTop = savedScrollTopRef.current;
+      updateScrollPinnedState();
     }, LAYOUT_FREEZE_MS);
-  }, [markScrollContainer, setJumpLatestVisible, updateScrollPinnedState]);
+  }, [markScrollContainer, setJumpLatestVisible, syncScrollToBottom, updateScrollPinnedState]);
 
   useEffect(() => {
     startLayoutFreeze();
@@ -156,44 +170,67 @@ export function useChatScroll({
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const prevPathnameRef = useRef<string | undefined>(undefined);
 
+  const scrollToLatest = useCallback(
+    (behavior: ScrollBehavior = "auto") => {
+      cancelLayoutFreeze();
+      userScrolledAwayRef.current = false;
+      setJumpLatestVisible(false);
+      scrollFollowLockUntilRef.current =
+        Date.now() + (behavior === "smooth" ? 700 : 180);
+      const run = () => pinScrollToBottom(behavior);
+      run();
+      requestAnimationFrame(run);
+      requestAnimationFrame(() => {
+        run();
+        window.setTimeout(() => {
+          run();
+          updateScrollPinnedState();
+        }, behavior === "smooth" ? 320 : 120);
+        window.setTimeout(run, behavior === "smooth" ? 520 : 280);
+      });
+    },
+    [cancelLayoutFreeze, pinScrollToBottom, setJumpLatestVisible, updateScrollPinnedState],
+  );
+
   useLayoutEffect(() => {
     const prev = prevPathnameRef.current;
     prevPathnameRef.current = pathname;
     if (pathname !== "/") return;
     const enteredChat = prev === undefined || (prev !== "/" && pathname === "/");
     if (!enteredChat) return;
-    userScrolledAwayRef.current = false;
-    setJumpLatestVisible(false);
-    syncScrollToBottom("auto");
-  }, [pathname, syncScrollToBottom, setJumpLatestVisible]);
+    scrollToLatest("auto");
+  }, [pathname, scrollToLatest]);
 
   useLayoutEffect(() => {
-    userScrolledAwayRef.current = false;
-    setJumpLatestVisible(false);
-    syncScrollToBottom("auto");
-  }, [activeId, syncScrollToBottom, setJumpLatestVisible]);
+    scrollToLatest("auto");
+  }, [activeId, scrollToLatest]);
 
   useLayoutEffect(() => {
     if (userScrolledAwayRef.current || layoutFreezeRef.current) return;
+    scrollFollowLockUntilRef.current = Date.now() + 120;
     syncScrollToBottom("auto");
-    setJumpLatestVisible(false);
-  }, [streamScrollKey, syncScrollToBottom, setJumpLatestVisible]);
+  }, [messages.length, activeId, syncScrollToBottom]);
 
   useLayoutEffect(() => {
-    if (sending && !userScrolledAwayRef.current && !layoutFreezeRef.current) {
-      syncScrollToBottom("auto");
-    }
+    if (userScrolledAwayRef.current || layoutFreezeRef.current) return;
+    scrollFollowLockUntilRef.current = Date.now() + (sending ? 200 : 120);
+    syncScrollToBottom("auto");
+    setJumpLatestVisible(false);
+  }, [streamScrollKey, sending, syncScrollToBottom, setJumpLatestVisible]);
+
+  useLayoutEffect(() => {
+    if (!sending || userScrolledAwayRef.current || layoutFreezeRef.current) return;
+    scrollFollowLockUntilRef.current = Date.now() + 160;
+    syncScrollToBottom("auto");
   }, [sending, syncScrollToBottom]);
 
   const resetScrollFollow = useCallback(() => {
-    userScrolledAwayRef.current = false;
-    setJumpLatestVisible(false);
-  }, [setJumpLatestVisible]);
+    scrollToLatest("auto");
+  }, [scrollToLatest]);
 
   const jumpToLatest = useCallback(() => {
-    resetScrollFollow();
-    syncScrollToBottom("smooth");
-  }, [resetScrollFollow, syncScrollToBottom]);
+    scrollToLatest("auto");
+  }, [scrollToLatest]);
 
   return {
     scrollAreaRef,

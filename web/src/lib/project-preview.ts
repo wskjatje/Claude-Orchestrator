@@ -1,5 +1,10 @@
 import type { DesktopApi } from "@/types/desktop";
 import { openExternalUrl } from "@/lib/open-external";
+import {
+  PROJECT_PREVIEW_API_MISSING,
+  PROJECT_PREVIEW_STOP_UNSUPPORTED,
+  PROJECT_PREVIEW_UNSUPPORTED,
+} from "@/lib/ui-copy";
 
 export type DiskMsg = { role: string; content: string; ts?: number; requestError?: boolean };
 
@@ -98,8 +103,7 @@ export async function performProjectPreview(
   if (!api.workspaceStartPreview) {
     return {
       ok: false,
-      displayText:
-        "【项目预览】当前 Bridge 不支持预览 RPC。\n\n请在终端 **Ctrl+C** 停止后重新运行 `npm run web:dev:full`，再试「浏览器预览」。",
+      displayText: `【项目预览】${PROJECT_PREVIEW_UNSUPPORTED}`,
       error: "RPC 不可用",
     };
   }
@@ -124,8 +128,7 @@ export async function performProjectPreview(
   } else if (res.error && /未知 RPC|workspace:startPreview/i.test(res.error)) {
     return {
       ok: false,
-      displayText:
-        "【项目预览】Bridge 未加载预览接口（`workspace:startPreview`）。\n\n请 **Ctrl+C** 后重新运行 `npm run web:dev:full`，再点击「浏览器预览」。",
+      displayText: `【项目预览】${PROJECT_PREVIEW_API_MISSING}`,
       url: null,
       error: res.error,
     };
@@ -145,7 +148,7 @@ export function isStopPreviewMessage(text: string): boolean {
 
 export async function performStopPreview(api: DesktopApi): Promise<string> {
   if (!api.workspaceStopPreview) {
-    return "【项目预览】当前 Bridge 不支持停止预览。";
+    return `【项目预览】${PROJECT_PREVIEW_STOP_UNSUPPORTED}`;
   }
   await api.workspaceStopPreview();
   return "【项目预览】已停止本地静态预览服务。";

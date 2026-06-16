@@ -1,6 +1,7 @@
 import type { DesktopApi } from "@/types/desktop";
 import type { ActiveChainState } from "@/lib/parse-active-chain";
 import { parseActiveChainFromBubbleText } from "@/lib/parse-active-chain";
+import { MSG_API_NOT_READY } from "@/lib/ui-copy";
 
 export const DEFAULT_WBS_REL_PATH = "docs/wbs.md";
 
@@ -86,7 +87,7 @@ export async function registerParsedChainInList(
   | { ok: false; error: string }
 > {
   if (!api.orchestrationCreateChain || !api.orchestrationActivateChain) {
-    return { ok: false, error: "当前 Bridge 未暴露任务链注册接口，请重启 npm run web:dev:full。" };
+    return { ok: false, error: MSG_API_NOT_READY };
   }
 
   const steps = opts.state.steps?.filter((s) => s.agentName?.trim() && s.instruction?.trim()) ?? [];

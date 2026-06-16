@@ -11,6 +11,9 @@
     "web:lint": "npm --prefix web run lint",
     "postinstall": "node scripts/fix-node-pty-perms.mjs",
     "web:dev:full": "bash scripts/dev-web-with-bridge.sh",
+    "desktop:install": "npm --prefix desktop install",
+    "desktop:dev": "node desktop/run-dev.mjs",
+    "desktop": "npm run desktop:dev",
     "vendor:install": "npm --prefix server/vendor/cad install --omit=dev && npm --prefix server/vendor/agent-os-runtime install --omit=dev",
     "sync:cc-switch": "bash scripts/sync-cc-switch-to-workbench.sh",
     "setup:yunmeng": "bash scripts/setup-yunmeng-cc-switch.sh"

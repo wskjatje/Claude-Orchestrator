@@ -17,6 +17,7 @@ import {
   recordWorkspaceOpen,
   removeWorkspaceHistoryEntry,
   clearWorkspaceHistory,
+  resetPersonalWorkbenchData,
   saveChatSessions,
   saveChatSettings,
   saveScheduledTasks,
@@ -59,24 +60,29 @@ import {
 import { formatUsd } from './token-pricing.mjs'
 import { gitDiff, listPanelTree, readTextFile, shellSnapshot } from './workspace.mjs'
 import { lintWorkspaceFiles } from './workspace-lint.mjs'
-import { pickFolderNative } from './native-dialog.mjs'
+import { pickFolderNative, pickReferenceFilesNative } from './native-dialog.mjs'
 import { startTaskScheduler } from './scheduler.mjs'
 import {
   appLogFilePath,
   dailyReportsDir,
   orchestrationChainPath,
+  PROJECT_DATA_DIR,
+  PROJECT_DB_PATH,
   readGlobalClaudeEnv,
   scheduledTasksPath,
 } from './paths.mjs'
 
 const require = createRequire(import.meta.url)
 const cadBridge = require('./cad-bridge.cjs')
-const ccSwitch = require('./cc-switch.cjs')
+const cloudProviders = require('./cloud-providers.cjs')
+const projectDb = require('./project-db.cjs')
 const projectLogs = require('./project-logs.cjs')
 const agentExecRegistry = require('./agent-exec-registry.cjs')
 const usageStats = require('./usage-stats.cjs')
 
 const PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+cloudProviders.attachDb(() => projectDb.getDb(PROJECT_DB_PATH, PROJECT_DATA_DIR))
 
 /** @type {Map<string, Set<(detail: unknown) => void>>} */
 const eventSubs = new Map()
@@ -111,6 +117,7 @@ cadBridge.init({
   loadScheduledTasks,
   saveScheduledTasks,
   runClaudeCodePrint,
+  abortClaudeCode,
   broadcast,
   appLogFilePath,
   scheduledTasksPath,
@@ -176,6 +183,17 @@ export const handlers = {
     saveWorkspace(null)
     broadcast('workspace:changed', { workspace: null })
     return null
+  },
+
+  'reset:logout': async () => {
+    try {
+      const result = resetPersonalWorkbenchData()
+      broadcast('chat-settings:changed', {})
+      broadcast('chat-sessions:changed', {})
+      return { ok: true, cleared: result.cleared }
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e) }
+    }
   },
 
   'workspace:listPanelTree': async () => listPanelTree(),
@@ -265,6 +283,7 @@ export const handlers = {
 
   'claude-code:prompt': async (args) => {
     const p = args?.[0] || {}
+    const requestId = typeof p.requestId === 'string' ? p.requestId.trim() : ''
     return runClaudeCodePrint({
       prompt: p.prompt,
       model: p.model,
@@ -272,6 +291,12 @@ export const handlers = {
       claudeSessionId: p.claudeSessionId,
       sessionName: p.sessionName,
       isNewClaudeSession: p.isNewClaudeSession,
+      onDelta:
+        requestId
+          ? (chunk) => {
+              broadcast('message_delta', { requestId, content: chunk })
+            }
+          : undefined,
     })
   },
 
@@ -281,7 +306,7 @@ export const handlers = {
     const settings = loadChatSettings()
     const fetchRemote = args?.[0]?.fetchRemote !== false
     try {
-      const pool = await ccSwitch.collectCloudModelPool({
+      const pool = await cloudProviders.collectCloudModelPool({
         aliases: CLAUDE_CODE_MODEL_ALIASES,
         settings,
         fetchRemote,
@@ -295,12 +320,12 @@ export const handlers = {
         const m = String(env[k] || '').trim()
         if (m && m !== '#') pool.models.push(m)
       }
-      const models = await ccSwitch.filterCloudModelList(
+      const models = await cloudProviders.filterCloudModelList(
         [...new Set(pool.models)].filter((m) => m && m !== '#'),
         settings,
       )
       if (models.length) {
-        const nextCatalog = await ccSwitch.filterCloudModelList(
+        const nextCatalog = await cloudProviders.filterCloudModelList(
           [...new Set([...(settings.cloudModelCatalog || []), ...models])],
           settings,
         )
@@ -323,7 +348,7 @@ export const handlers = {
       ]
         .map((m) => String(m || '').trim())
         .filter((m) => m && m !== '#')
-      const models = await ccSwitch.filterCloudModelList(
+      const models = await cloudProviders.filterCloudModelList(
         [
           ...new Set([
             ...CLAUDE_CODE_MODEL_ALIASES,
@@ -549,17 +574,21 @@ export const handlers = {
     return setMcpServerEnabled(customPath, name, body.enabled !== false)
   },
 
-  'dialog:chooseReferenceFiles': async () => ({ canceled: true, filePaths: [] }),
+  'dialog:chooseReferenceFiles': async (args) => {
+    const opts = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+    return pickReferenceFilesNative(opts)
+  },
 
   'cc-switch:status': async () => ({
     ok: true,
-    installed: ccSwitch.ccSwitchInstalled(),
-    dbPath: ccSwitch.ccSwitchDbPath(),
+    installed: true,
+    source: 'project',
+    configured: cloudProviders.providersConfigured(),
   }),
 
   'cc-switch:listProviders': async () => {
     try {
-      const providers = ccSwitch.listProviders()
+      const providers = cloudProviders.listProviders()
       return { ok: true, providers }
     } catch (e) {
       return { ok: false, error: e?.message || String(e), providers: [] }
@@ -569,7 +598,7 @@ export const handlers = {
   'cc-switch:upsertProvider': async (args) => {
     try {
       const body = args?.[0] || {}
-      const result = ccSwitch.upsertProvider(body)
+      const result = cloudProviders.upsertProvider(body)
       if (result.ok && result.providerId) {
         const settings = loadChatSettings()
         const nextCatalog = [
@@ -579,12 +608,11 @@ export const handlers = {
       }
       if (body.syncWorkbench !== false) {
         try {
-          ccSwitch.syncCcSwitchToWorkbench({
+          cloudProviders.syncProvidersToWorkbench({
             loadChatSettings,
             saveChatSettings,
             loadChatSessions,
             saveChatSessions,
-            projectRoot: PROJECT_ROOT,
           })
         } catch {
           /* 供应商已写入，同步可稍后手动 */
@@ -600,7 +628,7 @@ export const handlers = {
   'cc-switch:deleteProvider': async (args) => {
     try {
       const providerId = args?.[0]?.providerId
-      const result = ccSwitch.deleteProvider(providerId)
+      const result = cloudProviders.deleteProvider(providerId)
       if (result.ok && result.providerId) {
         const settings = loadChatSettings()
         const nextCatalog = (settings.cloudProviderCatalog || []).filter(
@@ -618,14 +646,13 @@ export const handlers = {
   'cc-switch:setCurrentProvider': async (args) => {
     try {
       const body = args?.[0] || {}
-      const r = ccSwitch.setCurrentProvider(body.providerId, body.model)
+      const r = cloudProviders.setCurrentProvider(body.providerId, body.model)
       if (body.syncWorkbench !== false) {
-        ccSwitch.syncCcSwitchToWorkbench({
+        cloudProviders.syncProvidersToWorkbench({
           loadChatSettings,
           saveChatSettings,
           loadChatSessions,
           saveChatSessions,
-          projectRoot: PROJECT_ROOT,
         })
       }
       broadcast('chat-settings:changed', {})
@@ -637,12 +664,11 @@ export const handlers = {
 
   'cc-switch:syncWorkbench': async () => {
     try {
-      const r = await ccSwitch.syncCcSwitchToWorkbench({
+      const r = await cloudProviders.syncProvidersToWorkbench({
         loadChatSettings,
         saveChatSettings,
         loadChatSessions,
         saveChatSessions,
-        projectRoot: PROJECT_ROOT,
       })
       broadcast('chat-settings:changed', {})
       return r
@@ -655,12 +681,12 @@ export const handlers = {
     try {
       const settings = loadChatSettings()
       const fetchRemote = args?.[0]?.fetchRemote !== false
-      const pool = await ccSwitch.collectCloudModelPool({
+      const pool = await cloudProviders.collectCloudModelPool({
         aliases: CLAUDE_CODE_MODEL_ALIASES,
         settings,
         fetchRemote,
       })
-      const nextCatalog = await ccSwitch.filterCloudModelList(
+      const nextCatalog = await cloudProviders.filterCloudModelList(
         [...new Set([...(settings.cloudModelCatalog || []), ...pool.models])],
         settings,
       )

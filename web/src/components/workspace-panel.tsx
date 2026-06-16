@@ -21,6 +21,14 @@ import { isBinaryFileResult } from "@/lib/is-binary-file";
 import { normalizeFileContentForEditor } from "@/lib/format-file-content";
 import { BinaryFileViewer } from "@/components/binary-file-viewer";
 import type { WorkspacePanelTreeNode } from "@/types/desktop";
+import {
+  GIT_DIFF_OFFLINE,
+  GIT_STATUS_OFFLINE,
+  PREVIEW_BUTTON,
+  PREVIEW_FILE_HINT,
+  PREVIEW_STARTING,
+  WORKSPACE_PANEL_OFFLINE,
+} from "@/lib/ui-copy";
 
 type Tab = "files" | "shell" | "diff";
 
@@ -352,7 +360,7 @@ function FilesView({
   if (!hasDesktopApi) {
     return (
       <div className="p-4 text-[12px] leading-relaxed text-muted-foreground">
-        浏览器预览模式无法读取本机目录。请在 Electron 桌面窗口打开本应用，并在「工作目录」中选择项目文件夹。
+        {WORKSPACE_PANEL_OFFLINE}
       </div>
     );
   }
@@ -412,7 +420,7 @@ function FilesView({
         />
       ) : (
         <div className="mt-auto border-t border-border px-4 py-3 text-[11px] text-muted-foreground">
-          点击文件可在此查看内容；HTML 文件可一键浏览器预览。
+          {PREVIEW_FILE_HINT}
         </div>
       )}
     </div>
@@ -462,7 +470,7 @@ function FilePreviewPane({
             onClick={() => void onPreview()}
             className="shrink-0 rounded-md border border-border bg-surface px-2 py-0.5 text-[10.5px] font-medium text-foreground hover:bg-secondary disabled:opacity-50"
           >
-            {previewing ? "启动中…" : "浏览器预览"}
+            {previewing ? PREVIEW_STARTING : PREVIEW_BUTTON}
           </button>
         ) : null}
         <button
@@ -587,7 +595,7 @@ function ShellView({ text, error, loading }: { text: string; error: string | nul
   if (!hasDesktopApi) {
     return (
       <div className="p-4 text-[12px] text-muted-foreground">
-        浏览器预览无法读取本机 Git 状态。请使用桌面端。
+        {GIT_STATUS_OFFLINE}
       </div>
     );
   }
@@ -623,7 +631,7 @@ function DiffView({
   if (!hasDesktopApi) {
     return (
       <div className="p-4 text-[12px] text-muted-foreground">
-        浏览器预览无法读取 git diff。请使用桌面端。
+        {GIT_DIFF_OFFLINE}
       </div>
     );
   }

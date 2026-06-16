@@ -1,0 +1,25 @@
+{
+  "id": "chain-mqfx75l3-fx2z3",
+  "name": "WBS · docs/wbs.md",
+  "description": "WBS 来源：docs/wbs.md · 1 步",
+  "category": "custom",
+  "enabled": true,
+  "templateId": null,
+  "official": false,
+  "userModified": false,
+  "createdAt": "2026-06-16T00:45:04.647Z",
+  "updatedAt": "2026-06-16T00:45:04.647Z",
+  "state": {
+    "status": "idle",
+    "currentIndex": 0,
+    "steps": [
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-45",
+        "instruction": "请执行任务 WBS-45：- 步全部执行完毕",
+        "skills": [],
+        "mcps": []
+      }
+    ]
+  }
+}

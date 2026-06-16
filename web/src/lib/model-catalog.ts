@@ -21,21 +21,14 @@ type ProviderCatalogEntry = {
   notes?: string;
 };
 
-/** 仅展示 Orchestrator 自主添加的云供应商；空 catalog 时一次性迁移 Orchestrator 备注或当前供应商 */
+/** 项目内已添加的云供应商；catalog 为空时展示全部 */
 export function resolveCloudProviderCatalog(
   catalog: string[] | undefined,
   providers: ProviderCatalogEntry[],
 ): string[] {
   const ids = [...new Set((catalog ?? []).map((id) => String(id || "").trim()).filter(Boolean))];
-  if (ids.length) return ids;
-
-  const workbench = providers
-    .filter((p) => /Orchestrator|Workbench/i.test(p.notes ?? ""))
-    .map((p) => p.id);
-  if (workbench.length) return workbench;
-
-  const current = providers.find((p) => p.isCurrent);
-  return current ? [current.id] : [];
+  if (ids.length) return ids.filter((id) => providers.some((p) => p.id === id));
+  return providers.map((p) => p.id);
 }
 
 /** Agent frontmatter `model:`（Claude Code 子 Agent 约定） */

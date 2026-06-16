@@ -7,6 +7,7 @@ import {
 import { parseChainCommand } from "@/lib/parse-chain-command";
 import { syncOfficialGenericChains } from "@/lib/sync-official-chains";
 import type { ChainRunOptions } from "@/lib/orchestration-chain-runner";
+import { MSG_API_NOT_READY } from "@/lib/ui-copy";
 
 export async function handleChainChatCommand(
   text: string,
@@ -20,7 +21,7 @@ export async function handleChainChatCommand(
   if (!api?.orchestrationActivateChain || !api.orchestrationStartChainRun) {
     return {
       handled: true,
-      assistantText: "当前 Bridge 未暴露任务链接口，请先运行 npm run web:dev:full 并刷新。",
+      assistantText: MSG_API_NOT_READY,
     };
   }
 

@@ -17,7 +17,8 @@ const agentDailyReports = require('./agent-daily-reports.cjs')
 const agentExecRegistry = require('./agent-exec-registry.cjs')
 const projectLogs = require('./project-logs.cjs')
 const orchestrationChains = require('./orchestration-chains.cjs')
-const ccSwitch = require('./cc-switch.cjs')
+const cloudProviders = require('./cloud-providers.cjs')
+const { chainStepTimeoutMs } = require('./claude-cli.mjs')
 const {
   isAutoModelSelection,
   loadChatModelPools,
@@ -25,6 +26,7 @@ const {
 } = require('./resolve-execution-model.mjs')
 
 const { applyWorkspaceWriteFenceItems, ingestTextAndApplyWorkspaceWrite, bulkIngestAssistantTexts, collapseWrittenSummary, extractInvolvedSectionPaths } = workspaceWrite
+const { expandChainStepInstructionWithWorkspaceReads } = require('./chain-step-read-inject.cjs')
 const { buildCrossAgentContextMarkdown } = require(path.join(CAD, 'memory-cross-agent.js'))
 const { runLocalMcpOrchestration } = require(path.join(CAD, 'local-mcp-orchestrator.js'))
 const {
@@ -168,14 +170,16 @@ function newRequestId() {
   return `chain-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-async function runClaudeChainStep(agentName, taskId, instruction, modelId) {
+async function runClaudeChainStep(agentName, taskId, instruction, modelId, requestId) {
   const settings = loadChatSettings()
   const userLine = `【任务链 Agent 路由】global://${agentName}（任务 ${taskId || '—'}）\n${instruction}${CHAIN_REPLY_HINT}`
+  const resolved = cloudProviders.resolveEnvForModel(modelId?.trim() || settings.model?.trim())
+  const timeoutMs = chainStepTimeoutMs(resolved.env || {})
   const r = await deps.runClaudeCodePrint({
     prompt: userLine,
     model: modelId?.trim() || settings.model?.trim() || undefined,
-    requestId: undefined,
-    timeoutMs: 0,
+    requestId,
+    timeoutMs,
   })
   const out = (r.content || '').trim()
   if (!r.ok) {
@@ -221,7 +225,7 @@ async function orchestrationChainLoop() {
     }
     const settings = loadChatSettings()
     const mode = settings.orchestrationMode === 'local-mcp' ? 'local-mcp' : 'claude-code'
-    const modelPools = await loadChatModelPools(settings, ccSwitch)
+    const modelPools = await loadChatModelPools(settings)
 
     while (!chainRunState.stopRequested) {
       const pinnedId = chainRunState.pinnedSessionId
@@ -291,7 +295,16 @@ async function orchestrationChainLoop() {
       }
       const execModelId = resolvedModel.modelId
 
-      const instructionWithMeta = appendStepChainMetaToInstruction(instruction, step)
+      const workspaceDir = loadWorkspace()
+      let instructionWithMeta = appendStepChainMetaToInstruction(instruction, step)
+      if (workspaceDir) {
+        instructionWithMeta = expandChainStepInstructionWithWorkspaceReads(
+          instructionWithMeta,
+          agentName,
+          workspaceDir,
+          { taskId },
+        )
+      }
       const execInstruction = buildTaskChainExecutableInstruction(agentName, taskId, instructionWithMeta)
       const routedExecInstruction = buildAgentRoutedInstruction(agentName, execInstruction, mode)
       const stepMarker = `【任务链】第 ${idx + 1}/${steps.length} 步 · ${agentName}`
@@ -333,7 +346,10 @@ async function orchestrationChainLoop() {
       let res
 
       if (mode === 'claude-code') {
-        res = await runClaudeChainStep(agentName, taskId, routedExecInstruction, execModelId)
+        const reqId = newRequestId()
+        chainRunState.activeRequestId = reqId
+        res = await runClaudeChainStep(agentName, taskId, routedExecInstruction, execModelId, reqId)
+        chainRunState.activeRequestId = null
       } else {
         const reqId = newRequestId()
         chainRunState.activeRequestId = reqId
@@ -399,7 +415,6 @@ async function orchestrationChainLoop() {
           ? String(res.output || '')
           : String(res.content || '')
 
-      const workspaceDir = loadWorkspace()
       if (workspaceDir) {
         const wr = ingestTextAndApplyWorkspaceWrite(reply, workspaceDir, {
           agentName,
@@ -556,10 +571,12 @@ function appendAppLog(message) {
   }
 }
 
+const { normalizeAgentStem: normalizeAgentStemForExec } = require('./agent-artifact-paths.cjs')
+
 function agentStemFromName(name) {
-  return String(name || '')
-    .trim()
-    .replace(/\.md$/i, '')
+  const stem = normalizeAgentStemForExec(name)
+  if (stem) return stem
+  return String(name || '').trim().replace(/\.md$/i, '')
 }
 
 function appendMemoryEventRow(obj) {
@@ -739,7 +756,7 @@ async function runLocalOrch(payload) {
     typeof payload?.agentBasenameOverride === 'string' ? payload.agentBasenameOverride.trim() : ''
   const agentBasenameForRead = overrideRaw || settings.localAgentBasename || ''
   if (isAutoModelSelection(orchestratorModel)) {
-    const pools = await loadChatModelPools(settings, ccSwitch)
+    const pools = await loadChatModelPools(settings)
     const resolved = await resolveExecutionModel({
       settings,
       sessionModelId: orchestratorModel || settings.model,
@@ -997,7 +1014,7 @@ function createHandlers() {
         typeof payload?.orchestratorModel === 'string' && payload.orchestratorModel.trim()
           ? payload.orchestratorModel.trim()
           : settings.model?.trim() || ''
-      const modelPools = await loadChatModelPools(settings, ccSwitch)
+      const modelPools = await loadChatModelPools(settings)
       const resolvedOrchestrator = await resolveExecutionModel({
         settings,
         sessionModelId: rawOrchestratorModel,
@@ -1046,10 +1063,19 @@ function createHandlers() {
 
       /** @type {{ agentName: string, taskId: string, ok: boolean, output: string, error: string | null }[]} */
       const stepResults = []
+      const delegationWorkspaceDir = loadWorkspace()
 
       for (let i = 0; i < normalized.steps.length; i++) {
         const step = normalized.steps[i]
-        const execInstr = buildExecutableDelegationInstruction(step)
+        let execInstr = buildExecutableDelegationInstruction(step)
+        if (delegationWorkspaceDir) {
+          execInstr = expandChainStepInstructionWithWorkspaceReads(
+            execInstr,
+            step.agentName,
+            delegationWorkspaceDir,
+            { taskId: step.taskId },
+          )
+        }
         const routed = buildAgentRoutedInstruction(step.agentName, execInstr, mode)
 
         if (mode === 'claude-code') {
@@ -1521,6 +1547,9 @@ category: 通用
       if (id) {
         const st = activeLocalOrchestrationRequests.get(id)
         if (st) st.cancelled = true
+        if (typeof deps.abortClaudeCode === 'function') {
+          deps.abortClaudeCode(id)
+        }
       }
       emitChainRunStatus()
       return { ok: true }

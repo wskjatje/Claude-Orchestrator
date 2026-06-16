@@ -54,6 +54,8 @@ import { restoreUserMsgToComposer } from "@/lib/restore-user-composer";
 import { buildConfirmWriteItems, isConfirmWriteOnlyMessage, isBulkWriteProjectMessage } from "@/lib/confirm-write";
 import { performBulkWriteFromHistory } from "@/lib/bulk-write-from-history";
 import { runProjectFromChat } from "@/lib/run-project-in-terminal";
+import { MSG_BRIDGE_OFFLINE } from "@/lib/user-messages";
+import { BROWSER_MODE_CHAT_MESSAGE, LOCAL_ONLY_HINT } from "@/lib/ui-copy";
 import {
   isProjectPreviewMessage,
   isStopPreviewMessage,
@@ -91,6 +93,7 @@ import {
   pruneDuplicateEmptySessions,
   resolveWorkspaceChatSessions,
   sessionMatchesWorkspaceTab,
+  backfillSessionWorkspaceFromActiveMap,
   stampSessionWorkspaceIfMissing,
   workspaceSessionKey,
   chatSessionsCacheMatchesWorkspace,
@@ -392,7 +395,13 @@ function formatAssistantFailure(res: {
 }): string {
   const err = String(res.error || "").trim();
   if (res.aborted || res.error === "请求已取消") {
-    if (err && (/超时|429|quota|配额|频率/i.test(err) || err.length > 20)) {
+    if (err && (/超时|429|配额|模型与连接|deepseek|API Key|连接失败/i.test(err))) {
+      return `请求失败：${err}`;
+    }
+    if (err && (/已取消|已中止|生成已停止/i.test(err))) {
+      return "（生成已停止）";
+    }
+    if (err && err.length > 24) {
       return `请求失败：${err}`;
     }
     return "（生成已停止）";
@@ -465,7 +474,10 @@ function ChatPage() {
   const activeRequestIdsRef = useRef<Map<string, string>>(new Map());
   const newSessionInFlightRef = useRef(false);
   const streamContextRef = useRef<{ sessionId: string; requestId: string } | null>(null);
+  const activeStreamRequestIdRef = useRef<string | null>(null);
+  const [activeStreamRequestId, setActiveStreamRequestId] = useState<string | null>(null);
   const sendingSessionsRef = useRef<Record<string, boolean>>({});
+  const chainRunningRef = useRef(false);
   const composerDraftsRef = useRef<
     Record<
       string,
@@ -610,7 +622,12 @@ function ChatPage() {
   }, []);
   const sending = Boolean(sendingSessions[activeId]);
   const [stopRequested, setStopRequested] = useState(false);
+  useEffect(() => {
+    chainRunningRef.current = chainRunning;
+  }, [chainRunning]);
+
   const workflowBusy = sending || chainRunning;
+
   const [globalModel, setGlobalModel] = useState("");
   /** Claude Code CLI `--model` 别名列表（编排层，来自 claudeCodeListModels） */
   const [orchestratorModels, setOrchestratorModels] = useState<string[]>([]);
@@ -679,7 +696,8 @@ function ChatPage() {
 
   useChatStream({
     activeSessionId: activeId,
-    requestId: streamContextRef.current?.requestId ?? null,
+    requestId: activeStreamRequestId,
+    requestIdRef: activeStreamRequestIdRef,
     enabled: sending,
     onDelta: (_sessionId, chunk) => {
       const ctx = streamContextRef.current;
@@ -1042,7 +1060,7 @@ function ChatPage() {
         setMessages(diskToDisplay(hist, modelLabel));
         await persist(nextSessions, activeId);
         if (res.ranInTerminal) toast.success("已在集成终端执行命令");
-        else if (res.ok && res.url) toast.success("已在浏览器打开预览");
+        else if (res.ok && res.url) toast.success("已在系统浏览器打开预览");
         else if (!res.ok) toast.warning("未能自动运行，请查看终端或手动执行");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : String(e));
@@ -1061,8 +1079,7 @@ function ChatPage() {
         setMessages([
           {
             role: "assistant",
-            content:
-              "当前为浏览器预览模式：请在「Claude Orchestrator」Electron 窗口中打开本应用，以使用 Claude Code CLI、工作区与对话持久化。",
+            content: BROWSER_MODE_CHAT_MESSAGE,
           },
         ]);
         return;
@@ -1074,7 +1091,7 @@ function ChatPage() {
       } catch (e) {
         bridgeOk = false;
         const msg = e instanceof Error ? e.message : String(e);
-        toast.error("Web Bridge 未连接，模型列表使用默认项。请运行 npm run web:dev:full 或 npm run bridge", {
+        toast.error(`${MSG_BRIDGE_OFFLINE} 模型列表使用默认项。`, {
           description: msg.slice(0, 120),
           duration: 8000,
         });
@@ -1136,11 +1153,15 @@ function ChatPage() {
         workspacePathRef.current = workspace;
         setWorkspacePath(workspace);
       }
+      let diskSessionsBackfilled = false;
       if (bridgeOk) {
         try {
           const disk = await api.loadChatSessions();
-          list = disk.sessions;
-          activeByWorkspace = disk.activeByWorkspace ?? { "": disk.activeId || "s0" };
+          const rawActiveByWorkspace = disk.activeByWorkspace ?? { "": disk.activeId || "s0" };
+          const backfilled = backfillSessionWorkspaceFromActiveMap(disk.sessions, rawActiveByWorkspace);
+          if (backfilled !== disk.sessions) diskSessionsBackfilled = true;
+          list = backfilled;
+          activeByWorkspace = rawActiveByWorkspace;
           activeByWorkspaceRef.current = activeByWorkspace;
           aid = pickActiveSessionId(list, activeByWorkspace, workspace, disk.activeId);
           if (disk.composerDrafts && typeof disk.composerDrafts === "object") {
@@ -1267,7 +1288,7 @@ function ChatPage() {
         syncExplicitEmptyInCache(null);
       }
 
-      let sessionsNeedSave = beforeResolveLen !== list.length;
+      let sessionsNeedSave = beforeResolveLen !== list.length || diskSessionsBackfilled;
       list = list.map((s) => {
         if (isAutoModelSelection(migratedGlobal)) {
           if (s.modelId !== AUTO_MODEL_ID) sessionsNeedSave = true;
@@ -1331,7 +1352,7 @@ function ChatPage() {
     };
   }, [hasDesktopApi, persist]);
 
-  /** 从设置页返回、CC Switch 同步或 Bridge 恢复后重新拉取模型列表 */
+  /** 从设置页返回、供应商同步或 Bridge 恢复后重新拉取模型列表 */
   useEffect(() => {
     if (!hasDesktopApi) return;
     const api = getDesktop();
@@ -1484,7 +1505,7 @@ function ChatPage() {
           const liveAgain = sessionsRef.current.find((s) => s.id === source.id);
           if (liveAgain && countUserMessages(liveAgain.history) >= uiUsers) {
             source = liveAgain;
-          } else if (!sendingSessionsRef.current[source.id]) {
+          } else if (!sendingSessionsRef.current[source.id] && !chainRunningRef.current) {
             return;
           }
         }
@@ -1541,6 +1562,10 @@ function ChatPage() {
       let merged: ChatSession[] = [];
       setSessions((prev) => {
         merged = mergeSessionsPreferLongerHistory(prev, disk.sessions, sendingSessionsRef.current);
+        merged = backfillSessionWorkspaceFromActiveMap(
+          merged,
+          { ...disk.activeByWorkspace, ...activeByWorkspaceRef.current },
+        );
         merged = pruneDuplicateEmptySessions(
           merged,
           workspacePathRef.current,
@@ -1588,6 +1613,10 @@ function ChatPage() {
           disk.sessions,
           sendingSessionsRef.current,
         );
+        merged = backfillSessionWorkspaceFromActiveMap(
+          merged,
+          { ...disk.activeByWorkspace, ...activeByWorkspaceRef.current },
+        );
         merged = pruneDuplicateEmptySessions(
           merged,
           workspacePathRef.current,
@@ -1604,7 +1633,7 @@ function ChatPage() {
       }
       const viewId = activeIdRef.current;
       if (sendingSessionsRef.current[viewId]) return;
-      if (Object.keys(sendingSessionsRef.current).length > 0) return;
+      if (!chainRunning && Object.keys(sendingSessionsRef.current).length > 0) return;
       const live = sessionsRef.current.find((s) => s.id === viewId);
       const fromMerged =
         merged.find((s) => s.id === viewId) ?? disk.sessions.find((s) => s.id === viewId);
@@ -1792,7 +1821,7 @@ function ChatPage() {
 
   const activateHistorySession = useCallback(
     async (sessionId: string) => {
-      const sess = sessionsRef.current.find((s) => s.id === sessionId);
+      let sess = sessionsRef.current.find((s) => s.id === sessionId);
       if (!sess) return;
 
       resetScrollFollow();
@@ -1802,8 +1831,23 @@ function ChatPage() {
       setEditComposer(null);
 
       const targetWs = sess.workspacePath ?? null;
-      const sameWorkspace = sessionMatchesWorkspaceTab(sess, workspacePathRef.current);
+      let sameWorkspace = sessionMatchesWorkspaceTab(sess, workspacePathRef.current);
       const api = getDesktop();
+
+      if (!sameWorkspace && api && !targetWs) {
+        const ws = workspaceSessionKey(workspacePathRef.current);
+        if (!ws) {
+          toast.warning("该对话未关联工作区，请先打开对应项目。");
+          return;
+        }
+        const stamped = stampSessionWorkspaceIfMissing(sess, ws);
+        let next = sessionsRef.current.map((s) => (s.id === sessionId ? stamped : s));
+        next = pruneDuplicateEmptySessions(next, ws, sessionId);
+        sessionsRef.current = next;
+        setSessions(next);
+        sess = stamped;
+        sameWorkspace = true;
+      }
 
       if (!sameWorkspace && api && targetWs) {
         pendingHistorySessionRef.current = sessionId;
@@ -1813,11 +1857,6 @@ function ChatPage() {
           pendingHistorySessionRef.current = null;
           toast.error(e instanceof Error ? e.message : String(e));
         }
-        return;
-      }
-
-      if (!sameWorkspace && api && !targetWs) {
-        toast.warning("该对话未关联工作区，无法打开。");
         return;
       }
 
@@ -2125,7 +2164,7 @@ function ChatPage() {
     });
     const api = getDesktop();
     if (!api) {
-      setMessages((m) => [...m, { role: "assistant", content: "请在 Electron 桌面窗口中运行本应用后再试。" }]);
+      setMessages((m) => [...m, { role: "assistant", content: BROWSER_MODE_CHAT_MESSAGE }]);
       return;
     }
     const sess = sessionsRef.current.find((s) => s.id === sendSessionId);
@@ -2241,7 +2280,7 @@ function ChatPage() {
         { role: "user" as const, content: text, ts: Date.now() },
         {
           role: "assistant" as const,
-          content: "已在底部打开**终端**面板（类 Cursor 布局），默认工作目录为当前项目根。可直接运行 `python3`、`npm run dev` 等命令。",
+          content: "已在底部打开终端面板，工作目录为当前项目根。",
           ts: Date.now(),
         },
       ];
@@ -2329,16 +2368,15 @@ function ChatPage() {
     } else if (!api.claudeCodePrompt) {
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: "当前预加载脚本未暴露 Claude Code 接口，请完全退出并重启桌面应用。", name: "系统" },
+        { role: "assistant", content: "Claude Code 接口不可用，请重启应用后重试。", name: "系统" },
       ]);
       return;
     }
 
     if (mode === "local-mcp" && agentMarkdownMissing) {
-      toast.warning(
-        `未读取到 ~/.claude/agents/${cmd.stem}.md（或 sanshengliubu 下同名），将以通用编排身份回复；请 npm run install-global-claude 或自行放置该文件。`,
-        { duration: 6000 },
-      );
+      toast.warning(`未找到 Agent 文件 ${cmd.stem}.md，将以通用编排身份回复。`, {
+        duration: 6000,
+      });
     }
 
     const baseForExpand = route.body;
@@ -2429,11 +2467,14 @@ function ChatPage() {
           content: "__WAITING__",
         },
       ]);
+      queueMicrotask(() => resetScrollFollow());
     }
 
     const reqId = newLocalId();
     activeRequestIdsRef.current.set(sendSessionId, reqId);
     streamContextRef.current = { sessionId: sendSessionId, requestId: reqId };
+    activeStreamRequestIdRef.current = reqId;
+    setActiveStreamRequestId(reqId);
 
     try {
       const sendStarted = Date.now();
@@ -2586,6 +2627,8 @@ function ChatPage() {
       if (streamContextRef.current?.sessionId === sendSessionId) {
         streamContextRef.current = null;
       }
+      activeStreamRequestIdRef.current = null;
+      setActiveStreamRequestId(null);
       setSessionSending(sendSessionId, false);
       await pruneWorkspaceSessions(activeIdRef.current);
     }
@@ -2756,8 +2799,7 @@ function ChatPage() {
   ): Promise<WbsChainSyncResult | null> => {
     const api = getDesktop();
     if (!api) {
-      const error =
-        "未连接桌面能力（window.desktop 不可用）。请使用本应用打包的 Electron 窗口；浏览器仅预览时此按钮不会执行编排。";
+      const error = LOCAL_ONLY_HINT;
       if (!opts?.recordUserLine) toast.error(error, { duration: 5000 });
       return { ok: false, error };
     }

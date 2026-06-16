@@ -20,6 +20,7 @@ import {
 import { Plus, Save, Play, Trash2, Clock } from "lucide-react";
 import { getDesktop, hasDesktop } from "@/lib/desktop-api";
 import type { ScheduledTask } from "@/types/desktop";
+import { PAGE_DESC, SCHEDULED_BANNER_ONLINE, SCHEDULED_OFFLINE } from "@/lib/ui-copy";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/scheduled")({
@@ -173,7 +174,7 @@ function ScheduledPage() {
       <PageRoot>
         <PageHeader
           title="定时任务"
-          description="Bridge 进程内自动调度"
+          description={PAGE_DESC.scheduled}
           actions={
             <button
               type="button"
@@ -188,8 +189,8 @@ function ScheduledPage() {
 
         <PageBanner className={!hasDesktop() ? "border-warning/30 bg-warning/10 text-warning" : undefined}>
           {!hasDesktop()
-            ? "Bridge 未连接：请运行 npm run web:dev:full，关闭 Bridge 后任务不会自动执行。"
-            : "已启用任务每 30 秒检查一次；列表开关可即时保存。"}
+            ? SCHEDULED_OFFLINE
+            : SCHEDULED_BANNER_ONLINE}
         </PageBanner>
 
         {hint ? (

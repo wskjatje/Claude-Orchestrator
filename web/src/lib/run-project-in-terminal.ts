@@ -53,27 +53,11 @@ function defaultRunProjectCommand(): string {
 }
 
 function formatTerminalRunReply(plan: ProjectRunPlan, command: string, sent: boolean): string {
-  const lines = [
-    sent
-      ? "【已在集成终端执行】"
-      : "【终端未就绪】未能自动发送命令，请复制到下方终端手动运行：",
-    "",
-    "```bash",
-    command,
-    "```",
-  ];
-  if (plan.label) lines.push("", `- 检测方式：${plan.label}`);
-  if (plan.entryRel) lines.push(`- 入口：\`${plan.entryRel}\``);
   if (sent) {
-    lines.push(
-      "",
-      "输出见底部 **终端** 面板；停止服务请在终端内按 **Ctrl+C**。",
-      "若端口被占用，可先执行 `lsof -i :5000` 查看并结束占用进程。",
-    );
-  } else {
-    lines.push("", "提示：请先点击编辑器下方的 **终端** 标签，或按 **Ctrl+`** 打开终端面板后重试。");
+    const detail = plan.label ? `（${plan.label}）` : "";
+    return `已在终端执行 \`${command}\`${detail}，输出见底部终端面板。`;
   }
-  return lines.join("\n");
+  return `终端未就绪，请复制运行：\`${command}\``;
 }
 
 /**
@@ -112,8 +96,7 @@ export async function runProjectFromChat(
     }
     return {
       ok: false,
-      displayText:
-        "【运行项目】当前 Bridge 不支持检测运行计划。请重启 `npm run web:dev:full` 后重试。",
+      displayText: "当前无法自动检测启动方式，请在底部终端手动运行项目。",
     };
   }
 
@@ -141,10 +124,7 @@ export async function runProjectFromChat(
   if (!plan.ok) {
     return {
       ok: false,
-      displayText:
-        `【运行项目】无法识别启动方式。\n` +
-        `- 原因：${plan.error || "未检测到 package.json 的 dev/start 脚本或可预览文件"}\n` +
-        `- 可在底部终端手动运行，例如 \`npm run dev\` 或 \`python3 app.py\`。`,
+      displayText: `无法识别启动方式：${plan.error || "未检测到 dev/start 脚本或可预览文件"}。`,
     };
   }
 

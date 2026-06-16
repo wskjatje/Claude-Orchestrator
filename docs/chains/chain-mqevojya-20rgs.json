@@ -1,0 +1,333 @@
+{
+  "id": "chain-mqevojya-20rgs",
+  "name": "WBS · docs/sprint-backlog.md",
+  "description": "WBS 来源：docs/sprint-backlog.md · 工作区同步",
+  "category": "custom",
+  "enabled": true,
+  "templateId": null,
+  "official": false,
+  "userModified": true,
+  "createdAt": "2026-06-15T07:14:51.010Z",
+  "updatedAt": "2026-06-15T23:46:42.718Z",
+  "state": {
+    "status": "idle",
+    "currentIndex": 0,
+    "steps": [
+      {
+        "agentName": "frontend-engineer",
+        "taskId": "WBS-1",
+        "instruction": "请执行任务 WBS-1：UI/UX",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-2",
+        "instruction": "请执行任务 WBS-2：故事",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-3",
+        "instruction": "请执行任务 WBS-3：支付宝/Apple ID 登录",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-4",
+        "instruction": "请执行任务 WBS-4：生物识别登录（指纹/人脸）",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-5",
+        "instruction": "请执行任务 WBS-5：LDAP/AD 集成",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-6",
+        "instruction": "请执行任务 WBS-6：多语言国际化",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-7",
+        "instruction": "请执行任务 WBS-7：故事",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-8",
+        "instruction": "请执行任务 WBS-8：US-01 密码登录",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-9",
+        "instruction": "请执行任务 WBS-9：US-03 个人注册",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "frontend-engineer",
+        "taskId": "WBS-10",
+        "instruction": "请执行任务 WBS-10：US-02 忘记密码（发邮件）",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-11",
+        "instruction": "请执行任务 WBS-11：US-10 密码重置",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-12",
+        "instruction": "请执行任务 WBS-12：US-11 响应式适配（基础）",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-13",
+        "instruction": "请执行任务 WBS-13：US-12 GitHub 登录",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-14",
+        "instruction": "请执行任务 WBS-14：故事",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-15",
+        "instruction": "请执行任务 WBS-15：US-06 微信扫码登录",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-16",
+        "instruction": "请执行任务 WBS-16：US-09 审批后台（基础）",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-17",
+        "instruction": "请执行任务 WBS-17：US-04 企业注册（不含审批）",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-18",
+        "instruction": "请执行任务 WBS-18：US-05 供应商注册（不含审批）",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-19",
+        "instruction": "请执行任务 WBS-19：US-14 登录日志",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-20",
+        "instruction": "请执行任务 WBS-20：故事",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-21",
+        "instruction": "请执行任务 WBS-21：US-07 企业微信登录",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-22",
+        "instruction": "请执行任务 WBS-22：US-08 钉钉登录",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-23",
+        "instruction": "请执行任务 WBS-23：US-09 审批后台（审核操作 + 通知）",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-24",
+        "instruction": "请执行任务 WBS-24：US-13 品牌定制",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-25",
+        "instruction": "请执行任务 WBS-25：缺陷修复 + 技术债",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-26",
+        "instruction": "请执行任务 WBS-26：排名",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "1",
+        "taskId": "WBS-27",
+        "instruction": "请执行任务 WBS-27：1",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "2",
+        "taskId": "WBS-28",
+        "instruction": "请执行任务 WBS-28：2",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "3",
+        "taskId": "WBS-29",
+        "instruction": "请执行任务 WBS-29：3",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "4",
+        "taskId": "WBS-30",
+        "instruction": "请执行任务 WBS-30：4",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "5",
+        "taskId": "WBS-31",
+        "instruction": "请执行任务 WBS-31：5",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "6",
+        "taskId": "WBS-32",
+        "instruction": "请执行任务 WBS-32：6",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "7",
+        "taskId": "WBS-33",
+        "instruction": "请执行任务 WBS-33：7",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "8",
+        "taskId": "WBS-34",
+        "instruction": "请执行任务 WBS-34：8",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "9",
+        "taskId": "WBS-35",
+        "instruction": "请执行任务 WBS-35：9",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "10",
+        "taskId": "WBS-36",
+        "instruction": "请执行任务 WBS-36：10",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "11",
+        "taskId": "WBS-37",
+        "instruction": "请执行任务 WBS-37：11",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "12",
+        "taskId": "WBS-38",
+        "instruction": "请执行任务 WBS-38：12",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "13",
+        "taskId": "WBS-39",
+        "instruction": "请执行任务 WBS-39：13",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "14",
+        "taskId": "WBS-40",
+        "instruction": "请执行任务 WBS-40：14",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "project-manager",
+        "taskId": "WBS-41",
+        "instruction": "请执行任务 WBS-41：风险",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-42",
+        "instruction": "请执行任务 WBS-42：微信/企业微信 OAuth 审核周期长",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "software-architect",
+        "taskId": "WBS-43",
+        "instruction": "请执行任务 WBS-43：企业/供应商审批流程边界模糊",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "backend-engineer",
+        "taskId": "WBS-44",
+        "instruction": "请执行任务 WBS-44：营业执照 OCR 第三方服务选型延误",
+        "skills": [],
+        "mcps": []
+      },
+      {
+        "agentName": "product-manager",
+        "taskId": "WBS-45",
+        "instruction": "请执行任务 WBS-45：第三方 OAuth 回调域名与本地环境冲突",
+        "skills": [],
+        "mcps": []
+      }
+    ]
+  }
+}

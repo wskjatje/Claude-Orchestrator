@@ -1,0 +1,29 @@
+{
+  "id": "official-single-product-manager",
+  "name": "产品经理 · PRD",
+  "description": "需求澄清 → 验收口径 → PRD",
+  "category": "single",
+  "enabled": true,
+  "templateId": "single-product-manager",
+  "official": true,
+  "userModified": false,
+  "createdAt": "2026-06-14T03:15:16.998Z",
+  "updatedAt": "2026-06-16T05:25:02.545Z",
+  "state": {
+    "status": "idle",
+    "currentIndex": 0,
+    "steps": [
+      {
+        "agentName": "product-manager",
+        "taskId": "PRD-1",
+        "instruction": "【Agent】global://product-manager（~/.claude/agents/product-manager.md）\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】\n1. 目标用户与核心场景\n2. 可测试验收标准\n3. 非目标与待确认项\n\n【禁止】不写 WBS、不写代码/UI 稿\n\n【读取·强制】本步无固定上游 md；须阅读对话上文与工作区 `CLAUDE.md` / `README.md` / `docs/README.md`（若存在）。\n【读取·兜底】若上游 md 尚未落盘，须阅读 `docs/chain-steps/` 下前序步骤摘要；仍缺失时用 read / readWorkspaceTextFile / listWorkspaceMarkdownFiles 补读，并在一句话内说明缺失项。\n【禁止臆造输入】禁止编造未读过的 PRD/WBS/架构/Backlog 正文；不得假设 Django/Flask 等未在工作区出现的栈。\n\n【落盘路径·强制】你是 global://product-manager。写入工作区时 ```workspace-write``` 的 path **默认必须是** `docs/prd.md`；同一 Agent 多次交付仍用此路径（追加或覆盖须在正文说明）；禁止写入其它 Agent 专属文件（如 product-manager→docs/prd.md、project-manager→docs/wbs.md、product-sprint-prioritizer→docs/sprint-backlog.md、frontend-engineer→docs/frontend-implementation.md、qa-engineer→docs/qa-report.md），除非用户明确要求合并到指定路径。未在映射表中的角色默认 `docs/agents/{stem}.md` 或 `docs/{类别}/{角色名}.md`。\n【落盘·任务链】跑链/Multi-Agent 时须输出合法 ```workspace-write``` JSON（path 默认 `docs/prd.md`）；系统据此真正写盘。禁止仅写「已落盘」口述或虚构「【工作区已写入】」。\n【落盘·单聊】普通对话（非跑链）仍须先询问用户是否落盘，获明确同意后再写 workspace-write。",
+        "skills": [
+          "product-req-clarify",
+          "product-acceptance-criteria",
+          "product-scope-mgmt"
+        ],
+        "mcps": []
+      }
+    ]
+  }
+}

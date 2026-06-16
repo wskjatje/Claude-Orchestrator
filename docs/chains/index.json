@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "exportedAt": "2026-06-16T05:25:18.559Z",
+  "activeChainId": null,
+  "chains": [
+    {
+      "id": "official-single-product-manager",
+      "name": "产品经理 · PRD",
+      "description": "需求澄清 → 验收口径 → PRD",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-sprint-prioritizer",
+      "name": "冲刺优先级 · Backlog",
+      "description": "用户故事 → 优先级排序",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-project-manager",
+      "name": "项目经理 · WBS",
+      "description": "WBS 拆解 → 依赖编排",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-software-architect",
+      "name": "软件架构师 · 架构说明",
+      "description": "模块边界 → 接口契约 → 技术选型",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-backend-engineer",
+      "name": "后端工程师 · API",
+      "description": "API / 数据层实现",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-frontend-engineer",
+      "name": "前端工程师 · 页面实现",
+      "description": "页面实现 → a11y",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-qa-engineer",
+      "name": "测试工程师 · QA 报告",
+      "description": "测试策略 → 用例 → QA 报告",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-devops-engineer",
+      "name": "DevOps · 发布计划",
+      "description": "CI/CD → 发布回滚",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-code-reviewer",
+      "name": "代码评审员 · 评审报告",
+      "description": "安全 → 正确性 → 可维护性评审",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-design-ux-architect",
+      "name": "UX 架构师 · 信息架构",
+      "description": "信息架构 → 页面骨架",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-design-ui-designer",
+      "name": "UI 设计师 · 视觉规范",
+      "description": "视觉规范 → 组件状态",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-single-ui-ux-designer",
+      "name": "UI/UX 设计师 · 交互+视觉",
+      "description": "交互流程 → 视觉规范",
+      "category": "single",
+      "enabled": true,
+      "stepCount": 1
+    },
+    {
+      "id": "official-pipeline-frontend-ui",
+      "name": "前端 + UI 五步",
+      "description": "PRD → UX → UI → 前端 → QA",
+      "category": "pipeline",
+      "enabled": true,
+      "stepCount": 5
+    },
+    {
+      "id": "official-pipeline-release",
+      "name": "发布上线四步",
+      "description": "QA → 评审 → DevOps → 复盘",
+      "category": "pipeline",
+      "enabled": true,
+      "stepCount": 4
+    },
+    {
+      "id": "official-pipeline-review-fix",
+      "name": "评审修复三步",
+      "description": "评审 → 修复 → QA",
+      "category": "pipeline",
+      "enabled": true,
+      "stepCount": 3
+    },
+    {
+      "id": "official-sanshengliubu-pm-wbs",
+      "name": "三省六部 · 需求确认 → WBS",
+      "description": "需求确认 → 冲刺 → WBS",
+      "category": "pipeline",
+      "enabled": true,
+      "stepCount": 3
+    },
+    {
+      "id": "official-sanshengliubu-dev-wbs",
+      "name": "三省六部 · 开发五链",
+      "description": "WBS → 架构 → 后端 → 评审 → QA",
+      "category": "pipeline",
+      "enabled": true,
+      "stepCount": 5
+    },
+    {
+      "id": "official-sanshengliubu-orchestration",
+      "name": "三省六部 · 全链路十一",
+      "description": "口径 → 冲刺 → WBS → 方案 → UI → 前后端 → 评审 → QA → DevOps → 复盘",
+      "category": "pipeline",
+      "enabled": true,
+      "stepCount": 11
+    },
+    {
+      "id": "official-pipeline-agent-self-learning",
+      "name": "Agent 自学 · 全角色复盘",
+      "description": "各 Agent 自检 → 项目经理汇总复盘",
+      "category": "pipeline",
+      "enabled": true,
+      "stepCount": 11
+    },
+    {
+      "id": "chain-mqevek5s-3gv5e",
+      "name": "WBS · docs/project-status.md",
+      "description": "WBS 来源：docs/project-status.md · 工作区同步",
+      "category": "custom",
+      "enabled": true,
+      "stepCount": 85
+    },
+    {
+      "id": "chain-mqevojya-20rgs",
+      "name": "WBS · docs/sprint-backlog.md",
+      "description": "WBS 来源：docs/sprint-backlog.md · 工作区同步",
+      "category": "custom",
+      "enabled": true,
+      "stepCount": 45
+    },
+    {
+      "id": "chain-mqfx75l3-fx2z3",
+      "name": "WBS · docs/wbs.md",
+      "description": "WBS 来源：docs/wbs.md · 1 步",
+      "category": "custom",
+      "enabled": true,
+      "stepCount": 1
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "official-single-design-ui-designer",
+  "name": "UI 设计师 · 视觉规范",
+  "description": "视觉规范 → 组件状态",
+  "category": "single",
+  "enabled": true,
+  "templateId": "single-design-ui-designer",
+  "official": true,
+  "userModified": false,
+  "createdAt": "2026-06-14T03:15:16.998Z",
+  "updatedAt": "2026-06-16T05:25:02.545Z",
+  "state": {
+    "status": "idle",
+    "currentIndex": 0,
+    "steps": [
+      {
+        "agentName": "design-ui-designer",
+        "taskId": "UI-1",
+        "instruction": "【Agent】global://design-ui-designer（~/.claude/agents/design-ui-designer.md）\n【输入】`docs/prd.md`、`docs/ux-architecture.md`（若有）\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】组件清单、关键状态、间距/色板/字体；可交付 HTML/CSS 骨架\n\n【读取·强制】须优先阅读工作区上游产物（跑链时应用会自动注入已存在文件正文）：`docs/prd.md`、`docs/ux-architecture.md`。\n【读取·兜底】若上游 md 尚未落盘，须阅读 `docs/chain-steps/` 下前序步骤摘要；仍缺失时用 read / readWorkspaceTextFile / listWorkspaceMarkdownFiles 补读，并在一句话内说明缺失项。\n【禁止臆造输入】禁止编造未读过的 PRD/WBS/架构/Backlog 正文；不得假设 Django/Flask 等未在工作区出现的栈。\n\n【落盘路径·强制】你是 global://design-ui-designer。写入工作区时 ```workspace-write``` 的 path **默认必须是** `docs/ui-spec.md`；同一 Agent 多次交付仍用此路径（追加或覆盖须在正文说明）；禁止写入其它 Agent 专属文件（如 product-manager→docs/prd.md、project-manager→docs/wbs.md、product-sprint-prioritizer→docs/sprint-backlog.md、frontend-engineer→docs/frontend-implementation.md、qa-engineer→docs/qa-report.md），除非用户明确要求合并到指定路径。未在映射表中的角色默认 `docs/agents/{stem}.md` 或 `docs/{类别}/{角色名}.md`。\n【落盘·自动】须输出合法 ```workspace-write``` JSON 写入默认路径；若无合法围栏，系统会将摘要写入 docs/chain-steps/{任务ID}-design-ui-designer.md 或自动写入 `docs/ui-spec.md`。\n【禁止虚构落盘】禁止自行撰写「【工作区已写入】」等小节，除非正文内确实存在合法 workspace-write 围栏。",
+        "skills": [
+          "visual-design-system",
+          "pixel-perfect-ui",
+          "accessibility-baseline",
+          "frontend-design",
+          "canvas-design"
+        ],
+        "mcps": []
+      }
+    ]
+  }
+}

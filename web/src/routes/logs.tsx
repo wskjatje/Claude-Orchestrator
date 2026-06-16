@@ -5,6 +5,7 @@ import { PageRoot } from "@/components/page-layout";
 import { RefreshCw, Trash2, ChevronDown, Bot } from "lucide-react";
 import { ClaudeHooksPanel } from "@/components/claude-hooks-panel";
 import { getDesktop } from "@/lib/desktop-api";
+import { BRIDGE_OFFLINE_BANNER, PAGE_DESC } from "@/lib/ui-copy";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { cn } from "@/lib/utils";
 
@@ -67,7 +68,7 @@ function LogsPage() {
   const refresh = useCallback(async () => {
     const api = getDesktop();
     if (!api) {
-      setHint("Bridge 未连接：请运行 npm run web:dev:full");
+      setHint(BRIDGE_OFFLINE_BANNER);
       return;
     }
     setLoading(true);
@@ -129,12 +130,12 @@ function LogsPage() {
   return (
     <AppShell variant="fill">
       <PageRoot>
-        <PageHeader title="日志" description="技术排障中心 · 完整原始 tail" />
+        <PageHeader title="日志" description={PAGE_DESC.logs} />
 
         <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 lg:px-7">
           {!hasDesktopApi && (
             <p className="mb-3 shrink-0 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-              Bridge 未连接：请运行 npm run web:dev:full。
+              {BRIDGE_OFFLINE_BANNER}
             </p>
           )}
 

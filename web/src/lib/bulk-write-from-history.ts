@@ -1,4 +1,5 @@
 import type { DesktopApi } from "@/types/desktop";
+import { MSG_API_NOT_READY } from "@/lib/ui-copy";
 
 export type DiskMsg = { role: string; content: string; ts?: number; requestError?: boolean };
 
@@ -32,7 +33,7 @@ export async function performBulkWriteFromHistory(
   scanned?: number;
 }> {
   if (!api.workspaceBulkIngestFromHistory) {
-    return { ok: false, written: [], displayText: "", error: "当前 Bridge 不支持批量落盘，请重启 npm run web:dev:full" };
+    return { ok: false, written: [], displayText: "", error: MSG_API_NOT_READY };
   }
   const texts = collectAssistantTextsForBulkWrite(history);
   if (!texts.length) {

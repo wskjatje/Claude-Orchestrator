@@ -6,9 +6,14 @@ import { createRequire } from 'node:module'
 import { loadChatSettings, getWorkspaceCwd, loadUiPrefs } from './store.mjs'
 import { readGlobalClaudeEnv } from './paths.mjs'
 import crypto from 'node:crypto'
+import {
+  appendStreamJsonLine,
+  createStreamDisplayState,
+  finalizeStreamDisplay,
+} from './claude-stream-parse.mjs'
 
 const require = createRequire(import.meta.url)
-const ccSwitch = require('./cc-switch.cjs')
+const cloudProviders = require('./cloud-providers.cjs')
 
 /** @type {Map<string, import('node:child_process').ChildProcess>} */
 const active = new Map()
@@ -118,11 +123,18 @@ function defaultTimeoutMs(env) {
   const fromEnv = Number(process.env.WORKBENCH_CLAUDE_TIMEOUT_MS)
   if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv
   const base = String(env.ANTHROPIC_BASE_URL || '')
-  // ccr→Gemini 在 429/网络重试时可能 >3min；过短会误杀并只显示「生成已停止」
   if (base.includes(':3456') || /gemini/i.test(String(env.ANTHROPIC_DEFAULT_SONNET_MODEL || ''))) {
     return 360_000
   }
+  if (/deepseek\.com/i.test(base)) return 300_000
   return 180_000
+}
+
+/** 任务链单步默认超时（可 WORKBENCH_CHAIN_TIMEOUT_MS 覆盖） */
+export function chainStepTimeoutMs(env) {
+  const fromEnv = Number(process.env.WORKBENCH_CHAIN_TIMEOUT_MS)
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv
+  return Math.max(defaultTimeoutMs(env || {}), 600_000)
 }
 
 function friendlyClaudeError(raw, env, providerName = '') {
@@ -132,7 +144,7 @@ function friendlyClaudeError(raw, env, providerName = '') {
   if (/429|quota|rate.?limit|RESOURCE_EXHAUSTED/i.test(t)) {
     return (
       'Gemini API 配额/频率超限（429）。请在 Google AI Studio 检查 API Key 用量与计费；' +
-      '或 CC Switch 切换到 Ollama/云梦等其它供应商。ccr 重试可能需 2–3 分钟才返回此错误。' +
+      '或在「设置 → 模型与连接」改用 Ollama 等其它供应商。ccr 重试可能需 2–3 分钟才返回此错误。' +
       (t.includes('429') ? '' : ` 详情：${t.slice(0, 180)}`)
     )
   }
@@ -147,13 +159,16 @@ function friendlyClaudeError(raw, env, providerName = '') {
     return `${who} 连接失败（${base || '默认端点'}）：${t.slice(0, 240)}`
   }
   if (/Not logged in|Please run \/login/i.test(t)) {
-    return 'Claude Code 未登录。请在终端运行 claude 后执行 /login，或改用 CC Switch 中的 Gemini/Ollama 供应商。'
+    return 'Claude Code 未登录。请在终端运行 claude 后执行 /login，或在「设置 → 模型与连接」配置 Gemini/Ollama 等云供应商。'
+  }
+  if (/退出码\s*143|exit code 143|SIGTERM/i.test(t)) {
+    return '请求已取消或超时中断。若未手动停止，请检查模型连接或在「设置 → 模型与连接」更换供应商。'
   }
   if (/issue with the selected model/i.test(t)) {
     return (
-      'Claude Code 无法使用当前模型配置。请确认 CC Switch 中 DeepSeek 地址为 https://api.deepseek.com/anthropic，' +
-      '模型建议使用 deepseek-v4-flash；然后重启 npm run web:dev:full 再试。' +
-      (t.includes('deepseek-chat') ? ' （deepseek-chat 需映射为 deepseek-v4-flash）' : '')
+      'Claude Code 无法使用当前模型配置。请在「设置 → 模型与连接」确认 DeepSeek 地址为 https://api.deepseek.com/anthropic，' +
+      '模型 ID 为 deepseek-v4-flash 或 deepseek-v4-pro。' +
+      (t.includes('deepseek-chat') ? ' （列表中的 deepseek-chat 会自动映射为 deepseek-v4-flash）' : '')
     )
   }
   return t
@@ -166,15 +181,21 @@ function timeoutHint(env, model, providerName = '') {
   if (base.includes(':3456') || /gemini/i.test(String(env.ANTHROPIC_DEFAULT_SONNET_MODEL || ''))) {
     return ' Gemini/ccr 在配额不足(429)时会长时间重试；请检查 Google API 用量或更换供应商。'
   }
-  if (/deepseek\.com/i.test(base) && /v4/i.test(modelId)) {
-    return ` ${who} 的模型「${modelId}」可能不是 DeepSeek 官方 ID（请用 deepseek-chat），或 API Key/端点配置有误。`
+  if (/deepseek\.com/i.test(base)) {
+    return (
+      ` 请在「设置 → 模型与连接」确认 ${who} 的 API 地址为 https://api.deepseek.com/anthropic，模型为 deepseek-v4-flash 或 deepseek-v4-pro。` +
+      ' 若 API 测试正常仍超时，多为 Agent 多轮或 MCP 连接过慢；可先发一句简单消息验证，或在设置中关闭离线 MCP。'
+    )
   }
-  return ` 请检查 CC Switch 中 ${who} 的 API 地址、Key 与模型 ID 是否匹配。`
+  return (
+    ` 请在「设置 → 模型与连接」检查 ${who} 的 API 地址、Key 与模型 ID。` +
+    ' 若直连正常仍超时，请检查 MCP 服务是否离线或 Agent 任务是否过长。'
+  )
 }
 
 /** 直连 Anthropic 兼容端点时快速探测，避免 Claude CLI 无效 Key/模型重试 180s */
 async function preflightAnthropicEndpoint(env, model, providerName = '') {
-  const base = ccSwitch.normalizeAnthropicBaseUrl(env.ANTHROPIC_BASE_URL || '').replace(/\/$/, '')
+  const base = cloudProviders.normalizeAnthropicBaseUrl(env.ANTHROPIC_BASE_URL || '').replace(/\/$/, '')
   const key = String(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || '').trim()
   if (!base || !key) return null
   if (/127\.0\.0\.1:3456|localhost:3456/.test(base)) return null
@@ -210,7 +231,7 @@ async function preflightAnthropicEndpoint(env, model, providerName = '') {
       /* use bodyText slice */
     }
     if (res.status === 401 || /authentication|invalid.*api.?key|api key/i.test(detail)) {
-      return `${who} API Key 无效或未授权（HTTP 401）。请在 CC Switch 中更新 deepseek 供应商的 API Key。`
+      return `${who} API Key 无效或未授权（HTTP 401）。请在「设置 → 模型与连接」更新 API Key。`
     }
     if (res.status === 404 || /model.*not found|unknown model|invalid model/i.test(detail)) {
       const deepseekHint = /api\.deepseek\.com/i.test(base)
@@ -235,6 +256,7 @@ export async function runClaudeCodePrint({
   claudeSessionId,
   sessionName,
   isNewClaudeSession,
+  onDelta,
 }) {
   const snap = await resolveClaudePath()
   if (!snap.claudePath || snap.resolveError) {
@@ -249,24 +271,43 @@ export async function runClaudeCodePrint({
     return { ok: false, error: '提示词为空', content: '', aborted: false }
   }
 
-  const resolved = ccSwitch.resolveEnvForModel(model)
+  const resolved = cloudProviders.resolveEnvForModel(model)
   const globalEnv = readGlobalClaudeEnv()
   const providerEnv = resolved.env || globalEnv
-  const claudeEnv = ccSwitch.normalizeProviderEnv(
+  const claudeEnv = cloudProviders.normalizeProviderEnv(
     syncEnvDefaultModels({ ...providerEnv }, model),
   )
   try {
-    ccSwitch.writeClaudeSettingsFromEnv(claudeEnv, 'chinese')
+    cloudProviders.writeClaudeSettingsFromEnv(claudeEnv, 'chinese')
   } catch {
     /* settings.json 写入失败时仍尝试用 env 启动 */
   }
-  const env = { ...process.env, ...claudeEnv }
+  const thirdParty = isThirdPartyAnthropicBase(claudeEnv.ANTHROPIC_BASE_URL)
+  const env = {
+    ...process.env,
+    ...claudeEnv,
+    /** 避免 -p 模式等待全部 MCP 握手（慢/离线 MCP 会导致 180–300s 假超时） */
+    MCP_CONNECTION_NONBLOCKING:
+      process.env.MCP_CONNECTION_NONBLOCKING ??
+      (process.env.WORKBENCH_MCP_NONBLOCKING !== '0' ? 'true' : 'false'),
+  }
   const cliModel = resolveClaudeCliModel(model, env)
 
   const cwd = getWorkspaceCwd()
   const args = ['-p', prompt.trim(), '--permission-mode', 'auto']
   if (cliModel) args.push('--model', cliModel)
-  if (process.env.WORKBENCH_CLAUDE_BARE === '1') args.push('--bare')
+  const useBare =
+    process.env.WORKBENCH_CLAUDE_BARE === '1' ||
+    (process.env.WORKBENCH_CLAUDE_BARE !== '0' && thirdParty)
+  if (useBare) args.push('--bare')
+  /** 第三方 API：不加载 ~/.claude 里的 MCP，避免 Agent 子进程卡在 MCP 连接 */
+  if (
+    thirdParty &&
+    process.env.WORKBENCH_CLAUDE_STRICT_MCP !== '0' &&
+    !args.includes('--strict-mcp-config')
+  ) {
+    args.push('--strict-mcp-config')
+  }
 
   const prefs = loadUiPrefs()
   const tagName = String(sessionName || prefs.defaultSessionTag || '')
@@ -303,6 +344,11 @@ export async function runClaudeCodePrint({
     return { ok: false, error: preflightError, content: '', aborted: false }
   }
 
+  const useStreaming = typeof onDelta === 'function'
+  if (useStreaming) {
+    args.push('--output-format', 'stream-json', '--verbose', '--include-partial-messages')
+  }
+
   return new Promise((resolve) => {
     let child
     let timedOut = false
@@ -324,8 +370,37 @@ export async function runClaudeCodePrint({
 
     let stdout = ''
     let stderr = ''
+    const streamState = useStreaming ? createStreamDisplayState() : null
+    let streamLineBuf = ''
+    let emittedDisplayLen = 0
+
+    const flushStreamDisplay = (finalize = false) => {
+      if (!useStreaming || !streamState || !onDelta) return
+      if (finalize) finalizeStreamDisplay(streamState)
+      const next = streamState.display.slice(emittedDisplayLen)
+      if (!next) return
+      emittedDisplayLen = streamState.display.length
+      onDelta(next, rid)
+    }
+
+    const consumeStreamChunk = (chunk) => {
+      if (!useStreaming || !streamState) {
+        stdout += chunk
+        return
+      }
+      streamLineBuf += chunk
+      let idx = streamLineBuf.indexOf('\n')
+      while (idx >= 0) {
+        const line = streamLineBuf.slice(0, idx).trim()
+        streamLineBuf = streamLineBuf.slice(idx + 1)
+        if (line) appendStreamJsonLine(line, streamState)
+        idx = streamLineBuf.indexOf('\n')
+      }
+      flushStreamDisplay(false)
+    }
+
     child.stdout?.on('data', (d) => {
-      stdout += d.toString()
+      consumeStreamChunk(d.toString())
     })
     child.stderr?.on('data', (d) => {
       stderr += d.toString()
@@ -334,9 +409,20 @@ export async function runClaudeCodePrint({
     const finish = (code, signal) => {
       if (timer) clearTimeout(timer)
       if (rid) active.delete(rid)
-      const aborted = timedOut || signal === 'SIGTERM' || signal === 'SIGKILL'
-      const out = stdout.trim()
+      if (useStreaming && streamState) {
+        const rest = streamLineBuf.trim()
+        if (rest) appendStreamJsonLine(rest, streamState)
+        flushStreamDisplay(true)
+      }
+      const streamed = streamState?.display?.trim() ?? ''
+      const out = useStreaming ? streamed || stdout.trim() : stdout.trim()
       const err = stderr.trim()
+      const terminated =
+        timedOut ||
+        signal === 'SIGTERM' ||
+        signal === 'SIGKILL' ||
+        code === 143 ||
+        code === 137
       if (timedOut) {
         const hint = timeoutHint(env, cliModel || model, resolved.providerName)
         resolve({
@@ -347,8 +433,13 @@ export async function runClaudeCodePrint({
         })
         return
       }
-      if (aborted) {
-        resolve({ ok: false, content: out, error: err || '已中止', aborted: true })
+      if (terminated) {
+        resolve({
+          ok: false,
+          content: out,
+          error: friendlyClaudeError(err || out || '请求已取消', env, resolved.providerName),
+          aborted: true,
+        })
         return
       }
       if (code === 0) {
@@ -356,7 +447,7 @@ export async function runClaudeCodePrint({
           resolve({
             ok: false,
             content: '',
-            error: 'Claude Code 返回空内容，请检查 CC Switch 供应商与 ccr/Ollama 是否正常。',
+            error: 'Claude Code 返回空内容，请检查「设置 → 模型与连接」中的供应商配置是否正常。',
             aborted: false,
           })
           return

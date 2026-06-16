@@ -13,6 +13,7 @@ import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { useWorkbenchWorkspace } from "@/contexts/workbench-workspace-context";
 import { WorkbenchCenterEditor } from "@/components/workbench-center-editor";
 import { ExplorerTreeRow } from "@/components/explorer-tree-row";
+import { WORKBENCH_SIDEPANEL_OFFLINE } from "@/lib/ui-copy";
 
 type SideTab = "files" | "git" | "diff";
 
@@ -105,7 +106,7 @@ function FileTreePanel() {
   if (!hasDesktop) {
     return (
       <p className="p-3 text-[11px] leading-relaxed text-muted-foreground">
-        请运行 npm run web:dev:full 并选择工作区。
+        {WORKBENCH_SIDEPANEL_OFFLINE}
       </p>
     );
   }

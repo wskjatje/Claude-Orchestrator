@@ -9,6 +9,14 @@ import { cn } from "@/lib/utils";
 import { InfoHint } from "@/components/info-hint";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { getDesktop, hasDesktop } from "@/lib/desktop-api";
+import {
+  AGENTS_DEMO_HINT,
+  AGENTS_DISK_SYNC_HINT,
+  AGENTS_EDITOR_HINT,
+  LOCAL_ONLY_HINT,
+  MSG_API_NOT_READY,
+  PAGE_DESC,
+} from "@/lib/ui-copy";
 import { agentStemFromBasename } from "@/lib/agent-basename";
 import { resolveAgentDisplayName } from "@/lib/agent-display-name";
 import { loadChatModelPools, type ModelCatalogPools } from "@/lib/model-catalog";
@@ -196,7 +204,7 @@ function AgentsPage() {
     if (!desktop) return;
     const api = getDesktop();
     if (!api?.saveClaudeAgentMarkdown) {
-      window.alert("无法新建：请重启 npm run web:dev:full 以加载最新 Bridge。");
+      window.alert(`无法新建：${MSG_API_NOT_READY}`);
       return;
     }
     setActiveId("");
@@ -386,7 +394,7 @@ function AgentsPage() {
   const syncAllAgentsSkillsAndTools = useCallback(async () => {
     const api = getDesktop();
     if (!api?.saveClaudeSkillMarkdown) {
-      toast.error("请重启 npm run web:dev:full 以加载 Skill 保存接口");
+      toast.error(MSG_API_NOT_READY);
       return;
     }
     const rows = items
@@ -512,14 +520,14 @@ function AgentsPage() {
     <AppShell>
       <PageHeader
         title="智能体"
-        description="浏览、编辑与试跑 ~/.claude/agents/ 下的角色规则"
+        description={PAGE_DESC.agents}
         actions={
           <div className="flex max-w-full flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void syncAllAgentsSkillsAndTools()}
               disabled={skillsSyncing || !desktop || listLoading}
-              title="按当前 ~/.claude/agents/ 列表全量同步 Skill 与 tools 关联（GitHub → 本地模板）"
+              title="按当前 Agent 列表全量同步 Skill 与 tools 关联"
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <SparkIcon className={cn("h-3.5 w-3.5", skillsSyncing && "animate-pulse")} /> 同步 Skill 与工具
@@ -528,7 +536,7 @@ function AgentsPage() {
               type="button"
               onClick={() => void reloadAgentList()}
               disabled={listLoading || !desktop}
-              title={!desktop ? "仅在 Electron 桌面客户端可用" : undefined}
+              title={!desktop ? LOCAL_ONLY_HINT : undefined}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", listLoading && "animate-spin")} /> 从本机刷新
@@ -537,7 +545,7 @@ function AgentsPage() {
               type="button"
               onClick={() => void openAgentsFolder()}
               disabled={!desktop}
-              title={!desktop ? "仅在 Electron 桌面客户端可用" : "在访达中打开 ~/.claude/agents"}
+              title={!desktop ? LOCAL_ONLY_HINT : "在访达中打开 ~/.claude/agents"}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <FolderOpen className="h-3.5 w-3.5" /> 在 Finder 打开
@@ -546,15 +554,13 @@ function AgentsPage() {
               type="button"
               onClick={() => openCreateEditor()}
               disabled={!desktop}
-              title={!desktop ? "仅在 Electron 桌面客户端可用" : undefined}
+              title={!desktop ? LOCAL_ONLY_HINT : undefined}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold text-primary-foreground shadow-sm transition hover:opacity-95 disabled:opacity-50"
               style={{ backgroundImage: "var(--gradient-primary)" }}
             >
               <Plus className="h-3.5 w-3.5" /> 新建智能体
             </button>
-            <InfoHint side="left">
-              右侧可编辑 frontmatter 与正文；「工作流优化」经 self_learning 链生成修订稿，审阅后保存写入磁盘。
-            </InfoHint>
+            <InfoHint side="left">{AGENTS_EDITOR_HINT}</InfoHint>
           </div>
         }
       />
@@ -563,16 +569,9 @@ function AgentsPage() {
         <div className="border-b border-border bg-surface-elevated/80 px-4 py-2.5 sm:px-6 lg:px-7">
           <p className="text-[12px] leading-relaxed text-muted-foreground">
             {listFromDisk ? (
-              <>
-                列表已与 <code className="rounded bg-code-bg px-1 font-mono text-[11px]">~/.claude/agents</code>{" "}
-                同步（含 <code className="rounded bg-code-bg px-1 font-mono text-[11px]">sanshengliubu</code> 子目录中与根目录不重名的
-                .md）。刷新后仍沿用当前搜索与筛选；分类可在各文件 frontmatter 写{" "}
-                <code className="rounded bg-code-bg px-1 font-mono text-[11px]">category: 项目</code>（或「通用」「实验」）。
-              </>
+              <>{AGENTS_DISK_SYNC_HINT}</>
             ) : (
-              <>
-                浏览器预览下展示内置示例；在 Electron 中点击「从本机刷新」可读取你与 Claude Code 共用的 Agent Markdown。
-              </>
+              <>{AGENTS_DEMO_HINT}</>
             )}
             {listErr ? <span className="mt-1 block text-destructive">{listErr}</span> : null}
           </p>

@@ -10,6 +10,16 @@ import { PageRoot, SettingsLayout, SettingsNavItem } from "@/components/page-lay
 import { useDesktopReady, useHasDesktop } from "@/hooks/use-desktop-ready";
 import { getDesktop, isWebBridge } from "@/lib/desktop-api";
 import { cn } from "@/lib/utils";
+import {
+  CONFIRM_WRITE_FOOTER,
+  CONFIRM_WRITE_SECTION_HINT,
+  GIT_PUSH_HINT,
+  GIT_PUSH_HINT_DETAIL,
+  PAGE_DESC,
+  SETTINGS_SAVED_PROJECT,
+  SETTINGS_TAB_HINT,
+  WORKSPACE_API_MISSING,
+} from "@/lib/ui-copy";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "应用设置 · Claude Orchestrator" }] }),
@@ -51,11 +61,7 @@ function SettingsOverview({
 }) {
   const wsShort =
     workspacePath.length > 48 ? `…${workspacePath.slice(-44)}` : workspacePath;
-  const tabHint: Record<typeof activeTab, string> = {
-    general: "配置聊天「确认写入」的默认落盘路径。工作区在侧栏「工作目录」修改。",
-    models: "管理云 API 供应商与本机 Ollama；本地模型须测试连接后点击添加，聊天页与此列表同步。",
-    advanced: "GitHub 同步。",
-  };
+  const tabHint = SETTINGS_TAB_HINT;
 
   return (
     <div className="space-y-2.5">
@@ -154,10 +160,10 @@ function SettingsPage() {
           title="应用设置"
           description={
             settingsTab === "general"
-              ? "聊天落盘与其它通用偏好"
+              ? PAGE_DESC.settings.general
               : settingsTab === "models"
-                ? "已添加的云模型与本地 Ollama"
-                : "GitHub 同步"
+                ? PAGE_DESC.settings.models
+                : PAGE_DESC.settings.advanced
           }
         />
         <SettingsLayout
@@ -186,7 +192,7 @@ function SettingsPage() {
 
           {desktopReady && !desktop && (
             <p className="rounded-lg border border-border bg-warning/10 px-3 py-2 text-[12.5px] text-warning">
-              未检测到桌面 API。请运行 npm run web:dev:full 并刷新本页。
+              {WORKSPACE_API_MISSING}
             </p>
           )}
           {hint ? (
@@ -197,10 +203,7 @@ function SettingsPage() {
 
           {settingsTab === "general" ? (
             <div className="max-w-xl space-y-4">
-              <Section
-                title="一键确认写入"
-                hint="用户说「确认写入」且回复中无 workspace-write 块时，写入此相对路径。"
-              >
+              <Section title="一键确认写入" hint={CONFIRM_WRITE_SECTION_HINT}>
                 <label className="block text-[12px] text-muted-foreground" htmlFor="default-confirm-write-path">
                   默认相对路径
                 </label>
@@ -213,9 +216,7 @@ function SettingsPage() {
                   placeholder="docs/prd.md"
                   className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] text-foreground placeholder:text-muted-foreground disabled:opacity-50"
                 />
-                <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-                  产品经理、项目经理等角色须用户在聊天中确认；其它 Agent 可自动落盘。
-                </p>
+                <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{CONFIRM_WRITE_FOOTER}</p>
                 <button
                   type="button"
                   onClick={() => void saveGeneralSettings()}
@@ -228,8 +229,7 @@ function SettingsPage() {
 
               {desktopReady && desktop && isWebBridge() && (
                 <div className="rounded-lg border border-border/70 bg-secondary/30 px-3 py-2.5 text-[11.5px] leading-relaxed text-muted-foreground">
-                  Web Bridge：设置保存在项目内{" "}
-                  <code className="font-mono text-[11px]">.claudecode/workbench.db</code>。
+                  {SETTINGS_SAVED_PROJECT}
                 </div>
               )}
             </div>
@@ -505,34 +505,39 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
                 className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
               />
             </label>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim() || !gitUserName.trim() || !gitUserEmail.trim()}
-                onClick={() => void pullFromPersonal()}
-                className="btn-row"
-              >
-                <Download className={cn("h-3.5 w-3.5", gitBusy === "pullPersonal" && "animate-pulse")} />
-                {gitBusy === "pullPersonal" ? "拉取中…" : "拉取"}
-              </button>
-              <button
-                type="button"
-                disabled={
-                  !desktop ||
-                  gitBusy !== null ||
-                  !personalGithubRepo.trim() ||
-                  !gitUserName.trim() ||
-                  !gitUserEmail.trim() ||
-                  !pushReason.trim()
-                }
-                onClick={() => void pushToPersonal()}
-                className="btn-row"
-              >
-                <Upload className={cn("h-3.5 w-3.5", gitBusy === "push" && "animate-pulse")} />
-                {gitBusy === "push" ? "推送中…" : "推送"}
-              </button>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim() || !gitUserName.trim() || !gitUserEmail.trim()}
+                  onClick={() => void pullFromPersonal()}
+                  className="btn-row"
+                >
+                  <Download className={cn("h-3.5 w-3.5", gitBusy === "pullPersonal" && "animate-pulse")} />
+                  {gitBusy === "pullPersonal" ? "拉取中…" : "拉取"}
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    !desktop ||
+                    gitBusy !== null ||
+                    !personalGithubRepo.trim() ||
+                    !gitUserName.trim() ||
+                    !gitUserEmail.trim() ||
+                    !pushReason.trim()
+                  }
+                  onClick={() => void pushToPersonal()}
+                  className="btn-row"
+                >
+                  <Upload className={cn("h-3.5 w-3.5", gitBusy === "push" && "animate-pulse")} />
+                  {gitBusy === "push" ? "推送中…" : "推送"}
+                </button>
+              </div>
+              <p className="text-[11px] text-muted-foreground sm:max-w-sm sm:text-right">
+                {GIT_PUSH_HINT}
+                <InfoHint side="left">{GIT_PUSH_HINT_DETAIL}</InfoHint>
+              </p>
             </div>
-            <p className="mt-2 text-[11px] text-muted-foreground">推送前会清除本地敏感数据。</p>
           </div>
         </Section>
       </div>
