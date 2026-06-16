@@ -15,35 +15,67 @@ export function loadFrontendAppCatalog() {
   }
 }
 
-function formatAppLine(app) {
+function appTitle(app) {
   const route = String(app.route || '').trim()
   const name = String(app.name || '未命名').trim()
-  const desc = String(app.description || '').trim()
-  const routePart = route ? ` \`${route}\`` : ''
-  return `- **${name}**${routePart}：${desc}`
+  return route ? `**${name}** \`${route}\`` : `**${name}**`
 }
 
-/** Git 提交正文：前端应用说明（Markdown） */
+function formatAppBlock(app, { indentFeatures = true } = {}) {
+  const lines = []
+  const summary = String(app.summary || '').trim()
+  const desc = String(app.description || '').trim()
+  const head = summary ? `${appTitle(app)} — ${summary}` : appTitle(app)
+  lines.push(`- ${head}${desc ? `：${desc}` : ''}`)
+  const features = Array.isArray(app.features)
+    ? app.features.map((f) => String(f || '').trim()).filter(Boolean)
+    : []
+  if (features.length && indentFeatures) {
+    for (const f of features) {
+      lines.push(`  - ${f}`)
+    }
+  }
+  return lines
+}
+
+/** Git 提交正文：当前项目已实现的前端内容说明 */
 export function buildFrontendAppsCommitSection(catalog = loadFrontendAppCatalog()) {
   if (!catalog?.groups?.length) {
-    return '## Claude Orchestrator 前端应用\n\n（应用目录未配置）'
+    return '## Claude Orchestrator · 前端实现说明\n\n（应用目录未配置）'
   }
-  const lines = [`## ${catalog.productName || 'Claude Orchestrator'} 前端应用`, '']
-  if (catalog.tagline) {
-    lines.push(String(catalog.tagline).trim(), '')
+
+  const lines = [
+    `## ${catalog.productName || 'Claude Orchestrator'} · 前端实现说明`,
+    '',
+    String(catalog.tagline || '').trim(),
+    '',
+  ]
+
+  if (Array.isArray(catalog.uiOverview) && catalog.uiOverview.length) {
+    lines.push('### 整体 UI', '')
+    for (const item of catalog.uiOverview) {
+      lines.push(`- ${String(item).trim()}`)
+    }
+    lines.push('')
   }
+
   for (const group of catalog.groups) {
     const label = String(group.label || '').trim()
     if (label) lines.push(`### ${label}`, '')
     for (const app of group.apps || []) {
-      lines.push(formatAppLine(app))
+      lines.push(...formatAppBlock(app))
     }
     lines.push('')
   }
+
+  if (catalog.stack) {
+    lines.push(`**前端栈**：${String(catalog.stack).trim()}`)
+  }
+
   return lines.join('\n').trimEnd()
 }
 
-/** 写入 docs/claude-orchestrator-apps.md，供 GitHub 仓库 README 式阅读 */
+/** 写入 docs/claude-orchestrator-apps.md，供 GitHub 仓库阅读 */
 export function exportFrontendAppsDoc(catalog = loadFrontendAppCatalog()) {
   if (!catalog?.groups?.length) {
     return { ok: false, error: '未找到前端应用目录配置', path: null }
@@ -51,20 +83,30 @@ export function exportFrontendAppsDoc(catalog = loadFrontendAppCatalog()) {
 
   const product = catalog.productName || 'Claude Orchestrator'
   const lines = [
-    `# ${product} 前端应用`,
+    `# ${product} · 前端实现说明`,
     '',
     String(catalog.tagline || '').trim(),
     '',
   ]
+
   if (catalog.stack) {
     lines.push(`**技术栈**：${String(catalog.stack).trim()}`, '')
   }
+
   lines.push(
-    '> 本文档在推送到个人 GitHub 时自动更新，与应用侧栏导航一致。',
-    '',
-    '## 应用一览',
+    '> 推送到个人 GitHub 时自动更新；内容与侧栏导航及当前 Web 实现一致。',
     '',
   )
+
+  if (Array.isArray(catalog.uiOverview) && catalog.uiOverview.length) {
+    lines.push('## 整体 UI', '')
+    for (const item of catalog.uiOverview) {
+      lines.push(`- ${String(item).trim()}`)
+    }
+    lines.push('')
+  }
+
+  lines.push('## 页面与功能', '')
 
   for (const group of catalog.groups) {
     const label = String(group.label || '').trim()
@@ -72,8 +114,21 @@ export function exportFrontendAppsDoc(catalog = loadFrontendAppCatalog()) {
     for (const app of group.apps || []) {
       const route = String(app.route || '').trim()
       const name = String(app.name || '未命名').trim()
+      const summary = String(app.summary || '').trim()
       const desc = String(app.description || '').trim()
-      lines.push(`#### ${name}${route ? ` \`${route}\`` : ''}`, '', desc, '')
+      lines.push(`#### ${name}${route ? ` \`${route}\`` : ''}`, '')
+      if (summary) lines.push(`> ${summary}`, '')
+      if (desc) lines.push(desc, '')
+      const features = Array.isArray(app.features)
+        ? app.features.map((f) => String(f || '').trim()).filter(Boolean)
+        : []
+      if (features.length) {
+        lines.push('**已实现界面：**', '')
+        for (const f of features) {
+          lines.push(`- ${f}`)
+        }
+        lines.push('')
+      }
     }
   }
 
@@ -84,6 +139,10 @@ export function exportFrontendAppsDoc(catalog = loadFrontendAppCatalog()) {
     'npm run web:dev:full   # Web + 本机 Bridge',
     'npm run desktop        # Electron 桌面版',
     '```',
+    '',
+    '## 维护说明',
+    '',
+    '页面说明源文件：`docs/claude-orchestrator/frontend-apps.catalog.json`。修改后推送个人 GitHub 即可同步到提交信息与本文档。',
     '',
   )
 

@@ -562,13 +562,13 @@ function buildPersonalCommitMessage(reason) {
   const firstLine = lines[0] || ''
   const subject = firstLine
     ? `docs(frontend): ${firstLine.slice(0, 72)}`
-    : 'docs(frontend): 更新 Claude Orchestrator 前端应用说明'
+    : 'docs(frontend): Claude Orchestrator 前端实现说明'
 
   const bodyParts = []
   if (lines.length > 1) {
-    bodyParts.push('## 本次变更', ...lines.slice(1), '')
+    bodyParts.push('## 本次变更', ...lines.slice(1).map((l) => `- ${l}`), '')
   } else if (firstLine) {
-    bodyParts.push('## 本次变更', firstLine, '')
+    bodyParts.push('## 本次变更', `- ${firstLine}`, '')
   }
   bodyParts.push(buildFrontendAppsCommitSection())
   return `${subject}\n\n${bodyParts.join('\n').trimEnd()}`
