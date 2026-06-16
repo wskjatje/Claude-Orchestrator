@@ -710,18 +710,24 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
 
   const push = await runGit(['push', '-u', 'origin', branch])
   if (!push.ok) {
-    const hint = /index-pack failed|did not receive expected object/i.test(
-      push.combined || push.error || '',
-    )
-      ? '\n\n提示：若仓库是浅克隆，请先执行 git fetch --unshallow upstream 后再推送。'
-      : ''
+    const combined = push.combined || push.error || ''
+    let errorMsg = combined || '推送到个人仓库失败'
+    if (/rejected|fetch first|non-fast-forward/i.test(combined)) {
+      errorMsg =
+        '远程仓库有新的提交，请先在「个人仓库」点「拉取」合并后再推送。' +
+        (commitLog ? '（本地提交已保存，拉取后再次推送即可。）' : '')
+    } else if (/index-pack failed|did not receive expected object/i.test(combined)) {
+      errorMsg +=
+        '\n\n提示：若仓库是浅克隆，请先执行 git fetch --unshallow origin 后再推送。'
+    }
     return {
       ok: false,
-      error: (push.combined || push.error || '推送到个人仓库失败') + hint,
+      error: errorMsg,
       combined: [history.unshallowed ? history.combined : '', commitLog, push.combined]
         .filter(Boolean)
         .join('\n'),
-      committed: Boolean(commitLog),
+      committed: Boolean(commitLog) || !nothingToCommit,
+      needsPull: /rejected|fetch first|non-fast-forward/i.test(combined),
       personalUrl: ensure.url,
     }
   }

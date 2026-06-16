@@ -722,6 +722,7 @@ export type DesktopApi = {
     combined?: string
     error?: string
     committed?: boolean
+    needsPull?: boolean
   }>
   workbenchGitSaveGithubSettings: (body: {
     personalGithubRepo?: string

@@ -23,6 +23,7 @@ import {
   SETTINGS_TAB_HINT,
   WORKSPACE_API_MISSING,
 } from "@/lib/ui-copy";
+import { formatGitErrorMessage } from "@/lib/git-error-message";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "应用设置 · Claude Orchestrator" }] }),
@@ -251,8 +252,7 @@ function SettingsPage() {
 
 function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
   function briefGitError(error?: string, fallback = "操作失败") {
-    const line = error?.split("\n").find((l) => l.trim())?.trim();
-    return line || fallback;
+    return formatGitErrorMessage(error, fallback);
   }
 
   function gitToast(text: string, tone: "success" | "warning" | "error" = "success") {
@@ -436,6 +436,9 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
       });
       if (!r.ok) {
         gitToast(briefGitError(r.error, "推送失败"), "error");
+        if (r.needsPull) {
+          gitToast("请先点「拉取」合并远程，再重新推送。", "warning");
+        }
         return;
       }
       if (r.nothingToCommit) {
