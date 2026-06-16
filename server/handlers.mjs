@@ -36,6 +36,7 @@ import {
   pullClaudeCodeFromGithub,
   pullFromPersonalGithub,
   pushClaudeCodeToPersonalGithub,
+  deployPersonalGithubArtifacts,
   savePersonalGithubSettings,
 } from './workbench-git-sync.mjs'
 import {
@@ -458,6 +459,20 @@ export const handlers = {
     const r = await pullFromPersonalGithub({
       personalGithubRepo: body.personalGithubRepo,
     })
+    if (r.ok && r.deployed?.ok) {
+      broadcast('orchestration:chain-status', { kind: 'registry-changed' })
+      broadcast('mcp-health:changed', { configPath: resolvedMcpConfigFile().path })
+    }
+    return r
+  },
+
+  'workbench-git:deployPersonal': async (args) => {
+    const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+    const r = deployPersonalGithubArtifacts(body)
+    if (r.ok) {
+      broadcast('orchestration:chain-status', { kind: 'registry-changed' })
+      broadcast('mcp-health:changed', { configPath: resolvedMcpConfigFile().path })
+    }
     return r
   },
 

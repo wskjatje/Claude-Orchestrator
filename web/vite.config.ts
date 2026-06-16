@@ -8,6 +8,10 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
   vite: {
+    build: {
+      outDir: "dist-electron",
+      emptyOutDir: true,
+    },
     server: {
       proxy: {
         "/api": {

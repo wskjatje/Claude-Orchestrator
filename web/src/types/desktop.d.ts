@@ -691,10 +691,21 @@ export type DesktopApi = {
     personalUrl?: string
     originRef?: string
     fullSync?: boolean
+    deployed?: {
+      ok?: boolean
+      summary?: string
+      error?: string
+    }
     combined?: string
     error?: string
     dirty?: boolean
     conflict?: boolean
+  }>
+  workbenchGitDeployPersonal: (payload?: { overwrite?: boolean }) => Promise<{
+    ok: boolean
+    summary?: string
+    combined?: string
+    error?: string
   }>
   workbenchGitPushPersonal: (payload?: {
     clearPersonalConfig?: boolean

@@ -380,6 +380,74 @@ function listOrchestrationChainsForAgent(agentStem) {
   return { ok: true, items, error: null }
 }
 
+/** 从 docs/chains 导入任务链（保留 id；本地 userModified 时仅更新元数据） */
+function importOrchestrationChainRecords(records, opts = {}) {
+  if (!Array.isArray(records)) return { ok: false, error: '无效 payload', imported: 0, skipped: 0, results: [] }
+  const overwrite = opts.overwrite !== false
+  const index = loadIndexRaw()
+  const now = new Date().toISOString()
+  let imported = 0
+  let skipped = 0
+  const results = []
+
+  for (const raw of records) {
+    const id = String(raw?.id || '').trim()
+    if (!id) continue
+    const state = normalizeState(raw?.state)
+    if (!state.steps.length) {
+      skipped += 1
+      results.push({ id, action: 'skipped', reason: 'no-steps' })
+      continue
+    }
+
+    const existing = loadChainRecord(id)
+    if (existing?.userModified && !overwrite) {
+      skipped += 1
+      results.push({ id, action: 'skipped', reason: 'userModified' })
+      continue
+    }
+
+    if (existing?.userModified) {
+      existing.name = String(raw?.name || existing.name)
+      existing.description = String(raw?.description ?? existing.description)
+      existing.enabled = raw?.enabled !== false
+      existing.updatedAt = now
+      saveChainRecord(existing)
+      const summary = summarizeChain(existing)
+      const i = index.chains.findIndex((c) => c.id === id)
+      if (i >= 0) index.chains[i] = summary
+      else index.chains.push(summary)
+      skipped += 1
+      results.push({ id, action: 'metadata-only', reason: 'userModified' })
+      continue
+    }
+
+    const record = {
+      id,
+      name: String(raw?.name || existing?.name || '未命名任务链'),
+      description: String(raw?.description ?? existing?.description ?? ''),
+      category: normalizeChainCategory(raw?.category ?? existing?.category),
+      enabled: raw?.enabled !== false,
+      templateId: raw?.templateId ? String(raw.templateId) : existing?.templateId || null,
+      official: id.startsWith('official-') || Boolean(raw?.official),
+      userModified: Boolean(raw?.userModified),
+      createdAt: existing?.createdAt || raw?.createdAt || now,
+      updatedAt: now,
+      state,
+    }
+    saveChainRecord(record)
+    const summary = summarizeChain(record)
+    const i = index.chains.findIndex((c) => c.id === id)
+    if (i >= 0) index.chains[i] = summary
+    else index.chains.push(summary)
+    imported += 1
+    results.push({ id, action: existing ? 'updated' : 'created' })
+  }
+
+  saveIndexRaw(index)
+  return { ok: true, imported, skipped, results, error: null }
+}
+
 module.exports = {
   listOrchestrationChains,
   getOrchestrationChain,
@@ -392,4 +460,5 @@ module.exports = {
   toggleOrchestrationChainEnabled,
   ensureOfficialGenericChains,
   listOrchestrationChainsForAgent,
+  importOrchestrationChainRecords,
 }

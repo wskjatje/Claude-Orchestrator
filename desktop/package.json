@@ -3,14 +3,77 @@
   "version": "0.4.2",
   "private": true,
   "productName": "Claude Orchestrator",
-  "description": "Claude Orchestrator 桌面助手（Electron）",
+  "description": "Claude Orchestrator 桌面应用（Electron）",
+  "author": "Claude Orchestrator",
   "main": "main.mjs",
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "dev": "node run-dev.mjs"
+    "dev": "node run-dev.mjs",
+    "pack": "node ../scripts/pack-desktop.mjs",
+    "dist": "node ../scripts/pack-desktop.mjs"
   },
   "devDependencies": {
-    "electron": "^35.0.0"
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.claude.orchestrator",
+    "productName": "Claude Orchestrator",
+    "copyright": "Copyright © Claude Orchestrator",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "files": [
+      "main.mjs",
+      "runtime.mjs",
+      "preload.cjs",
+      "assets/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../server",
+        "to": "backend/server",
+        "filter": ["**/*", "!**/.DS_Store"]
+      },
+      {
+        "from": "../web/dist-electron",
+        "to": "backend/web-dist"
+      },
+      {
+        "from": "../node_modules/ws",
+        "to": "backend/node_modules/ws"
+      },
+      {
+        "from": "../node_modules/node-pty",
+        "to": "backend/node_modules/node-pty"
+      },
+      {
+        "from": "../node_modules/node-addon-api",
+        "to": "backend/node_modules/node-addon-api"
+      }
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.png",
+      "target": ["dmg", "zip"],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "Claude Orchestrator ${version}",
+      "icon": "assets/icon.png"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Development"
+    }
   }
 }

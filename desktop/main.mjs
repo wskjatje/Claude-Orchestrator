@@ -1,13 +1,16 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { startPackagedRuntime, stopPackagedRuntime } from './runtime.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const WEB_URL = process.env.CLAUDE_ORCHESTRATOR_URL || 'http://127.0.0.1:5188/'
 const isDev = !app.isPackaged
 const APP_DISPLAY_NAME = 'Claude Orchestrator'
 const iconPath = path.join(__dirname, 'assets', 'icon.png')
 const appIcon = nativeImage.createFromPath(iconPath)
+
+const DEV_WEB_URL = process.env.CLAUDE_ORCHESTRATOR_URL || 'http://127.0.0.1:5188/'
+let packagedWebUrl = DEV_WEB_URL
 
 if (process.platform === 'darwin') {
   app.setName(APP_DISPLAY_NAME)
@@ -15,6 +18,13 @@ if (process.platform === 'darwin') {
 
 /** @type {BrowserWindow | null} */
 let mainWindow = null
+
+async function resolveWebUrl() {
+  if (isDev) return DEV_WEB_URL
+  const runtime = await startPackagedRuntime()
+  packagedWebUrl = runtime.url
+  return runtime.url
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -38,7 +48,16 @@ function createWindow() {
     mainWindow?.show()
   })
 
-  mainWindow.loadURL(WEB_URL)
+  void resolveWebUrl()
+    .then((url) => mainWindow?.loadURL(url))
+    .catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      dialog.showErrorBox(
+        'Claude Orchestrator 启动失败',
+        `${msg}\n\n开发模式请先运行：npm run desktop\n打包版请重新安装应用。`,
+      )
+      app.quit()
+    })
 
   if (isDev && process.env.CLAUDE_ORCHESTRATOR_DEVTOOLS === '1') {
     mainWindow.webContents.openDevTools({ mode: 'detach' })
@@ -82,4 +101,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  if (!isDev) stopPackagedRuntime()
 })

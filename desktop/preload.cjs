@@ -130,6 +130,8 @@ const desktop = {
     rpc('workbench-git:pullUpstream', payload ? [payload] : []),
   workbenchGitPullPersonal: (payload) =>
     rpc('workbench-git:pullPersonal', payload ? [payload] : []),
+  workbenchGitDeployPersonal: (payload) =>
+    rpc('workbench-git:deployPersonal', payload ? [payload] : []),
   workbenchGitPushPersonal: (payload) => rpc('workbench-git:pushPersonal', payload ?? {}),
   workbenchGitSaveGithubSettings: (body) => rpc('workbench-git:saveGithubSettings', body),
   chooseClaudeCliExecutable: () => rpc('claude-code:chooseCliExecutable'),

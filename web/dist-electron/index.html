@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Orchestrator</title>
+    <meta name="description" content="桌面编排、任务链与 Claude Code" />
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <script>
+      (function () {
+        try {
+          var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var r = document.documentElement;
+          r.classList.toggle("dark", dark);
+          r.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-CPk-rCXc.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

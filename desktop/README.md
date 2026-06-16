@@ -1,28 +1,35 @@
-# Claude Orchestrator 桌面助手
+# Claude Orchestrator 桌面应用
 
-本目录为 **Claude Orchestrator** 的 Electron 桌面客户端：独立窗口运行 Web UI，并通过 preload 注入完整 `window.desktop` API（非浏览器 Bridge 垫片）。
+Electron 客户端：独立窗口运行 Web UI，注入完整 `window.desktop` API。
 
-## 首次使用
+## 方式一：打包安装（推荐，无需命令）
 
-```bash
-# 仓库根目录
-npm run web:install          # Web 依赖（若尚未安装）
-npm run desktop:install      # Electron 依赖
-```
-
-## 启动
+在仓库根目录执行**一次**打包：
 
 ```bash
-npm run desktop
+npm run web:install      # 首次
+npm run desktop:pack     # 构建 .dmg / .app
 ```
 
-等价于依次启动：
+产物位于 `desktop/release/`：
 
-1. 本机 Bridge（`server/index.mjs`，:18790 / :18789）
-2. Web UI（Vite，:5188）
-3. Electron 窗口（加载 http://127.0.0.1:5188/）
+- **macOS**：打开 `.dmg`，将 **Claude Orchestrator** 拖入「应用程序」
+- 之后从启动台或 Dock 直接打开，**无需**再运行 `npm run desktop`
 
-若你已在另一终端运行 `npm run web:dev:full`，也可只开 Electron：
+打包版会自动启动本机 Bridge（:18789 / :18790）与内置 Web UI（:5188）。  
+运行时数据保存在 `~/Library/Application Support/Claude Orchestrator/`。
+
+**仍需本机已安装**：`claude` CLI（Claude Code）及常用工具路径。
+
+## 方式二：开发模式（改代码时用）
+
+```bash
+npm run web:install
+npm run desktop:install
+npm run desktop          # Bridge + Vite + Electron 一键启动
+```
+
+若已在另一终端运行 `npm run web:dev:full`，可只开 Electron：
 
 ```bash
 cd desktop && npm start
@@ -30,15 +37,14 @@ cd desktop && npm start
 
 ## 与浏览器模式的区别
 
-| 能力 | 浏览器 + Bridge | 桌面助手 |
+| 能力 | 浏览器 + Bridge | 桌面应用 |
 |------|-----------------|----------|
 | 聊天 / 任务链 / MCP | ✅ | ✅ |
-| 本机目录选择 | macOS 脚本对话框 | ✅ |
-| 引用文件 / 图片附件 | ✅（Bridge 原生对话框） | ✅（Electron 对话框） |
-| 侧栏显示 | 「已连接 Claude Code」 | 「桌面版 · Claude Code」 |
-| 需手动开浏览器 | 是 | 否 |
+| 本机目录选择 | macOS 脚本 | ✅ 原生对话框 |
+| 引用文件 / 附件 | ✅ | ✅ |
+| 需手动开终端命令 | 是 | 打包版否 |
 
-## 环境变量
+## 环境变量（开发）
 
 | 变量 | 说明 |
 |------|------|
@@ -48,10 +54,9 @@ cd desktop && npm start
 ## 架构
 
 ```
-desktop/main.mjs      → BrowserWindow + 原生文件对话框 IPC
-desktop/preload.cjs   → window.desktop + WebSocket 事件
-desktop/run-dev.mjs   → Bridge + Vite + Electron 一键启动
-server/index.mjs      → RPC / WebSocket 后端（与浏览器模式共用）
+desktop/main.mjs       → BrowserWindow；打包版调用 runtime 自启后端
+desktop/runtime.mjs    → Bridge + 静态 UI（ELECTRON_RUN_AS_NODE）
+desktop/preload.cjs    → window.desktop + WebSocket
+server/index.mjs       → RPC / WebSocket 后端
+server/packaged-ui-server.mjs → 打包版静态页 + /api 代理
 ```
-
-前端在检测到 `window.__ELECTRON_DESKTOP__` 时不会注入 Web Bridge 垫片，避免重复连接与 API 覆盖。

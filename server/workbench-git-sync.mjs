@@ -9,6 +9,7 @@ import {
   saveChatSettings,
 } from './store.mjs'
 import { exportPersonalGithubArtifacts } from './workbench-git-export.mjs'
+import { importPersonalGithubArtifacts } from './workbench-git-import.mjs'
 import {
   buildFrontendAppsCommitSection,
   exportFrontendAppsDoc,
@@ -351,7 +352,7 @@ export async function getWorkbenchGitStatus() {
     remotes: remotes.ok ? remotes.remotes : [],
     pullMode: 'path-scoped',
     syncScopeNote:
-      '个人仓库与 Git 身份：推送与个人拉取共用；官方 pull 仅按路径同步 plugins/commands 等',
+      '个人仓库：推送导出 Agent/Skill/链/MCP 到 docs/；拉取合并后自动部署到 ~/.claude 与 .claudecode',
   }
 }
 
@@ -538,10 +539,14 @@ export async function pullFromPersonalGithub(opts = {}) {
   }
 
   const head = await runGit(['log', '-1', '--oneline'])
+  const deployed = importPersonalGithubArtifacts()
   const lines = [
     `已从个人仓库 ${originRef} 拉取并合并全部内容（完整同步）：`,
     history.unshallowed ? history.combined : '',
     merge.combined?.trim() || 'Merge successful',
+    deployed.ok
+      ? `已部署到本地：${deployed.summary}`
+      : `部署到本地失败：${deployed.error || '未知错误'}`,
     head.stdout.trim() ? `\n当前 @ ${head.stdout.trim()}` : '',
   ].filter(Boolean).join('\n')
 
@@ -552,7 +557,18 @@ export async function pullFromPersonalGithub(opts = {}) {
     originRef,
     headLine: head.stdout.trim(),
     personalUrl: ensure.url,
+    deployed,
     combined: lines,
+  }
+}
+
+export function deployPersonalGithubArtifacts(opts = {}) {
+  const result = importPersonalGithubArtifacts(opts)
+  return {
+    ...result,
+    combined: result.ok
+      ? `已部署到本地：${result.summary}`
+      : `部署失败：${result.error || '未知错误'}`,
   }
 }
 

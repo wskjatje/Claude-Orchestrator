@@ -69,10 +69,12 @@ export const SETTINGS_TAB_HINT = {
   advanced: "与 GitHub 同步编排资产。",
 } as const;
 
-export const GIT_PUSH_HINT = "推送时写入前端实现说明（各页面 UI 与功能）。";
+export const GIT_PUSH_HINT = "推送时导出 Agent/Skill/链/MCP 到 docs/，并写入前端实现说明。";
 
 export const GIT_PUSH_HINT_DETAIL =
-  "自动生成 docs/claude-orchestrator-apps.md 并写入 Git 提交正文；Agent/Skill/链/MCP 一并导出。";
+  "推送前从 ~/.claude 与 .claudecode 导出到 docs/agents、docs/skills、docs/chains、.mcp.json；拉取合并后会自动部署回本地。也可点「部署到本地」直接应用仓库内配置。";
+
+export const GIT_DEPLOY_HINT = "将 docs/ 与 .mcp.json 写入 ~/.claude 与 .claudecode。";
 
 export const GIT_PUSH_REASON_LABEL = "本次变更（可选）";
 

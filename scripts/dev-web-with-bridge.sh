@@ -16,6 +16,8 @@ fi
 node scripts/fix-node-pty-perms.mjs
 if [[ ! -d server/vendor/cad/node_modules/@modelcontextprotocol ]]; then
   npm run vendor:install
+else
+  node scripts/fix-vendor-native-modules.mjs
 fi
 
 BRIDGE_PID_FILE="${TMPDIR:-/tmp}/claudecode-bridge.pid"

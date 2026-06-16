@@ -3,11 +3,17 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** 仓库根目录（claudecode 项目） */
-export const PROJECT_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
+const __serverDir = path.dirname(fileURLToPath(import.meta.url))
 
-/** 项目内持久化目录：SQLite + 编排链文件 + 日志（不写入浏览器缓存） */
-export const PROJECT_DATA_DIR = path.join(PROJECT_ROOT, '.claudecode')
+/** 仓库根目录；打包版由 Electron 注入 CLAUDE_ORCHESTRATOR_PROJECT_ROOT */
+export const PROJECT_ROOT = process.env.CLAUDE_ORCHESTRATOR_PROJECT_ROOT?.trim()
+  ? path.resolve(process.env.CLAUDE_ORCHESTRATOR_PROJECT_ROOT.trim())
+  : path.join(__serverDir, '..')
+
+/** 项目内持久化目录：SQLite + 编排链文件 + 日志 */
+export const PROJECT_DATA_DIR = process.env.CLAUDE_ORCHESTRATOR_USER_DATA?.trim()
+  ? path.join(path.resolve(process.env.CLAUDE_ORCHESTRATOR_USER_DATA.trim()), '.claudecode')
+  : path.join(PROJECT_ROOT, '.claudecode')
 
 export const PROJECT_DB_PATH = path.join(PROJECT_DATA_DIR, 'workbench.db')
 

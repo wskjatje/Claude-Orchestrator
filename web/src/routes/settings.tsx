@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
-import { Save, Download, Upload, RefreshCw, GitBranch, Settings, X } from "lucide-react";
+import { Save, Download, Upload, RefreshCw, GitBranch, Settings, X, FolderInput } from "lucide-react";
 import { toast } from "sonner";
 import { InfoHint } from "@/components/info-hint";
 import { chatSettingsPreservePayload } from "@/lib/model-catalog";
@@ -15,6 +15,7 @@ import {
   CONFIRM_WRITE_SECTION_HINT,
   GIT_PUSH_HINT,
   GIT_PUSH_HINT_DETAIL,
+  GIT_DEPLOY_HINT,
   GIT_PUSH_REASON_LABEL,
   GIT_PUSH_REASON_PLACEHOLDER,
   PAGE_DESC,
@@ -266,7 +267,7 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
   const [gitUserEmail, setGitUserEmail] = useState("");
   const [upstreamGithubRepo, setUpstreamGithubRepo] = useState("https://github.com/anthropics/claude-code.git");
   const [pushReason, setPushReason] = useState("");
-  const [gitBusy, setGitBusy] = useState<"pull" | "pullPersonal" | "push" | "save" | "checkUpstream" | null>(null);
+  const [gitBusy, setGitBusy] = useState<"pull" | "pullPersonal" | "deployPersonal" | "push" | "save" | "checkUpstream" | null>(null);
   const [gitStatus, setGitStatus] = useState<Awaited<
     ReturnType<NonNullable<ReturnType<typeof getDesktop>>["workbenchGitStatus"]>
   > | null>(null);
@@ -386,8 +387,27 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
       const r = await api.workbenchGitPullPersonal({
         personalGithubRepo: personalGithubRepo.trim(),
       });
-      gitToast(r.ok ? "拉取成功。" : briefGitError(r.error, "拉取失败"), r.ok ? "success" : "error");
+      gitToast(
+        r.ok
+          ? r.deployed?.summary
+            ? `拉取并部署：${r.deployed.summary}`
+            : "拉取成功。"
+          : briefGitError(r.error, "拉取失败"),
+        r.ok ? "success" : "error",
+      );
       await refreshGitStatus();
+    } finally {
+      setGitBusy(null);
+    }
+  };
+
+  const deployFromRepo = async () => {
+    const api = getDesktop();
+    if (!api?.workbenchGitDeployPersonal) return;
+    setGitBusy("deployPersonal");
+    try {
+      const r = await api.workbenchGitDeployPersonal();
+      gitToast(r.ok ? r.summary || "已部署到本地。" : briefGitError(r.error, "部署失败"), r.ok ? "success" : "error");
     } finally {
       setGitBusy(null);
     }
@@ -509,6 +529,15 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
+                  disabled={!desktop || gitBusy !== null}
+                  onClick={() => void deployFromRepo()}
+                  className="btn-row"
+                >
+                  <FolderInput className={cn("h-3.5 w-3.5", gitBusy === "deployPersonal" && "animate-pulse")} />
+                  {gitBusy === "deployPersonal" ? "部署中…" : "部署到本地"}
+                </button>
+                <button
+                  type="button"
                   disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim() || !gitUserName.trim() || !gitUserEmail.trim()}
                   onClick={() => void pullFromPersonal()}
                   className="btn-row"
@@ -535,6 +564,7 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
               <p className="text-[11px] text-muted-foreground sm:max-w-sm sm:text-right">
                 {GIT_PUSH_HINT}
                 <InfoHint side="left">{GIT_PUSH_HINT_DETAIL}</InfoHint>
+                <span className="mt-1 block">{GIT_DEPLOY_HINT}</span>
               </p>
             </div>
           </div>
