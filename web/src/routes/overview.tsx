@@ -7,6 +7,8 @@ import { OverviewTodayKpis, buildDesktopTodayKpis } from "@/components/overview-
 import { UsageAnalyticsSection } from "@/components/usage-analytics-section";
 import { useUsageStats } from "@/hooks/use-usage-stats";
 import { getDesktop, hasDesktop } from "@/lib/desktop-api";
+import { getChatSessionsCache } from "@/lib/chat-sessions-store";
+import { formatChatModelOverviewDisplay, loadChatModelPools } from "@/lib/model-catalog";
 import { OVERVIEW_INFO_HINT, PAGE_DESC } from "@/lib/ui-copy";
 import {
   formatTokenCount,
@@ -34,8 +36,7 @@ function OverviewPage() {
   const todayStats = useUsageStats("今天");
   const reloadTodayStats = todayStats.reload;
 
-  const [modelId, setModelId] = useState("");
-  const [orchMode, setOrchMode] = useState<"claude-code" | "local-mcp">("claude-code");
+  const [modelDisplay, setModelDisplay] = useState({ value: "—", caption: "—" });
   const [taskEnabled, setTaskEnabled] = useState(0);
   const [taskTotal, setTaskTotal] = useState(0);
 
@@ -43,13 +44,29 @@ function OverviewPage() {
     const api = getDesktop();
     if (!api) return;
 
-    const [sched, settings] = await Promise.all([
+    const [sched, settings, sessionsDisk, pools] = await Promise.all([
       api.scheduledTasksGet(),
       api.getChatSettings(),
+      api.loadChatSessions?.().catch(() => null) ?? Promise.resolve(null),
+      loadChatModelPools(api).catch(() => ({ cloudModels: [] as string[], localModels: [] as string[] })),
     ]);
 
-    setOrchMode(settings?.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code");
-    setModelId(settings?.model ?? "");
+    const orchMode = settings?.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
+    const cached = getChatSessionsCache();
+    const activeId = cached?.activeId || sessionsDisk?.activeId || "";
+    const sessions =
+      cached?.sessions?.length ? cached.sessions : sessionsDisk?.sessions ?? [];
+    const activeSession = sessions.find((s) => s.id === activeId);
+    const modelId = activeSession?.modelId?.trim() || settings?.model?.trim() || "";
+
+    setModelDisplay(
+      formatChatModelOverviewDisplay({
+        modelId,
+        cloudModels: pools.cloudModels,
+        localModels: pools.localModels,
+        orchMode,
+      }),
+    );
 
     const tasks = sched?.ok && Array.isArray(sched.tasks) ? sched.tasks : [];
     setTaskTotal(tasks.length);
@@ -60,11 +77,16 @@ function OverviewPage() {
     if (!hasDesktop()) return;
     void loadMeta();
     const api = getDesktop();
-    if (!api?.onChatSessionsChanged) return;
-    return api.onChatSessionsChanged(() => {
+    const reload = () => {
       void loadMeta();
       void reloadTodayStats();
-    });
+    };
+    const offSessions = api?.onChatSessionsChanged?.(reload);
+    const offSettings = api?.onChatSettingsChanged?.(reload);
+    return () => {
+      offSessions?.();
+      offSettings?.();
+    };
   }, [loadMeta, reloadTodayStats]);
 
   useEffect(() => {
@@ -85,7 +107,7 @@ function OverviewPage() {
     [navigate],
   );
 
-  const modelCaption = orchMode === "local-mcp" ? "本地 MCP 编排" : "Claude Code CLI";
+  const modelCaption = modelDisplay.caption;
   const todayMsgTotal = (todayStats.agg?.msgUser ?? 0) + (todayStats.agg?.msgAssistant ?? 0);
   const todayCost = todayStats.agg?.cloudCostFormatted ?? "$0.00";
   const cloudTokToday = todayStats.agg?.cloudTotalTok ?? 0;
@@ -105,7 +127,7 @@ function OverviewPage() {
         sessionsInRange: todayStats.agg?.sessionsInRange ?? 0,
         todayCost,
         todayTokenHint: todayCostCaption,
-        modelId,
+        modelId: modelDisplay.value,
         modelCaption,
         taskEnabled,
         taskTotal,
@@ -116,7 +138,7 @@ function OverviewPage() {
       todayStats.agg?.cloudTurns,
       todayCost,
       todayCostCaption,
-      modelId,
+      modelDisplay.value,
       modelCaption,
       taskEnabled,
       taskTotal,

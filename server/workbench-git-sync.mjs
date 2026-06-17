@@ -5,6 +5,7 @@ import { promisify } from 'node:util'
 import { PROJECT_ROOT } from './paths.mjs'
 import {
   loadChatSettings,
+  loadWorkspace,
   saveChatSettings,
 } from './store.mjs'
 import { exportPersonalGithubArtifacts } from './workbench-git-export.mjs'
@@ -309,6 +310,57 @@ async function ensureUpstreamRemote(upstreamUrl) {
   return { ok: true, url }
 }
 
+function isPackagedWorkbench() {
+  return Boolean(process.env.CLAUDE_ORCHESTRATOR_USER_DATA?.trim())
+}
+
+function workspaceBasename(dir) {
+  if (!dir) return ''
+  try {
+    const base = path.basename(path.resolve(String(dir)))
+    return base || String(dir).trim()
+  } catch {
+    return String(dir).trim()
+  }
+}
+
+/** 推送说明默认文案：带上当前工作区目录名，避免设置页每次打开为空 */
+export function buildDefaultPushReason(workspaceDir = loadWorkspace()) {
+  const label = workspaceBasename(workspaceDir)
+  return label
+    ? `同步 Agent、Skill、任务链与 MCP（工作区：${label}）`
+    : '同步 Agent、Skill、任务链与 MCP 配置'
+}
+
+async function ensurePackagedGitRepository() {
+  if (!isPackagedWorkbench()) return { ok: true, initialized: false }
+  if (fs.existsSync(path.join(PROJECT_ROOT, '.git'))) return { ok: true, initialized: false }
+
+  fs.mkdirSync(PROJECT_ROOT, { recursive: true })
+  const gitignorePath = path.join(PROJECT_ROOT, '.gitignore')
+  if (!fs.existsSync(gitignorePath)) {
+    fs.writeFileSync(
+      gitignorePath,
+      ['.claudecode/', 'node_modules/', '.DS_Store', '.tmp/', ''].join('\n'),
+      'utf8',
+    )
+  }
+  const readmePath = path.join(PROJECT_ROOT, 'README.md')
+  if (!fs.existsSync(readmePath)) {
+    fs.writeFileSync(
+      readmePath,
+      '# Claude Orchestrator\n\n个人编排配置同步目录（Agent / Skill / 任务链 / MCP）。\n',
+      'utf8',
+    )
+  }
+
+  const init = await runGit(['init', '-b', 'main'])
+  if (!init.ok) {
+    return { ok: false, error: init.combined || init.error || '初始化 Git 仓库失败' }
+  }
+  return { ok: true, initialized: true, combined: init.combined }
+}
+
 async function ensurePersonalOrigin(personalUrl) {
   const url = String(personalUrl || '').trim()
   if (!url) return { ok: false, error: '请填写个人 GitHub 仓库地址' }
@@ -330,8 +382,18 @@ async function ensurePersonalOrigin(personalUrl) {
 }
 
 export async function getWorkbenchGitStatus() {
+  const workspacePath = loadWorkspace() || ''
+  const defaultPushReason = buildDefaultPushReason(workspacePath)
+
   if (!fs.existsSync(path.join(PROJECT_ROOT, '.git'))) {
-    return { ok: false, error: '当前项目不是 Git 仓库' }
+    if (isPackagedWorkbench()) {
+      const boot = await ensurePackagedGitRepository()
+      if (!boot.ok) {
+        return { ok: false, error: boot.error, workspacePath, defaultPushReason }
+      }
+    } else {
+      return { ok: false, error: '当前项目不是 Git 仓库', workspacePath, defaultPushReason }
+    }
   }
   const settings = loadChatSettings()
   const remotes = await readRemotes()
@@ -356,6 +418,8 @@ export async function getWorkbenchGitStatus() {
     pullMode: 'path-scoped',
     syncScopeNote:
       '个人仓库：推送以本地为准覆盖远程；拉取仅用于从 GitHub 取回并部署到本机',
+    workspacePath,
+    defaultPushReason,
   }
 }
 
@@ -636,12 +700,21 @@ async function ensureFullHistoryForPush() {
 }
 
 export async function pushClaudeCodeToPersonalGithub(opts = {}) {
-  const reason =
-    typeof opts.reason === 'string' && opts.reason.trim()
+  const boot = await ensurePackagedGitRepository()
+  if (!boot.ok) {
+    return { ok: false, error: boot.error, combined: boot.error }
+  }
+
+  const reasonRaw =
+    typeof opts.reason === 'string'
       ? opts.reason.trim()
-      : typeof opts.message === 'string' && opts.message.trim()
+      : typeof opts.message === 'string'
         ? opts.message.trim()
         : ''
+  if (!reasonRaw) {
+    return { ok: false, error: '请填写本次变更说明' }
+  }
+  const reason = reasonRaw
   const message = buildPersonalCommitMessage(reason)
 
   const settings = loadChatSettings()

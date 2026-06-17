@@ -21,6 +21,25 @@ npm run desktop:pack     # 构建 .dmg / .app
 
 **仍需本机已安装**：`claude` CLI（Claude Code）及常用工具路径。
 
+### 经微信 / AirDrop 发送后提示「已损坏」
+
+这是 macOS **隔离属性**（`com.apple.quarantine`）与未公证安装包共同导致的常见现象，**不是**文件真损坏。
+
+在**安装应用的 Mac** 上执行（路径按实际修改）：
+
+```bash
+xattr -cr "/Applications/Claude Orchestrator.app"
+```
+
+或在仓库根目录：
+
+```bash
+bash scripts/macos-fix-quarantine-app.sh
+```
+
+若仍被拦截：**右键**「Claude Orchestrator」→ **打开** → 确认一次。  
+重新打包请在本机执行 `npm run desktop:pack`（会自动 ad-hoc 签名并清除 release 目录隔离属性）。
+
 ## 方式二：开发模式（改代码时用）
 
 ```bash

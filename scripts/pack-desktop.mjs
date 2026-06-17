@@ -51,10 +51,22 @@ if (builder.status !== 0) {
   process.exit(builder.status ?? 1)
 }
 
+if (process.platform === 'darwin') {
+  run('node', ['scripts/adhoc-sign-desktop-mac.mjs'])
+}
+
 run('node', ['scripts/restore-dev-native-modules.mjs'])
 
 const releaseDir = path.join(DESKTOP, 'release')
 console.log('\n✓ 打包完成。安装包目录：')
 console.log(`  ${releaseDir}`)
 console.log('\nmacOS：打开 release 中的 .dmg，将 Claude Orchestrator 拖入「应用程序」。')
-console.log('之后可从启动台 / Dock 直接打开，无需再运行 npm 命令。\n')
+console.log('之后可从启动台 / Dock 直接打开，无需再运行 npm 命令。')
+if (process.platform === 'darwin') {
+  console.log('\n若经微信/AirDrop 发送后对方提示「已损坏」，在对方 Mac 上执行：')
+  console.log('  bash scripts/macos-fix-quarantine-app.sh')
+  console.log('或：xattr -cr "/Applications/Claude Orchestrator.app"')
+  console.log('然后右键应用 →「打开」一次。\n')
+} else {
+  console.log('')
+}

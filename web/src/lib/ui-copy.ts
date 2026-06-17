@@ -72,13 +72,15 @@ export const SETTINGS_TAB_HINT = {
 export const GIT_PUSH_HINT = "推送：本机内容上传到 GitHub，会直接更新远程。";
 
 export const GIT_PUSH_HINT_DETAIL =
-  "无需先拉取。上方说明可选，留空也会推送；会一并同步 Agent、Skill、任务链与 MCP 配置。本地配置、日志与会话不会被删除，也不会上传到 GitHub。";
+  "会同步 Agent、Skill、任务链与 MCP 到个人 GitHub；说明须手动填写。本地聊天、日志与工作区项目文件不会上传。";
 
 export const GIT_DEPLOY_HINT = "部署到本地：从 GitHub 取回编排配置并写入本机。";
 
-export const GIT_PUSH_REASON_LABEL = "本次变更（可选）";
+export const GIT_PUSH_REASON_LABEL = "本次变更";
 
-export const GIT_PUSH_REASON_PLACEHOLDER = "可写这次改了什么；留空也能推送";
+export const GIT_PUSH_REASON_PLACEHOLDER = "简要说明本次推送的变更内容";
+
+export const GIT_PUSH_REASON_REQUIRED = "请填写本次变更说明。";
 
 export const CHAINS_INFO_HINT = "官方链已内置；对话中用 /chain 调用。";
 
@@ -93,10 +95,6 @@ export const OVERVIEW_INFO_HINT = "工作区 → 侧栏；模型 → 设置；MC
 export const AGENTS_EDITOR_HINT = "右侧编辑；「工作流优化」可生成修订稿。";
 
 export const SKILLS_EDITOR_HINT = "本机目录扫描；编辑对应文件即可。";
-
-export const SCHEDULED_BANNER_ONLINE = "每 30 秒检查；开关即时保存。";
-
-export const MODELS_PANEL_FOOTER = "与聊天页模型下拉同步；使用中的不可删。";
 
 export const MODELS_EMPTY_HINT = "尚未添加云模型。点「添加云模型」开始配置。";
 

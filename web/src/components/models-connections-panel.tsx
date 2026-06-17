@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Check, Cloud, Cpu, Pencil, Plus, RefreshCw, Trash2, X, Zap } from "lucide-react";
+import { Check, Circle, Cloud, Cpu, Pencil, Plus, RefreshCw, Trash2, X, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { getDesktop } from "@/lib/desktop-api";
-import { chatSettingsPreservePayload, resolveCloudProviderCatalog } from "@/lib/model-catalog";
-import { BRIDGE_OFFLINE_TOAST, MODELS_EMPTY_HINT, MODELS_PANEL_FOOTER } from "@/lib/ui-copy";
+import { AUTO_MODEL_ID, chatSettingsPreservePayload, isAutoModelSelection, resolveCloudProviderCatalog } from "@/lib/model-catalog";
+import { BRIDGE_OFFLINE_TOAST, MODELS_EMPTY_HINT } from "@/lib/ui-copy";
 
 export type CcSwitchProvider = {
   id: string;
@@ -47,10 +47,16 @@ type Props = {
   onSettingsUpdated?: () => void;
 };
 
+type RowKey = `cloud:${string}` | `local:${string}`;
+
+const rowKeyCloud = (id: string): RowKey => `cloud:${id}`;
+const rowKeyLocal = (model: string): RowKey => `local:${model}`;
+
 export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   const desktop = useHasDesktop();
   const [providers, setProviders] = useState<CcSwitchProvider[]>([]);
-  const [busy, setBusy] = useState<"load" | "save" | "sync" | "activate" | "local" | null>(null);
+  const [busy, setBusy] = useState<"load" | "save" | "sync" | "local" | "batch" | null>(null);
+  const [selectedRows, setSelectedRows] = useState<Set<RowKey>>(new Set());
 
   const [drawer, setDrawer] = useState<DrawerMode>("closed");
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
@@ -59,6 +65,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   const [ollamaBase, setOllamaBase] = useState("http://127.0.0.1:11434");
   const [localModelCatalog, setLocalModelCatalog] = useState<string[]>([]);
   const [currentModelId, setCurrentModelId] = useState("");
+  const [chatEnabledCloudProviders, setChatEnabledCloudProviders] = useState<string[]>([]);
+  const [chatEnabledLocalModels, setChatEnabledLocalModels] = useState<string[]>([]);
   const [localPick, setLocalPick] = useState<Set<string>>(new Set());
   const [localTest, setLocalTest] = useState<{
     status: "idle" | "testing" | "ok" | "fail";
@@ -80,6 +88,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     const base = s.ollamaBase?.trim() || "http://127.0.0.1:11434";
     setOllamaBase(base);
     setCurrentModelId(s.model?.trim() || "");
+    setChatEnabledCloudProviders([...(s.chatEnabledCloudProviders ?? [])]);
+    setChatEnabledLocalModels([...(s.chatEnabledLocalModels ?? [])]);
     let catalog = [...(s.localModelCatalog ?? [])];
     if (!catalog.length && s.model?.trim()) {
       const probe = await api.listOllamaModels(base);
@@ -140,6 +150,59 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   }, [desktop, refreshAll]);
 
   const localCatalogSet = useMemo(() => new Set(localModelCatalog), [localModelCatalog]);
+  const cloudChatEnabledSet = useMemo(() => new Set(chatEnabledCloudProviders), [chatEnabledCloudProviders]);
+  const localChatEnabledSet = useMemo(() => new Set(chatEnabledLocalModels), [chatEnabledLocalModels]);
+
+  const allRowKeys = useMemo(
+    () => [...providers.map((p) => rowKeyCloud(p.id)), ...localModelCatalog.map((m) => rowKeyLocal(m))],
+    [localModelCatalog, providers],
+  );
+
+  const toggleRowSelection = (key: RowKey) => {
+    setSelectedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleSelectAllRows = () => {
+    setSelectedRows((prev) => (prev.size === allRowKeys.length ? new Set() : new Set(allRowKeys)));
+  };
+
+  const clearRowSelection = () => setSelectedRows(new Set());
+
+  const selectedCloudIds = useMemo(
+    () =>
+      [...selectedRows]
+        .filter((k): k is RowKey => k.startsWith("cloud:"))
+        .map((k) => k.slice("cloud:".length)),
+    [selectedRows],
+  );
+
+  const selectedLocalModels = useMemo(
+    () =>
+      [...selectedRows]
+        .filter((k): k is RowKey => k.startsWith("local:"))
+        .map((k) => k.slice("local:".length)),
+    [selectedRows],
+  );
+
+  const pickChatModelAfterDisable = (
+    mode: "claude-code" | "local-mcp",
+    current: string,
+    cloudModels: Set<string>,
+    localModels: string[],
+  ) => {
+    const cur = current.trim();
+    if (mode === "local-mcp") {
+      if (cur && localModels.includes(cur)) return cur;
+      return localModels[0] || AUTO_MODEL_ID;
+    }
+    if (cur && cloudModels.has(cur)) return cur;
+    return cloudModels.values().next().value || AUTO_MODEL_ID;
+  };
 
   const openCloudCreate = () => {
     setEditingProviderId(null);
@@ -227,6 +290,17 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         toast.error(r.error || "保存失败");
         return;
       }
+      if (setAsCurrent) {
+        const latest = await api.getChatSettings();
+        const nextCloud = [...new Set([...(latest.chatEnabledCloudProviders ?? []), r.providerId || targetId])];
+        await api.saveChatSettings({
+          ...chatSettingsPreservePayload(latest),
+          chatEnabledCloudProviders: nextCloud,
+          model: dm.trim() || latest.model,
+        });
+        setChatEnabledCloudProviders(nextCloud);
+        setCurrentModelId(dm.trim() || latest.model?.trim() || "");
+      }
       toast.success(editingProviderId ? `已更新「${name.trim()}」` : `已添加「${name.trim()}」`);
       closeDrawer();
       await refreshProviders();
@@ -305,8 +379,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   };
 
   const deleteCloudProvider = async (p: CcSwitchProvider) => {
-    if (p.isCurrent) {
-      toast.error("不能删除当前启用的云模型");
+    if (cloudChatEnabledSet.has(p.id)) {
+      toast.error("请先在聊天中停用该供应商，再删除");
       return;
     }
     const api = getDesktop();
@@ -335,8 +409,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   const removeLocalModel = async (model: string) => {
     const api = getDesktop();
     if (!api) return;
-    if (model === currentModelId) {
-      toast.error("不能删除当前使用的模型");
+    if (localChatEnabledSet.has(model)) {
+      toast.error("请先在聊天中停用该模型，再删除");
       return;
     }
     if (!window.confirm(`确定从列表中删除本地模型「${model}」？`)) return;
@@ -344,16 +418,19 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     try {
       const s = await api.getChatSettings();
       const catalog = (s.localModelCatalog ?? []).filter((m) => m !== model);
-      const nextModel = s.model === model ? catalog[0] ?? "" : s.model ?? "";
+      const nextLocalEnabled = (s.chatEnabledLocalModels ?? []).filter((m) => m !== model);
+      const nextModel = s.model === model ? catalog[0] ?? AUTO_MODEL_ID : s.model ?? "";
       const nextMcp =
         s.localOllamaModel === model ? catalog[0] ?? "" : s.localOllamaModel ?? "";
       await api.saveChatSettings({
         ...chatSettingsPreservePayload(s),
         localModelCatalog: catalog,
+        chatEnabledLocalModels: nextLocalEnabled,
         model: nextModel,
         localOllamaModel: nextMcp,
       });
       setLocalModelCatalog(catalog);
+      setChatEnabledLocalModels(nextLocalEnabled);
       toast.success(`已删除「${model}」`);
       onSettingsUpdated?.();
     } finally {
@@ -394,22 +471,167 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     }
   };
 
-  const activateProvider = async (p: CcSwitchProvider) => {
+  const batchEnableSelected = async () => {
+    if (selectedRows.size === 0) {
+      toast.message("请先勾选要启用的条目");
+      return;
+    }
+
     const api = getDesktop();
-    if (!api?.ccSwitchSetCurrentProvider) return;
-    setBusy("activate");
+    if (!api) return;
+
+    const toEnableCloud = providers.filter(
+      (p) => selectedCloudIds.includes(p.id) && !cloudChatEnabledSet.has(p.id),
+    );
+    const toEnableLocal = selectedLocalModels.filter((m) => !localChatEnabledSet.has(m));
+
+    if (!toEnableCloud.length && !toEnableLocal.length) {
+      toast.message("所选条目均已启用");
+      return;
+    }
+
+    setBusy("batch");
     try {
-      const r = await api.ccSwitchSetCurrentProvider({
-        providerId: p.id,
-        model: p.models[0] || cloudForm.defaultModel.trim(),
-        syncWorkbench: true,
+      if (toEnableCloud.length && api.ccSwitchSetCurrentProvider) {
+        const anchor = toEnableCloud[toEnableCloud.length - 1]!;
+        const model = anchor.models[0] || "";
+        const r = await api.ccSwitchSetCurrentProvider({
+          providerId: anchor.id,
+          model,
+          syncWorkbench: false,
+        });
+        if (!r.ok) {
+          toast.error(r.error || "批量启用失败");
+          return;
+        }
+      }
+
+      const s = await api.getChatSettings();
+      const nextCloud = [...new Set([...chatEnabledCloudProviders, ...toEnableCloud.map((p) => p.id)])];
+      const nextLocal = [...new Set([...chatEnabledLocalModels, ...toEnableLocal])];
+
+      let nextModel = s.model?.trim() || currentModelId;
+      if (toEnableCloud.length) {
+        const anchor = toEnableCloud[toEnableCloud.length - 1]!;
+        const cloudModel = anchor.models[0] || "";
+        if (
+          !nextModel ||
+          isAutoModelSelection(nextModel) ||
+          toEnableCloud.some((p) => p.models.includes(nextModel))
+        ) {
+          nextModel =
+            nextModel && toEnableCloud.some((p) => p.models.includes(nextModel))
+              ? nextModel
+              : cloudModel || nextModel || AUTO_MODEL_ID;
+        }
+      }
+      if (toEnableLocal.length && (!nextModel || isAutoModelSelection(nextModel))) {
+        nextModel = toEnableLocal[0]!;
+      }
+
+      const nextLocalOllama =
+        toEnableLocal.length > 0
+          ? nextLocal.includes(s.localOllamaModel?.trim() ?? "")
+            ? s.localOllamaModel
+            : toEnableLocal[0]
+          : s.localOllamaModel;
+
+      await api.saveChatSettings({
+        ...chatSettingsPreservePayload(s),
+        chatEnabledCloudProviders: nextCloud,
+        chatEnabledLocalModels: nextLocal,
+        model: nextModel,
+        localOllamaModel: nextLocalOllama ?? "",
       });
-      if (!r.ok) {
-        toast.error(r.error || "启用失败");
+
+      setChatEnabledCloudProviders(nextCloud);
+      setChatEnabledLocalModels(nextLocal);
+      setCurrentModelId(nextModel);
+
+      const parts: string[] = [];
+      if (toEnableCloud.length) parts.push(`${toEnableCloud.length} 个云模型`);
+      if (toEnableLocal.length) parts.push(`${toEnableLocal.length} 个本地模型`);
+      toast.success(`已批量启用 ${parts.join("、")}`);
+
+      if (toEnableCloud.length) await refreshProviders();
+      clearRowSelection();
+      onSettingsUpdated?.();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const batchDisableSelected = async () => {
+    if (selectedRows.size === 0) {
+      toast.message("请先勾选要停用的条目");
+      return;
+    }
+
+    const api = getDesktop();
+    if (!api) return;
+
+    setBusy("batch");
+    try {
+      const s = await api.getChatSettings();
+      let nextCloud = [...chatEnabledCloudProviders];
+      let nextLocal = [...chatEnabledLocalModels];
+      let disabledCloud = 0;
+      let disabledLocal = 0;
+
+      for (const id of selectedCloudIds) {
+        if (!cloudChatEnabledSet.has(id)) continue;
+        nextCloud = nextCloud.filter((x) => x !== id);
+        disabledCloud += 1;
+      }
+      for (const model of selectedLocalModels) {
+        if (!localChatEnabledSet.has(model)) continue;
+        nextLocal = nextLocal.filter((m) => m !== model);
+        disabledLocal += 1;
+      }
+
+      const total = disabledCloud + disabledLocal;
+      if (!total) {
+        toast.message("所选条目均未启用");
         return;
       }
-      toast.success(`已启用 ${p.name}`);
-      await refreshProviders();
+
+      const nextCloudModels = new Set<string>();
+      for (const prov of providers) {
+        if (!nextCloud.includes(prov.id)) continue;
+        for (const m of prov.models) if (m) nextCloudModels.add(m);
+      }
+      const cur = s.model?.trim() || currentModelId;
+      let nextModel = cur;
+      if (nextCloud.length) {
+        nextModel = pickChatModelAfterDisable("claude-code", cur, nextCloudModels, []);
+      } else if (nextLocal.length) {
+        nextModel = pickChatModelAfterDisable("local-mcp", cur, new Set(), nextLocal);
+      } else {
+        nextModel = pickChatModelAfterDisable(
+          s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code",
+          cur,
+          nextCloudModels,
+          nextLocal,
+        );
+      }
+
+      await api.saveChatSettings({
+        ...chatSettingsPreservePayload(s),
+        chatEnabledCloudProviders: nextCloud,
+        chatEnabledLocalModels: nextLocal,
+        model: nextModel,
+        localOllamaModel: nextLocal[0] || s.localOllamaModel,
+        ...(nextCloud.length
+          ? { orchestrationMode: "claude-code" as const }
+          : nextLocal.length
+            ? { orchestrationMode: "local-mcp" as const }
+            : {}),
+      });
+      setChatEnabledCloudProviders(nextCloud);
+      setChatEnabledLocalModels(nextLocal);
+      setCurrentModelId(nextModel);
+      toast.success(`已批量停用 ${total} 项`);
+      clearRowSelection();
       onSettingsUpdated?.();
     } finally {
       setBusy(null);
@@ -489,21 +711,82 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         </button>
       </div>
 
+      {allRowKeys.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/80 bg-muted/15 px-3 py-2">
+          <span className="text-[11.5px] text-muted-foreground">
+            已选 {selectedRows.size} / {allRowKeys.length}
+          </span>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={toggleSelectAllRows}
+            className="rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] font-medium hover:bg-secondary disabled:opacity-40"
+          >
+            {selectedRows.size === allRowKeys.length ? "取消全选" : "全选"}
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null || selectedRows.size === 0}
+            onClick={() => void batchEnableSelected()}
+            className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/15 disabled:opacity-40"
+          >
+            <Zap className="h-3 w-3" /> 批量启用
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null || selectedRows.size === 0}
+            onClick={() => void batchDisableSelected()}
+            className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium hover:bg-secondary disabled:opacity-40"
+          >
+            批量停用
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null || selectedRows.size === 0}
+            onClick={clearRowSelection}
+            className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+          >
+            清空选择
+          </button>
+        </div>
+      ) : null}
+
       <div className="page-data-table page-data-table--flat w-full overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-full text-left text-[12px]">
           <thead className="border-b border-border bg-muted/30 text-muted-foreground">
             <tr>
+              <th className="w-9 px-2 py-2">
+                <input
+                  type="checkbox"
+                  checked={allRowKeys.length > 0 && selectedRows.size === allRowKeys.length}
+                  disabled={busy !== null || allRowKeys.length === 0}
+                  onChange={toggleSelectAllRows}
+                  className="h-3.5 w-3.5 rounded border-border"
+                  aria-label="全选"
+                />
+              </th>
               <th className="col-type px-3 py-2 font-medium">类型</th>
               <th className="col-name px-3 py-2 font-medium">名称</th>
               <th className="col-endpoint px-3 py-2 font-medium">端点</th>
               <th className="col-model px-3 py-2 font-medium">可用模型</th>
               <th className="col-key px-3 py-2 font-medium">Key</th>
+              <th className="col-status w-12 px-2 py-2 text-center font-medium">状态</th>
               <th className="col-action px-3 py-2 text-right font-medium">操作</th>
             </tr>
           </thead>
           <tbody>
             {providers.map((p) => (
               <tr key={p.id} className="border-b border-border/60 last:border-0">
+                <td className="px-2 py-2.5 align-top">
+                  <input
+                    type="checkbox"
+                    checked={selectedRows.has(rowKeyCloud(p.id))}
+                    disabled={busy !== null}
+                    onChange={() => toggleRowSelection(rowKeyCloud(p.id))}
+                    className="h-3.5 w-3.5 rounded border-border"
+                    aria-label={`选择 ${p.name}`}
+                  />
+                </td>
                 <td className="col-type px-3 py-2.5 align-top">
                   <span className="inline-flex rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
                     云
@@ -511,14 +794,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                 </td>
                 <td className="col-name px-3 py-2.5 align-top">
                   <div className="space-y-0.5">
-                    <div className="flex items-center gap-1">
-                      <span className="font-medium text-foreground">{p.name}</span>
-                      {p.isCurrent ? (
-                        <span className="shrink-0 rounded bg-primary/15 px-1 py-0.5 text-[10px] font-semibold text-primary">
-                          当前
-                        </span>
-                      ) : null}
-                    </div>
+                    <div className="font-medium text-foreground">{p.name}</div>
                     <div className="font-mono text-[10px] text-muted-foreground">{p.id}</div>
                   </div>
                 </td>
@@ -531,6 +807,9 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                 <td className="col-key px-3 py-2.5 align-top text-muted-foreground">
                   <div className="cell-1line">{p.hasApiKey ? p.apiKeyPreview : "未配置"}</div>
                 </td>
+                <td className="col-status px-2 py-2.5 align-middle text-center">
+                  <ChatEnableStatus enabled={cloudChatEnabledSet.has(p.id)} />
+                </td>
                 <td className="col-action px-3 py-2.5 align-top text-right">
                   <div className="inline-flex gap-1">
                     <button
@@ -541,70 +820,65 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                     >
                       <Pencil className="h-3 w-3" /> 修改
                     </button>
-                    {!p.isCurrent ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={busy !== null}
-                          onClick={() => void activateProvider(p)}
-                          className="rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-secondary disabled:opacity-40"
-                        >
-                          启用
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy !== null}
-                          onClick={() => void deleteCloudProvider(p)}
-                          className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-40"
-                        >
-                          <Trash2 className="h-3 w-3" /> 删除
-                        </button>
-                      </>
-                    ) : null}
+                    <button
+                      type="button"
+                      disabled={busy !== null || cloudChatEnabledSet.has(p.id)}
+                      title={cloudChatEnabledSet.has(p.id) ? "请先批量停用" : undefined}
+                      onClick={() => void deleteCloudProvider(p)}
+                      className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3 w-3" /> 删除
+                    </button>
                   </div>
                 </td>
               </tr>
             ))}
             {localModelCatalog.map((model) => (
               <tr key={model} className="border-t border-border/60 bg-secondary/5">
+                <td className="px-2 py-2.5 align-top">
+                  <input
+                    type="checkbox"
+                    checked={selectedRows.has(rowKeyLocal(model))}
+                    disabled={busy !== null}
+                    onChange={() => toggleRowSelection(rowKeyLocal(model))}
+                    className="h-3.5 w-3.5 rounded border-border"
+                    aria-label={`选择 ${model}`}
+                  />
+                </td>
                 <td className="col-type px-3 py-2.5 align-top">
                   <span className="inline-flex rounded-md bg-success/10 px-1.5 py-0.5 text-[10px] font-semibold text-success">
                     本地
                   </span>
                 </td>
                 <td className="col-name px-3 py-2.5 align-top">
-                  <div className="flex items-center gap-1">
-                    <span className="font-mono text-[11px] text-foreground">{model}</span>
-                    {model === currentModelId ? (
-                      <span className="shrink-0 rounded bg-primary/15 px-1 py-0.5 text-[10px] font-semibold text-primary">
-                        当前
-                      </span>
-                    ) : null}
-                  </div>
+                  <span className="font-mono text-[11px] text-foreground">{model}</span>
                 </td>
                 <td className="col-endpoint px-3 py-2.5 align-top font-mono text-[10px] text-muted-foreground">
                   <div className="cell-2line break-all">{ollamaBase}</div>
                 </td>
                 <td className="col-model px-3 py-2.5 align-top text-[10px] text-muted-foreground">Ollama</td>
                 <td className="col-key px-3 py-2.5 align-top text-[10px] text-muted-foreground">—</td>
+                <td className="col-status px-2 py-2.5 align-middle text-center">
+                  <ChatEnableStatus enabled={localChatEnabledSet.has(model)} />
+                </td>
                 <td className="col-action px-3 py-2.5 align-top text-right">
-                  <button
-                    type="button"
-                    disabled={busy !== null || model === currentModelId}
-                    title={model === currentModelId ? "当前模型不可删除" : undefined}
-                    onClick={() => void removeLocalModel(model)}
-                    className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-40"
-                  >
-                    <Trash2 className="h-3 w-3" /> 删除
-                  </button>
+                  <div className="inline-flex gap-1">
+                    <button
+                      type="button"
+                      disabled={busy !== null || localChatEnabledSet.has(model)}
+                      title={localChatEnabledSet.has(model) ? "请先批量停用" : undefined}
+                      onClick={() => void removeLocalModel(model)}
+                      className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3 w-3" /> 删除
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      <p className="text-[11.5px] text-muted-foreground">{MODELS_PANEL_FOOTER}</p>
 
       {drawerOpen ? (
         <div className="fixed inset-0 z-50 flex">
@@ -842,6 +1116,26 @@ function CloudFormField({ label, children }: { label: string; children: ReactNod
       <label className="mb-1 block text-[12px] font-medium text-muted-foreground">{label}</label>
       {children}
     </div>
+  );
+}
+
+function ChatEnableStatus({ enabled }: { enabled: boolean }) {
+  const label = enabled ? "已启用（聊天可选）" : "未启用（聊天不可选）";
+  if (!enabled) {
+    return (
+      <span
+        title={label}
+        aria-label={label}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-muted/50 text-muted-foreground/55"
+      >
+        <Circle className="h-3.5 w-3.5" strokeWidth={2} />
+      </span>
+    );
+  }
+  return (
+    <span title={label} aria-label={label} className="inline-flex h-6 w-6 items-center justify-center">
+      <span className="h-2.5 w-2.5 rounded-full bg-success ring-2 ring-success/25" />
+    </span>
   );
 }
 

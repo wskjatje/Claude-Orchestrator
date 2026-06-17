@@ -36,23 +36,23 @@ export function parseAgentModelFromFrontmatter(content) {
 }
 
 function resolveAutoModelFromPools(cloud, local, preferredMode) {
-  if (preferredMode === 'local-mcp' && local.length) {
-    return { mode: 'local-mcp', modelId: local[0] }
+  if (preferredMode === 'local-mcp') {
+    return local.length ? { mode: 'local-mcp', modelId: local[0] } : null
   }
-  if (cloud.length) return { mode: 'claude-code', modelId: cloud[0] }
-  if (local.length) return { mode: 'local-mcp', modelId: local[0] }
-  return null
+  return cloud.length ? { mode: 'claude-code', modelId: cloud[0] } : null
 }
 
 export function resolveModelForExecution(input) {
   const cloud = (input.cloudModels || []).map((m) => String(m || '').trim()).filter(Boolean)
   const local = (input.localModels || []).map((m) => String(m || '').trim()).filter(Boolean)
+  const cloudAll = (input.allCloudModels || cloud).map((m) => String(m || '').trim()).filter(Boolean)
+  const localAll = (input.allLocalModels || local).map((m) => String(m || '').trim()).filter(Boolean)
   const agentRaw = input.agentModel?.trim()
   const agent = agentRaw && !isInheritedAgentModel(agentRaw) ? agentRaw : undefined
 
   if (agent) {
-    if (cloud.includes(agent)) return { mode: 'claude-code', modelId: agent }
-    if (local.includes(agent)) return { mode: 'local-mcp', modelId: agent }
+    if (cloudAll.includes(agent)) return { mode: 'claude-code', modelId: agent }
+    if (localAll.includes(agent)) return { mode: 'local-mcp', modelId: agent }
     return { mode: 'claude-code', modelId: agent }
   }
 
@@ -63,17 +63,13 @@ export function resolveModelForExecution(input) {
     if (/^(sonnet|opus|haiku|claude-)/i.test(selected)) {
       return { mode: 'claude-code', modelId: selected }
     }
-    return cloud.length
-      ? { mode: 'claude-code', modelId: selected }
-      : local.length
-        ? { mode: 'local-mcp', modelId: selected }
-        : null
+    return resolveAutoModelFromPools(cloud, local, input.preferredMode)
   }
 
   return resolveAutoModelFromPools(cloud, local, input.preferredMode)
 }
 
-export async function loadChatModelPools(settings) {
+export async function loadConfiguredModelPools(settings) {
   const localModels = [
     ...new Set((settings?.localModelCatalog ?? []).map((m) => String(m || '').trim()).filter(Boolean)),
   ]
@@ -81,17 +77,54 @@ export async function loadChatModelPools(settings) {
     (settings?.cloudModelCatalog ?? []).map((m) => String(m || '').trim()).filter(Boolean),
   )
   try {
+    const providers = cloudProviders.listProviders()
+    const allowed = new Set(settings?.cloudProviderCatalog ?? [])
+    for (const p of providers) {
+      if (allowed.size && !allowed.has(p.id)) continue
+      for (const m of p.models || []) {
+        const id = String(m || '').trim()
+        if (id) cloudSet.add(id)
+      }
+    }
     const pool = await cloudProviders.collectCloudModelPool({ settings, fetchRemote: false })
     for (const m of pool?.models ?? []) {
       const id = String(m || '').trim()
       if (id) cloudSet.add(id)
     }
   } catch {
-    /* 离线时仅用 catalog */
+    /* ignore */
   }
-  const localHint = String(settings?.localOllamaModel || '').trim()
-  if (localHint && !localModels.includes(localHint)) localModels.unshift(localHint)
   return { cloudModels: [...cloudSet], localModels }
+}
+
+export async function loadChatModelPools(settings) {
+  const enabledCloud = new Set(
+    (settings?.chatEnabledCloudProviders ?? []).map((id) => String(id || '').trim()).filter(Boolean),
+  )
+  const enabledLocal = (settings?.chatEnabledLocalModels ?? [])
+    .map((m) => String(m || '').trim())
+    .filter(Boolean)
+  const configuredLocal = new Set(
+    (settings?.localModelCatalog ?? []).map((m) => String(m || '').trim()).filter(Boolean),
+  )
+
+  const cloudSet = new Set()
+  try {
+    for (const p of cloudProviders.listProviders()) {
+      if (!enabledCloud.has(p.id)) continue
+      for (const m of p.models || []) {
+        const id = String(m || '').trim()
+        if (id) cloudSet.add(id)
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    cloudModels: [...cloudSet],
+    localModels: [...new Set(enabledLocal.filter((m) => configuredLocal.has(m)))],
+  }
 }
 
 export async function resolveExecutionModel({
@@ -108,11 +141,14 @@ export async function resolveExecutionModel({
     const content = readAgentMarkdown(stem ? `${stem}.md` : agentBasename)
     if (content) agentModel = parseAgentModelFromFrontmatter(content)
   }
-  const modelPools = pools || (await loadChatModelPools(settings))
+  const chatPools = pools || (await loadChatModelPools(settings))
+  const fullPools = await loadConfiguredModelPools(settings)
   const resolved = resolveModelForExecution({
     selectedModel: sessionModelId || settings?.model,
-    cloudModels: modelPools.cloudModels,
-    localModels: modelPools.localModels,
+    cloudModels: chatPools.cloudModels,
+    localModels: chatPools.localModels,
+    allCloudModels: fullPools.cloudModels,
+    allLocalModels: fullPools.localModels,
     agentModel,
     preferredMode,
   })

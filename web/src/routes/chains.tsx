@@ -16,6 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { InfoHint } from "@/components/info-hint";
+import { RequiredMark } from "@/components/required-mark";
 import { cn } from "@/lib/utils";
 import { getDesktop } from "@/lib/desktop-api";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
@@ -921,7 +922,9 @@ function PresetChainDrawer({
           ) : null}
 
           <div>
-            <label className="mb-1 block text-[11px] text-muted-foreground">保存到我的任务链（名称）*</label>
+            <label className="mb-1 block text-[11px] text-muted-foreground">
+              保存到我的任务链（名称） <RequiredMark />
+            </label>
             <input
               value={createName}
               onChange={(e) => onCreateNameChange(e.target.value)}
@@ -946,7 +949,9 @@ function PresetChainDrawer({
 
           <div>
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[12px] font-medium">步骤 *</div>
+              <div className="text-[12px] font-medium">
+                步骤 <RequiredMark />
+              </div>
               {stepsDirty ? (
                 <button
                   type="button"
@@ -1049,26 +1054,31 @@ function ChainStepsEditor({
               </button>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              <AgentStemCombobox
-                value={step.agentName}
-                agents={agents}
-                disabled={disabled}
-                placeholder="选择或搜索 Agent *"
-                onChange={(stem) =>
-                  onStepsChange(
-                    steps.map((x, j) => {
-                      if (j !== i) return x;
-                      const agentRow = agents.find((a) => a.stem === stem);
-                      const nextSkills = suggestedSkillStemsForAgent(
-                        stem,
-                        availableSkillStems,
-                        agentRow?.skills,
-                      );
-                      return { ...x, agentName: stem, skills: nextSkills };
-                    }),
-                  )
-                }
-              />
+              <div>
+                <div className="mb-1 text-[11px] text-muted-foreground">
+                  Agent <RequiredMark />
+                </div>
+                <AgentStemCombobox
+                  value={step.agentName}
+                  agents={agents}
+                  disabled={disabled}
+                  placeholder="选择或搜索 Agent"
+                  onChange={(stem) =>
+                    onStepsChange(
+                      steps.map((x, j) => {
+                        if (j !== i) return x;
+                        const agentRow = agents.find((a) => a.stem === stem);
+                        const nextSkills = suggestedSkillStemsForAgent(
+                          stem,
+                          availableSkillStems,
+                          agentRow?.skills,
+                        );
+                        return { ...x, agentName: stem, skills: nextSkills };
+                      }),
+                    )
+                  }
+                />
+              </div>
               <input
                 value={step.taskId}
                 disabled={disabled}
@@ -1184,7 +1194,9 @@ function ChainAddDrawer({
 
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
           <div>
-            <label className="mb-1 block text-[11px] text-muted-foreground">名称 *</label>
+            <label className="mb-1 block text-[11px] text-muted-foreground">
+              名称 <RequiredMark />
+            </label>
             <input
               value={name}
               onChange={(e) => onNameChange(e.target.value)}
@@ -1203,7 +1215,9 @@ function ChainAddDrawer({
             />
           </div>
           <div>
-            <div className="mb-2 text-[12px] font-medium">步骤 *</div>
+            <div className="mb-2 text-[12px] font-medium">
+              步骤 <RequiredMark />
+            </div>
             <p className="mb-2 text-[11px] text-muted-foreground">
               每一步：① Agent（Skill 自动带入）；② MCP（可选）；③ 任务说明。多步时点「添加步骤」。官方请回列表点虚线卡片。
             </p>

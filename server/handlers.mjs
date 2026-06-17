@@ -643,7 +643,14 @@ export const handlers = {
         const nextCatalog = (settings.cloudProviderCatalog || []).filter(
           (id) => id !== result.providerId,
         )
-        saveChatSettings({ ...settings, cloudProviderCatalog: nextCatalog })
+        const nextChatEnabled = (settings.chatEnabledCloudProviders || []).filter(
+          (id) => id !== result.providerId,
+        )
+        saveChatSettings({
+          ...settings,
+          cloudProviderCatalog: nextCatalog,
+          chatEnabledCloudProviders: nextChatEnabled,
+        })
       }
       broadcast('chat-settings:changed', {})
       return result

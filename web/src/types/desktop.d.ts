@@ -322,6 +322,10 @@ export type DesktopApi = {
     localModelCatalog?: string[]
     /** Workbench「添加云模型」写入的项目内供应商 ID */
     cloudProviderCatalog?: string[]
+    /** 聊天区已启用的云供应商 ID */
+    chatEnabledCloudProviders?: string[]
+    /** 聊天区已启用的本地模型 ID */
+    chatEnabledLocalModels?: string[]
     /** 个人 fork：push 与个人 pull 共用（origin） */
     personalGithubRepo?: string
     /** Git 提交身份：push / 个人 pull 共用 */
@@ -384,6 +388,8 @@ export type DesktopApi = {
     cloudModelCatalog?: string[]
     localModelCatalog?: string[]
     cloudProviderCatalog?: string[]
+    chatEnabledCloudProviders?: string[]
+    chatEnabledLocalModels?: string[]
     personalGithubRepo?: string
     gitUserName?: string
     gitUserEmail?: string
@@ -658,6 +664,8 @@ export type DesktopApi = {
     remotes?: { name: string; url: string }[]
     pullMode?: string
     syncScopeNote?: string
+    workspacePath?: string
+    defaultPushReason?: string
     error?: string
   }>
   workbenchGitCheckUpstream: (payload?: { upstreamGithubRepo?: string }) => Promise<{

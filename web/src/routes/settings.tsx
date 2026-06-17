@@ -4,6 +4,7 @@ import { AppShell, PageHeader } from "@/components/app-shell";
 import { Save, Download, Upload, RefreshCw, GitBranch, Settings, X, FolderInput } from "lucide-react";
 import { toast } from "sonner";
 import { InfoHint } from "@/components/info-hint";
+import { RequiredMark } from "@/components/required-mark";
 import { chatSettingsPreservePayload } from "@/lib/model-catalog";
 import { ModelsConnectionsPanel } from "@/components/models-connections-panel";
 import { PageRoot, SettingsLayout, SettingsNavItem } from "@/components/page-layout";
@@ -18,6 +19,7 @@ import {
   GIT_DEPLOY_HINT,
   GIT_PUSH_REASON_LABEL,
   GIT_PUSH_REASON_PLACEHOLDER,
+  GIT_PUSH_REASON_REQUIRED,
   PAGE_DESC,
   SETTINGS_SAVED_PROJECT,
   SETTINGS_TAB_HINT,
@@ -139,6 +141,11 @@ function SettingsPage() {
       setHint("");
     })();
   }, [refreshWorkspace]);
+
+  useEffect(() => {
+    if (!desktop) return;
+    void refreshWorkspace();
+  }, [desktop, refreshWorkspace]);
 
   useEffect(() => {
     const api = getDesktop();
@@ -267,6 +274,7 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
   const [gitUserEmail, setGitUserEmail] = useState("");
   const [upstreamGithubRepo, setUpstreamGithubRepo] = useState("https://github.com/anthropics/claude-code.git");
   const [pushReason, setPushReason] = useState("");
+  const [workspacePath, setWorkspacePath] = useState("");
   const [gitBusy, setGitBusy] = useState<"pull" | "pullPersonal" | "deployPersonal" | "push" | "save" | "checkUpstream" | null>(null);
   const [gitStatus, setGitStatus] = useState<Awaited<
     ReturnType<NonNullable<ReturnType<typeof getDesktop>>["workbenchGitStatus"]>
@@ -278,6 +286,7 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
     if (!api?.workbenchGitStatus) return;
     const r = await api.workbenchGitStatus();
     setGitStatus(r);
+    if (r.workspacePath) setWorkspacePath(r.workspacePath);
   }, []);
 
   useEffect(() => {
@@ -294,6 +303,7 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
       if (api.workbenchGitStatus) {
         const st = await api.workbenchGitStatus();
         setGitStatus(st);
+        if (st.workspacePath) setWorkspacePath(st.workspacePath);
         if (!s.gitUserName?.trim() && st.gitUserName) setGitUserName(st.gitUserName);
         if (!s.gitUserEmail?.trim() && st.gitUserEmail) setGitUserEmail(st.gitUserEmail);
       }
@@ -304,6 +314,14 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
       setConfigDrawerOpen(!configured);
     })();
   }, [desktop]);
+
+  useEffect(() => {
+    const api = getDesktop();
+    if (!api?.onWorkspaceChanged || !desktop) return;
+    return api.onWorkspaceChanged(() => {
+      void refreshGitStatus();
+    });
+  }, [desktop, refreshGitStatus]);
 
   const githubSettingsPayload = () => ({
     personalGithubRepo: personalGithubRepo.trim(),
@@ -427,6 +445,10 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
       return;
     }
     const reason = pushReason.trim();
+    if (!reason) {
+      gitToast(GIT_PUSH_REASON_REQUIRED, "error");
+      return;
+    }
     setGitBusy("push");
     try {
       await api.workbenchGitSaveGithubSettings(githubSettingsPayload());
@@ -512,9 +534,16 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
 
           <div className="mt-3 rounded-xl border border-border bg-surface-elevated p-4 shadow-xs">
             <p className="mb-3 text-[13px] font-semibold text-foreground">个人仓库</p>
+            {workspacePath ? (
+              <p className="mb-3 truncate font-mono text-[11px] text-muted-foreground" title={workspacePath}>
+                当前工作区：{workspacePath}
+              </p>
+            ) : (
+              <p className="mb-3 text-[11px] text-warning">未选择工作区，推送说明将无法带上项目名。请先在「工作目录」中选择。</p>
+            )}
             <label className="block">
               <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">
-                {GIT_PUSH_REASON_LABEL}
+                {GIT_PUSH_REASON_LABEL} <RequiredMark />
               </span>
               <textarea
                 value={pushReason}
@@ -523,6 +552,7 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
                 placeholder={GIT_PUSH_REASON_PLACEHOLDER}
                 rows={3}
                 spellCheck={false}
+                required
                 className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
               />
             </label>

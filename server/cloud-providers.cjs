@@ -259,12 +259,28 @@ function deleteProvider(providerId) {
   if (!id) throw new Error('providerId 不能为空')
   const store = loadStore()
   if (!store.providers[id]) throw new Error(`未找到供应商：${id}`)
-  if (store.currentProviderId === id) {
-    throw new Error('不能删除当前启用的供应商，请先切换至其它供应商')
-  }
+  const wasCurrent = store.currentProviderId === id
   delete store.providers[id]
+
+  if (wasCurrent) {
+    const remaining = Object.keys(store.providers || {})
+    if (remaining.length) {
+      store.currentProviderId = remaining[0]
+      const rec = store.providers[remaining[0]]
+      const model = rec?.models?.[0] || 'sonnet'
+      const { env } = buildProviderEnv({ ...rec, model })
+      writeClaudeSettingsFromEnv(env)
+    } else {
+      store.currentProviderId = ''
+    }
+  }
+
   saveStore(store)
-  return { ok: true, providerId: id }
+  return {
+    ok: true,
+    providerId: id,
+    switchedTo: wasCurrent ? store.currentProviderId || '' : undefined,
+  }
 }
 
 function setCurrentProvider(providerId, preferredModel) {

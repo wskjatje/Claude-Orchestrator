@@ -14,9 +14,11 @@ import { WorkbenchCursorLayout } from "@/components/workbench-cursor-layout";
 import { getDesktop } from "@/lib/desktop-api";
 import {
   AUTO_MODEL_ID,
+  chatModelPoolCombined,
   chatSettingsPreservePayload,
   isAutoModelSelection,
   loadChatModelPools,
+  loadConfiguredModelPools,
   normalizeChatModelSelection,
   parseAgentModelFromFrontmatter,
   resolveModelForExecution,
@@ -365,7 +367,6 @@ function pickOrchestratorModel(raw: string | undefined, pool: string[], mode: Or
   const list = pool.filter(Boolean);
   if (t && list.includes(t)) return t;
   if (mode === "claude-code" && /^(sonnet|opus|haiku|claude-)/i.test(t)) return t;
-  if (t) return t;
   return AUTO_MODEL_ID;
 }
 
@@ -633,6 +634,10 @@ function ChatPage() {
   const [orchestratorModels, setOrchestratorModels] = useState<string[]>([]);
   /** 本机 Ollama `/api/tags` 模型名（仅展示与写入 MCP 建议，对话不经桌面直连 Ollama） */
   const [localOllamaTags, setLocalOllamaTags] = useState<string[]>([]);
+  const configuredPoolsRef = useRef<{ cloudModels: string[]; localModels: string[] }>({
+    cloudModels: [],
+    localModels: [],
+  });
   /** 编排：Claude Code CLI（需登录）或本机 Ollama + MCP（无需 Anthropic） */
   const [orchMode, setOrchMode] = useState<OrchMode>("claude-code");
   /** 默认注入的 ~/.claude/agents 规则文件 */
@@ -1119,6 +1124,7 @@ function ChatPage() {
           const pools = await loadChatModelPools(api);
           claudePool = pools.cloudModels;
           localPool = pools.localModels;
+          configuredPoolsRef.current = await loadConfiguredModelPools(api);
         } catch {
           /* ignore */
         }
@@ -1126,7 +1132,10 @@ function ChatPage() {
       setOrchestratorModels(claudePool);
       setLocalOllamaTags(localPool);
 
-      const sessionPool = [...claudePool, ...localPool];
+      const sessionPool = chatModelPoolCombined({
+        cloudModels: claudePool,
+        localModels: localPool,
+      });
       const migratedGlobal = pickOrchestratorModel(settings.model, sessionPool, mode);
       setGlobalModel(migratedGlobal);
       if (bridgeOk && migratedGlobal !== (settings.model || "")) {
@@ -1365,6 +1374,9 @@ function ChatPage() {
         setOrchestratorModels(pools.cloudModels);
         setLocalOllamaTags(pools.localModels);
       });
+      void loadConfiguredModelPools(api).then((pools) => {
+        configuredPoolsRef.current = pools;
+      });
     };
     window.addEventListener("focus", sync);
     const offSettings = api.onChatSettingsChanged?.(() => sync());
@@ -1439,7 +1451,7 @@ function ChatPage() {
     const api = getDesktop();
     if (!api) return;
     const nextModel = isAutoModelSelection(pick.model) ? AUTO_MODEL_ID : pick.model;
-    const nextMode = isAutoModelSelection(pick.model) ? "claude-code" : pick.mode;
+    const nextMode = isAutoModelSelection(pick.model) ? orchMode : pick.mode;
     if (nextMode !== orchMode) {
       setOrchMode(nextMode);
       const s = await api.getChatSettings();
@@ -1890,7 +1902,10 @@ function ChatPage() {
         title: "新对话",
         modelId: pickOrchestratorModel(
           settings.model,
-          [...orchestratorModels, ...localOllamaTags],
+          chatModelPoolCombined({
+            cloudModels: orchestratorModels,
+            localModels: localOllamaTags,
+          }),
           mode,
         ),
         history: [],
@@ -2024,6 +2039,8 @@ function ChatPage() {
       selectedModel: sess.modelId || settings.model,
       cloudModels: orchestratorModels,
       localModels: localOllamaTags,
+      allCloudModels: configuredPoolsRef.current.cloudModels,
+      allLocalModels: configuredPoolsRef.current.localModels,
       preferredMode: orchMode,
     });
     if (!resolved) {
@@ -2335,6 +2352,8 @@ function ChatPage() {
       selectedModel: sess.modelId || settings.model,
       cloudModels: orchestratorModels,
       localModels: localOllamaTags,
+      allCloudModels: configuredPoolsRef.current.cloudModels,
+      allLocalModels: configuredPoolsRef.current.localModels,
       agentModel,
       preferredMode: orchMode,
     });
@@ -2737,7 +2756,10 @@ function ChatPage() {
           settings.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
         const modelId = pickOrchestratorModel(
           settings.model,
-          [...orchestratorModels, ...localOllamaTags],
+          chatModelPoolCombined({
+            cloudModels: orchestratorModels,
+            localModels: localOllamaTags,
+          }),
           mode,
         );
         const resolved = resolveWorkspaceChatSessions(

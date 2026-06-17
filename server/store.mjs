@@ -206,6 +206,10 @@ function defaultChatSettings() {
     cloudModelCatalog: [],
     localModelCatalog: [],
     cloudProviderCatalog: [],
+    /** 已在聊天区启用的云供应商 ID */
+    chatEnabledCloudProviders: [],
+    /** 已在聊天区启用的本地模型 ID */
+    chatEnabledLocalModels: [],
     tokenPricing: {},
     /** 个人 fork：push 与个人 pull 共用（origin） */
     personalGithubRepo: '',
@@ -355,6 +359,31 @@ export function clearWorkspaceHistory() {
   return saveWorkspaceHistoryEntries([])
 }
 
+function normalizeStringList(raw) {
+  if (!Array.isArray(raw)) return []
+  return [...new Set(raw.map((v) => String(v || '').trim()).filter(Boolean))]
+}
+
+function migrateChatEnabledFields(merged) {
+  let chatEnabledCloudProviders = normalizeStringList(merged.chatEnabledCloudProviders)
+  let chatEnabledLocalModels = normalizeStringList(merged.chatEnabledLocalModels)
+
+  if (!chatEnabledCloudProviders.length && !chatEnabledLocalModels.length) {
+    if (merged.orchestrationMode === 'local-mcp') {
+      const pick =
+        String(merged.model || '').trim() ||
+        String(merged.localOllamaModel || '').trim() ||
+        String(merged.localModelCatalog?.[0] || '').trim()
+      if (pick) chatEnabledLocalModels = [pick]
+    } else {
+      const providerIds = normalizeStringList(merged.cloudProviderCatalog)
+      if (providerIds.length) chatEnabledCloudProviders = [providerIds[0]]
+    }
+  }
+
+  return { chatEnabledCloudProviders, chatEnabledLocalModels }
+}
+
 export function loadChatSettings() {
   const defaults = defaultChatSettings()
   try {
@@ -370,7 +399,8 @@ export function loadChatSettings() {
         projectDb.saveKv(db(), KV.chatSettings, { ...data, localAgentBasename: '' })
       }
     }
-    return merged
+    const enabled = migrateChatEnabledFields(merged)
+    return { ...merged, ...enabled }
   } catch {
     return defaults
   }
@@ -415,6 +445,12 @@ export function saveChatSettings(body) {
     cloudProviderCatalog: Array.isArray(body?.cloudProviderCatalog)
       ? [...new Set(body.cloudProviderCatalog.map((id) => String(id || '').trim()).filter(Boolean))]
       : cur.cloudProviderCatalog || [],
+    chatEnabledCloudProviders: Array.isArray(body?.chatEnabledCloudProviders)
+      ? normalizeStringList(body.chatEnabledCloudProviders)
+      : cur.chatEnabledCloudProviders || [],
+    chatEnabledLocalModels: Array.isArray(body?.chatEnabledLocalModels)
+      ? normalizeStringList(body.chatEnabledLocalModels)
+      : cur.chatEnabledLocalModels || [],
     personalGithubRepo:
       typeof body?.personalGithubRepo === 'string'
         ? body.personalGithubRepo.trim().slice(0, 500)

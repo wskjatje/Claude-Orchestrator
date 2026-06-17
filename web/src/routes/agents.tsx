@@ -19,6 +19,7 @@ import {
 } from "@/lib/ui-copy";
 import { agentStemFromBasename } from "@/lib/agent-basename";
 import { resolveAgentDisplayName } from "@/lib/agent-display-name";
+import { AgentModelPicker } from "@/components/chat-enabled-model-picker";
 import { loadChatModelPools, type ModelCatalogPools } from "@/lib/model-catalog";
 import {
   buildDefaultAgentMarkdown,
@@ -990,37 +991,20 @@ function AgentEditorDrawer({
                     <label className="mb-1 flex items-center gap-1 text-[11.5px] font-medium text-foreground/80">
                       <Brain className="h-3 w-3 text-muted-foreground" /> 模型
                     </label>
-                    <select
+                    <AgentModelPicker
+                      cloudModels={modelPools.cloudModels}
+                      localModels={modelPools.localModels}
                       value={modelValue}
-                      onChange={(e) => onPatchMeta({ model: e.target.value })}
-                      className="h-9 w-full rounded-lg border border-border bg-surface-elevated px-2 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                    >
-                      <option value="inherit">inherit（跟随聊天所选模型）</option>
-                      {modelPools.cloudModels.length > 0 ? (
-                        <optgroup label="云端 · 模型与连接">
-                          {modelPools.cloudModels.map((m) => (
-                            <option key={`cloud:${m}`} value={m}>{m}</option>
-                          ))}
-                        </optgroup>
-                      ) : null}
-                      {modelPools.localModels.length > 0 ? (
-                        <optgroup label="本地 · 模型与连接">
-                          {modelPools.localModels.map((m) => (
-                            <option key={`local:${m}`} value={m}>{m}</option>
-                          ))}
-                        </optgroup>
-                      ) : null}
-                      {customModel ? (
-                        <optgroup label="当前文件">
-                          <option value={customModel}>{customModel}</option>
-                        </optgroup>
-                      ) : null}
-                    </select>
-                    {poolsEmpty ? (
-                      <p className="mt-1 text-[10.5px] text-muted-foreground">
-                        请先在「模型与连接」中添加模型
-                      </p>
-                    ) : null}
+                      onChange={(next) => onPatchMeta({ model: next })}
+                      customModel={customModel}
+                      emptyHint={
+                        poolsEmpty ? (
+                          <p className="mt-1 text-[10.5px] text-muted-foreground">
+                            请先在「模型与连接」中启用模型
+                          </p>
+                        ) : null
+                      }
+                    />
                   </div>
                 </div>
 

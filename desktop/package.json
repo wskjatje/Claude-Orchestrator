@@ -60,7 +60,8 @@
       "category": "public.app-category.developer-tools",
       "icon": "assets/icon.png",
       "target": ["dmg", "zip"],
-      "hardenedRuntime": true,
+      "identity": null,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false
     },
     "dmg": {
