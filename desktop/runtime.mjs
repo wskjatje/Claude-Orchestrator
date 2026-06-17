@@ -41,6 +41,9 @@ async function waitUrl(url, attempts = 120, ms = 250) {
   return false
 }
 
+/** @type {string[]} */
+let bridgeLogTail = []
+
 function spawnBackendNode(scriptAbs, envExtra = {}) {
   const paths = getPackagedBackendPaths()
   const { userData, projectRoot } = ensureUserProjectRoot()
@@ -53,19 +56,25 @@ function spawnBackendNode(scriptAbs, envExtra = {}) {
       NODE_PATH: nodePath,
       CLAUDE_ORCHESTRATOR_USER_DATA: userData,
       CLAUDE_ORCHESTRATOR_PROJECT_ROOT: projectRoot,
-      MCP_STARTUP_HEALTH: 'immediate',
+      MCP_STARTUP_HEALTH: 'defer',
       ...envExtra,
     },
     cwd: paths.serverDir,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
-  child.stdout?.on('data', (buf) => {
-    process.stdout.write(buf)
-  })
-  child.stderr?.on('data', (buf) => {
-    process.stderr.write(buf)
-  })
+  const appendLog = (buf) => {
+    const text = String(buf)
+    process.stderr.write(text)
+    for (const line of text.split('\n')) {
+      const t = line.trim()
+      if (t) bridgeLogTail.push(t)
+      if (bridgeLogTail.length > 24) bridgeLogTail.shift()
+    }
+  }
+
+  child.stdout?.on('data', appendLog)
+  child.stderr?.on('data', appendLog)
 
   children.push(child)
   return child
@@ -88,7 +97,12 @@ export async function startPackagedRuntime() {
   const bridgeOk = await waitUrl('http://127.0.0.1:18790/health')
   if (!bridgeOk) {
     stopPackagedRuntime()
-    throw new Error('本机 Bridge 未能在 18790 端口就绪')
+    const hint = bridgeLogTail.slice(-3).join('\n')
+    throw new Error(
+      hint.includes('NODE_MODULE_VERSION') || hint.includes('better-sqlite3')
+        ? '本机服务组件与当前应用版本不匹配，请重新下载并安装最新安装包。'
+        : '本机服务未能启动，请退出后重试；若仍失败请重新安装应用。',
+    )
   }
 
   spawnBackendNode(path.join(paths.serverDir, 'packaged-ui-server.mjs'), {
@@ -100,7 +114,7 @@ export async function startPackagedRuntime() {
   const uiOk = await waitUrl('http://127.0.0.1:5188/')
   if (!uiOk) {
     stopPackagedRuntime()
-    throw new Error('UI 未能在 5188 端口就绪')
+    throw new Error('界面服务未能启动，请退出应用后重试。')
   }
 
   started = true

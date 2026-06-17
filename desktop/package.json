@@ -11,7 +11,7 @@
     "start": "electron .",
     "dev": "node run-dev.mjs",
     "pack": "node ../scripts/pack-desktop.mjs",
-    "dist": "node ../scripts/pack-desktop.mjs"
+    "dist": "electron-builder --mac"
   },
   "devDependencies": {
     "electron": "^35.0.0",

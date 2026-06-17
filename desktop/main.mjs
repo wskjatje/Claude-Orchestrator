@@ -52,10 +52,7 @@ function createWindow() {
     .then((url) => mainWindow?.loadURL(url))
     .catch((err) => {
       const msg = err instanceof Error ? err.message : String(err)
-      dialog.showErrorBox(
-        'Claude Orchestrator 启动失败',
-        `${msg}\n\n开发模式请先运行：npm run desktop\n打包版请重新安装应用。`,
-      )
+      dialog.showErrorBox('Claude Orchestrator 无法启动', `${msg}\n\n若刚更新过安装包，请确认已安装最新版 .dmg。`)
       app.quit()
     })
 

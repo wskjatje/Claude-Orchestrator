@@ -34,7 +34,24 @@ if (!fs.existsSync(path.join(WEB_DIST, 'index.html'))) {
 }
 
 run('npm', ['run', 'desktop:install'])
-run('npm', ['run', 'dist'], { cwd: DESKTOP })
+run('node', ['scripts/rebuild-native-for-electron.mjs'])
+
+const builderArgs = process.platform === 'darwin'
+  ? ['--mac']
+  : process.platform === 'win32'
+    ? ['--win']
+    : ['--linux']
+console.log('\n> electron-builder', builderArgs.join(' '), '(desktop/)\n')
+const builder = spawnSync(
+  process.platform === 'win32' ? 'npx.cmd' : 'npx',
+  ['electron-builder', ...builderArgs],
+  { cwd: DESKTOP, stdio: 'inherit', env: process.env },
+)
+if (builder.status !== 0) {
+  process.exit(builder.status ?? 1)
+}
+
+run('node', ['scripts/restore-dev-native-modules.mjs'])
 
 const releaseDir = path.join(DESKTOP, 'release')
 console.log('\n✓ 打包完成。安装包目录：')

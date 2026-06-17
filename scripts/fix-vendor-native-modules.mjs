@@ -14,6 +14,12 @@ const cadRoot = path.join(root, 'server', 'vendor', 'cad')
 const sqlitePkg = path.join(cadRoot, 'node_modules', 'better-sqlite3')
 const require = createRequire(import.meta.url)
 
+function probeBetterSqlite3() {
+  const Database = require(sqlitePkg)
+  const db = new Database(':memory:')
+  db.close()
+}
+
 function rebuildBetterSqlite3(reason) {
   console.log(`[fix-vendor-native] ${reason} → npm rebuild better-sqlite3 (Node ${process.version})`)
   const result = spawnSync(
@@ -31,7 +37,7 @@ if (!fs.existsSync(sqlitePkg)) {
 }
 
 try {
-  require(sqlitePkg)
+  probeBetterSqlite3()
   console.log('[fix-vendor-native] better-sqlite3 OK')
 } catch (err) {
   const message = err instanceof Error ? err.message : String(err)
@@ -40,6 +46,6 @@ try {
     throw err
   }
   rebuildBetterSqlite3('ABI 不匹配')
-  require(sqlitePkg)
+  probeBetterSqlite3()
   console.log('[fix-vendor-native] better-sqlite3 rebuilt OK')
 }

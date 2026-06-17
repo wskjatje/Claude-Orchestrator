@@ -1,7 +1,7 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { EMPTY_CHAT_SEARCH } from "@/lib/chat-route-search";
 
-import appCss from "../styles.css?url";
+import "../styles.css";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { DesktopHydrationProvider } from "@/hooks/use-desktop-ready";
 import { OrchestrationExecutionProvider } from "@/hooks/use-orchestration-execution";
@@ -56,10 +56,6 @@ export const Route = createRootRoute({
         rel: "icon",
         href: "/favicon.png",
         type: "image/png",
-      },
-      {
-        rel: "stylesheet",
-        href: appCss,
       },
     ],
   }),

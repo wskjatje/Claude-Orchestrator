@@ -19,7 +19,7 @@ const execFileAsync = promisify(execFile)
 
 export const DEFAULT_UPSTREAM_REPO = 'https://github.com/anthropics/claude-code.git'
 
-/** Never stage these when pushing to a personal fork (local deps / runtime / private data). */
+/** Never stage these when pushing to a personal fork (local deps / runtime / private data / build artifacts). */
 const PUSH_EXCLUDE_PATHS = [
   '.claudecode',
   '.tmp',
@@ -27,9 +27,13 @@ const PUSH_EXCLUDE_PATHS = [
   'server/vendor',
   'web/node_modules',
   'web/dist',
+  'web/dist-electron',
   'web/.env',
   'web/.wrangler',
   'web/.tanstack',
+  'desktop/node_modules',
+  'desktop/release',
+  'desktop/out',
   '.DS_Store',
 ]
 

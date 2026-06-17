@@ -10,6 +10,12 @@ server/vendor/
 # Web UI (chatter-page-polish)
 web/node_modules/
 web/dist/
+web/dist-electron/
 web/.env
 web/.wrangler/
 web/.tanstack/
+
+# Desktop packaging (build locally; do not push)
+desktop/node_modules/
+desktop/release/
+desktop/out/

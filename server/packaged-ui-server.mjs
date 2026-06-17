@@ -80,6 +80,13 @@ const server = http.createServer((req, res) => {
     return
   }
 
+  const ext = path.extname(url.split('?')[0]).toLowerCase()
+  if (ext && ext !== '.html') {
+    res.writeHead(404)
+    res.end('not found')
+    return
+  }
+
   const index = path.join(STATIC_DIR, 'index.html')
   if (fs.existsSync(index)) {
     sendFile(res, index)
