@@ -68,8 +68,9 @@ function spawnBackendNode(scriptAbs, envExtra = {}) {
     process.stderr.write(text)
     for (const line of text.split('\n')) {
       const t = line.trim()
-      if (t) bridgeLogTail.push(t)
-      if (bridgeLogTail.length > 24) bridgeLogTail.shift()
+      if (!t || t.length > 800) continue
+      bridgeLogTail.push(t)
+      if (bridgeLogTail.length > 48) bridgeLogTail.shift()
     }
   }
 
@@ -97,10 +98,14 @@ export async function startPackagedRuntime() {
   const bridgeOk = await waitUrl('http://127.0.0.1:18790/health')
   if (!bridgeOk) {
     stopPackagedRuntime()
-    const hint = bridgeLogTail.slice(-3).join('\n')
+    const hint = bridgeLogTail.join('\n')
+    const nativeMismatch =
+      /NODE_MODULE_VERSION|ERR_DLOPEN_FAILED|was compiled against a different Node\.js version|better-sqlite3/i.test(
+        hint,
+      )
     throw new Error(
-      hint.includes('NODE_MODULE_VERSION') || hint.includes('better-sqlite3')
-        ? '本机服务组件与当前应用版本不匹配，请重新下载并安装最新安装包。'
+      nativeMismatch
+        ? '本机服务组件与当前应用版本不匹配（数据库 native 模块 ABI 错误），请在本机重新执行 npm run desktop:pack 生成并安装最新 .dmg。'
         : '本机服务未能启动，请退出后重试；若仍失败请重新安装应用。',
     )
   }

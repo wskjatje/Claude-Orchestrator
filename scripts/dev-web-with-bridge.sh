@@ -79,6 +79,7 @@ trigger_mcp_startup_health() {
 }
 
 start_bridge
+free_port 5188
 npm run web:dev &
 VITE_PID=$!
 echo "[dev] Vite PID ${VITE_PID}"

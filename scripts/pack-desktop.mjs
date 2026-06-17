@@ -52,6 +52,7 @@ if (builder.status !== 0) {
 }
 
 if (process.platform === 'darwin') {
+  run('node', ['scripts/verify-packaged-native.mjs'])
   run('node', ['scripts/adhoc-sign-desktop-mac.mjs'])
 }
 
