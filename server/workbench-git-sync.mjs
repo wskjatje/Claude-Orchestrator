@@ -5,7 +5,6 @@ import { promisify } from 'node:util'
 import { PROJECT_ROOT } from './paths.mjs'
 import {
   loadChatSettings,
-  resetPersonalWorkbenchData,
   saveChatSettings,
 } from './store.mjs'
 import { exportPersonalGithubArtifacts } from './workbench-git-export.mjs'
@@ -657,18 +656,12 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
   const identity = await ensureGitIdentity(settings)
   if (!identity.ok) return { ok: false, error: identity.error, combined: identity.error }
 
-  const cleared = resetPersonalWorkbenchData()
-  const clearedNote = cleared.cleared?.length
-    ? `已清除本地敏感数据：${cleared.cleared.join('、')}。`
-    : '已清除本地敏感数据。'
-
   const exported = exportPersonalGithubArtifacts()
   if (!exported.ok) {
     return {
       ok: false,
       error: exported.error || '导出 Agent/Skill/MCP 失败',
-      combined: [clearedNote, exported.error].filter(Boolean).join('\n\n'),
-      clearedConfig: true,
+      combined: exported.error,
       personalUrl: ensure.url,
     }
   }
@@ -685,8 +678,7 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     return {
       ok: false,
       error: secretScan.error,
-      combined: [clearedNote, exportNote, secretScan.error].filter(Boolean).join('\n\n'),
-      clearedConfig: true,
+      combined: [exportNote, secretScan.error].filter(Boolean).join('\n\n'),
       sensitivePaths: secretScan.sensitivePaths,
       personalUrl: ensure.url,
     }
@@ -738,9 +730,7 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
       ok: true,
       pushed: false,
       nothingToCommit: true,
-      clearedConfig: true,
-      clearedItems: cleared.cleared,
-      combined: `${clearedNote}\n${exportNote}\n没有需要提交的变更，且已与个人仓库同步。`,
+      combined: `${exportNote}\n没有需要提交的变更，且已与个人仓库同步。`.trim(),
       personalUrl: ensure.url,
     }
   }
@@ -749,11 +739,9 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     ok: true,
     pushed: true,
     forcePushed: true,
-    clearedConfig: true,
-    clearedItems: cleared.cleared,
     branch,
     personalUrl: ensure.url,
-    combined: [clearedNote, exportNote, forceNote, history.unshallowed ? history.combined : '', commitLog, push.combined]
+    combined: [exportNote, forceNote, history.unshallowed ? history.combined : '', commitLog, push.combined]
       .filter(Boolean)
       .join('\n'),
   }

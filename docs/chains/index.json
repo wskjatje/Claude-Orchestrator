@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-06-17T00:33:41.529Z",
+  "exportedAt": "2026-06-17T00:47:35.878Z",
   "activeChainId": null,
   "chains": [
     {
@@ -170,14 +170,6 @@
       "category": "custom",
       "enabled": true,
       "stepCount": 45
-    },
-    {
-      "id": "chain-mqfx75l3-fx2z3",
-      "name": "WBS · docs/wbs.md",
-      "description": "WBS 来源：docs/wbs.md · 1 步",
-      "category": "custom",
-      "enabled": true,
-      "stepCount": 1
     }
   ]
 }

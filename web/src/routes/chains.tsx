@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
 import {
   Workflow,
@@ -180,7 +180,6 @@ function ChainsPage() {
   const [listErr, setListErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<CategoryFilter>("全部");
-  const wbsAutoCatRef = useRef(false);
 
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
@@ -245,16 +244,6 @@ function ChainsPage() {
   }, [urlQ]);
 
   useEffect(() => {
-    if (wbsAutoCatRef.current || !hasDesktopApi || items.length === 0) return;
-    if (q.trim()) return;
-    const hasWbs = items.some(isWbsWorkspaceChain);
-    if (hasWbs) {
-      wbsAutoCatRef.current = true;
-      setCat("自定义");
-    }
-  }, [hasDesktopApi, items, q]);
-
-  useEffect(() => {
     if (!hasDesktopApi) return;
     const api = getDesktop();
     const off = api?.onOrchestrationChainStatus?.(() => {
@@ -288,11 +277,6 @@ function ChainsPage() {
     });
     return sortSavedChainsForDisplay(filtered, activeChainId);
   }, [items, cat, q, activeChainId]);
-
-  const wbsWorkspaceChains = useMemo(
-    () => filteredSaved.filter(isWbsWorkspaceChain),
-    [filteredSaved],
-  );
 
   const syncedOfficialTemplateIds = useMemo(
     () =>
@@ -629,14 +613,6 @@ function ChainsPage() {
             ))}
           </div>
         </div>
-
-        {wbsWorkspaceChains.length > 0 && !q.trim() ? (
-          <div className="mb-3 rounded-lg border border-sky-400/35 bg-sky-500/8 px-3 py-2 text-[12px] leading-relaxed text-sky-950 dark:text-sky-100">
-            已找到 <strong>{wbsWorkspaceChains.length}</strong> 条工作区 WBS 任务链（如{" "}
-            <strong>{wbsWorkspaceChains[0]?.name}</strong>），已排在列表最前。若仍看不到，请选分类{" "}
-            <strong>自定义</strong> 或搜索 <strong>WBS</strong>。
-          </div>
-        ) : null}
 
         {unifiedList.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border py-16 text-center">

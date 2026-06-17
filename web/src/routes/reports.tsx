@@ -60,6 +60,25 @@ function shiftDate(iso: string, delta: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+function formatUsageDateLabel(iso: string | null | undefined): string | null {
+  const raw = String(iso || "").trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const t = Date.parse(raw);
+  if (!Number.isFinite(t)) return null;
+  const d = new Date(t);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function agentCardUsageDate(meta: AgentExecRegistryEntry | undefined): string {
+  if (!meta) return "未使用";
+  if (meta.status === "working") {
+    return formatUsageDateLabel(meta.startedAt) ?? formatUsageDateLabel(meta.lastExecAt) ?? "未使用";
+  }
+  return formatUsageDateLabel(meta.lastExecAt) ?? "未使用";
+}
+
 function diskItemsToRows(
   items: {
     basename: string;
@@ -535,7 +554,7 @@ function AgentDailyReportsPage() {
                           </div>
                         </div>
                         <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5 text-[11px]">
-                          <span className="text-muted-foreground">{date}</span>
+                          <span className="text-muted-foreground">{agentCardUsageDate(meta)}</span>
                           <span
                             className={cn(
                               "font-medium",

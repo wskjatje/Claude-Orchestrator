@@ -72,7 +72,7 @@ export const SETTINGS_TAB_HINT = {
 export const GIT_PUSH_HINT = "推送：本机内容上传到 GitHub，会直接更新远程。";
 
 export const GIT_PUSH_HINT_DETAIL =
-  "无需先拉取。上方说明可选，留空也会推送；会一并同步 Agent、Skill、任务链与 MCP 配置。";
+  "无需先拉取。上方说明可选，留空也会推送；会一并同步 Agent、Skill、任务链与 MCP 配置。本地配置、日志与会话不会被删除，也不会上传到 GitHub。";
 
 export const GIT_DEPLOY_HINT = "部署到本地：从 GitHub 取回编排配置并写入本机。";
 

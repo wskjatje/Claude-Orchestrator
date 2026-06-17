@@ -478,17 +478,11 @@ export const handlers = {
 
   'workbench-git:pushPersonal': async (args) => {
     const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
-    const r = await pushClaudeCodeToPersonalGithub({
+    return pushClaudeCodeToPersonalGithub({
       reason: body.reason,
       message: body.message,
       personalGithubRepo: body.personalGithubRepo,
     })
-    if (r.clearedConfig) {
-      broadcast('chat-settings:changed', {})
-      broadcast('chat-sessions:changed', {})
-      broadcast('workspace:changed', { workspace: null })
-    }
-    return r
   },
 
   'workbench-git:saveGithubSettings': async (args) => {

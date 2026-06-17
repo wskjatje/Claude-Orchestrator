@@ -440,7 +440,7 @@ export function saveChatSettings(body) {
   return next
 }
 
-/** 推送到个人 GitHub 前清空本地敏感数据（保留 GitHub 身份与 CLI 路径） */
+/** 退出登录 / 重置本地工作台数据（推送 GitHub 不会调用） */
 export function resetPersonalWorkbenchData() {
   const cur = loadChatSettings()
   const defaults = defaultChatSettings()

@@ -248,7 +248,7 @@ function exportOrchestrationChains() {
 
 /**
  * 推送个人 GitHub 前：将 ~/.claude/agents、skills、任务链与脱敏 MCP 写入仓库可提交路径。
- * 本地模型/API/会话/日志/项目记录等由 resetPersonalWorkbenchData 清空，.claudecode 仍不入库。
+ * 本地配置、日志、会话等仍保留在本机；.claudecode 等路径由推送排除列表拦截，不会进入 GitHub。
  */
 export function exportPersonalGithubArtifacts() {
   ensureDir(AGENTS_DEST)
