@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const cadRoot = path.join(root, 'server', 'vendor', 'cad')
 const sqlitePkg = path.join(cadRoot, 'node_modules', 'better-sqlite3')
+const sqliteBinding = path.join(sqlitePkg, 'build', 'Release', 'better_sqlite3.node')
 const require = createRequire(import.meta.url)
 
 function probeBetterSqlite3() {
@@ -32,7 +33,25 @@ function rebuildBetterSqlite3(reason) {
   }
 }
 
+function shouldRebuildBetterSqlite3(err) {
+  if (!fs.existsSync(sqliteBinding)) return true
+  const message = err instanceof Error ? err.message : String(err)
+  const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : ''
+  if (code === 'ERR_DLOPEN_FAILED') return true
+  if (message.includes('NODE_MODULE_VERSION')) return true
+  if (message.includes('Could not locate the bindings file')) return true
+  if (message.includes('was compiled against a different Node.js version')) return true
+  return false
+}
+
 if (!fs.existsSync(sqlitePkg)) {
+  process.exit(0)
+}
+
+if (!fs.existsSync(sqliteBinding)) {
+  rebuildBetterSqlite3('缺少 native 绑定文件')
+  probeBetterSqlite3()
+  console.log('[fix-vendor-native] better-sqlite3 rebuilt OK')
   process.exit(0)
 }
 
@@ -40,12 +59,10 @@ try {
   probeBetterSqlite3()
   console.log('[fix-vendor-native] better-sqlite3 OK')
 } catch (err) {
-  const message = err instanceof Error ? err.message : String(err)
-  const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : ''
-  if (code !== 'ERR_DLOPEN_FAILED' && !message.includes('NODE_MODULE_VERSION')) {
+  if (!shouldRebuildBetterSqlite3(err)) {
     throw err
   }
-  rebuildBetterSqlite3('ABI 不匹配')
+  rebuildBetterSqlite3('ABI 不匹配或绑定缺失')
   probeBetterSqlite3()
   console.log('[fix-vendor-native] better-sqlite3 rebuilt OK')
 }

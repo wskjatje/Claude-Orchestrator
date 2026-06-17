@@ -45,8 +45,8 @@ start_bridge() {
   for port in 18790 18789; do
     free_port "$port"
   done
-  # --watch：server/*.mjs 变更时自动重启，避免「未知 RPC」
-  node --watch server/index.mjs &
+  # --import：每次 watch 重启前修复 better-sqlite3 ABI（打包后常见 133 vs 127）
+  node --import ./scripts/ensure-dev-native-preload.mjs --watch server/index.mjs &
   echo $! >"$BRIDGE_PID_FILE"
   echo "[dev] Bridge PID $(cat "$BRIDGE_PID_FILE") (watch mode)"
 }
