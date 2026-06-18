@@ -65,6 +65,66 @@ function modelSupportsVision(name) {
 }
 
 /**
+ * Claude Code / Cursor：官方 Anthropic 与部分第三方 vision 模型可 inline 传图；
+ * DeepSeek Anthropic 兼容端点不支持。
+ * @param {string} modelId
+ * @param {{ ANTHROPIC_BASE_URL?: string }} [env]
+ */
+function modelSupportsClaudeCodeVision(modelId, env = {}) {
+  const base = String(env.ANTHROPIC_BASE_URL || '').toLowerCase()
+  const m = String(modelId || '').trim().toLowerCase()
+  if (/deepseek\.com/.test(base)) return false
+  if (/^deepseek-|^qwen(?!.*vl)/i.test(m)) return false
+  if (!base || /api\.anthropic\.com|claude\.ai/.test(base)) return true
+  if (/generativelanguage|googleapis\.com.*gemini|google.*ai/.test(base)) return true
+  return /claude|sonnet|opus|haiku|gemini|gpt-4o|gpt-4\.1|gpt-5|vision|vl/i.test(m)
+}
+
+/**
+ * Anthropic Messages API content blocks（Claude Code stream-json stdin）
+ * @param {string} text
+ * @param {{ kind?: string; dataUrl?: string; mime?: string }[]} attachments
+ */
+function buildAnthropicContentBlocks(text, attachments) {
+  /** @type {object[]} */
+  const blocks = []
+  const t = String(text || '').trim()
+  if (t) blocks.push({ type: 'text', text: t })
+  for (const a of attachments || []) {
+    if (a?.kind !== 'image') continue
+    const parsed = dataUrlToBuffer(a.dataUrl || '')
+    if (!parsed?.buffer?.length) continue
+    blocks.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: parsed.mime || a.mime || 'image/png',
+        data: parsed.buffer.toString('base64'),
+      },
+    })
+  }
+  if (!blocks.length) blocks.push({ type: 'text', text: ' ' })
+  return blocks
+}
+
+/**
+ * Claude Code `--input-format stream-json` 单轮 user 消息（Cursor 式 inline vision）
+ * @param {string} text
+ * @param {{ kind?: string; dataUrl?: string; mime?: string }[]} attachments
+ */
+function buildStreamJsonUserLine(text, attachments) {
+  return (
+    JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: buildAnthropicContentBlocks(text, attachments),
+      },
+    }) + '\n'
+  )
+}
+
+/**
  * @param {string} base
  */
 async function listOllamaModelTags(base) {
@@ -113,11 +173,19 @@ async function describeImagesWithOllama(ollamaBase, visionModel, attachments) {
       ],
     }
     const url = `${String(ollamaBase || 'http://127.0.0.1:11434').replace(/\/$/, '')}/api/chat`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 120_000)
+    let res
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
     const text = await res.text()
     if (!res.ok) {
       parts.push(`【附图 ${idx}】视觉解析失败：HTTP ${res.status}`)
@@ -205,4 +273,7 @@ module.exports = {
   enrichUserLineForImages,
   attachmentImagesForOllama,
   modelSupportsVision,
+  modelSupportsClaudeCodeVision,
+  buildAnthropicContentBlocks,
+  buildStreamJsonUserLine,
 }

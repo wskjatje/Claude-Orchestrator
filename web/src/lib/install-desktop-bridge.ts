@@ -162,6 +162,7 @@ export function installDesktopBridge() {
     readReferenceFilesAsImageAttachments: (filePaths) =>
       rpc('reference-files:readAsImageAttachments', filePaths),
     saveChatImageAttachments: (attachments) => rpc('chat:saveImageAttachments', attachments),
+    enrichChatUserLineForImages: (payload) => rpc('chat:enrichUserLineForImages', payload),
     openExternal: (url) => rpc('shell:openExternal', url),
     restartClaudeCodeDesktop: () => rpc('claude-code:restartDesktop'),
     claudeCodeCliStatus: () => rpc('claude-code:cliStatus'),

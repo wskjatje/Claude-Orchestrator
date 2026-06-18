@@ -1,8 +1,10 @@
-import { ArrowUp, Paperclip, StopCircle, X } from "lucide-react";
-import type { ClipboardEvent, RefObject } from "react";
+import { ArrowUp, Paperclip, Square, X } from "lucide-react";
+import { useState, type ClipboardEvent, type DragEvent, type RefObject } from "react";
 import { ChatAgentSelector } from "@/components/chat-agent-selector";
 import { ChatModelSelector, type ModelPick } from "@/components/chat-model-selector";
+import { ComposerFileAttachments, type PendingFileEntry } from "@/components/composer-file-attachments";
 import { ComposerTerminalAttachments } from "@/components/composer-terminal-attachments";
+import { ImageLightbox } from "@/components/image-lightbox";
 import { cn } from "@/lib/utils";
 import type { PendingTerminalSnippet } from "@/lib/chat-terminal-paste";
 import type { UserImageAttachment } from "@/lib/ollama-messages";
@@ -14,6 +16,8 @@ export type ChatComposerShellProps = {
   onSend: () => void;
   onStop: () => void;
   onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+  /** Cursor 式：拖拽文件/图片到 Composer */
+  onDropFiles?: (files: File[], cursor: number) => void;
   placeholder: string;
   disabled: boolean;
   workflowBusy: boolean;
@@ -21,6 +25,8 @@ export type ChatComposerShellProps = {
   canSend: boolean;
   pendingImages: (UserImageAttachment & { id: string })[];
   onRemoveImage: (id: string) => void;
+  pendingFiles: PendingFileEntry[];
+  onRemoveFile: (id: string) => void;
   pendingTerminalSnippets: PendingTerminalSnippet[];
   onRemoveTerminalSnippet: (id: string) => void;
   onPickFiles: (opts?: { onlyImages?: boolean }) => void;
@@ -46,6 +52,7 @@ export function ChatComposerShell({
   onSend,
   onStop,
   onPaste,
+  onDropFiles,
   placeholder,
   disabled,
   workflowBusy,
@@ -53,6 +60,8 @@ export function ChatComposerShell({
   canSend,
   pendingImages,
   onRemoveImage,
+  pendingFiles,
+  onRemoveFile,
   pendingTerminalSnippets,
   onRemoveTerminalSnippet,
   onPickFiles,
@@ -69,15 +78,58 @@ export function ChatComposerShell({
   variant = "dock",
 }: ChatComposerShellProps) {
   const inline = variant === "inline";
+  const [dragOver, setDragOver] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  const handleDragOver = (e: DragEvent) => {
+    if (!onDropFiles || disabled || workflowBusy) return;
+    if (!Array.from(e.dataTransfer.types).some((t) => t === "Files" || t === "application/x-moz-file")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e: DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDragOver(false);
+  };
+
+  const handleDrop = (e: DragEvent) => {
+    setDragOver(false);
+    if (!onDropFiles || disabled || workflowBusy) return;
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (!files.length) return;
+    const cursor = textareaRef.current?.selectionStart ?? input.length;
+    onDropFiles(files, cursor);
+  };
+
+  const hasAttachments = pendingImages.length > 0 || pendingFiles.length > 0;
 
   return (
     <div
       className={cn(
-        "chat-composer-cursor overflow-hidden rounded-xl border border-border/80 bg-background/80 shadow-sm transition focus-within:border-primary/35",
+        "chat-composer-cursor relative overflow-hidden rounded-xl border bg-background shadow-sm transition-all",
+        dragOver
+          ? "border-primary/60 ring-2 ring-primary/15"
+          : "border-border/80 focus-within:border-primary/35",
         editHistoryActive && "ring-1 ring-primary/20",
         inline && "chat-composer-cursor--inline",
       )}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
+      {/* Cursor 式拖拽高亮蒙层 */}
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-primary/5">
+          <div className="flex flex-col items-center gap-1.5 rounded-xl border-2 border-dashed border-primary/40 px-6 py-3">
+            <ArrowUp className="h-5 w-5 rotate-180 text-primary/60" />
+            <span className="text-[12px] font-medium text-primary/70">拖放图片或文件到此处</span>
+          </div>
+        </div>
+      )}
+
       {editHistoryActive ? (
         <div className="chat-composer-edit-banner flex items-center justify-between gap-2 border-b border-border/60 bg-muted/20 px-3 py-1.5 text-[11.5px] text-foreground">
           <span>{inline ? "编辑此提问 · 发送后将从此处重新对话" : "正在编辑历史消息 · 发送后将从此处重新对话"}</span>
@@ -92,19 +144,30 @@ export function ChatComposerShell({
         </div>
       ) : null}
 
-      <div className="chat-composer-body px-3 pt-2.5">
+      <div className={cn("chat-composer-body px-3", hasAttachments ? "pt-2.5" : "pt-3")}>
+        {/* 图片缩略图 — Cursor 风格：56×56，无文件名，X 在图片上方 */}
         {pendingImages.length > 0 ? (
-          <div className="mb-2 flex flex-wrap gap-2">
+          <div className="mb-2 flex flex-wrap gap-1.5">
             {pendingImages.map((img) => (
               <div
                 key={img.id}
-                className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border/70 bg-muted/20"
+                className="group/img relative shrink-0 cursor-pointer overflow-hidden rounded-md border border-border/60 bg-muted/10 transition-shadow hover:shadow-sm"
+                title={img.name || "图片"}
+                onClick={() => setLightboxSrc(img.dataUrl)}
               >
-                <img src={img.dataUrl} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={img.dataUrl}
+                  alt={img.name || ""}
+                  className="h-14 w-14 object-cover"
+                />
+                {/* 删除按钮 — Cursor 式：图片右上角半透明圆形 */}
                 <button
                   type="button"
-                  className="absolute right-0.5 top-0.5 rounded-full bg-background/90 p-0.5 opacity-0 shadow-sm transition group-hover:opacity-100"
-                  onClick={() => onRemoveImage(img.id)}
+                  className="absolute right-1 top-1 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-black/45 text-white/90 opacity-0 shadow transition hover:bg-black/65 group-hover/img:opacity-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveImage(img.id);
+                  }}
                   aria-label="移除图片"
                 >
                   <X className="h-3 w-3" />
@@ -114,9 +177,13 @@ export function ChatComposerShell({
           </div>
         ) : null}
 
+        {/* 非图片文件 chip — Cursor 式：带 File 图标的 pill */}
+        <ComposerFileAttachments files={pendingFiles} onRemove={onRemoveFile} className="mb-2" />
+
         <ComposerTerminalAttachments
           snippets={pendingTerminalSnippets}
           onRemove={onRemoveTerminalSnippet}
+          className="!px-0 !pt-0 !pb-0 mb-2"
         />
 
         <textarea
@@ -133,7 +200,7 @@ export function ChatComposerShell({
           placeholder={placeholder}
           rows={1}
           disabled={disabled}
-          className="scrollbar-thin box-border block w-full min-w-0 resize-none bg-transparent py-1.5 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground/75 disabled:opacity-60"
+          className="scrollbar-thin box-border block w-full min-w-0 resize-none bg-transparent py-1.5 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground/60 disabled:opacity-60"
           style={{ minHeight: "28px", maxHeight: inline ? "180px" : "220px" }}
         />
       </div>
@@ -159,7 +226,7 @@ export function ChatComposerShell({
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            title="添加文件或图片"
+            title="添加文件"
             disabled={!hasDesktopApi || workflowBusy}
             onClick={() => onPickFiles({ onlyImages: false })}
             className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-secondary/80 hover:text-foreground disabled:opacity-40"
@@ -174,7 +241,7 @@ export function ChatComposerShell({
               className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-destructive/40 bg-destructive/10 text-destructive transition hover:bg-destructive/15"
               title="停止"
             >
-              <StopCircle className="h-3.5 w-3.5" />
+              <Square className="h-3.5 w-3.5" fill="currentColor" />
             </button>
           ) : (
             <button
@@ -189,6 +256,12 @@ export function ChatComposerShell({
           )}
         </div>
       </div>
+
+      <ImageLightbox
+        src={lightboxSrc || ""}
+        open={Boolean(lightboxSrc)}
+        onClose={() => setLightboxSrc(null)}
+      />
     </div>
   );
 }

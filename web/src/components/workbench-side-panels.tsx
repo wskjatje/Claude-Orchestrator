@@ -24,18 +24,9 @@ export function WorkbenchLeftSidebar() {
   return (
     <div className="workbench-explorer-sidebar flex h-full min-h-0 flex-col border-r border-[var(--explorer-border)] bg-[var(--explorer-bg)]">
       <div className="explorer-panel-toolbar flex shrink-0 items-center border-b border-border">
-        <SideTabBtn active={tab === "files"} onClick={() => setTab("files")} icon={FolderTree} label="文件" />
+        <SideTabBtn active={tab === "files"} onClick={() => { setTab("files"); void ws.refreshFiles(); }} icon={FolderTree} label="文件" />
         <SideTabBtn active={tab === "git"} onClick={() => { setTab("git"); void ws.refreshShell(); }} icon={GitBranch} label="Git" />
         <SideTabBtn active={tab === "diff"} onClick={() => { setTab("diff"); void ws.refreshDiff(); }} icon={GitCompare} label="改动" />
-        <button
-          type="button"
-          onClick={() => void (tab === "files" ? ws.refreshFiles() : tab === "git" ? ws.refreshShell() : ws.refreshDiff())}
-          className="ml-auto mr-1 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-          title="刷新"
-          aria-label="刷新"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", ws.loadingFiles && tab === "files" ? "animate-spin" : "")} />
-        </button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {tab === "files" && <FileTreePanel />}
@@ -191,10 +182,15 @@ function ExplorerSection({
           {onRefresh ? (
             <button
               type="button"
-              onClick={onRefresh}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRefresh();
+              }}
               className="explorer-section-action"
-              title="刷新"
-              aria-label="刷新"
+              title="刷新文件树"
+              aria-label="刷新文件树"
+              disabled={refreshing}
             >
               <RefreshCw className={cn("h-3.5 w-3.5", refreshing ? "animate-spin" : "")} />
             </button>
@@ -202,7 +198,11 @@ function ExplorerSection({
           {onCollapseAll ? (
             <button
               type="button"
-              onClick={onCollapseAll}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onCollapseAll();
+              }}
               className="explorer-section-action"
               title="全部折叠"
               aria-label="全部折叠"

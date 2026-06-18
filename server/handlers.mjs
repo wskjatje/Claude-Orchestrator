@@ -285,10 +285,17 @@ export const handlers = {
   'claude-code:prompt': async (args) => {
     const p = args?.[0] || {}
     const requestId = typeof p.requestId === 'string' ? p.requestId.trim() : ''
+    const attachmentCount = Math.max(0, Number(p.attachmentCount) || 0)
+    const attachments = Array.isArray(p.attachments) ? p.attachments : []
+    const timeoutMs =
+      typeof p.timeoutMs === 'number' && p.timeoutMs >= 0 ? p.timeoutMs : undefined
     return runClaudeCodePrint({
       prompt: p.prompt,
       model: p.model,
       requestId: p.requestId,
+      timeoutMs,
+      attachmentCount: attachmentCount || attachments.length,
+      attachments,
       claudeSessionId: p.claudeSessionId,
       sessionName: p.sessionName,
       isNewClaudeSession: p.isNewClaudeSession,

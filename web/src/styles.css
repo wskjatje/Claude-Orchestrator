@@ -2143,6 +2143,10 @@
     display: block;
   }
 
+  .workbench-explorer-sidebar .explorer-section-actions {
+    opacity: 1;
+  }
+
   .workbench-explorer-sidebar .explorer-section-action {
     color: color-mix(in oklab, var(--sidebar-foreground) 60%, transparent);
   }

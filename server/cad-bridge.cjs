@@ -875,6 +875,23 @@ function createHandlers() {
       return chatImages.saveChatImageAttachments(workspaceDir, attachments)
     },
 
+    'chat:enrichUserLineForImages': async (args) => {
+      const payload = args?.[0] || {}
+      const settings = loadChatSettings()
+      const userLine = typeof payload.userLine === 'string' ? payload.userLine : ''
+      const attachments = Array.isArray(payload.userAttachments) ? payload.userAttachments : []
+      let orchestratorModel =
+        typeof payload.orchestratorModel === 'string' ? payload.orchestratorModel.trim() : ''
+      if (!orchestratorModel) orchestratorModel = String(settings.model || '').trim()
+      return chatImages.enrichUserLineForImages({
+        ollamaBase: settings.ollamaBase,
+        orchestratorModel,
+        visionModelHint: settings.localOllamaModel || '',
+        userLine,
+        attachments,
+      })
+    },
+
     'workspace:detectRunPlan': async (args) => {
       const payload = args?.[0] || {}
       const workspaceDir = loadWorkspace()

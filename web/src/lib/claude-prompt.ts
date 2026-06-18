@@ -27,6 +27,10 @@ export async function buildClaudeCodePrompt(
     userLine: string;
     userAttachments?: UserImageAttachment[];
     savedImagePaths?: string[];
+    /** Cursor 式：附图经 stream-json inline 送入 Claude Code，不再提示 Read 落盘 */
+    inlineVision?: boolean;
+    /** Claude Code --resume：历史已在 CLI 会话内，勿重复折叠 priorHistory */
+    sessionResume?: boolean;
     orchestration?: ClaudeOrchestrationHints;
     /** 与设置 `localAgentBasename` 同源；缺省按产品经理（product-manager） */
     localAgentBasename?: string | null;
@@ -98,21 +102,28 @@ export async function buildClaudeCodePrompt(
   if (opts.chainCatalogSnippet?.trim()) blocks.push(opts.chainCatalogSnippet.trim());
 
   for (const m of opts.priorHistory) {
+    if (opts.sessionResume) break;
     if (m.role !== "user" && m.role !== "assistant") continue;
     const tag = m.role === "user" ? "### 用户" : "### 助手";
     let body = m.content;
     if (m.role === "user" && m.attachments?.length) {
-      const names = m.attachments
-        .filter((a) => a?.kind === "image")
-        .map((a) => a.name || "image")
-        .join(", ");
-      body += `\n（本条含 ${m.attachments.length} 个图片附件${names ? `：${names}` : ""}；若已落盘可在 .claudecode/chat-images/ 查找。）`;
+      if (opts.inlineVision) {
+        body += `\n（本条含 ${m.attachments.length} 张截图，已作为 multimodal 附件随本轮一并送入模型。）`;
+      } else {
+        const names = m.attachments
+          .filter((a) => a?.kind === "image")
+          .map((a) => a.name || "image")
+          .join(", ");
+        body += `\n（本条含 ${m.attachments.length} 个图片附件${names ? `：${names}` : ""}；若已落盘可在 .claudecode/chat-images/ 查找。）`;
+      }
     }
     blocks.push(`${tag}\n${body}`);
   }
 
   let userBlock = opts.userLine;
-  if (opts.savedImagePaths?.length) {
+  if (opts.inlineVision) {
+    /* 图片由 Claude Code stream-json content blocks 直送模型，与 Cursor 一致 */
+  } else if (opts.savedImagePaths?.length) {
     userBlock += `\n\n【附图·已落盘】用户上传 ${opts.savedImagePaths.length} 张截图，工作区相对路径：\n${opts.savedImagePaths.map((p) => `- ${p}`).join("\n")}\n请使用 Read 工具读取上述图片并结合用户问题分析（例如 HTTP 404 页面、终端报错）；禁止声称无法查看图片。`;
   } else if (opts.userAttachments?.length) {
     const names = opts.userAttachments

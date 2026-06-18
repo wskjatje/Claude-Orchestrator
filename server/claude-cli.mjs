@@ -14,6 +14,7 @@ import {
 
 const require = createRequire(import.meta.url)
 const cloudProviders = require('./cloud-providers.cjs')
+const chatImages = require('./chat-images.cjs')
 
 /** @type {Map<string, import('node:child_process').ChildProcess>} */
 const active = new Map()
@@ -174,23 +175,33 @@ function friendlyClaudeError(raw, env, providerName = '') {
   return t
 }
 
-function timeoutHint(env, model, providerName = '') {
+function timeoutHint(env, model, providerName = '', attachmentCount = 0) {
   const base = String(env.ANTHROPIC_BASE_URL || '')
-  const modelId = String(model || '').trim()
   const who = providerName ? `供应商「${providerName}」` : '当前供应商'
+  const imageNote =
+    attachmentCount > 0
+      ? ` 您附带了 ${attachmentCount} 张截图：DeepSeek 等供应商不支持直接看图，若未用本机视觉模型预解析，Claude Code 会多次 Read 读盘，易触发超时。建议减少附图、在设置中配置 Ollama 视觉模型（如 qwen2.5vl），或改用「本地 MCP」模式。`
+      : ''
   if (base.includes(':3456') || /gemini/i.test(String(env.ANTHROPIC_DEFAULT_SONNET_MODEL || ''))) {
-    return ' Gemini/ccr 在配额不足(429)时会长时间重试；请检查 Google API 用量或更换供应商。'
+    return `${imageNote} Gemini/ccr 在配额不足(429)时会长时间重试；请检查 Google API 用量或更换供应商。`.trim()
   }
   if (/deepseek\.com/i.test(base)) {
     return (
-      ` 请在「设置 → 模型与连接」确认 ${who} 的 API 地址为 https://api.deepseek.com/anthropic，模型为 deepseek-v4-flash 或 deepseek-v4-pro。` +
+      `${imageNote} 请在「设置 → 模型与连接」确认 ${who} 的 API 地址为 https://api.deepseek.com/anthropic，模型为 deepseek-v4-flash 或 deepseek-v4-pro。` +
       ' 若 API 测试正常仍超时，多为 Agent 多轮或 MCP 连接过慢；可先发一句简单消息验证，或在设置中关闭离线 MCP。'
-    )
+    ).trim()
   }
   return (
-    ` 请在「设置 → 模型与连接」检查 ${who} 的 API 地址、Key 与模型 ID。` +
+    `${imageNote} 请在「设置 → 模型与连接」检查 ${who} 的 API 地址、Key 与模型 ID。` +
     ' 若直连正常仍超时，请检查 MCP 服务是否离线或 Agent 任务是否过长。'
-  )
+  ).trim()
+}
+
+function timeoutMsForRequest(env, timeoutMs, attachmentCount = 0) {
+  const base =
+    typeof timeoutMs === 'number' && timeoutMs >= 0 ? timeoutMs : defaultTimeoutMs(env)
+  if (!attachmentCount) return base
+  return Math.max(base, 300_000 + attachmentCount * 90_000)
 }
 
 /** 直连 Anthropic 兼容端点时快速探测，避免 Claude CLI 无效 Key/模型重试 180s */
@@ -253,6 +264,8 @@ export async function runClaudeCodePrint({
   model,
   requestId,
   timeoutMs,
+  attachmentCount,
+  attachments,
   claudeSessionId,
   sessionName,
   isNewClaudeSession,
@@ -294,7 +307,30 @@ export async function runClaudeCodePrint({
   const cliModel = resolveClaudeCliModel(model, env)
 
   const cwd = getWorkspaceCwd()
-  const args = ['-p', prompt.trim(), '--permission-mode', 'auto']
+  const imageAttachments = Array.isArray(attachments)
+    ? attachments.filter((a) => a?.kind === 'image' && a?.dataUrl)
+    : []
+  const imageCount = Math.max(
+    Math.max(0, Number(attachmentCount) || 0),
+    imageAttachments.length,
+  )
+  const useMultimodalInput = imageAttachments.length > 0
+
+  if (useMultimodalInput && !chatImages.modelSupportsClaudeCodeVision(model, claudeEnv)) {
+    const who = resolved.providerName || '当前供应商'
+    return {
+      ok: false,
+      error:
+        `${who} 的模型「${String(model || '').trim() || '默认'}」不支持图片输入（与 Cursor 相同：非视觉模型不可带图）。` +
+        ' 请切换到 Claude Sonnet / Gemini 等视觉模型，或改用「本地 MCP」+ Ollama 视觉模型（如 qwen2.5vl）。',
+      content: '',
+      aborted: false,
+    }
+  }
+
+  const args = useMultimodalInput
+    ? ['-p', '--permission-mode', 'auto', '--input-format', 'stream-json']
+    : ['-p', prompt.trim(), '--permission-mode', 'auto']
   if (cliModel) args.push('--model', cliModel)
   const useBare =
     process.env.WORKBENCH_CLAUDE_BARE === '1' ||
@@ -323,10 +359,8 @@ export async function runClaudeCodePrint({
     if (tagName) args.push('--name', tagName)
   }
 
-  const limit =
-    typeof timeoutMs === 'number' && timeoutMs >= 0
-      ? timeoutMs
-      : defaultTimeoutMs(env)
+  const imageCountForTimeout = imageCount
+  const limit = timeoutMsForRequest(env, timeoutMs, imageCountForTimeout)
 
   const rawModel = String(model || '').trim()
   const useExplicitModel =
@@ -344,9 +378,11 @@ export async function runClaudeCodePrint({
     return { ok: false, error: preflightError, content: '', aborted: false }
   }
 
-  const useStreaming = typeof onDelta === 'function'
+  const useStreaming = typeof onDelta === 'function' || useMultimodalInput
   if (useStreaming) {
     args.push('--output-format', 'stream-json', '--verbose', '--include-partial-messages')
+  } else if (useMultimodalInput) {
+    args.push('--output-format', 'stream-json', '--verbose')
   }
 
   return new Promise((resolve) => {
@@ -359,6 +395,9 @@ export async function runClaudeCodePrint({
         env,
         stdio: ['pipe', 'pipe', 'pipe'],
       })
+      if (useMultimodalInput) {
+        child.stdin?.write(chatImages.buildStreamJsonUserLine(prompt.trim(), imageAttachments))
+      }
       child.stdin?.end()
     } catch (e) {
       resolve({ ok: false, error: e.message, content: '', aborted: false })
@@ -424,7 +463,7 @@ export async function runClaudeCodePrint({
         code === 143 ||
         code === 137
       if (timedOut) {
-        const hint = timeoutHint(env, cliModel || model, resolved.providerName)
+        const hint = timeoutHint(env, cliModel || model, resolved.providerName, imageCountForTimeout)
         resolve({
           ok: false,
           content: out,

@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { CornerUpLeft, TerminalSquare } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat-markdown";
+import { ImageLightbox } from "@/components/image-lightbox";
 import {
   looksLikeMarkdown,
   looksLikeTerminalPaste,
@@ -56,6 +58,8 @@ export function ChatUserMessageBody({
           ]
         : [];
 
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
   const showTerminalBlock = Boolean(terminal) && !terminalSnippets?.length;
   const hasImages =
     attachments?.some((a) => a.kind === "image" && a.dataUrl.startsWith("data:")) ?? false;
@@ -94,7 +98,11 @@ export function ChatUserMessageBody({
             a.kind === "image" && a.dataUrl.startsWith("data:") ? (
               <div
                 key={idx}
-                className="chat-user-thumb shrink-0 overflow-hidden rounded-md border border-border/40"
+                className="chat-user-thumb shrink-0 cursor-pointer overflow-hidden rounded-md border border-border/40 transition hover:border-border/70 hover:shadow-sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightboxSrc(a.dataUrl);
+                }}
               >
                 <img
                   src={a.dataUrl}
@@ -149,6 +157,12 @@ export function ChatUserMessageBody({
           <CornerUpLeft className="h-3.5 w-3.5" />
         </button>
       ) : null}
+
+      <ImageLightbox
+        src={lightboxSrc || ""}
+        open={Boolean(lightboxSrc)}
+        onClose={() => setLightboxSrc(null)}
+      />
     </div>
   );
 }

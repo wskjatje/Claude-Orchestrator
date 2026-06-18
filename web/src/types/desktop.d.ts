@@ -498,6 +498,9 @@ export type DesktopApi = {
     claudeSessionId?: string
     sessionName?: string
     isNewClaudeSession?: boolean
+    attachmentCount?: number
+    timeoutMs?: number
+    attachments?: { kind: 'image'; name?: string; mime?: string; dataUrl: string }[]
   }) => Promise<{
     ok: boolean
     content?: string
@@ -548,6 +551,12 @@ export type DesktopApi = {
     mime?: string
     dataUrl: string
   }[]) => Promise<{ ok: boolean; paths?: string[]; error?: string }>
+  /** 附图预解析：DeepSeek 等不支持视觉时，用本机 Ollama 视觉模型写入文字描述 */
+  enrichChatUserLineForImages?: (payload: {
+    userLine: string
+    userAttachments: { kind: 'image'; name?: string; mime?: string; dataUrl: string }[]
+    orchestratorModel?: string
+  }) => Promise<{ userLine: string; images?: string[]; visionModel?: string | null }>
   openExternal: (url: string) => Promise<unknown>
   restartClaudeCodeDesktop: () => Promise<{ ok?: boolean; error?: string }>
   /** 检测本机 `claude` CLI 路径、版本、npm registry 最新版（仅 npm 分发说明） */

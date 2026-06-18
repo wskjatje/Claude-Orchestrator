@@ -29,6 +29,14 @@ import {
   useChatSessionRevision,
 } from "@/hooks/use-orchestration-execution";
 import { buildClaudeCodePrompt } from "@/lib/claude-prompt";
+import {
+  collectPriorUserAttachments,
+  mergeInlineAttachments,
+  modelSupportsChatVision,
+  normalizePendingImageFiles,
+  visionRequiredError,
+  CHAT_INLINE_IMAGE_MAX,
+} from "@/lib/chat-image-cursor";
 import { type PriorTurn, type UserImageAttachment } from "@/lib/ollama-messages";
 import {
   ingestWorkspaceWritesAndCollapseDisplay,
@@ -80,6 +88,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ChatComposerCursor } from "@/components/chat-composer-cursor";
 import type { ChatComposerShellProps } from "@/components/chat-composer-shell";
+import { type PendingFileEntry } from "@/components/composer-file-attachments";
 import { ChatMessagesPane } from "@/components/chat-messages-pane";
 import { useChatScroll } from "@/hooks/use-chat-scroll";
 import { useChatStream } from "@/hooks/use-chat-stream";
@@ -457,18 +466,21 @@ function ChatPage() {
   const attachInputRef = useRef<HTMLInputElement>(null);
   /** 输入框内待发送的图片（粘贴 / 选图），样式贴近 Cursor 附件条 */
   const [pendingImages, setPendingImages] = useState<(UserImageAttachment & { id: string })[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFileEntry[]>([]);
   const [pendingTerminalSnippets, setPendingTerminalSnippets] = useState<PendingTerminalSnippet[]>([]);
   const [editHistoryIndex, setEditHistoryIndex] = useState<number | null>(null);
   const editHistoryIndexRef = useRef<number | null>(null);
   const [editComposer, setEditComposer] = useState<{
     input: string;
     pendingImages: (UserImageAttachment & { id: string })[];
+    pendingFiles: PendingFileEntry[];
     pendingTerminalSnippets: PendingTerminalSnippet[];
   } | null>(null);
   const editComposerRef = useRef<typeof editComposer>(null);
   const sendPayloadOverrideRef = useRef<{
     text: string;
     pendingImages: (UserImageAttachment & { id: string })[];
+    pendingFiles: PendingFileEntry[];
     pendingTerminalSnippets: PendingTerminalSnippet[];
     editCutoff: number;
   } | null>(null);
@@ -485,6 +497,7 @@ function ChatPage() {
       {
         input: string;
         pendingImages: (UserImageAttachment & { id: string })[];
+        pendingFiles: PendingFileEntry[];
         pendingTerminalSnippets: PendingTerminalSnippet[];
       }
     >
@@ -521,11 +534,6 @@ function ChatPage() {
   const pickLocalFiles = useCallback(async (opts?: { onlyImages?: boolean }) => {
     const onlyImages = opts?.onlyImages ?? false;
     const api = getDesktop();
-    const appendPaths = (paths: string[]) => {
-      if (!paths.length) return;
-      const note = paths.map((p) => `[附件: ${p}]`).join("\n");
-      setInput((prev) => (prev.trim() ? `${prev.trim()}\n${note}` : note));
-    };
     if (api?.chooseReferenceFiles) {
       const r = await api.chooseReferenceFiles({ multiple: true, onlyImages });
       if (r.canceled || !r.filePaths.length) return;
@@ -533,22 +541,28 @@ function ChatPage() {
         const read = await api.readReferenceFilesAsImageAttachments(r.filePaths);
         const items = read?.items ?? [];
         if (read?.ok && items.length) {
-          setPendingImages((p) => [
-            ...p,
-            ...items.map((it) => ({
+          setPendingImages((p) => {
+            const mapped = items.map((it) => ({
               kind: "image" as const,
               name: it.name,
               mime: it.mime,
               dataUrl: it.dataUrl,
               id: newLocalId(),
-            })),
-          ]);
+            }));
+            return [...p, ...mapped];
+          });
         }
         return;
       }
-      appendPaths(r.filePaths);
+      // 非纯图片 → 文件 chip
+      const fileEntries: PendingFileEntry[] = r.filePaths.map((p) => {
+        const name = p.split(/[/\\]/).pop() || p;
+        return { id: newLocalId(), name, path: p };
+      });
+      setPendingFiles((p) => [...p, ...fileEntries]);
       return;
     }
+    // 浏览器模式：hidden input
     const inp = attachInputRef.current;
     if (inp) {
       inp.accept = onlyImages ? "image/*" : "";
@@ -557,37 +571,42 @@ function ChatPage() {
     }
   }, []);
 
-  const onAttachInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const { files } = e.target;
-    if (!files?.length) return;
-    const list = Array.from(files);
-    const allImg = list.every((f) => f.type.startsWith("image/"));
-    if (allImg) {
-      for (const f of list) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = reader.result as string;
-          setPendingImages((p) => [
-            ...p,
-            {
-              id: newLocalId(),
-              kind: "image",
-              name: f.name,
-              mime: f.type,
-              dataUrl,
-            },
-          ]);
-        };
-        reader.readAsDataURL(f);
+  const appendComposerImageFiles = useCallback(
+    async (files: File[], _cursor?: number) => {
+      let startLen = 0;
+      setPendingImages((p) => {
+        startLen = p.length;
+        return p;
+      });
+      const newItems = await normalizePendingImageFiles(files, startLen);
+      if (!newItems.length) return;
+      setPendingImages((p) => [...p, ...newItems]);
+      requestAnimationFrame(() => taRef.current?.focus());
+    },
+    [],
+  );
+
+  const onAttachInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const { files } = e.target;
+      if (!files?.length) return;
+      const list = Array.from(files);
+      const allImg = list.every((f) => f.type.startsWith("image/"));
+      if (allImg) {
+        void appendComposerImageFiles(list);
+        e.target.value = "";
+        return;
       }
+      // 非图片文件 → chip
+      const entries: PendingFileEntry[] = list.map((f) => ({
+        id: newLocalId(),
+        name: f.name,
+      }));
+      setPendingFiles((p) => [...p, ...entries]);
       e.target.value = "";
-      return;
-    }
-    const names = list.map((f) => f.name);
-    const note = names.map((n) => `[附件: ${n}]`).join("\n");
-    setInput((prev) => (prev.trim() ? `${prev.trim()}\n${note}` : note));
-    e.target.value = "";
-  }, []);
+    },
+    [appendComposerImageFiles],
+  );
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeId, setActiveId] = useState("s0");
@@ -1182,6 +1201,9 @@ function ChatPage() {
                   pendingImages: Array.isArray(draft?.pendingImages)
                     ? (draft.pendingImages as (UserImageAttachment & { id: string })[])
                     : [],
+                  pendingFiles: Array.isArray(draft?.pendingFiles)
+                    ? (draft.pendingFiles as PendingFileEntry[])
+                    : [],
                   pendingTerminalSnippets: Array.isArray(draft?.pendingTerminalSnippets)
                     ? (draft.pendingTerminalSnippets as PendingTerminalSnippet[])
                     : [],
@@ -1218,6 +1240,9 @@ function ChatPage() {
                   input: typeof draft?.input === "string" ? draft.input : "",
                   pendingImages: Array.isArray(draft?.pendingImages)
                     ? (draft.pendingImages as (UserImageAttachment & { id: string })[])
+                    : [],
+                  pendingFiles: Array.isArray(draft?.pendingFiles)
+                    ? (draft.pendingFiles as PendingFileEntry[])
                     : [],
                   pendingTerminalSnippets: Array.isArray(draft?.pendingTerminalSnippets)
                     ? (draft.pendingTerminalSnippets as PendingTerminalSnippet[])
@@ -1664,17 +1689,19 @@ function ChatPage() {
       composerDraftsRef.current[sessionId] = {
         input,
         pendingImages,
+        pendingFiles,
         pendingTerminalSnippets,
       };
       scheduleComposerDraftsSave();
     },
-    [input, pendingImages, pendingTerminalSnippets, scheduleComposerDraftsSave],
+    [input, pendingImages, pendingFiles, pendingTerminalSnippets, scheduleComposerDraftsSave],
   );
 
   const loadComposerDraft = useCallback((sessionId: string) => {
     const draft = composerDraftsRef.current[sessionId];
     setInput(draft?.input ?? "");
     setPendingImages(draft?.pendingImages ?? []);
+    setPendingFiles(draft?.pendingFiles ?? []);
     setPendingTerminalSnippets(draft?.pendingTerminalSnippets ?? []);
   }, []);
 
@@ -1735,66 +1762,87 @@ function ChatPage() {
 
   const composerPlaceholder = COMPOSER_PLACEHOLDER;
 
+  const appendEditComposerImageFiles = useCallback(async (files: File[], _cursor?: number) => {
+    const startLen = editComposer?.pendingImages.length ?? 0;
+    const newItems = await normalizePendingImageFiles(files, startLen);
+    if (!newItems.length) return;
+    setEditComposer((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        pendingImages: [...prev.pendingImages, ...newItems],
+      };
+    });
+    requestAnimationFrame(() => inlineTaRef.current?.focus());
+  }, [editComposer?.pendingImages.length]);
+
+  /** 拖拽统一处理：图片 → 缩略图；非图片 → 文件 chip */
+  const handleComposerDropFiles = useCallback(
+    async (files: File[], _cursor?: number) => {
+      const imgFiles = files.filter((f) => f.type.startsWith("image/"));
+      const otherFiles = files.filter((f) => !f.type.startsWith("image/"));
+      if (imgFiles.length) void appendComposerImageFiles(imgFiles);
+      if (otherFiles.length) {
+        const entries: PendingFileEntry[] = otherFiles.map((f) => ({
+          id: newLocalId(),
+          name: f.name,
+        }));
+        setPendingFiles((p) => [...p, ...entries]);
+      }
+    },
+    [appendComposerImageFiles],
+  );
+
+  const handleInlineComposerDropFiles = useCallback(
+    async (files: File[], _cursor?: number) => {
+      const imgFiles = files.filter((f) => f.type.startsWith("image/"));
+      const otherFiles = files.filter((f) => !f.type.startsWith("image/"));
+      if (imgFiles.length) void appendEditComposerImageFiles(imgFiles);
+      if (otherFiles.length) {
+        const entries: PendingFileEntry[] = otherFiles.map((f) => ({
+          id: newLocalId(),
+          name: f.name,
+        }));
+        setPendingFiles((p) => [...p, ...entries]);
+      }
+    },
+    [appendEditComposerImageFiles],
+  );
+
   const handleInlineComposerPaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
     if (!items) return;
+    const imageFiles: File[] = [];
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (it.kind !== "file") continue;
       const f = it.getAsFile();
-      if (!f?.type.startsWith("image/")) continue;
-      e.preventDefault();
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setEditComposer((prev) =>
-          prev
-            ? {
-                ...prev,
-                pendingImages: [
-                  ...prev.pendingImages,
-                  {
-                    id: newLocalId(),
-                    kind: "image",
-                    name: f.name || "粘贴图片.png",
-                    mime: f.type,
-                    dataUrl,
-                  },
-                ],
-              }
-            : prev,
-        );
-      };
-      reader.readAsDataURL(f);
+      if (f?.type.startsWith("image/")) imageFiles.push(f);
     }
-  }, []);
+    if (!imageFiles.length) return;
+    e.preventDefault();
+    const cursor = e.currentTarget.selectionStart ?? editComposer?.input.length ?? 0;
+    void appendEditComposerImageFiles(imageFiles, cursor);
+  }, [appendEditComposerImageFiles, editComposer?.input.length]);
 
-  const handleComposerPaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (it.kind !== "file") continue;
-      const f = it.getAsFile();
-      if (!f?.type.startsWith("image/")) continue;
+  const handleComposerPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageFiles: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.kind !== "file") continue;
+        const f = it.getAsFile();
+        if (f?.type.startsWith("image/")) imageFiles.push(f);
+      }
+      if (!imageFiles.length) return;
       e.preventDefault();
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setPendingImages((p) => [
-          ...p,
-          {
-            id: newLocalId(),
-            kind: "image",
-            name: f.name || "粘贴图片.png",
-            mime: f.type,
-            dataUrl,
-          },
-        ]);
-      };
-      reader.readAsDataURL(f);
-    }
-  }, []);
+      const cursor = e.currentTarget.selectionStart ?? input.length;
+      void appendComposerImageFiles(imageFiles, cursor);
+    },
+    [appendComposerImageFiles, input.length],
+  );
 
   const moreSkills = [
     { icon: ArrowLeftRight, label: "翻译" },
@@ -2156,14 +2204,17 @@ function ChatPage() {
     const text = (override?.text ?? (editingFromInline ? editDraft.input : input)).trim();
     const activePendingImages =
       override?.pendingImages ?? (editingFromInline ? editDraft.pendingImages : pendingImages);
+    const activePendingFiles =
+      override?.pendingFiles ?? (editingFromInline ? editDraft.pendingFiles : pendingFiles);
     const activePendingTerminal =
       override?.pendingTerminalSnippets ??
       (editingFromInline ? editDraft.pendingTerminalSnippets : pendingTerminalSnippets);
     const presetEditCutoff = override?.editCutoff;
 
     const hasTerminal = activePendingTerminal.length > 0;
+    const hasFiles = activePendingFiles.length > 0;
     const sendSessionId = activeIdRef.current;
-    if ((!text && !activePendingImages.length && !hasTerminal) || sendingSessionsRef.current[sendSessionId]) return;
+    if ((!text && !activePendingImages.length && !activePendingFiles.length && !hasTerminal) || sendingSessionsRef.current[sendSessionId]) return;
     const wsKeySend = workspaceSessionKey(workspacePathRef.current);
     if (wsKeySend) {
       activeByWorkspaceRef.current = {
@@ -2194,7 +2245,7 @@ function ChatPage() {
     }
 
     const wbsIntent = parseWbsChainIntent(text);
-    if (wbsIntent.matched && activePendingImages.length === 0 && !hasTerminal) {
+    if (wbsIntent.matched && activePendingImages.length === 0 && !hasTerminal && !hasFiles) {
       setInput("");
       if (wbsIntent.action === "generate-wbs") {
         sendPayloadOverrideRef.current = { text: WBS_GENERATE_PM_PROMPT };
@@ -2212,7 +2263,7 @@ function ChatPage() {
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && parseChainCommand(text).matched) {
+    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && parseChainCommand(text).matched) {
       setInput("");
       const route = resolveAgentForTurn(text, localAgentBasename);
       let chainTitle = sess.title;
@@ -2254,19 +2305,19 @@ function ChatPage() {
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && isConfirmWriteOnlyMessage(text)) {
+    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isConfirmWriteOnlyMessage(text)) {
       setInput("");
       await performConfirmWrite();
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && isBulkWriteProjectMessage(text)) {
+    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isBulkWriteProjectMessage(text)) {
       setInput("");
       await performBulkWriteProject(text);
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && isStopPreviewMessage(text)) {
+    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isStopPreviewMessage(text)) {
       setInput("");
       const api = getDesktop();
       if (api) {
@@ -2289,7 +2340,7 @@ function ChatPage() {
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && isOpenTerminalMessage(text)) {
+    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isOpenTerminalMessage(text)) {
       setInput("");
       setTerminalOpen(true);
       const hist = [
@@ -2310,7 +2361,7 @@ function ChatPage() {
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && isProjectPreviewMessage(text)) {
+    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isProjectPreviewMessage(text)) {
       setInput("");
       await runProjectPreview(text);
       return;
@@ -2320,12 +2371,16 @@ function ChatPage() {
 
     resetScrollFollow();
 
-    const attachmentsToSave: UserImageAttachment[] | undefined =
+    let attachmentsToSave: UserImageAttachment[] | undefined =
       activePendingImages.length > 0
         ? activePendingImages.map(({ id: _id, ...rest }) => rest)
         : undefined;
+    const baseText = text || (attachmentsToSave?.length ? "请结合附图回答。" : "");
+    const filePrefix = activePendingFiles.length
+      ? activePendingFiles.map((f) => `[文件: ${f.name}]`).join("\n") + "\n\n"
+      : "";
     const displayLine = buildComposerUserLine(
-      text || (attachmentsToSave?.length ? "请结合附图回答。" : ""),
+      filePrefix + baseText,
       activePendingTerminal,
     );
 
@@ -2371,6 +2426,64 @@ function ChatPage() {
     }
     const mode: OrchMode = resolvedExec.mode;
     const modelId = resolvedExec.modelId;
+
+    const editCutoff =
+      presetEditCutoff !== undefined
+        ? presetEditCutoff
+        : editingFromInline
+          ? editHistoryIndexRef.current
+          : null;
+    const historyBefore =
+      editCutoff != null ? sess.history.slice(0, editCutoff) : sess.history;
+    const priorForApi: PriorTurn[] = historyBefore.map((m) => {
+      if (m.role === "user") {
+        const t: PriorTurn = { role: "user", content: m.content };
+        if (m.attachments?.length) t.attachments = m.attachments;
+        return t;
+      }
+      return { role: "assistant", content: m.content };
+    });
+
+    let visionEnrichedNote: string | undefined;
+    if (
+      (attachmentsToSave?.length ||
+        (!sess?.claudeSessionId && collectPriorUserAttachments(priorForApi).length)) &&
+      !modelSupportsChatVision({ orchMode: mode, modelId })
+    ) {
+      if (api.enrichChatUserLineForImages) {
+        try {
+          const enriched = await api.enrichChatUserLineForImages({
+            userLine: displayLine,
+            userAttachments: attachmentsToSave || [],
+            orchestratorModel: modelId,
+          });
+          attachmentsToSave = undefined;
+          if (enriched.visionModel) {
+            toast.info(
+              `当前模型「${modelId}」不支持视觉，已通过本机 Ollama 视觉模型（${enriched.visionModel}）将图片转为文字描述`,
+              { duration: 6000 },
+            );
+          } else {
+            toast.warning(
+              "当前模型不支持视觉，且未检测到本机视觉模型（可 ollama pull qwen2.5vl）。将仅发送图片提示。",
+              { duration: 8000 },
+            );
+          }
+          // 提取 enrichment 追加的描述段（后端已 append 到 userLine 末尾）
+          if (enriched.userLine && enriched.userLine !== displayLine) {
+            const idx = enriched.userLine.indexOf("\n\n【系统·附图");
+            if (idx >= 0) visionEnrichedNote = enriched.userLine.slice(idx);
+            else visionEnrichedNote = enriched.userLine.slice(displayLine.length);
+          }
+        } catch (e) {
+          toast.error(visionRequiredError(modelId), { duration: 8000 });
+          return;
+        }
+      } else {
+        toast.error(visionRequiredError(modelId), { duration: 8000 });
+        return;
+      }
+    }
 
     if (mode === "local-mcp") {
       if (!api.localOrchestrationPrompt) {
@@ -2418,9 +2531,11 @@ function ChatPage() {
       chainListR?.ok ? (chainListR.items ?? []) : [],
       [],
     );
-    const localUserLineFinal = chainCatalogSnippet
-      ? `${routedBase}\n\n${chainCatalogSnippet}`
-      : routedBase;
+    const localUserLineFinal = visionEnrichedNote
+      ? `${chainCatalogSnippet ? `${routedBase}\n\n${chainCatalogSnippet}` : routedBase}\n${visionEnrichedNote}`
+      : chainCatalogSnippet
+        ? `${routedBase}\n\n${chainCatalogSnippet}`
+        : routedBase;
     const cloudUserLineFinal = buildSubagentUserLine(cmd.stem, localUserLineFinal);
 
     setStopRequested(false);
@@ -2429,19 +2544,11 @@ function ChatPage() {
       setEditComposer(null);
     }
     const terminalSnippetsToSave = activePendingTerminal.map(({ id: _id, ...rest }) => rest);
-    const editCutoff =
-      presetEditCutoff !== undefined
-        ? presetEditCutoff
-        : editingFromInline
-          ? editHistoryIndexRef.current
-          : null;
     if (editCutoff != null) {
       setEditHistoryIndex(null);
       editHistoryIndexRef.current = null;
       setEditComposer(null);
     }
-    const historyBefore =
-      editCutoff != null ? sess.history.slice(0, editCutoff) : sess.history;
     delete composerDraftsRef.current[sendSessionId];
     const userMsg: DiskMsg = {
       role: "user",
@@ -2450,14 +2557,6 @@ function ChatPage() {
       ...(attachmentsToSave ? { attachments: attachmentsToSave } : {}),
       ...(terminalSnippetsToSave.length ? { terminalSnippets: terminalSnippetsToSave } : {}),
     };
-    const priorForApi: PriorTurn[] = historyBefore.map((m) => {
-      if (m.role === "user") {
-        const t: PriorTurn = { role: "user", content: m.content };
-        if (m.attachments?.length) t.attachments = m.attachments;
-        return t;
-      }
-      return { role: "assistant", content: m.content };
-    });
     let title = sess.title;
     if (historyBefore.length === 0) {
       const t = displayLine || "图片";
@@ -2475,6 +2574,7 @@ function ChatPage() {
     if (!editingFromInline) {
       setInput("");
       setPendingImages([]);
+      setPendingFiles([]);
       setPendingTerminalSnippets([]);
     }
     if (sendSessionId === activeIdRef.current) {
@@ -2526,8 +2626,23 @@ function ChatPage() {
         });
       } else {
         const workspaceDir = await api.getWorkspace();
+        const claudeSessionResume = Boolean(sess?.claudeSessionId);
         let savedImagePaths: string[] | undefined;
-        if (attachmentsToSave?.length && api.saveChatImageAttachments) {
+        let inlineAttachments = attachmentsToSave;
+        if (!claudeSessionResume) {
+          const priorImages = collectPriorUserAttachments(priorForApi);
+          if (priorImages.length || attachmentsToSave?.length) {
+            const merged = mergeInlineAttachments(priorImages, attachmentsToSave);
+            inlineAttachments = merged.attachments.length ? merged.attachments : undefined;
+            if (merged.truncated) {
+              toast.warning(`附图超过 ${CHAT_INLINE_IMAGE_MAX} 张，仅保留最近 ${CHAT_INLINE_IMAGE_MAX} 张`, {
+                duration: 6000,
+              });
+            }
+          }
+        }
+        const useInlineVision = Boolean(inlineAttachments?.length);
+        if (!useInlineVision && attachmentsToSave?.length && api.saveChatImageAttachments) {
           const saved = await api.saveChatImageAttachments(attachmentsToSave);
           if (saved.ok && saved.paths?.length) savedImagePaths = saved.paths;
         }
@@ -2535,8 +2650,10 @@ function ChatPage() {
           workspaceDir,
           priorHistory: priorForApi,
           userLine: cloudUserLineFinal,
-          userAttachments: attachmentsToSave,
-          savedImagePaths,
+          userAttachments: useInlineVision ? undefined : attachmentsToSave,
+          savedImagePaths: useInlineVision ? undefined : savedImagePaths,
+          inlineVision: useInlineVision,
+          sessionResume: claudeSessionResume,
           localAgentBasename: basenameOverride,
           skipDefaultRoleBlock: true,
           chainCatalogSnippet,
@@ -2552,6 +2669,8 @@ function ChatPage() {
           requestId: reqId,
           claudeSessionId: sess?.claudeSessionId ?? undefined,
           isNewClaudeSession: !sess?.claudeSessionId,
+          attachmentCount: inlineAttachments?.length ?? attachmentsToSave?.length ?? 0,
+          attachments: useInlineVision ? inlineAttachments : attachmentsToSave,
         });
       }
       toastIfLocalOrchestrationHints(res);
@@ -3072,6 +3191,7 @@ function ChatPage() {
       onSend: () => void sendChat(),
       onStop: () => stopChat(),
       onPaste: handleInlineComposerPaste,
+      onDropFiles: (files, cursor) => void handleInlineComposerDropFiles(files, cursor),
       placeholder: composerPlaceholder,
       disabled: workflowBusy,
       workflowBusy,
@@ -3079,12 +3199,18 @@ function ChatPage() {
       canSend: Boolean(
         editComposer.input.trim() ||
           editComposer.pendingImages.length ||
+          editComposer.pendingFiles.length ||
           editComposer.pendingTerminalSnippets.length,
       ),
       pendingImages: editComposer.pendingImages,
       onRemoveImage: (id) =>
         setEditComposer((prev) =>
           prev ? { ...prev, pendingImages: prev.pendingImages.filter((x) => x.id !== id) } : prev,
+        ),
+      pendingFiles: editComposer.pendingFiles,
+      onRemoveFile: (id) =>
+        setEditComposer((prev) =>
+          prev ? { ...prev, pendingFiles: prev.pendingFiles.filter((x) => x.id !== id) } : prev,
         ),
       pendingTerminalSnippets: editComposer.pendingTerminalSnippets,
       onRemoveTerminalSnippet: (id) =>
@@ -3120,6 +3246,8 @@ function ChatPage() {
     globalModel,
     primaryModelFallback,
     handleInlineComposerPaste,
+    appendEditComposerImageFiles,
+    handleInlineComposerDropFiles,
     cancelEditUserMessage,
     pickLocalFiles,
     handleAgentChange,
@@ -3223,15 +3351,18 @@ function ChatPage() {
             onSend={() => void sendChat()}
             onStop={() => stopChat()}
             onPaste={handleComposerPaste}
+            onDropFiles={(files, cursor) => void handleComposerDropFiles(files, cursor)}
             placeholder={composerPlaceholder}
             disabled={workflowBusy}
             workflowBusy={workflowBusy}
             hasDesktopApi={hasDesktopApi}
             canSend={
-              Boolean(input.trim() || pendingImages.length || pendingTerminalSnippets.length)
+              Boolean(input.trim() || pendingImages.length || pendingFiles.length || pendingTerminalSnippets.length)
             }
             pendingImages={pendingImages}
             onRemoveImage={(id) => setPendingImages((p) => p.filter((x) => x.id !== id))}
+            pendingFiles={pendingFiles}
+            onRemoveFile={(id) => setPendingFiles((p) => p.filter((x) => x.id !== id))}
             pendingTerminalSnippets={pendingTerminalSnippets}
             onRemoveTerminalSnippet={(id) =>
               setPendingTerminalSnippets((p) => p.filter((x) => x.id !== id))

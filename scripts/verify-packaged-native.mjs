@@ -73,7 +73,7 @@ const result = probeSqlite(appPath)
 if (!result.ok) {
   console.error('[verify-packaged-native] 失败：better-sqlite3 与 Electron ABI 不匹配或未正确打包。')
   console.error(result.out.trim().slice(-2000) || '(无输出)')
-  console.error('\n请确认打包前已执行 scripts/rebuild-native-for-electron.mjs，且未在 builder 之前运行 restore-dev-native。')
+  console.error('\n请确认打包前已执行 scripts/rebuild-native-for-electron.mjs（会将 bin/*-133 复制到 build/Release），且未在 builder 之前运行 restore-dev-native。')
   process.exit(1)
 }
 
