@@ -53,7 +53,7 @@ export function resolveModelForExecution(input) {
   if (agent) {
     if (cloudAll.includes(agent)) return { mode: 'claude-code', modelId: agent }
     if (localAll.includes(agent)) return { mode: 'local-mcp', modelId: agent }
-    return { mode: 'claude-code', modelId: agent }
+    // Agent 指定了模型但不在任何已配置供应商池中 → 忽略 agent 声明，回退到会话模型/自动选择
   }
 
   const selected = normalizeChatModelSelection(input.selectedModel)

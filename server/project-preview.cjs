@@ -129,12 +129,146 @@ function pickHtmlEntry(workspaceDir, hint) {
 function detectNpmScript(cwd) {
   const pkg = readJsonSafe(path.join(cwd, 'package.json'))
   if (!pkg?.scripts) return null
+  // 1) 精确匹配 dev / start / preview / serve
   for (const key of ['dev', 'start', 'preview', 'serve']) {
     if (typeof pkg.scripts[key] === 'string' && pkg.scripts[key].trim()) {
       return { script: key, label: `npm run ${key}`, cwd }
     }
   }
+  // 2) monorepo / 前缀模式：web:dev、app:start、api:dev 等
+  const keys = Object.keys(pkg.scripts).sort()
+  for (const key of keys) {
+    if (/:(dev|start|preview|serve)$/i.test(key) && typeof pkg.scripts[key] === 'string' && pkg.scripts[key].trim()) {
+      return { script: key, label: `npm run ${key}`, cwd }
+    }
+  }
   return null
+}
+
+/**
+ * 收集项目上下文（Cursor 风格：名称/框架/脚本/依赖/版本等）
+ * @param {string} workspaceDir
+ * @param {{ kind: string, script?: string, entryRel?: string, cwd?: string }} plan
+ * @returns {{ name?: string, description?: string, framework?: string, frameworkVersion?: string, scripts?: Record<string,string>, deps?: Record<string,string>, pythonVersion?: string, venv?: string }}
+ */
+function gatherProjectContext(workspaceDir, plan) {
+  /** @type {{ name?: string, description?: string, framework?: string, frameworkVersion?: string, scripts?: Record<string,string>, deps?: Record<string,string>, pythonVersion?: string, venv?: string }} */
+  const ctx = {}
+  const cwd = plan.cwd || workspaceDir
+
+  if (plan.kind === 'npm-script') {
+    const pkg = readJsonSafe(path.join(cwd, 'package.json'))
+    if (pkg) {
+      ctx.name = pkg.name
+      ctx.description = pkg.description
+      if (pkg.scripts && typeof pkg.scripts === 'object') {
+        ctx.scripts = {}
+        for (const [k, v] of Object.entries(pkg.scripts)) {
+          if (typeof v === 'string') ctx.scripts[k] = v
+        }
+      }
+      const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) }
+      const versioned = {}
+      const frameworks = []
+      for (const [name, ver] of Object.entries(deps)) {
+        if (typeof ver !== 'string') continue
+        const v = ver.replace(/^[\^~>=<]+/, '')
+        // 识别关键框架
+        if (/^(vite|nuxt|@?vitepress)/.test(name)) { frameworks.push({ name, version: v, priority: 1 }) }
+        else if (/^(react|react-dom|next|remix|gatsby)$/.test(name)) { frameworks.push({ name, version: v, priority: 2 }) }
+        else if (/^(vue|@vue\/|nuxt)/.test(name)) { frameworks.push({ name, version: v, priority: 3 }) }
+        else if (/^(angular|@angular\/)/.test(name)) { frameworks.push({ name, version: v, priority: 4 }) }
+        else if (/^(svelte|@sveltejs\/)/i.test(name)) { frameworks.push({ name, version: v, priority: 5 }) }
+        else if (/^(express|koa|fastify|hono|nestjs|@nestjs\/)/.test(name)) { frameworks.push({ name, version: v, priority: 6 }) }
+        if (versioned[name] == null) versioned[name] = v
+      }
+      frameworks.sort((a, b) => a.priority - b.priority)
+      if (frameworks.length > 0) {
+        const f = frameworks[0]
+        ctx.framework = f.name.replace(/^@?/, '')
+        ctx.frameworkVersion = f.version
+      }
+      // 选出顶层关键依赖（最多 8 个）
+      const picked = new Map()
+      for (const fw of frameworks) picked.set(fw.name, fw.version)
+      for (const [name, ver] of Object.entries(versioned)) {
+        if (picked.size >= 8) break
+        if (!picked.has(name) && !/^@types\//.test(name)) picked.set(name, ver)
+      }
+      ctx.deps = Object.fromEntries(Array.from(picked.entries()).slice(0, 8))
+    }
+  }
+
+  if (plan.kind === 'python') {
+    // 尝试获取 Python 版本
+    try {
+      const cp = require('node:child_process')
+      const out = cp.execSync('python3 --version 2>/dev/null || python --version 2>/dev/null', {
+        cwd,
+        encoding: 'utf8',
+        timeout: 5000,
+      }).trim()
+      ctx.pythonVersion = out.replace(/^(?:Python|python)\s*/i, '').trim()
+    } catch { /* ignore */ }
+
+    // 尝试查找虚拟环境
+    const venvCandidates = ['venv', '.venv', 'env', '.env', 'envs']
+    for (const v of venvCandidates) {
+      const vp = path.join(workspaceDir, v)
+      if (fs.existsSync(vp) && fs.statSync(vp).isDirectory()) {
+        ctx.venv = v
+        break
+      }
+    }
+
+    // 读取 requirements.txt 获取关键依赖
+    const reqPath = path.join(workspaceDir, 'requirements.txt')
+    if (fs.existsSync(reqPath)) {
+      try {
+        const deps = {}
+        const content = fs.readFileSync(reqPath, 'utf8')
+        const lines = content.split(/\r?\n/).filter(Boolean)
+        for (const line of lines.slice(0, 12)) {
+          const m = line.match(/^([a-zA-Z0-9_-]+)\s*([><=!~]+\s*[\d.]+)?/)
+          if (m) {
+            deps[m[1]] = (m[2] || '').trim()
+            // 识别框架
+            if (/^flask$/i.test(m[1]) && !ctx.framework) { ctx.framework = 'Flask'; ctx.frameworkVersion = (m[2] || '').replace(/^[><=!~]+/, '').trim() }
+            else if (/^django$/i.test(m[1]) && !ctx.framework) { ctx.framework = 'Django'; ctx.frameworkVersion = (m[2] || '').replace(/^[><=!~]+/, '').trim() }
+            else if (/^fastapi$/i.test(m[1]) && !ctx.framework) { ctx.framework = 'FastAPI'; ctx.frameworkVersion = (m[2] || '').replace(/^[><=!~]+/, '').trim() }
+          }
+        }
+        ctx.deps = deps
+      } catch { /* ignore */ }
+    }
+
+    // 从入口文件检测框架
+    if (!ctx.framework && plan.entryRel) {
+      const abs = path.join(workspaceDir, plan.entryRel)
+      if (fs.existsSync(abs)) {
+        try {
+          const content = fs.readFileSync(abs, 'utf8')
+          if (/from\s+flask\b/i.test(content)) ctx.framework = 'Flask'
+          else if (/from\s+django\b/i.test(content)) ctx.framework = 'Django'
+          else if (/from\s+fastapi\b/i.test(content)) ctx.framework = 'FastAPI'
+        } catch { /* ignore */ }
+      }
+    }
+
+    // 项目名称（从入口文件目录名或 app.py 推断）
+    if (plan.entryRel) {
+      const parts = plan.entryRel.replace(/\\/g, '/').split('/')
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const p = parts[i]
+        if (p && p !== '.' && !/\.py$/i.test(p)) {
+          ctx.name = p
+          break
+        }
+      }
+    }
+  }
+
+  return ctx
 }
 
 const PYTHON_SERVER_CANDIDATES = [
@@ -144,7 +278,61 @@ const PYTHON_SERVER_CANDIDATES = [
   'app.py',
   'main.py',
   'manage.py',
+  'run.py',
+  'server.py',
+  'wsgi.py',
 ]
+
+/** 深度扫描：在常见子目录中查找 Python 服务入口 */
+function findPythonServerEntryDeep(workspaceDir) {
+  // 1) 精确候选
+  for (const rel of PYTHON_SERVER_CANDIDATES) {
+    const abs = path.join(workspaceDir, rel)
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+      return rel.replace(/\\/g, '/')
+    }
+  }
+  // 2) 扫描根目录及一级子目录中的 *.py
+  try {
+    const dirs = [workspaceDir]
+    for (const name of fs.readdirSync(workspaceDir)) {
+      const full = path.join(workspaceDir, name)
+      if (!name.startsWith('.') && !['node_modules', 'venv', '.venv', '__pycache__', 'dist', 'build'].includes(name)) {
+        try {
+          if (fs.statSync(full).isDirectory()) dirs.push(full)
+        } catch { /* skip */ }
+      }
+    }
+    for (const dir of dirs) {
+      let entries
+      try { entries = fs.readdirSync(dir) } catch { continue }
+      for (const name of entries) {
+        if (!name.endsWith('.py') || name.startsWith('_') || name.startsWith('.')) continue
+        const abs = path.join(dir, name)
+        try {
+          if (!fs.statSync(abs).isFile()) continue
+          const content = fs.readFileSync(abs, 'utf8')
+          // 寻找：Flask/Django/FastAPI 入口特征
+          if (
+            /\bFlask\s*\(/i.test(content) ||
+            /\bapp\.run\s*\(/i.test(content) ||
+            /\buvicorn\.run\b/i.test(content) ||
+            /\bfrom\s+flask\b/i.test(content) ||
+            /\bfrom\s+fastapi\b/i.test(content) ||
+            /if\s+__name__\s*==\s*['"]__main__['"]/.test(content)
+          ) {
+            return path.relative(workspaceDir, abs).replace(/\\/g, '/')
+          }
+        } catch { /* skip */ }
+      }
+    }
+  } catch { /* skip */ }
+  return null
+}
+
+function findPythonServerEntry(workspaceDir) {
+  return findPythonServerEntryDeep(workspaceDir)
+}
 
 function listAuthPythonModules(workspaceDir) {
   const authDir = path.join(workspaceDir, 'src/backend/auth')
@@ -157,16 +345,6 @@ function listAuthPythonModules(workspaceDir) {
   } catch {
     return []
   }
-}
-
-function findPythonServerEntry(workspaceDir) {
-  for (const rel of PYTHON_SERVER_CANDIDATES) {
-    const abs = path.join(workspaceDir, rel)
-    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
-      return rel.replace(/\\/g, '/')
-    }
-  }
-  return null
 }
 
 const PREVIEW_APP_TEMPLATE = `# src/backend/preview_app.py
@@ -294,6 +472,28 @@ function buildPythonPreviewGuide(workspaceDir) {
   return lines.join('\n')
 }
 
+/** 杀掉占用指定端口的进程（如果存在） */
+async function killPort(port) {
+  const cp = require('node:child_process');
+  try {
+    cp.execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null`, {
+      timeout: 5000,
+      stdio: 'ignore',
+    });
+  } catch { /* ignore */ }
+}
+
+/** 从 Python 入口文件中提取 app.run 或 port= 指定的端口号 */
+function detectFlaskPort(workspaceDir, entryRel) {
+  try {
+    const abs = path.join(workspaceDir, entryRel)
+    if (!fs.existsSync(abs)) return null
+    const content = fs.readFileSync(abs, 'utf8')
+    const m = content.match(/(?:ports*[=:]s*)(d{3,5})/)
+    return m ? parseInt(m[1], 10) : null
+  } catch { return null }
+}
+
 async function startPythonPreview(workspaceDir, entryRel) {
   let rel = entryRel || findPythonServerEntry(workspaceDir)
   let abs = rel ? path.join(workspaceDir, rel) : ''
@@ -312,9 +512,49 @@ async function startPythonPreview(workspaceDir, entryRel) {
     }
   }
 
-  const child = spawn('python3', [abs], {
+  // 检测虚拟环境
+  let pythonBin = 'python3'
+  for (const v of ['venv', '.venv', 'env', '.env']) {
+    const vp = path.join(workspaceDir, v, 'bin', 'python3')
+    if (fs.existsSync(vp)) { pythonBin = vp; break }
+  }
+
+  // 启动前清理端口：杀掉项目配置端口 + 常见 Flask 端口上的残留进程
+  const flaskPort = detectFlaskPort(workspaceDir, rel)
+  if (flaskPort) await killPort(flaskPort)
+  for (const p of [5000, 5002, 8000]) {
+    if (p !== flaskPort) await killPort(p)
+  }
+
+  const result = await spawnAndWaitForPythonUrl(pythonBin, abs, workspaceDir, rel)
+
+
+  if (result.ok) return result
+
+  // 端口被占 → 杀端口后重试一次
+  if (result.stderr && /Address already in use/i.test(result.stderr)) {
+    const portMatch = result.stderr.match(/Port\s+(\d{3,5})/i)
+    const busyPort = portMatch ? parseInt(portMatch[1], 10) : flaskPort || 5000
+    await killPort(busyPort)
+    await new Promise((r) => setTimeout(r, 1000))
+    const retry = await spawnAndWaitForPythonUrl(pythonBin, abs, workspaceDir, rel)
+    if (retry.ok) return retry
+    return {
+      ok: false,
+      stderr: retry.stderr || result.stderr,
+      error: `端口 ${busyPort} 仍被占用，请关闭占用程序后重试。${retry.stderr ? ` 错误详情：${retry.stderr.trim().slice(0, 200)}` : ''}`,
+      guide: buildPythonPreviewGuide(workspaceDir),
+      entryRel: rel,
+    }
+  }
+
+  return result
+}
+
+async function spawnAndWaitForPythonUrl(pythonBin, abs, workspaceDir, rel) {
+  const child = spawn(pythonBin, [abs], {
     cwd: workspaceDir,
-    env: { ...process.env, PORT: '5000', PYTHONUNBUFFERED: '1' },
+    env: { ...process.env, PYTHONUNBUFFERED: '1' },
     shell: process.platform === 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -324,17 +564,31 @@ async function startPythonPreview(workspaceDir, entryRel) {
     stderr += c.toString()
   })
 
-  const fallbacks = ['http://127.0.0.1:5000/health', 'http://127.0.0.1:5000']
-  const url = await waitForDevServerUrl(child, fallbacks, 15000)
-  if (!url) {
-    try {
-      child.kill('SIGTERM')
-    } catch {
-      /* ignore */
+  // Python 项目不用 fallback URL，只依赖 stderr 捕获 Flask 输出
+  let url = await waitForDevServerUrl(child, [], 15000)
+
+  // 流输出未捕获到 URL 且进程仍在运行 → 轮询 stderr 最长 25 秒
+  if (!url && child.exitCode == null) {
+    const deadline = Date.now() + 25000
+    while (!extractUrlFromOutput(stderr) && Date.now() < deadline) {
+      if (child.exitCode != null) break
+      await new Promise((r) => setTimeout(r, 500))
     }
+    url = extractUrlFromOutput(stderr) || null
+  }
+
+  // 二次覆盖：stderr 里有 Flask 真实地址则优先
+  if (url && stderr) {
+    const fromStderr = extractUrlFromOutput(stderr)
+    if (fromStderr && fromStderr !== url) url = fromStderr
+  }
+
+  if (!url) {
+    try { child.kill('SIGTERM') } catch { /* ignore */ }
     const needFlask = /No module named ['"]flask|请先安装 Flask/i.test(stderr)
     return {
       ok: false,
+      stderr: stderr.trim().slice(0, 500) || undefined,
       error: needFlask
         ? '本机未安装 Flask，请在工作区终端执行：pip install flask'
         : `Python 预览服务未能启动${stderr ? `：${stderr.trim().slice(0, 240)}` : ''}`,
@@ -371,12 +625,17 @@ async function startPythonPreview(workspaceDir, entryRel) {
   }
 }
 
+
 function enrichRunPlan(plan, workspaceDir) {
   if (!plan?.ok || !workspaceDir) return plan
   if (plan.cwd) {
     const rel = path.relative(workspaceDir, plan.cwd).replace(/\\/g, '/')
     plan.cwdRel = !rel || rel === '.' ? '' : rel
   }
+  // 注入项目上下文（Cursor 风格）— 必须在 terminalCommand 之前，以便获取 venv 等信息
+  const ctx = gatherProjectContext(workspaceDir, plan)
+  if (ctx) plan.ctx = ctx
+
   if (plan.kind === 'npm-script' && plan.script) {
     const base = `npm run ${plan.script}`
     plan.command = base
@@ -385,7 +644,10 @@ function enrichRunPlan(plan, workspaceDir) {
         ? `cd "${plan.cwdRel}" && ${base}`
         : base
   } else if (plan.kind === 'python' && plan.entryRel) {
-    plan.terminalCommand = `python3 ${plan.entryRel}`
+    const venv = ctx?.venv
+    plan.terminalCommand = venv
+      ? `"${venv}/bin/python3" ${plan.entryRel}`
+      : `python3 ${plan.entryRel}`
   }
   return plan
 }
@@ -398,7 +660,7 @@ function detectProjectRunPlan(workspaceDir, opts) {
   const hint = String(opts?.hint || opts?.userLine || '').trim()
   const userLine = String(opts?.userLine || opts?.hint || '').trim()
   const preferStatic = Boolean(opts?.preferStatic)
-  const preferPython = Boolean(opts?.preferPython) || /py|python|后端|api|接口|flask|auth/i.test(hint)
+  const preferPython = Boolean(opts?.preferPython) || /py|python|后端|api|接口|flask|auth|django|fastapi/i.test(hint)
   const wantRunProject =
     /(?:运行|启动|run|start).*(?:项目|应用|dev|开发服务器|本地服务)/i.test(userLine) ||
     /^(?:运行|启动)\s*项目/i.test(userLine)
@@ -407,10 +669,28 @@ function detectProjectRunPlan(workspaceDir, opts) {
     return { ok: false, error: '未选择工作区或工作区不存在', kind: 'none' }
   }
 
-  const authModules = listAuthPythonModules(workspaceDir)
-  const pyEntry = findPythonServerEntry(workspaceDir)
+  // ── 先收集所有信号，再做决策（Cursor 风格：综合判断而非贪心匹配） ──
 
-  if (preferPython && (authModules.length || pyEntry)) {
+  const pyEntry = findPythonServerEntry(workspaceDir)
+  const authModules = listAuthPythonModules(workspaceDir)
+
+  const npmRoot = detectNpmScript(workspaceDir)
+  const npmWeb = detectNpmScript(path.join(workspaceDir, 'web'))
+  let npmSub = npmWeb
+  if (!npmSub) {
+    for (const sub of ['frontend', 'app', 'client', 'src']) {
+      const found = detectNpmScript(path.join(workspaceDir, sub))
+      if (found) { npmSub = found; break }
+    }
+  }
+  const npm = npmRoot || npmSub
+
+  const html = pickHtmlEntry(workspaceDir, hint)
+
+  // ── 决策 ──
+
+  // 1) 显式偏好 Python → 直接返回
+  if (preferPython && (pyEntry || authModules.length)) {
     return {
       ok: true,
       kind: 'python',
@@ -420,11 +700,46 @@ function detectProjectRunPlan(workspaceDir, opts) {
     }
   }
 
-  const html = pickHtmlEntry(workspaceDir, hint)
-  const npmRoot = detectNpmScript(workspaceDir)
-  const npmWeb = detectNpmScript(path.join(workspaceDir, 'web'))
+  if (wantRunProject) {
+    // "运行项目" 优先级：npm 脚本 > Python 服务 > HTML 静态预览
+    if (npm) {
+      return {
+        ok: true,
+        kind: 'npm-script',
+        script: npm.script,
+        command: `npm run ${npm.script}`,
+        label: npm.label,
+        cwd: npm.cwd,
+      }
+    }
+    if (pyEntry) {
+      return {
+        ok: true,
+        kind: 'python',
+        entryRel: pyEntry,
+        label: `Python · ${pyEntry}`,
+        cwd: workspaceDir,
+      }
+    }
+    if (html) {
+      return {
+        ok: true,
+        kind: 'static',
+        entryRel: html.rel,
+        label: `静态预览 · ${html.rel}`,
+        cwd: workspaceDir,
+      }
+    }
+    return {
+      ok: false,
+      kind: 'none',
+      error: '未检测到可运行的项目配置',
+      scanSummary: buildScanSummary(workspaceDir),
+    }
+  }
 
-  if (html && !wantRunProject && (preferStatic || /页面|html|登录|register|静态/i.test(hint) || !npmRoot)) {
+  // "预览" 优先级：静态（有偏好时）> npm > Python > HTML 兜底
+  if (html && (preferStatic || /页面|html|登录|register|静态|界面|效果/i.test(hint) || !npm)) {
     return {
       ok: true,
       kind: 'static',
@@ -434,7 +749,6 @@ function detectProjectRunPlan(workspaceDir, opts) {
     }
   }
 
-  const npm = npmRoot || npmWeb
   if (npm) {
     return {
       ok: true,
@@ -443,6 +757,16 @@ function detectProjectRunPlan(workspaceDir, opts) {
       command: `npm run ${npm.script}`,
       label: npm.label,
       cwd: npm.cwd,
+    }
+  }
+
+  if (pyEntry) {
+    return {
+      ok: true,
+      kind: 'python',
+      entryRel: pyEntry,
+      label: `Python · ${pyEntry}`,
+      cwd: workspaceDir,
     }
   }
 
@@ -456,7 +780,66 @@ function detectProjectRunPlan(workspaceDir, opts) {
     }
   }
 
-  return { ok: false, error: '未检测到 package.json 脚本或可预览的 HTML 文件', kind: 'none' }
+  return {
+    ok: false,
+    kind: 'none',
+    error: '未检测到可运行的项目配置',
+    scanSummary: buildScanSummary(workspaceDir),
+  }
+}
+
+/**
+ * 生成扫描摘要，在检测失败时向用户说明扫描了哪些内容
+ */
+function buildScanSummary(workspaceDir) {
+  const summary = []
+
+  const rootPkg = readJsonSafe(path.join(workspaceDir, 'package.json'))
+  const webPkg = readJsonSafe(path.join(workspaceDir, 'web/package.json'))
+
+  if (rootPkg?.scripts) {
+    const names = Object.keys(rootPkg.scripts).slice(0, 6)
+    summary.push(`根目录 package.json 脚本：${names.map((n) => `\`${n}\``).join('、')}`)
+  } else {
+    summary.push('根目录 package.json：未找到')
+  }
+
+  if (webPkg?.scripts) {
+    const names = Object.keys(webPkg.scripts).slice(0, 6)
+    summary.push(`web/package.json 脚本：${names.map((n) => `\`${n}\``).join('、')}`)
+  }
+
+  // Python 生态检测：入口 + 配置 + 依赖
+  const pyEntry = findPythonServerEntry(workspaceDir)
+  const pySignals = []
+  if (fs.existsSync(path.join(workspaceDir, 'requirements.txt'))) pySignals.push('requirements.txt')
+  if (fs.existsSync(path.join(workspaceDir, 'setup.py'))) pySignals.push('setup.py')
+  if (fs.existsSync(path.join(workspaceDir, 'pyproject.toml'))) pySignals.push('pyproject.toml')
+  if (fs.existsSync(path.join(workspaceDir, 'Pipfile'))) pySignals.push('Pipfile')
+  const venvDirs = ['venv', '.venv', 'env', '.env'].filter((v) => {
+    const vp = path.join(workspaceDir, v)
+    try { return fs.existsSync(vp) && fs.statSync(vp).isDirectory() } catch { return false }
+  })
+  if (venvDirs.length) pySignals.push(`虚拟环境：${venvDirs[0]}/`)
+
+  if (pyEntry || pySignals.length) {
+    const parts = []
+    if (pyEntry) parts.push(`入口：${pyEntry}`)
+    if (pySignals.length) parts.push(pySignals.join('、'))
+    summary.push(`Python 项目：${parts.join('，')}`)
+  } else {
+    summary.push('Python 入口：未找到 app.py / main.py / manage.py / run.py')
+  }
+
+  const htmlHits = listHtmlFiles(workspaceDir, 3)
+  if (htmlHits.length > 0) {
+    const names = htmlHits.slice(0, 4).map((h) => h.rel).join('、')
+    summary.push(`HTML 文件：${names}${htmlHits.length > 4 ? ' …' : ''}`)
+  } else {
+    summary.push('HTML 文件：未找到可预览的静态页面')
+  }
+
+  return summary
 }
 
 function detectProjectRunPlanEnriched(workspaceDir, opts) {
@@ -523,8 +906,12 @@ function extractUrlFromOutput(text) {
 async function waitForDevServerUrl(child, fallbackUrls, timeoutMs = 12000) {
   /** @type {string | null} */
   let found = null
+  /** @type {string} */
+  let allOutput = ''
   const onData = (chunk) => {
-    const u = extractUrlFromOutput(chunk.toString())
+    const s = chunk.toString()
+    allOutput += s
+    const u = extractUrlFromOutput(s)
     if (u) found = u
   }
   child.stdout?.on('data', onData)
@@ -536,6 +923,11 @@ async function waitForDevServerUrl(child, fallbackUrls, timeoutMs = 12000) {
     await new Promise((r) => setTimeout(r, 250))
   }
   if (found) return found
+
+  // 循环结束后再用积累的完整输出提取一次（防止 chunk 切割导致漏过）
+  const fromFull = extractUrlFromOutput(allOutput)
+  if (fromFull) return fromFull
+
   for (const u of fallbackUrls) {
     try {
       const ok = await fetchHead(u)

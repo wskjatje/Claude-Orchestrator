@@ -85,7 +85,7 @@ function isThirdPartyAnthropicBase(base) {
 }
 
 function syncEnvDefaultModels(env, model) {
-  const m = mapApiModelId(model)
+  const m = mapApiModelId(model, env)
   if (!m || /^(sonnet|opus|haiku)$/i.test(m)) return env
   return {
     ...env,
@@ -96,12 +96,25 @@ function syncEnvDefaultModels(env, model) {
 }
 
 /** Claude Code / DeepSeek API 实际使用的模型 ID（deepseek-chat 在 CLI 侧已不可用） */
-function mapApiModelId(model) {
+function mapApiModelId(model, env) {
   const m = String(model || '').trim()
   if (!m || /^(inherit|auto)$/i.test(m)) return m
   if (/^deepseek-chat$/i.test(m)) return 'deepseek-v4-flash'
   if (/^deepseek-reasoner$/i.test(m)) return 'deepseek-v4-pro'
+  // OpenRouter 聚合站：自动补充供应商前缀（如 openai/gpt-4o）
+  if (env && isOpenRouterEndpoint(env.ANTHROPIC_BASE_URL) && !m.includes('/')) {
+    const base = m.toLowerCase()
+    // 常见模型自动匹配供应商前缀
+    if (/^gpt-/) return `openai/${m}`
+    if (/^claude-/) return `anthropic/${m}`
+    if (/^gemini-/) return `google/${m}`
+    if (/^deepseek-/) return `deepseek/${m}`
+  }
   return m
+}
+
+function isOpenRouterEndpoint(baseUrl) {
+  return /openrouter\.ai/i.test(String(baseUrl || ''))
 }
 
 function resolveClaudeCliModel(model, env) {
@@ -152,8 +165,8 @@ function friendlyClaudeError(raw, env, providerName = '') {
   if (/fetch failed|ECONNREFUSED|ConnectionRefused|ETIMEDOUT|socket hang up|Unable to connect to API/i.test(t)) {
     if (/127\.0\.0\.1:3456|localhost:3456/.test(base)) {
       return (
-        '无法连接 Claude Code Router（ccr :3456）。请在终端执行 `ccr start` 并保持运行；' +
-        '或在模型下拉中改用 DeepSeek / 云梦 等直连供应商（无需 ccr）。' +
+        '无法连接本地 Claude Code Router（ccr :3456）。请在终端执行 `ccr start` 并保持运行；' +
+        '或在模型下拉中改用其它直连供应商（无需 ccr）。' +
         ` 原始错误：${t.slice(0, 200)}`
       )
     }
@@ -167,8 +180,7 @@ function friendlyClaudeError(raw, env, providerName = '') {
   }
   if (/issue with the selected model/i.test(t)) {
     return (
-      'Claude Code 无法使用当前模型配置。请在「设置 → 模型与连接」确认 DeepSeek 地址为 https://api.deepseek.com/anthropic，' +
-      '模型 ID 为 deepseek-v4-flash 或 deepseek-v4-pro。' +
+      '当前模型配置不受支持。请在「设置 → 模型与连接」检查模型 ID 和 API 端点是否正确。' +
       (t.includes('deepseek-chat') ? ' （列表中的 deepseek-chat 会自动映射为 deepseek-v4-flash）' : '')
     )
   }
@@ -180,14 +192,14 @@ function timeoutHint(env, model, providerName = '', attachmentCount = 0) {
   const who = providerName ? `供应商「${providerName}」` : '当前供应商'
   const imageNote =
     attachmentCount > 0
-      ? ` 您附带了 ${attachmentCount} 张截图：DeepSeek 等供应商不支持直接看图，若未用本机视觉模型预解析，Claude Code 会多次 Read 读盘，易触发超时。建议减少附图、在设置中配置 Ollama 视觉模型（如 qwen2.5vl），或改用「本地 MCP」模式。`
+      ? ` 您附带了 ${attachmentCount} 张截图：部分供应商不支持直接看图，若未用本机视觉模型预解析，Claude Code 会多次 Read 读盘，易触发超时。建议减少附图、在设置中配置 Ollama 视觉模型（如 qwen2.5vl），或改用「本地 MCP」模式。`
       : ''
   if (base.includes(':3456') || /gemini/i.test(String(env.ANTHROPIC_DEFAULT_SONNET_MODEL || ''))) {
     return `${imageNote} Gemini/ccr 在配额不足(429)时会长时间重试；请检查 Google API 用量或更换供应商。`.trim()
   }
   if (/deepseek\.com/i.test(base)) {
     return (
-      `${imageNote} 请在「设置 → 模型与连接」确认 ${who} 的 API 地址为 https://api.deepseek.com/anthropic，模型为 deepseek-v4-flash 或 deepseek-v4-pro。` +
+      `${imageNote} 请在「设置 → 模型与连接」确认 ${who} 的 API 地址与模型 ID 是否正确。` +
       ' 若 API 测试正常仍超时，多为 Agent 多轮或 MCP 连接过慢；可先发一句简单消息验证，或在设置中关闭离线 MCP。'
     ).trim()
   }
@@ -245,10 +257,7 @@ async function preflightAnthropicEndpoint(env, model, providerName = '') {
       return `${who} API Key 无效或未授权（HTTP 401）。请在「设置 → 模型与连接」更新 API Key。`
     }
     if (res.status === 404 || /model.*not found|unknown model|invalid model/i.test(detail)) {
-      const deepseekHint = /api\.deepseek\.com/i.test(base)
-        ? ' DeepSeek 请确认 API 地址为 https://api.deepseek.com/anthropic（不是根路径 /v1/messages）。'
-        : ''
-      return `${who} 不识别模型「${modelId}」（HTTP ${res.status}）。${deepseekHint}官方模型：deepseek-v4-flash / deepseek-v4-pro（或 deepseek-chat）；聚合站请用对应端点。`.trim()
+      return `${who} 不识别模型「${modelId}」（HTTP ${res.status}）。请在「设置 → 模型与连接」检查模型名称是否正确。`
     }
     return `${who} 拒绝请求（HTTP ${res.status}）：${detail.slice(0, 240)}`
   } catch (e) {
@@ -366,8 +375,8 @@ export async function runClaudeCodePrint({
   const useExplicitModel =
     rawModel && !/^(sonnet|opus|haiku|inherit|auto)$/i.test(rawModel)
   const apiModel = useExplicitModel
-    ? mapApiModelId(rawModel)
-    : mapApiModelId(env.ANTHROPIC_DEFAULT_SONNET_MODEL || 'sonnet')
+    ? mapApiModelId(rawModel, env)
+    : mapApiModelId(env.ANTHROPIC_DEFAULT_SONNET_MODEL || 'sonnet', env)
 
   const preflightError = await preflightAnthropicEndpoint(
     env,

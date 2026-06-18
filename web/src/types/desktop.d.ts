@@ -231,6 +231,17 @@ export type DesktopApi = {
     script?: string
     entryRel?: string
     cwdRel?: string
+    scanSummary?: string[]
+    ctx?: {
+      name?: string
+      description?: string
+      framework?: string
+      frameworkVersion?: string
+      scripts?: Record<string, string>
+      deps?: Record<string, string>
+      pythonVersion?: string
+      venv?: string
+    }
   }>
   workspaceGetExecutionSnapshot: () => Promise<{ ok: boolean; text?: string; error?: string }>
   /** 从当前工作区根目录读取相对路径文件（UTF-8），供发消息前注入 PRD 等 */

@@ -1084,8 +1084,11 @@ function ChatPage() {
         setMessages(diskToDisplay(hist, modelLabel));
         await persist(nextSessions, activeId);
         if (res.ranInTerminal) toast.success("已在集成终端执行命令");
-        else if (res.ok && res.url) toast.success("已在系统浏览器打开预览");
-        else if (!res.ok) toast.warning("未能自动运行，请查看终端或手动执行");
+        else if (res.ok && res.url) {
+          // 在浏览器中打开预览 URL
+          try { window.open(res.url, "_blank"); } catch { /* ignore */ }
+          toast.success("已在系统浏览器打开预览");
+        } else if (!res.ok) toast.warning("服务启动失败，请查看错误信息或手动执行");
       } catch (e) {
         toast.error(e instanceof Error ? e.message : String(e));
       } finally {
@@ -1727,6 +1730,7 @@ function ChatPage() {
       setEditComposer({
         input: restored.input,
         pendingImages: restored.attachments,
+        pendingFiles: [],
         pendingTerminalSnippets: restored.terminalSnippets,
       });
       setEditHistoryIndex(historyIndex);
@@ -2248,7 +2252,7 @@ function ChatPage() {
     if (wbsIntent.matched && activePendingImages.length === 0 && !hasTerminal && !hasFiles) {
       setInput("");
       if (wbsIntent.action === "generate-wbs") {
-        sendPayloadOverrideRef.current = { text: WBS_GENERATE_PM_PROMPT };
+        sendPayloadOverrideRef.current = { text: WBS_GENERATE_PM_PROMPT, pendingImages: [], pendingFiles: [], pendingTerminalSnippets: [], editCutoff: 0 };
         await sendChat();
         return;
       }
@@ -2787,6 +2791,7 @@ function ChatPage() {
       sendPayloadOverrideRef.current = {
         text: restored.input,
         pendingImages: restored.attachments,
+        pendingFiles: [],
         pendingTerminalSnippets: restored.terminalSnippets,
         editCutoff: historyIndex,
       };
