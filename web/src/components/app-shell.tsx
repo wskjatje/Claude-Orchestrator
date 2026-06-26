@@ -176,9 +176,9 @@ export function AppShell({
           id="app-sidebar-nav"
           className={cn(
             "flex shrink-0 flex-col border-r border-border bg-sidebar",
-            "fixed bottom-0 left-0 top-9 z-40 w-[min(17rem,88vw)] max-w-[280px] shadow-xl transition-transform duration-200 ease-out",
+            "fixed bottom-0 left-0 top-9 z-40 w-[min(17rem,88vw)] max-w-[300px] shadow-xl transition-transform duration-200 ease-out",
             "md:relative md:top-0 md:z-0 md:h-auto md:max-w-none md:translate-x-0 md:shadow-none md:transition-none",
-            workbench ? "md:w-12" : "md:w-60",
+            workbench ? "md:w-12" : "md:w-64",
             mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
           )}
         >
@@ -199,7 +199,7 @@ export function AppShell({
             {groups.map((group, gi) => (
               <div key={gi} className={cn("mb-3", workbench && "mb-2")}>
                 {group.label && !workbench ? (
-                  <div className="px-2 pb-1.5 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                  <div className="px-2 pb-1.5 pt-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/60">
                     {group.label}
                   </div>
                 ) : null}
@@ -212,20 +212,20 @@ export function AppShell({
                         to={item.to}
                         onClick={() => setMobileNavOpen(false)}
                         className={cn(
-                          "group flex items-center rounded-lg text-[13px] font-medium transition-colors duration-150",
+                          "group flex items-center rounded-lg text-[13px] font-medium transition-all duration-150",
                           workbench
                             ? "justify-center px-0 py-2 md:px-0 md:py-2"
                             : "gap-2.5 px-2.5 py-1.5",
                           active
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+                            : "text-sidebar-foreground/75 hover:bg-sidebar-accent/35 hover:text-sidebar-foreground",
                         )}
                       >
                         <Icon
                           className={cn(
                             "h-4 w-4 shrink-0 transition-colors",
                             workbench && "h-[18px] w-[18px]",
-                            active ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground/70",
+                            active ? "text-primary" : "text-muted-foreground/65 group-hover:text-foreground/80",
                           )}
                         />
                         <span className={cn(workbench && "sr-only md:sr-only")}>{item.label}</span>
@@ -292,11 +292,13 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 border-b border-border bg-surface-elevated px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-6 sm:py-4 lg:px-7">
+    <div className="relative flex flex-col gap-3 border-b border-border bg-surface-elevated px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-6 sm:py-4 lg:px-7">
+      {/* 底部渐变装饰线 */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[1px] bg-gradient-to-r from-transparent via-primary/15 to-transparent opacity-60" aria-hidden />
       <div className="min-w-0">
         <h1 className="text-[16px] font-semibold tracking-tight text-foreground sm:text-[17px]">{title}</h1>
         {description && (
-          <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground sm:text-[12.5px]">{description}</p>
+          <p className="mt-0.5 text-[12px] leading-snug text-muted-foreground/80 sm:text-[12.5px]">{description}</p>
         )}
       </div>
       {actions && (

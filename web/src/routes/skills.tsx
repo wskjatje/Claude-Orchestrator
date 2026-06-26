@@ -270,8 +270,8 @@ function SkillsPage() {
       {/* 详情抽屉 */}
       {detail && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={() => setDetail(null)} />
-          <div className="flex w-full max-w-md flex-col border-l border-border bg-surface-elevated shadow-2xl">
+          <div className="flex-1 bg-foreground/25 backdrop-blur-sm" onClick={() => setDetail(null)} />
+          <div className="flex w-full max-w-lg flex-col border-l border-border bg-surface-elevated shadow-2xl">
             <div className="flex items-center justify-between border-b border-border px-5 py-3">
               <div className="flex items-center gap-2.5">
                 <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", detail.enabled ? "bg-primary-soft text-primary" : "bg-secondary text-muted-foreground")}>

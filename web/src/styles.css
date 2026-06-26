@@ -266,9 +266,10 @@
   --gradient-subtle: linear-gradient(180deg, oklch(0.175 0.014 42), oklch(0.14 0.014 42));
   --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.4);
   --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.45), 0 1px 2px oklch(0 0 0 / 0.32);
-  --shadow-md: 0 4px 12px oklch(0 0 0 / 0.5), 0 2px 4px oklch(0 0 0 / 0.32);
-  --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.58), 0 4px 8px oklch(0 0 0 / 0.38);
-  --shadow-glow: 0 8px 24px oklch(0.72 0.17 25 / 0.38);
+  --shadow-md: 0 4px 14px oklch(0 0 0 / 0.5), 0 2px 4px oklch(0 0 0 / 0.32);
+  --shadow-lg: 0 12px 36px oklch(0 0 0 / 0.58), 0 4px 8px oklch(0 0 0 / 0.38);
+  --shadow-xl: 0 20px 52px oklch(0 0 0 / 0.62), 0 6px 12px oklch(0 0 0 / 0.42);
+  --shadow-glow: 0 8px 28px oklch(0.72 0.17 25 / 0.42);
   /* Diff & tool colors — dark variants */
   --diff-add: oklch(0.32 0.07 145);
   --diff-add-fg: oklch(0.78 0.14 145);
@@ -369,17 +370,18 @@
     background-color: var(--muted-foreground);
   }
   .glass {
-    background-color: color-mix(in oklab, var(--surface-elevated) 75%, transparent);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background-color: color-mix(in oklab, var(--surface-elevated) 78%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
   }
 
   /** 主内容区轻微氛围光，贴近 Workbench 深色工作台观感 */
   .main-canvas {
     background-color: var(--color-background);
     background-image:
-      radial-gradient(120% 80% at 100% 0%, oklch(0.72 0.17 25 / 0.07), transparent 55%),
-      radial-gradient(90% 60% at 0% 100%, oklch(0.78 0.14 70 / 0.045), transparent 50%);
+      radial-gradient(130% 80% at 100% 0%, oklch(0.72 0.17 25 / 0.06), transparent 60%),
+      radial-gradient(100% 60% at 0% 100%, oklch(0.78 0.14 70 / 0.04), transparent 55%);
   }
 
   .dark .main-canvas {
@@ -532,6 +534,17 @@
 
   .page-section {
     @apply rounded-xl border border-border bg-surface-elevated p-4 shadow-xs;
+    transition: box-shadow var(--transition-base), border-color var(--transition-base);
+  }
+
+  .page-section--interactive {
+    cursor: pointer;
+    transition: box-shadow var(--transition-smooth), border-color var(--transition-base), transform var(--transition-smooth);
+  }
+  .page-section--interactive:hover {
+    box-shadow: var(--shadow-md);
+    border-color: color-mix(in oklab, var(--border) 85%, var(--primary));
+    transform: translateY(-1px);
   }
 
   .page-section-header {
@@ -540,10 +553,32 @@
 
   .page-toolbar {
     @apply flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-elevated px-3 py-2;
+    transition: border-color var(--transition-base);
+  }
+
+  .focused-ring {
+    outline: none;
+  }
+  .focused-ring:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 
   .page-notice {
     @apply rounded-lg border px-3 py-2 text-[12px] leading-relaxed;
+  }
+
+  .input-enhanced {
+    transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  }
+  .input-enhanced:focus {
+    border-color: color-mix(in oklab, var(--ring) 60%, var(--border));
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 12%, transparent);
+    outline: none;
+  }
+  .input-enhanced::placeholder {
+    color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
   }
 
   .page-data-table th {
@@ -554,8 +589,14 @@
     @apply px-3 py-2 align-middle;
   }
 
+  .page-data-table tbody tr {
+    transition: background-color var(--transition-base);
+  }
   .page-data-table tbody tr:hover {
-    background-color: color-mix(in oklab, var(--secondary) 45%, transparent);
+    background-color: color-mix(in oklab, var(--secondary) 50%, transparent);
+  }
+  .page-data-table tbody tr:active {
+    background-color: color-mix(in oklab, var(--secondary) 65%, transparent);
   }
 
   /**
@@ -610,10 +651,27 @@
     background-color: var(--primary);
     background-image: var(--gradient-primary);
     color: var(--primary-foreground);
+    transition: box-shadow var(--transition-base), background-image var(--transition-base), opacity var(--transition-base);
+  }
+  .btn-gradient-primary:hover {
+    background-image: var(--gradient-primary-hover);
+    box-shadow: 0 2px 8px oklch(0.68 0.15 25 / 0.25);
+  }
+  .btn-gradient-primary:active {
+    transform: translateY(0);
+    opacity: 0.92;
   }
 
   .btn-row {
-    @apply inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium transition hover:bg-secondary disabled:opacity-40;
+    @apply inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium disabled:opacity-40;
+    transition: background-color var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
+  }
+  .btn-row:hover {
+    background-color: var(--secondary);
+    border-color: color-mix(in oklab, var(--border) 75%, var(--primary));
+  }
+  .btn-row:active {
+    background-color: color-mix(in oklab, var(--secondary) 85%, var(--muted));
   }
 
   /** 覆盖 xterm 默认 #000 背景，跟随主题 token */

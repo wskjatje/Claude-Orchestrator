@@ -12,7 +12,7 @@ export function PageBanner({ children, className }: { children: ReactNode; class
   return (
     <div
       className={cn(
-        "shrink-0 border-b border-border bg-surface-elevated/80 px-4 py-2.5 text-[12px] leading-relaxed text-muted-foreground sm:px-5 lg:px-6",
+        "shrink-0 border-b border-border bg-surface-elevated/70 px-4 py-2.5 text-[12px] leading-relaxed text-muted-foreground/85 sm:px-5 lg:px-6",
         className,
       )}
     >
@@ -60,7 +60,7 @@ export function ListToolbar({ children, className }: { children: ReactNode; clas
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-surface-elevated/60 px-4 py-3 sm:px-5 lg:px-6",
+        "flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-surface-elevated/50 px-4 py-3 sm:px-5 lg:px-6",
         className,
       )}
     >
@@ -123,8 +123,10 @@ export function ListCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "group flex items-start gap-3 rounded-xl border bg-surface-elevated p-3.5 text-left shadow-xs transition",
-        active ? "border-primary/50 ring-2 ring-primary/15" : "border-border hover:border-primary/30",
+        "group flex items-start gap-3 rounded-xl border bg-surface-elevated p-3.5 text-left shadow-xs transition-all duration-200",
+        active
+          ? "border-primary/50 ring-2 ring-primary/15 shadow-md"
+          : "border-border hover:border-primary/25 hover:shadow-sm hover:-translate-y-0.5",
       )}
     >
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">
@@ -183,7 +185,7 @@ export function ToggleSwitch({
 
 export function DetailPane({ children, empty }: { children?: ReactNode; empty?: ReactNode }) {
   return (
-    <aside className="page-detail-pane hidden h-full min-h-0 flex-col overflow-hidden bg-card/60 lg:flex">
+    <aside className="page-detail-pane hidden h-full min-h-0 flex-col overflow-hidden bg-card/50 lg:flex">
       {children ?? (
         <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-[12.5px] text-muted-foreground">
           {empty ?? "请选择左侧条目"}
@@ -204,7 +206,7 @@ export function DetailHeader({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary shadow-sm">
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0">
@@ -261,8 +263,8 @@ export function FilterPills<T extends string>({
           type="button"
           onClick={() => onChange(opt)}
           className={cn(
-            "rounded-md px-2.5 py-1 text-[11.5px] font-medium transition",
-            value === opt ? "bg-surface text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+            "rounded-md px-2.5 py-1 text-[11.5px] font-medium transition-all duration-150",
+            value === opt ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground/80 hover:text-foreground",
           )}
         >
           {opt}
@@ -332,12 +334,14 @@ export function SettingsNavItem({
       type="button"
       onClick={onClick}
       className={cn(
-        "relative px-3 py-2.5 text-[13px] font-medium transition",
-        active ? "text-primary" : "text-muted-foreground hover:text-foreground",
+        "relative px-3 py-2.5 text-[13px] font-medium transition-colors duration-150",
+        active ? "text-primary" : "text-muted-foreground/80 hover:text-foreground",
       )}
     >
       {children}
-      {active ? <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" /> : null}
+      {active ? (
+        <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary shadow-sm shadow-primary/40" />
+      ) : null}
     </button>
   );
 }

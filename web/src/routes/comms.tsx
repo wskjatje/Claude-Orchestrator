@@ -752,7 +752,7 @@ function McpDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={onClose} />
+      <div className="flex-1 bg-foreground/25 backdrop-blur-sm" onClick={onClose} />
       <div className="flex w-full max-w-lg flex-col border-l border-border bg-surface-elevated shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <div className="flex min-w-0 items-center gap-2.5">

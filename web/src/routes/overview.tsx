@@ -155,7 +155,7 @@ function OverviewPage() {
         }
       />
 
-      <div className="mx-auto max-w-6xl space-y-5 px-4 py-5 sm:px-6 lg:px-7">
+      <div className="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-7">
         <OverviewBridgeBar />
         <OverviewTodayKpis kpis={todayKpis} />
         <UsageAnalyticsSection

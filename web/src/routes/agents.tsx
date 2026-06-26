@@ -705,7 +705,7 @@ function AgentsPage() {
       {/* 单次调用（Claude Code global:// 或本地 MCP 注入） */}
       {tryRun.open && active && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={() => setTryRun(t => ({ ...t, open: false }))} />
+          <div className="flex-1 bg-foreground/25 backdrop-blur-sm" onClick={() => setTryRun(t => ({ ...t, open: false }))} />
           <div className="flex w-full max-w-xl flex-col border-l border-border bg-surface-elevated shadow-2xl">
             <div className="flex items-center justify-between border-b border-border px-5 py-3">
               <div>
@@ -908,7 +908,7 @@ function AgentEditorDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={onClose} />
+      <div className="flex-1 bg-foreground/25 backdrop-blur-sm" onClick={onClose} />
       <div className="flex h-full max-h-screen w-full max-w-2xl flex-col border-l border-border bg-surface-elevated shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
           <div className="flex min-w-0 items-center gap-2.5">

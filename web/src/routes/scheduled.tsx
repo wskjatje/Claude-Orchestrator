@@ -389,7 +389,7 @@ function ScheduledTaskDrawer({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={onClose} />
+      <div className="flex-1 bg-foreground/25 backdrop-blur-sm" onClick={onClose} />
       <div className="flex h-full max-h-screen w-full max-w-lg flex-col border-l border-border bg-surface-elevated shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
           <div className="min-w-0 pr-3">

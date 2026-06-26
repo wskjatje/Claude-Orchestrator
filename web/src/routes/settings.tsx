@@ -214,7 +214,7 @@ function SettingsPage() {
           ) : null}
 
           {settingsTab === "general" ? (
-            <div className="max-w-xl space-y-4">
+            <div className="max-w-2xl space-y-5">
               <Section title="一键确认写入" hint={CONFIRM_WRITE_SECTION_HINT}>
                 <label className="block text-[12px] text-muted-foreground" htmlFor="default-confirm-write-path">
                   默认相对路径
@@ -530,200 +530,147 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
 
   return (
     <>
-      <div className="mx-auto w-full max-w-5xl space-y-3">
+      <div className="max-w-2xl space-y-5">
+        {/* ── 仓库摘要 ── */}
         <Section title="GitHub 同步">
-          {/* ── 仓库摘要栏 ── */}
-          <div className="group relative overflow-hidden rounded-xl border border-border bg-surface-elevated shadow-xs transition-all duration-200 hover:shadow-sm">
-            {/* 顶部渐变装饰条 */}
-            <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-primary/60 via-accent/50 to-transparent" />
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 pl-[18px]">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-secondary/50">
-                    <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-[12px] font-medium text-foreground">
-                      {personalRepoShort}
-                    </p>
-                    {gitStatus?.ok && (
-                      <div className="mt-0.5 flex items-center gap-2">
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          {gitStatus.branch || "—"}
-                        </span>
-                        <span className="text-[9px] text-muted-foreground/40">·</span>
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-full px-2 py-[1px] text-[9.5px] font-medium",
-                            gitStatus.dirty
-                              ? "bg-amber-500/10 text-amber-600"
-                              : "bg-emerald-500/10 text-emerald-600",
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "h-1.5 w-1.5 rounded-full",
-                              gitStatus.dirty ? "bg-amber-500" : "bg-emerald-500",
-                            )}
-                          />
-                          {gitStatus.dirty ? "有改动" : "干净"}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-secondary/50">
+                  <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-[12px] font-medium text-foreground">
+                    {personalRepoShort}
+                  </p>
+                  {gitStatus?.ok && (
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {gitStatus.branch || "—"}
+                      </span>
+                      <span className="text-[9px] text-muted-foreground/40">·</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {gitStatus.dirty ? "有改动" : "干净"}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
-              <button
-                type="button"
-                disabled={!desktop}
-                onClick={() => setConfigDrawerOpen(true)}
-                className="btn-row shrink-0 gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px]"
-              >
-                <Settings className="h-3.5 w-3.5" /> 仓库配置
-              </button>
             </div>
+            <button
+              type="button"
+              disabled={!desktop}
+              onClick={() => setConfigDrawerOpen(true)}
+              className="btn-row"
+            >
+              <Settings className="h-3.5 w-3.5" /> 仓库配置
+            </button>
+          </div>
+        </Section>
+
+        {/* ── 官方 Claude Code ── */}
+        <Section title="官方同步">
+          <p className="mb-3 text-[12px] leading-relaxed text-muted-foreground">
+            从 Anthropic 官方仓库同步 Agent、Skill、任务链与 MCP 预设等编排资产。
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!desktop || gitBusy !== null}
+              onClick={() => void checkUpstreamUpdates()}
+              className="btn-row"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", gitBusy === "checkUpstream" && "animate-spin")} />
+              {gitBusy === "checkUpstream" ? "检测中…" : "检测更新"}
+            </button>
+            <button
+              type="button"
+              disabled={!desktop || gitBusy !== null}
+              onClick={() => void pullFromGithub()}
+              className="btn-gradient-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
+            >
+              <Download className={cn("h-3.5 w-3.5", gitBusy === "pull" && "animate-pulse")} />
+              {gitBusy === "pull" ? "同步中…" : "同步官方"}
+            </button>
+          </div>
+        </Section>
+
+        {/* ── 个人仓库 ── */}
+        <Section title="个人仓库">
+          {workspacePath ? (
+            <p className="mb-3 truncate font-mono text-[11px] text-muted-foreground" title={workspacePath}>
+              工作区：{workspacePath}
+            </p>
+          ) : (
+            <p className="mb-3 text-[11px] text-warning">
+              未选择工作区，推送说明将无法带上项目名。
+            </p>
+          )}
+
+          <label className="block">
+            <span className="mb-1.5 flex items-center gap-1 text-[12px] font-medium text-foreground/80">
+              {GIT_PUSH_REASON_LABEL} <RequiredMark />
+            </span>
+            <textarea
+              value={pushReason}
+              onChange={(e) => setPushReason(e.target.value)}
+              disabled={!desktop}
+              placeholder={GIT_PUSH_REASON_PLACEHOLDER}
+              rows={2}
+              spellCheck={false}
+              required
+              className="input-enhanced w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] outline-none disabled:opacity-40"
+            />
+          </label>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              disabled={!desktop || gitBusy !== null}
+              onClick={() => void deployFromRepo()}
+              className="btn-row"
+            >
+              <FolderInput className={cn("h-3.5 w-3.5", gitBusy === "deployPersonal" && "animate-pulse")} />
+              {gitBusy === "deployPersonal" ? "部署中…" : "部署到本地"}
+            </button>
+            <button
+              type="button"
+              disabled={!desktop || gitBusy !== null}
+              onClick={() => void commitBranch()}
+              className="btn-row"
+            >
+              <GitBranch className={cn("h-3.5 w-3.5", gitBusy === "commitBranch" && "animate-pulse")} />
+              {gitBusy === "commitBranch" ? "提交中…" : "提交分支"}
+            </button>
+            <button
+              type="button"
+              disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim() || !gitUserName.trim() || !gitUserEmail.trim()}
+              onClick={() => void pullFromPersonal()}
+              className="btn-row"
+            >
+              <Download className={cn("h-3.5 w-3.5", gitBusy === "pullPersonal" && "animate-pulse")} />
+              {gitBusy === "pullPersonal" ? "拉取中…" : "拉取"}
+            </button>
+            <button
+              type="button"
+              disabled={
+                !desktop ||
+                gitBusy !== null ||
+                !personalGithubRepo.trim() ||
+                !gitUserName.trim() ||
+                !gitUserEmail.trim()
+              }
+              onClick={() => void pushToPersonal()}
+              className="btn-row"
+            >
+              <Upload className={cn("h-3.5 w-3.5", gitBusy === "push" && "animate-pulse")} />
+              {gitBusy === "push" ? "推送中…" : "推送"}
+            </button>
           </div>
 
-          {/* ── 双列卡片：官方 + 个人仓库 ── */}
-          <div className="grid gap-4 lg:grid-cols-2">
-            {/* 官方 Claude Code */}
-            <div className="group relative overflow-hidden rounded-xl border border-border bg-surface-elevated shadow-xs transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
-              <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-sky-500/60 via-blue-400/50 to-transparent" />
-              <div className="p-5 pt-[18px]">
-                <div className="mb-3 flex items-center gap-2.5">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/60 bg-sky-500/10 text-sky-600">
-                    <Download className="h-3.5 w-3.5" />
-                  </div>
-                  <span className="text-[13px] font-semibold text-foreground">官方 Claude Code</span>
-                </div>
-                <p className="mb-4 text-[11.5px] leading-relaxed text-muted-foreground">
-                  从 Anthropic 官方仓库同步 Agent、Skill、任务链与 MCP 预设等编排资产。
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={!desktop || gitBusy !== null}
-                    onClick={() => void checkUpstreamUpdates()}
-                    className="btn-row gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px]"
-                  >
-                    <RefreshCw className={cn("h-3.5 w-3.5", gitBusy === "checkUpstream" && "animate-spin")} />
-                    {gitBusy === "checkUpstream" ? "检测中…" : "检测更新"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!desktop || gitBusy !== null}
-                    onClick={() => void pullFromGithub()}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-600 to-blue-500 px-3.5 py-1.5 text-[11.5px] font-semibold text-white shadow-xs transition-all duration-150 hover:shadow-sm hover:brightness-110 disabled:opacity-40"
-                  >
-                    <Download className={cn("h-3.5 w-3.5", gitBusy === "pull" && "animate-pulse")} />
-                    {gitBusy === "pull" ? "同步中…" : "同步官方"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* 个人仓库 */}
-            <div className="group relative overflow-hidden rounded-xl border border-border bg-surface-elevated shadow-xs transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
-              <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-primary/60 via-accent/50 to-transparent" />
-              <div className="p-5 pt-[18px]">
-                <div className="mb-3 flex items-center gap-2.5">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/60 bg-primary-soft text-primary">
-                    <Upload className="h-3.5 w-3.5" />
-                  </div>
-                  <span className="text-[13px] font-semibold text-foreground">个人仓库</span>
-                </div>
-                {workspacePath ? (
-                  <p className="mb-3 truncate font-mono text-[10.5px] text-muted-foreground" title={workspacePath}>
-                    工作区：{workspacePath}
-                  </p>
-                ) : (
-                  <p className="mb-3 text-[10.5px] text-warning">
-                    未选择工作区，推送说明将无法带上项目名。
-                  </p>
-                )}
-
-                <label className="block">
-                  <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-foreground/80">
-                    <span className="h-1 w-1 rounded-full bg-primary/60" />
-                    {GIT_PUSH_REASON_LABEL} <RequiredMark />
-                  </span>
-                  <textarea
-                    value={pushReason}
-                    onChange={(e) => setPushReason(e.target.value)}
-                    disabled={!desktop}
-                    placeholder={GIT_PUSH_REASON_PLACEHOLDER}
-                    rows={2}
-                    spellCheck={false}
-                    required
-                    className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[11.5px] outline-none transition placeholder:text-muted-foreground/50 focus:border-primary/50 focus:ring-2 focus:ring-primary/15 disabled:opacity-40"
-                  />
-                </label>
-
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    disabled={!desktop || gitBusy !== null}
-                    onClick={() => void deployFromRepo()}
-                    className={cn(
-                      "btn-row gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px]",
-                      "border-emerald-500/20 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400",
-                    )}
-                  >
-                    <FolderInput className={cn("h-3.5 w-3.5", gitBusy === "deployPersonal" && "animate-pulse")} />
-                    {gitBusy === "deployPersonal" ? "部署中…" : "部署到本地"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!desktop || gitBusy !== null}
-                    onClick={() => void commitBranch()}
-                    className="btn-row gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px]"
-                  >
-                    <GitBranch className={cn("h-3.5 w-3.5", gitBusy === "commitBranch" && "animate-pulse")} />
-                    {gitBusy === "commitBranch" ? "提交中…" : "提交分支"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim() || !gitUserName.trim() || !gitUserEmail.trim()}
-                    onClick={() => void pullFromPersonal()}
-                    className="btn-row gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px]"
-                  >
-                    <Download className={cn("h-3.5 w-3.5", gitBusy === "pullPersonal" && "animate-pulse")} />
-                    {gitBusy === "pullPersonal" ? "拉取中…" : "拉取"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      !desktop ||
-                      gitBusy !== null ||
-                      !personalGithubRepo.trim() ||
-                      !gitUserName.trim() ||
-                      !gitUserEmail.trim()
-                    }
-                    onClick={() => void pushToPersonal()}
-                    className="btn-row gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px]"
-                  >
-                    <Upload className={cn("h-3.5 w-3.5", gitBusy === "push" && "animate-pulse")} />
-                    {gitBusy === "push" ? "推送中…" : "推送"}
-                  </button>
-                </div>
-
-                <div className="mt-3 flex items-start gap-2 rounded-lg bg-muted/40 px-3 py-2">
-                  <span className="mt-[2px] shrink-0 text-[10px] text-muted-foreground">ⓘ</span>
-                  <div className="text-[10.5px] leading-relaxed text-muted-foreground">
-                    <span>{GIT_PUSH_HINT}</span>
-                    <span className="ml-1">{GIT_DEPLOY_HINT}</span>
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground/70 hover:text-muted-foreground">
-                        详细说明
-                      </summary>
-                      <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground/60">
-                        {GIT_PUSH_HINT_DETAIL}
-                      </p>
-                    </details>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="mt-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+            <p>{GIT_PUSH_HINT} {GIT_DEPLOY_HINT}</p>
+            <p className="mt-1 text-[10.5px] text-muted-foreground/60">{GIT_PUSH_HINT_DETAIL}</p>
           </div>
         </Section>
       </div>
@@ -790,7 +737,7 @@ function GitHubConfigDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={onClose} />
+      <div className="flex-1 bg-foreground/25 backdrop-blur-sm" onClick={onClose} />
       <div className="flex h-full max-h-screen w-full max-w-md flex-col border-l border-border bg-surface-elevated shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
           <div>
