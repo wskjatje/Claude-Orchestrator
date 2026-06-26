@@ -56,7 +56,7 @@ function spawnBackendNode(scriptAbs, envExtra = {}) {
       NODE_PATH: nodePath,
       CLAUDE_ORCHESTRATOR_USER_DATA: userData,
       CLAUDE_ORCHESTRATOR_PROJECT_ROOT: projectRoot,
-      MCP_STARTUP_HEALTH: 'defer',
+      MCP_STARTUP_HEALTH: 'delayed',
       ...envExtra,
     },
     cwd: paths.serverDir,

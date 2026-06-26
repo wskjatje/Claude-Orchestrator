@@ -17,6 +17,7 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const projectDb = require('./project-db.cjs')
 const usageStats = require('./usage-stats.cjs')
+const { normalizeCloudModelId } = require('./cloud-providers.cjs')
 
 const KV = {
   workspace: 'workspace',
@@ -73,8 +74,8 @@ function mergeSessionsOnSave(incoming, existing) {
       (lHist.length === dHist.length && lastUserMessageTs(lHist) >= lastUserMessageTs(dHist))
     merged.push(
       keepLocal
-        ? { ...d, ...l, title: d.title || l.title, history: lHist }
-        : { ...l, ...d, modelId: d.modelId || l.modelId, history: dHist },
+        ? { ...d, ...l, title: l.title || d.title, history: lHist }
+        : { ...l, ...d, title: d.title || l.title, modelId: l.modelId || d.modelId, history: dHist },
     )
     localById.delete(d.id)
   }
@@ -196,11 +197,11 @@ function defaultChatSettings() {
   return {
     ollamaBase: 'http://127.0.0.1:11434',
     model: 'auto',
-    localOllamaModel: 'qwen2.5-coder:14b',
+    localOllamaModel: '',
     claudeCliPath: DEFAULT_CLAUDE_CLI,
     orchestrationMode: 'claude-code',
     localAgentBasename: '',
-    defaultConfirmWritePath: 'docs/prd.md',
+    defaultConfirmWritePath: '',
     mcpConfigAbsolutePath: '',
     devMcpOrchDebug: false,
     cloudModelCatalog: [],
@@ -384,6 +385,30 @@ function migrateChatEnabledFields(merged) {
   return { chatEnabledCloudProviders, chatEnabledLocalModels }
 }
 
+function migrateDeprecatedModelFields(data) {
+  if (!data || typeof data !== 'object') return { data, changed: false }
+  let changed = false
+  const next = { ...data }
+
+  const model = String(next.model || '').trim()
+  const migratedModel = normalizeCloudModelId(model)
+  if (model && migratedModel !== model) {
+    next.model = migratedModel
+    changed = true
+  }
+
+  if (Array.isArray(next.cloudModelCatalog)) {
+    const catalog = next.cloudModelCatalog.map((m) => normalizeCloudModelId(String(m || '').trim())).filter(Boolean)
+    const deduped = [...new Set(catalog)]
+    if (JSON.stringify(deduped) !== JSON.stringify(next.cloudModelCatalog)) {
+      next.cloudModelCatalog = deduped
+      changed = true
+    }
+  }
+
+  return { data: next, changed }
+}
+
 export function loadChatSettings() {
   const defaults = defaultChatSettings()
   try {
@@ -399,8 +424,26 @@ export function loadChatSettings() {
         projectDb.saveKv(db(), KV.chatSettings, { ...data, localAgentBasename: '' })
       }
     }
+    // 若 cloud_providers KV 有供应商但 cloudProviderCatalog 为空，自动回填
+    try {
+      const cp = projectDb.loadKv(db(), 'cloud_providers', null)
+      const cpIds = Object.keys(cp?.providers || {})
+      if (cpIds.length && !(merged.cloudProviderCatalog || []).length) {
+        merged.cloudProviderCatalog = cpIds
+      }
+    } catch { /* ignore */ }
     const enabled = migrateChatEnabledFields(merged)
-    return { ...merged, ...enabled }
+    const migrated = migrateDeprecatedModelFields({ ...merged, ...enabled })
+    const storedEnabled = normalizeStringList(merged.chatEnabledCloudProviders)
+    const storedLocalEnabled = normalizeStringList(merged.chatEnabledLocalModels)
+    if (
+      migrated.changed ||
+      storedEnabled.join(',') !== (enabled.chatEnabledCloudProviders || []).join(',') ||
+      storedLocalEnabled.join(',') !== (enabled.chatEnabledLocalModels || []).join(',')
+    ) {
+      projectDb.saveKv(db(), KV.chatSettings, migrated.data)
+    }
+    return migrated.data
   } catch {
     return defaults
   }
@@ -587,21 +630,35 @@ export function loadChatSessions() {
       return { ...defaults, composerDrafts: {} }
     }
     const composerDrafts = normalizeComposerDrafts(data.composerDrafts)
+    let sessions = data.sessions
+    let sessionsChanged = false
+    sessions = sessions.map((s) => {
+      const raw = String(s?.modelId || '').trim()
+      const migrated = normalizeCloudModelId(raw)
+      if (raw && migrated !== raw) {
+        sessionsChanged = true
+        return { ...s, modelId: migrated }
+      }
+      return s
+    })
+    if (sessionsChanged) {
+      projectDb.saveKv(db(), KV.chatSessions, { ...data, sessions })
+    }
     if (data.version >= 2 && data.activeByWorkspace && typeof data.activeByWorkspace === 'object') {
       return {
         version: 2,
-        activeId: data.activeId || data.sessions[0].id,
+        activeId: data.activeId || sessions[0].id,
         activeByWorkspace: data.activeByWorkspace,
-        sessions: data.sessions,
+        sessions,
         composerDrafts,
       }
     }
-    const activeId = data.activeId || data.sessions[0].id
+    const activeId = data.activeId || sessions[0].id
     return {
       version: 2,
       activeId,
       activeByWorkspace: { '': activeId },
-      sessions: data.sessions.map((s) => ({
+      sessions: sessions.map((s) => ({
         ...s,
         workspacePath: s?.workspacePath ?? null,
       })),

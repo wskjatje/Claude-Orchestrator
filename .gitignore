@@ -3,6 +3,10 @@
 .claudecode/
 .tmp/
 
+# 用户本地配置（模型设置、偏好、密钥等）
+.claude/settings.json
+.codex/config.toml
+
 # Dependencies & vendored bundles (install locally; do not push)
 node_modules/
 server/vendor/
@@ -14,6 +18,11 @@ web/dist-electron/
 web/.env
 web/.wrangler/
 web/.tanstack/
+
+# 数据库与备份
+*.db
+*.sqlite
+*.bak
 
 # Desktop packaging (build locally; do not push)
 desktop/node_modules/

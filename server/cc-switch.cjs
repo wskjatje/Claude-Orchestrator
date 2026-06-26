@@ -80,13 +80,8 @@ function maskApiKey(key) {
   return `${k.slice(0, 4)}…${k.slice(-4)}`
 }
 
-/** Claude Code 会拼 /v1/messages；DeepSeek Anthropic 兼容根路径须含 /anthropic */
 function normalizeAnthropicBaseUrl(base) {
-  let b = String(base || '').trim().replace(/\/+$/, '')
-  if (!b) return b
-  if (/^https:\/\/api\.deepseek\.com$/i.test(b)) return `${b}/anthropic`
-  if (/^https:\/\/api\.deepseek\.com\/v1$/i.test(b)) return 'https://api.deepseek.com/anthropic'
-  return b
+  return String(base || '').trim().replace(/\/+$/, '')
 }
 
 function normalizeProviderEnv(env) {
@@ -96,14 +91,6 @@ function normalizeProviderEnv(env) {
     next.ANTHROPIC_BASE_URL = normalizeAnthropicBaseUrl(next.ANTHROPIC_BASE_URL)
   }
   return next
-}
-
-function mapDeepSeekModelForClaude(model) {
-  const m = String(model || '').trim()
-  if (!m) return m
-  if (/^deepseek-chat$/i.test(m)) return 'deepseek-v4-flash'
-  if (/^deepseek-reasoner$/i.test(m)) return 'deepseek-v4-pro'
-  return m
 }
 
 function rowToProviderSummary(row) {
@@ -328,7 +315,7 @@ function setCurrentProvider(providerId, preferredModel, dbExternal) {
     const env = normalizeProviderEnv({ ...(cfg.env || {}) })
     const model = String(preferredModel || env.ANTHROPIC_DEFAULT_SONNET_MODEL || '').trim()
     if (model) {
-      const apiModel = mapDeepSeekModelForClaude(model)
+      const apiModel = model
       env.ANTHROPIC_DEFAULT_HAIKU_MODEL = apiModel
       env.ANTHROPIC_DEFAULT_SONNET_MODEL = apiModel
       env.ANTHROPIC_DEFAULT_OPUS_MODEL = apiModel
@@ -467,11 +454,6 @@ async function collectCloudModelPool({ aliases = [], settings = {}, fetchRemote 
     }
   }
 
-  if (Array.isArray(settings.cloudModelCatalog)) {
-    for (const m of settings.cloudModelCatalog) {
-      if (allowCloud(m)) models.add(String(m || '').trim())
-    }
-  }
   const curModel = String(settings.model || '').trim()
   if (curModel && allowCloud(curModel)) models.add(curModel)
 
@@ -554,7 +536,7 @@ async function syncCcSwitchToWorkbench({ loadChatSettings, saveChatSettings, loa
       model: String(model).trim() || cur.model,
       ollamaBase: cur.ollamaBase || 'http://127.0.0.1:11434',
       cloudModelCatalog: await filterCloudModelList(
-        [...new Set([...(cur.cloudModelCatalog || []), ...pool])],
+        pool,
         cur,
       ),
     }
@@ -638,7 +620,7 @@ function findProviderRowForModel(modelId, dbExternal) {
 
 /**
  * 为 Claude Code 调用解析 env：优先使用拥有该模型的 CC Switch 供应商，
- * 避免 UI 选了 DeepSeek 却仍走全局 Gemini/ccr 端点。
+ * 避免 UI 选了特定模型却仍走全局端点。
  */
 function resolveEnvForModel(modelId) {
   const globalEnv = readGlobalClaudeEnvFromDisk()
@@ -669,7 +651,7 @@ function resolveEnvForModel(modelId) {
   const env = { ...globalEnv, ...(cfg.env || {}) }
 
   if (model && !/^(sonnet|opus|haiku)$/i.test(model)) {
-    const apiModel = mapDeepSeekModelForClaude(model)
+    const apiModel = model
     env.ANTHROPIC_DEFAULT_HAIKU_MODEL = apiModel
     env.ANTHROPIC_DEFAULT_SONNET_MODEL = apiModel
     env.ANTHROPIC_DEFAULT_OPUS_MODEL = apiModel

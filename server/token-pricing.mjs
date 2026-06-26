@@ -35,9 +35,7 @@ export function resolveModelPricing(model, customTable = {}) {
   for (const [key, val] of Object.entries(merged)) {
     if (key.toLowerCase() === lower) return val
   }
-  if (/deepseek/i.test(m)) return merged['deepseek-v4-flash']
-  if (/gemini/i.test(m)) return merged['gemini-2.5-flash']
-  if (/claude/i.test(m)) return merged.sonnet
+  // 通用回退价格（无硬编码供应商判断）
   return { inputPer1M: 1, outputPer1M: 5 }
 }
 

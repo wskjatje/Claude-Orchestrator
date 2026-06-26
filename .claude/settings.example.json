@@ -1,0 +1,17 @@
+{
+  "_comment": "将此文件复制为 .claude/settings.json 并编辑你的本地设置",
+  "language": "chinese",
+  "showTurnDuration": false,
+  "spinnerTipsEnabled": true,
+  "spinnerVerbs": {
+    "mode": "replace",
+    "verbs": ["思考中", "处理中", "编写中", "分析中", "检索中", "推理中", "阅读中", "整理中"]
+  },
+  "spinnerTipsOverride": {
+    "excludeDefault": true,
+    "tips": []
+  },
+  "env": {
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "8192"
+  }
+}

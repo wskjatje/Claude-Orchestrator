@@ -65,16 +65,14 @@ function modelSupportsVision(name) {
 }
 
 /**
- * Claude Code / Cursor：官方 Anthropic 与部分第三方 vision 模型可 inline 传图；
- * DeepSeek Anthropic 兼容端点不支持。
+ * Claude Code / Cursor：官方 Anthropic 与部分第三方 vision 模型可 inline 传图。
  * @param {string} modelId
  * @param {{ ANTHROPIC_BASE_URL?: string }} [env]
  */
 function modelSupportsClaudeCodeVision(modelId, env = {}) {
   const base = String(env.ANTHROPIC_BASE_URL || '').toLowerCase()
   const m = String(modelId || '').trim().toLowerCase()
-  if (/deepseek\.com/.test(base)) return false
-  if (/^deepseek-|^qwen(?!.*vl)/i.test(m)) return false
+  if (/^qwen(?!.*vl)/i.test(m)) return false
   if (!base || /api\.anthropic\.com|claude\.ai/.test(base)) return true
   if (/generativelanguage|googleapis\.com.*gemini|google.*ai/.test(base)) return true
   return /claude|sonnet|opus|haiku|gemini|gpt-4o|gpt-4\.1|gpt-5|vision|vl/i.test(m)
@@ -234,7 +232,7 @@ async function enrichUserLineForImages(opts) {
   if (!visionModel) {
     return {
       userLine:
-        `${opts.userLine}\n\n【系统·附图】用户附带了 ${attachments.length} 张截图，但当前编排模型（${opts.orchestratorModel}）不支持视觉，且未检测到本机视觉模型（可 ollama pull qwen2.5vl）。请根据用户文字说明作答，勿声称「无法查看图片」。`,
+        `${opts.userLine}\n\n【系统·附图】用户附带了 ${attachments.length} 张截图，但当前编排模型（${opts.orchestratorModel}）不支持视觉，且未检测到本机视觉模型。请根据用户文字说明作答，勿声称「无法查看图片」。`,
       images: [],
       visionModel: null,
     }

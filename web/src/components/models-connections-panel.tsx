@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { getDesktop } from "@/lib/desktop-api";
 import { AUTO_MODEL_ID, chatSettingsPreservePayload, isAutoModelSelection, resolveCloudProviderCatalog } from "@/lib/model-catalog";
-import { BRIDGE_OFFLINE_TOAST, MODELS_EMPTY_HINT } from "@/lib/ui-copy";
+import { BRIDGE_OFFLINE_TOAST } from "@/lib/ui-copy";
 
 export type CcSwitchProvider = {
   id: string;
@@ -17,6 +17,8 @@ export type CcSwitchProvider = {
   apiKeyPreview: string;
   websiteUrl?: string;
   notes?: string;
+  inputPrice?: number;
+  outputPrice?: number;
 };
 
 type DrawerMode = "closed" | "cloud-create" | "cloud-edit" | "local";
@@ -30,6 +32,8 @@ type CloudForm = {
   defaultModel: string;
   extraModels: string;
   setAsCurrent: boolean;
+  inputPrice: string;
+  outputPrice: string;
 };
 
 const EMPTY_CLOUD_FORM: CloudForm = {
@@ -41,6 +45,8 @@ const EMPTY_CLOUD_FORM: CloudForm = {
   defaultModel: "",
   extraModels: "",
   setAsCurrent: true,
+  inputPrice: "",
+  outputPrice: "",
 };
 
 type Props = {
@@ -61,6 +67,14 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   const [drawer, setDrawer] = useState<DrawerMode>("closed");
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
   const [cloudForm, setCloudForm] = useState<CloudForm>(EMPTY_CLOUD_FORM);
+  const [prevApiKeyPreview, setPrevApiKeyPreview] = useState<string>("");
+  const [providerCustomOpen, setProviderCustomOpen] = useState(false);
+  const [providerOptions, setProviderOptions] = useState<{ name: string; needsCcr: boolean; defaultEndpoint?: string; defaultInputPrice?: number; defaultOutputPrice?: number; canFetchModels?: boolean }[]>([]);
+
+  const [showPricingManager, setShowPricingManager] = useState(false);
+  const [pricingEntries, setPricingEntries] = useState<Record<string, { input: string; output: string }>>({});
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelsError, setFetchModelsError] = useState("");
 
   const [ollamaBase, setOllamaBase] = useState("http://127.0.0.1:11434");
   const [localModelCatalog, setLocalModelCatalog] = useState<string[]>([]);
@@ -78,7 +92,9 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     setDrawer("closed");
     setEditingProviderId(null);
     setCloudForm(EMPTY_CLOUD_FORM);
+    setPrevApiKeyPreview("");
     setLocalPick(new Set());
+    setProviderCustomOpen(false);
   }, []);
 
   const loadLocalSettings = useCallback(async () => {
@@ -149,6 +165,19 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     if (desktop) void refreshAll();
   }, [desktop, refreshAll]);
 
+  // 打开云供应商抽屉时从服务端拉取完整的云供应商列表（含编辑模式）
+  useEffect(() => {
+    if (drawer !== "cloud-create" && drawer !== "cloud-edit") return;
+    const api = getDesktop();
+    if (!api?.ccSwitchListKnownProviders) return;
+    let cancelled = false;
+    api.ccSwitchListKnownProviders().then((r) => {
+      if (cancelled || !r.ok) return;
+      setProviderOptions(r.providers);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [drawer, editingProviderId]);
+
   const localCatalogSet = useMemo(() => new Set(localModelCatalog), [localModelCatalog]);
   const cloudChatEnabledSet = useMemo(() => new Set(chatEnabledCloudProviders), [chatEnabledCloudProviders]);
   const localChatEnabledSet = useMemo(() => new Set(chatEnabledLocalModels), [chatEnabledLocalModels]);
@@ -207,21 +236,33 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   const openCloudCreate = () => {
     setEditingProviderId(null);
     setCloudForm(EMPTY_CLOUD_FORM);
+    setPrevApiKeyPreview("");
+    setProviderCustomOpen(false);
     setDrawer("cloud-create");
   };
 
   const openCloudEdit = (p: CcSwitchProvider) => {
     const models = p.models.filter(Boolean);
+    const preview = p.hasApiKey ? p.apiKeyPreview : "";
     setEditingProviderId(p.id);
+    setPrevApiKeyPreview(preview);
+    // 根据供应商名称取默认 API 端点，覆盖旧的 ccr 代理地址
+    const match = providerOptions.find((o) => o.name === p.name);
+    const storedUrl = p.baseUrl || "";
+    const endpoint = (match?.defaultEndpoint && /127\.0\.0\.1:3456/.test(storedUrl))
+      ? match.defaultEndpoint
+      : storedUrl;
     setCloudForm({
       name: p.name,
       providerId: p.id,
-      endpoint: p.baseUrl || "",
-      apiKey: "",
+      endpoint,
+      apiKey: preview,
       homepage: p.websiteUrl || "",
       defaultModel: models[0] || "",
       extraModels: models.slice(1).join(", "),
       setAsCurrent: p.isCurrent,
+      inputPrice: p.inputPrice ? String(p.inputPrice) : (match?.defaultInputPrice ? String(match.defaultInputPrice) : ""),
+      outputPrice: p.outputPrice ? String(p.outputPrice) : (match?.defaultOutputPrice ? String(match.defaultOutputPrice) : ""),
     });
     setDrawer("cloud-edit");
   };
@@ -255,7 +296,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
-    const { name, providerId, endpoint, apiKey, homepage, defaultModel: dm, extraModels, setAsCurrent } =
+    const { name, providerId, endpoint, apiKey, homepage, defaultModel: dm, extraModels, setAsCurrent, inputPrice, outputPrice } =
       cloudForm;
     if (!name.trim() || !endpoint.trim() || !dm.trim()) {
       toast.error("请填写名称、API 端点与默认模型");
@@ -263,7 +304,11 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     }
     const trimmedId = providerId.trim();
     const targetId = editingProviderId || trimmedId;
-    if (!editingProviderId && !apiKey.trim()) {
+    // 编辑时若未改动预览 Key，发送空串让后端保留原 Key
+    const actualApiKey = editingProviderId && prevApiKeyPreview && apiKey.trim() === prevApiKeyPreview
+      ? ""
+      : apiKey.trim();
+    if (!editingProviderId && !actualApiKey) {
       toast.error("新建须填写 API Key");
       return;
     }
@@ -277,13 +322,15 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         id: targetId || undefined,
         name: name.trim(),
         endpoint: endpoint.trim(),
-        apiKey: apiKey.trim(),
+        apiKey: actualApiKey,
         homepage: homepage.trim(),
         sonnetModel: dm.trim(),
         haikuModel: dm.trim(),
         opusModel: dm.trim(),
         extraModels: extraModels.trim(),
         setCurrent: setAsCurrent,
+        inputPrice: Number(inputPrice) || undefined,
+        outputPrice: Number(outputPrice) || undefined,
         syncWorkbench: true,
       });
       if (!r.ok) {
@@ -316,6 +363,125 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       setBusy(null);
     }
   };
+
+  const openPricingManager = useCallback(async () => {
+    const api = getDesktop();
+    if (!api) return;
+    const s = await api.getChatSettings();
+    const tokenPricing = s.tokenPricing || {};
+    // 合并所有供应商的模型并保留现有定价
+    const entries: Record<string, { input: string; output: string }> = {};
+    for (const p of providers) {
+      for (const m of p.models ?? []) {
+        if (!m) continue;
+        const existing = tokenPricing[m];
+        entries[m] = {
+          input: existing?.inputPer1M != null ? String(existing.inputPer1M) : "",
+          output: existing?.outputPer1M != null ? String(existing.outputPer1M) : "",
+        };
+      }
+    }
+    // 补充只有 tokenPricing 中有但 providers 中不存在的模型
+    for (const [m, v] of Object.entries(tokenPricing)) {
+      if (!entries[m] && m) {
+        entries[m] = {
+          input: v?.inputPer1M != null ? String(v.inputPer1M) : "",
+          output: v?.outputPer1M != null ? String(v.outputPer1M) : "",
+        };
+      }
+    }
+    setPricingEntries(entries);
+    setShowPricingManager(true);
+  }, [providers]);
+
+  const savePricingEntries = useCallback(async () => {
+    const api = getDesktop();
+    if (!api) return;
+    setBusy("save");
+    try {
+      const s = await api.getChatSettings();
+      const tokenPricing: Record<string, { inputPer1M: number; outputPer1M: number }> = {};
+      for (const [model, v] of Object.entries(pricingEntries)) {
+        const input = Number(v.input);
+        const output = Number(v.output);
+        if (input > 0 || output > 0) {
+          tokenPricing[model] = { inputPer1M: input, outputPer1M: output };
+        }
+      }
+      await api.saveChatSettings({
+        ...chatSettingsPreservePayload(s),
+        tokenPricing,
+      });
+      toast.success("模型单价已保存");
+      setShowPricingManager(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setBusy(null);
+    }
+  }, [pricingEntries]);
+
+  const handleFetchModels = useCallback(async () => {
+    const api = getDesktop();
+    if (!api?.ccSwitchFetchProviderModels) {
+      toast.error(BRIDGE_OFFLINE_TOAST);
+      return;
+    }
+    const { name, endpoint, apiKey } = cloudForm;
+    if (!name.trim()) { toast.error("请先填写供应商名称"); return; }
+    // 编辑时 key 未改动则发空串，后端自动查找已存储的 key
+    const actualKey = editingProviderId && prevApiKeyPreview && apiKey.trim() === prevApiKeyPreview
+      ? "" : apiKey.trim();
+    // 捕获调用时正在编辑的供应商 ID，用于异步完成后校验一致性
+    const callEditingId = editingProviderId;
+    setFetchingModels(true);
+    setFetchModelsError("");
+    try {
+      const r = await api.ccSwitchFetchProviderModels({
+        providerName: name.trim(),
+        endpoint: endpoint.trim() || undefined,
+        apiKey: actualKey,
+      });
+      // 异步返回后若已切换为其他供应商编辑，放弃本次结果
+      if (callEditingId !== editingProviderId) return;
+      if (!r.ok || !Array.isArray(r.models) || r.models.length === 0) {
+        setFetchModelsError(r.error || "未获取到模型，请检查 API Key 与端点");
+        return;
+      }
+      // 通用启发式：从模型列表中自动推荐最适合聊天的默认模型
+      const suggestDefault = (models: string[]): string => {
+        const chatCandidates = models.filter((id) => {
+          const l = id.toLowerCase();
+          if (l.includes('embedding') || l.includes('embed')) return false;
+          if (l.includes('moderation')) return false;
+          if (l.includes('tts') || l === 'whisper-1') return false;
+          if (l.includes('dall-e') || l.includes('dall·e')) return false;
+          // 跳过 OpenAI 遗留非聊天基础模型（babbage/davinci/curie/ada），除非有 instruct/gpt 后缀
+          if (/^(babbage|davinci|curie|ada)\b/i.test(l) && !/instruct|gpt/i.test(l)) return false;
+          return true;
+        });
+        if (chatCandidates.length === 0) return models[0] || '';
+        // 进一步优选：含常见聊天模型关键词的排前面
+        const chatKeywords = /gpt|chat|claude|gemini|sonnet|opus|haiku|turbo|4o|4\.5|o1|o3|reasoner|flash|mini|pro|instruct/i;
+        const preferred = chatCandidates.filter((id) => chatKeywords.test(id));
+        return (preferred.length > 0 ? preferred[0] : chatCandidates[0]) || models[0] || '';
+      };
+      const first = suggestDefault(r.models);
+      const rest = r.models.filter((m) => m !== first);
+      setCloudForm((f) => ({
+        ...f,
+        defaultModel: first,
+        extraModels: rest.join(", "),
+        inputPrice: f.inputPrice || (r.defaultInputPrice ? String(r.defaultInputPrice) : ""),
+        outputPrice: f.outputPrice || (r.defaultOutputPrice ? String(r.defaultOutputPrice) : ""),
+      }));
+      toast.success(`已获取 ${r.models.length} 个模型`);
+    } catch (e) {
+      setFetchModelsError(e instanceof Error ? e.message : "获取失败");
+    } finally {
+      setFetchingModels(false);
+    }
+  }, [cloudForm, editingProviderId, prevApiKeyPreview]);
 
   const saveOllamaBase = async () => {
     const api = getDesktop();
@@ -662,11 +828,6 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
 
   return (
     <div className="w-full space-y-4">
-      {providers.length === 0 && (
-        <p className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-2 text-[12px] text-muted-foreground">
-          {MODELS_EMPTY_HINT}
-        </p>
-      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -708,6 +869,14 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
         >
           <Zap className="h-3.5 w-3.5" /> 同步到 Claude CLI
+        </button>
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => void openPricingManager()}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
+        >
+          <span className="text-[13px]">$</span> 模型单价
         </button>
       </div>
 
@@ -799,10 +968,10 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                   </div>
                 </td>
                 <td className="col-endpoint px-3 py-2.5 align-top font-mono text-[10px] text-muted-foreground">
-                  <div className="cell-2line break-all">{p.baseUrl || "—"}</div>
+                  <div className="cell-overflow break-all" title={p.baseUrl || "—"}>{p.baseUrl || "—"}</div>
                 </td>
                 <td className="col-model px-3 py-2.5 align-top font-mono text-[10px] text-foreground">
-                  <div className="cell-2line">{p.models.length ? p.models.join(", ") : "—"}</div>
+                  <div className="cell-overflow" title={p.models.length ? p.models.join(", ") : "—"}>{p.models.length ? p.models.join(", ") : "—"}</div>
                 </td>
                 <td className="col-key px-3 py-2.5 align-top text-muted-foreground">
                   <div className="cell-1line">{p.hasApiKey ? p.apiKeyPreview : "未配置"}</div>
@@ -854,7 +1023,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                   <span className="font-mono text-[11px] text-foreground">{model}</span>
                 </td>
                 <td className="col-endpoint px-3 py-2.5 align-top font-mono text-[10px] text-muted-foreground">
-                  <div className="cell-2line break-all">{ollamaBase}</div>
+                  <div className="cell-overflow break-all" title={ollamaBase}>{ollamaBase}</div>
                 </td>
                 <td className="col-model px-3 py-2.5 align-top text-[10px] text-muted-foreground">Ollama</td>
                 <td className="col-key px-3 py-2.5 align-top text-[10px] text-muted-foreground">—</td>
@@ -879,6 +1048,99 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           </tbody>
         </table>
       </div>
+
+      {showPricingManager ? (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={() => setShowPricingManager(false)} />
+          <div className="flex w-full max-w-xl flex-col border-l border-border bg-surface-elevated shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-3">
+              <div>
+                <div className="text-[14px] font-semibold">模型单价管理</div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  设置每个模型的 $/1M tokens 单价。修改后仅影响新增的用量统计，历史费用不变。
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPricingManager(false)}
+                className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {Object.keys(pricingEntries).length === 0 ? (
+                <div className="py-8 text-center text-[13px] text-muted-foreground">
+                  暂无模型数据。请先添加云模型供应商。
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {Object.entries(pricingEntries).map(([model, v]) => (
+                    <div key={model} className="flex items-center gap-3 rounded-lg border border-border/60 bg-surface/50 px-3 py-2.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-mono text-[12px]">{model}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <div className="mb-0.5 text-[10px] text-muted-foreground">输入</div>
+                          <input
+                            value={v.input}
+                            onChange={(e) =>
+                              setPricingEntries((prev) => ({
+                                ...prev,
+                                [model]: { ...prev[model], input: e.target.value },
+                              }))
+                            }
+                            placeholder="默认"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="h-8 w-20 rounded-md border border-border bg-surface px-2 text-[12px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                        <div>
+                          <div className="mb-0.5 text-[10px] text-muted-foreground">输出</div>
+                          <input
+                            value={v.output}
+                            onChange={(e) =>
+                              setPricingEntries((prev) => ({
+                                ...prev,
+                                [model]: { ...prev[model], output: e.target.value },
+                              }))
+                            }
+                            placeholder="默认"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="h-8 w-20 rounded-md border border-border bg-surface px-2 text-[12px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setShowPricingManager(false)}
+                className="btn-ghost rounded-lg px-3 py-1.5 text-[12.5px] font-medium"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={busy !== null || Object.keys(pricingEntries).length === 0}
+                onClick={() => void savePricingEntries()}
+                className="btn-gradient-primary rounded-lg px-4 py-1.5 text-[12.5px] font-semibold disabled:opacity-40"
+              >
+                {busy === "save" ? "保存中…" : "保存单价"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {drawerOpen ? (
         <div className="fixed inset-0 z-50 flex">
@@ -908,12 +1170,59 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
               {cloudDrawer ? (
                 <>
                   <CloudFormField label="供应商名称">
-                    <input
-                      value={cloudForm.name}
-                      onChange={(e) => setCloudForm((f) => ({ ...f, name: e.target.value }))}
-                      placeholder="例如 DeepSeek / 云梦 AI"
-                      className={inputClass}
-                    />
+                    {!providerCustomOpen || editingProviderId ? (
+                      <select
+                        value={cloudForm.name}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "__custom__") {
+                            setCloudForm((f) => ({ ...f, name: "", endpoint: "https://" }));
+                            setProviderCustomOpen(true);
+                          } else {
+                            const match = providerOptions.find((p) => p.name === v);
+                            const inputP = match?.defaultInputPrice ? String(match.defaultInputPrice) : "";
+                            const outputP = match?.defaultOutputPrice ? String(match.defaultOutputPrice) : "";
+                            setCloudForm((f) => ({ ...f, name: v }));
+                            setProviderCustomOpen(false);
+                            if (match?.defaultEndpoint) {
+                              setCloudForm((f) => ({ ...f, name: v, endpoint: match.defaultEndpoint!, inputPrice: inputP, outputPrice: outputP }));
+                            } else {
+                              setCloudForm((f) => ({ ...f, name: v, endpoint: "", inputPrice: inputP, outputPrice: outputP }));
+                            }
+                          }
+                        }}
+                        disabled={Boolean(editingProviderId)}
+                        className={cn(inputClass, editingProviderId && "cursor-not-allowed bg-muted/40")}
+                      >
+                        {editingProviderId && !providerOptions.some((p) => p.name === cloudForm.name) ? (
+                          <option value={cloudForm.name}>
+                            {cloudForm.name}
+                          </option>
+                        ) : (
+                          <option value="" disabled>
+                            {providerOptions.length ? "选择供应商…" : "加载中…"}
+                          </option>
+                        )}
+                        {providerOptions.map((p) => (
+                          <option key={p.name} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                        {!editingProviderId ? (
+                          <option value="__custom__">其他（自定义）</option>
+                        ) : null}
+                      </select>
+                    ) : null}
+                    {providerCustomOpen && !editingProviderId ? (
+                      <input
+                        value={cloudForm.name}
+                        onChange={(e) => setCloudForm((f) => ({ ...f, name: e.target.value }))}
+                        placeholder="输入自定义供应商名称"
+                        className={cn(inputClass, providerCustomOpen && "mt-2")}
+                        autoFocus={providerCustomOpen}
+                        onFocus={() => setProviderCustomOpen(false)}
+                      />
+                    ) : null}
                   </CloudFormField>
                   <CloudFormField label="供应商 ID（可选）">
                     <input
@@ -924,6 +1233,56 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                       className={cn(inputClass, editingProviderId && "cursor-not-allowed bg-muted/40")}
                     />
                   </CloudFormField>
+                  <CloudFormField label="API 端点">
+                    <div className="relative">
+                      <input
+                        value={cloudForm.endpoint}
+                        onChange={(e) => setCloudForm((f) => ({ ...f, endpoint: e.target.value }))}
+                        placeholder="https://api.example.com"
+                        className={cn(
+                          inputClass,
+                          "font-mono text-[12px]",
+                        )}
+                      />
+                    </div>
+                  </CloudFormField>
+                  <CloudFormField label="API Key">
+                    <input
+                      type="password"
+                      value={cloudForm.apiKey}
+                      onChange={(e) => setCloudForm((f) => ({ ...f, apiKey: e.target.value }))}
+                      onFocus={() => {
+                        if (editingProviderId && prevApiKeyPreview && cloudForm.apiKey === prevApiKeyPreview) {
+                          setCloudForm((f) => ({ ...f, apiKey: "" }));
+                        }
+                      }}
+                      onBlur={() => {
+                        if (editingProviderId && prevApiKeyPreview && !cloudForm.apiKey.trim()) {
+                          setCloudForm((f) => ({ ...f, apiKey: prevApiKeyPreview }));
+                        }
+                      }}
+                      placeholder={editingProviderId ? "留空保留原 Key" : "sk-…"}
+                      autoComplete="off"
+                      className={cn(inputClass, "font-mono text-[12px]")}
+                    />
+                    {editingProviderId && prevApiKeyPreview && (
+                      <span className="text-[11px] text-muted-foreground">已配置 Key，留空保留原 Key</span>
+                    )}
+                  </CloudFormField>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={fetchingModels || busy !== null}
+                      onClick={() => void handleFetchModels()}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] font-medium transition hover:bg-secondary disabled:opacity-40"
+                    >
+                      <RefreshCw className={cn("h-3.5 w-3.5", fetchingModels && "animate-spin")} />
+                      {fetchingModels ? "获取中…" : "自动获取模型列表"}
+                    </button>
+                    {fetchModelsError ? (
+                      <span className="text-[11px] text-destructive">{fetchModelsError}</span>
+                    ) : null}
+                  </div>
                   <CloudFormField label="默认模型 ID">
                     <input
                       value={cloudForm.defaultModel}
@@ -932,29 +1291,33 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                       className={cn(inputClass, "font-mono text-[12px]")}
                     />
                   </CloudFormField>
-                  <CloudFormField label="API 端点">
-                    <input
-                      value={cloudForm.endpoint}
-                      onChange={(e) => setCloudForm((f) => ({ ...f, endpoint: e.target.value }))}
-                      placeholder="https://api.example.com"
-                      className={cn(inputClass, "font-mono text-[12px]")}
-                    />
-                  </CloudFormField>
-                  <CloudFormField label="API Key">
-                    <input
-                      type="password"
-                      value={cloudForm.apiKey}
-                      onChange={(e) => setCloudForm((f) => ({ ...f, apiKey: e.target.value }))}
-                      placeholder={editingProviderId ? "留空保留原 Key" : "sk-…"}
-                      autoComplete="off"
-                      className={cn(inputClass, "font-mono text-[12px]")}
-                    />
-                  </CloudFormField>
                   <CloudFormField label="额外模型 ID（逗号分隔）">
                     <input
                       value={cloudForm.extraModels}
                       onChange={(e) => setCloudForm((f) => ({ ...f, extraModels: e.target.value }))}
                       placeholder="model-a, model-b"
+                      className={cn(inputClass, "font-mono text-[12px]")}
+                    />
+                  </CloudFormField>
+                  <CloudFormField label="输入单价 $/1M tokens（留空使用供应商默认）">
+                    <input
+                      value={cloudForm.inputPrice}
+                      onChange={(e) => setCloudForm((f) => ({ ...f, inputPrice: e.target.value }))}
+                      placeholder="留空自动"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className={cn(inputClass, "font-mono text-[12px]")}
+                    />
+                  </CloudFormField>
+                  <CloudFormField label="输出单价 $/1M tokens（留空使用供应商默认）">
+                    <input
+                      value={cloudForm.outputPrice}
+                      onChange={(e) => setCloudForm((f) => ({ ...f, outputPrice: e.target.value }))}
+                      placeholder="留空自动"
+                      type="number"
+                      step="0.01"
+                      min="0"
                       className={cn(inputClass, "font-mono text-[12px]")}
                     />
                   </CloudFormField>

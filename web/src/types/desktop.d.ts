@@ -37,6 +37,8 @@ export type CcSwitchProviderSummary = {
   apiKeyPreview: string
   websiteUrl?: string
   notes?: string
+  inputPrice?: number
+  outputPrice?: number
 }
 
 /** 与主进程 `workspace:listPanelTree` 返回的 `tree` 节点一致（侧栏文件树） */
@@ -94,6 +96,8 @@ export type ChatHistoryMsg = {
     prompt_tokens: number
     completion_tokens: number
     total_tokens: number
+    /** 冻结的云端费用（USD），根据写入时的单价计算 */
+    costUsd?: number
   }
   /** 本轮请求耗时（毫秒），仅 assistant */
   latencyMs?: number
@@ -329,7 +333,7 @@ export type DesktopApi = {
     /** 本地 MCP 编排工具循环详细日志（会话级；勿在正式安装包内写死 DEBUG 环境变量） */
     devMcpOrchDebug?: boolean
     cloudModelCatalog?: string[]
-    /** 用户在「模型与连接」中手动添加的本地 Ollama 模型 */
+    /** 用户在「模型配置」中手动添加的本地 Ollama 模型 */
     localModelCatalog?: string[]
     /** Workbench「添加云模型」写入的项目内供应商 ID */
     cloudProviderCatalog?: string[]
@@ -344,6 +348,8 @@ export type DesktopApi = {
     gitUserEmail?: string
     /** 官方 upstream：仅官方 path-scoped pull */
     upstreamGithubRepo?: string
+    /** 模型单价表 { modelName: { inputPer1M, outputPer1M } } */
+    tokenPricing?: Record<string, { inputPer1M: number; outputPer1M: number }>
   }>
   getUiPrefs?: () => Promise<{
     ok: boolean
@@ -405,8 +411,21 @@ export type DesktopApi = {
     gitUserName?: string
     gitUserEmail?: string
     upstreamGithubRepo?: string
+    tokenPricing?: Record<string, { inputPer1M: number; outputPer1M: number }>
   }) => Promise<unknown>
   ccSwitchStatus?: () => Promise<{ ok: boolean; installed: boolean; dbPath?: string; error?: string }>
+  ccSwitchProviderNeedsCcr?: (opts: { name: string }) => Promise<{
+    ok: boolean
+    needsCcr: boolean
+    ccrEndpoint: string
+    reason: string
+    error?: string
+  }>
+  ccSwitchListKnownProviders?: () => Promise<{
+    ok: boolean
+    providers: { name: string; needsCcr: boolean; ccrApiBase?: string; defaultEndpoint?: string }[]
+    error?: string
+  }>
   ccSwitchListProviders?: () => Promise<{
     ok: boolean
     providers?: CcSwitchProviderSummary[]
@@ -425,12 +444,15 @@ export type DesktopApi = {
     setCurrent?: boolean
     syncWorkbench?: boolean
     notes?: string
+    inputPrice?: number
+    outputPrice?: number
   }) => Promise<{
     ok: boolean
     providerId?: string
     provider?: CcSwitchProviderSummary
     importLink?: string
     error?: string
+    ccrNeedsRestart?: boolean
   }>
   ccSwitchDeleteProvider?: (body: {
     providerId: string
@@ -456,6 +478,17 @@ export type DesktopApi = {
     cloudModelCatalog?: string[]
     error?: string
   }>
+  ccSwitchFetchProviderModels?: (body: {
+    providerName: string
+    endpoint?: string
+    apiKey: string
+  }) => Promise<{
+    ok: boolean
+    models?: string[]
+    error?: string
+    defaultInputPrice?: number
+    defaultOutputPrice?: number
+  }>
   chooseClaudeCliExecutable: () => Promise<{
     ok: boolean
     path: string | null
@@ -471,6 +504,7 @@ export type DesktopApi = {
         input?: string
         pendingImages?: unknown[]
         pendingTerminalSnippets?: unknown[]
+        pendingFiles?: unknown[]
       }
     >
     sessions: {
@@ -490,6 +524,7 @@ export type DesktopApi = {
         input?: string
         pendingImages?: unknown[]
         pendingTerminalSnippets?: unknown[]
+        pendingFiles?: unknown[]
       }
     >
     sessions: {
@@ -545,6 +580,15 @@ export type DesktopApi = {
     orchestrationHints?: string[]
   }>
   localOrchestrationAbort: (requestId: string) => Promise<{ ok: boolean }>
+  /** 直接调用云供应商 API（绕过 Claude CLI，适用于未安装 Claude Code 的用户） */
+  cloudDirectPrompt: (payload: {
+    prompt: string
+    model?: string
+    requestId?: string
+    timeoutMs?: number
+  }) => Promise<{ ok: boolean; content?: string; error?: string | null; aborted?: boolean }>
+  /** 中止进行中的直接 API 请求 */
+  cloudDirectAbort: (requestId: string) => Promise<{ ok: boolean }>
   /** 将系统对话框返回的图片路径读成聊天用附件（仅图片扩展名） */
   readReferenceFilesAsImageAttachments: (filePaths: string[]) => Promise<{
     ok: boolean
@@ -750,6 +794,16 @@ export type DesktopApi = {
     combined?: string
     error?: string
     committed?: boolean
+  }>
+  workbenchGitCommitBranch: (payload: {
+    reason: string
+  }) => Promise<{
+    ok: boolean
+    committed: boolean
+    branch?: string
+    commitHash?: string
+    combined?: string
+    error?: string
   }>
   workbenchGitSaveGithubSettings: (body: {
     personalGithubRepo?: string
@@ -1032,6 +1086,42 @@ export type DesktopApi = {
     error?: string | null
   }>
   logout: () => Promise<{ ok: boolean; cleared?: string[]; error?: string | null }>
+
+  /** 环境与依赖部署检查 */
+  envDeployCheck?: () => Promise<{
+    ok: boolean
+    checks: Array<{
+      id: string
+      label: string
+      status: 'ok' | 'warn' | 'error'
+      detail: string
+      hint: string
+    }>
+    summary: { total: number; ok: number; warn: number; error: number }
+    projectRoot: string
+  }>
+
+  /** 安装缺失依赖 */
+  envDeployInstall?: () => Promise<{
+    ok: boolean
+    summary?: string
+    logs: string[]
+    recheck?: Array<{
+      id: string
+      label: string
+      status: 'ok' | 'warn' | 'error'
+      detail: string
+      hint: string
+    }>
+    error?: string
+  }>
+
+  /** 部署后构建验证 */
+  envDeployVerify?: () => Promise<{
+    ok: boolean
+    logs: string[]
+    error?: string
+  }>
 }
 
 declare global {

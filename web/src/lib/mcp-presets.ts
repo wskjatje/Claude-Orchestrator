@@ -1,9 +1,22 @@
-/** 官方 MCP 启动命令（不锁定版本，npx/uvx 每次拉取最新） */
+/** MCP 模板预设（不锁定版本，npx/uvx 每次拉取最新） */
 export const MCP_PRESET_COMMAND_LINES: Record<string, string> = {
   filesystem: "npx -y @modelcontextprotocol/server-filesystem ~/",
   fetch: "uvx mcp-server-fetch",
   memory: "npx -y @modelcontextprotocol/server-memory",
+  "sequential-thinking": "npx -y @modelcontextprotocol/server-sequential-thinking",
+  postgres: "npx -y @modelcontextprotocol/server-postgres <connection-string>",
+  puppeteer: "npx -y @modelcontextprotocol/server-puppeteer",
+  "brave-search": "npx -y @modelcontextprotocol/server-brave-search",
+  "google-maps": "npx -y @modelcontextprotocol/server-google-maps",
+  slack: "npx -y @modelcontextprotocol/server-slack",
   sanshengliubu: "node __BUNDLED_SANSHENGLIUBU__",
+};
+
+/** 各预设 MCP 需要的环境变量 key（值为空，由用户填写） */
+export const MCP_TEMPLATE_ENV: Record<string, Record<string, string>> = {
+  "brave-search": { BRAVE_API_KEY: "" },
+  "google-maps": { GOOGLE_MAPS_API_KEY: "" },
+  slack: { SLACK_BOT_TOKEN: "", SLACK_TEAM_ID: "" },
 };
 
 export type McpPresetMeta = {
@@ -21,6 +34,12 @@ export const MCP_PRESETS: McpPresetMeta[] = [
     commandLine: MCP_PRESET_COMMAND_LINES.filesystem,
   },
   {
+    name: "sequential-thinking",
+    label: "深度推理",
+    desc: "结构化推理，解决复杂问题",
+    commandLine: MCP_PRESET_COMMAND_LINES["sequential-thinking"],
+  },
+  {
     name: "fetch",
     label: "网页抓取",
     desc: "获取网页正文（需安装 uv）",
@@ -29,8 +48,44 @@ export const MCP_PRESETS: McpPresetMeta[] = [
   {
     name: "memory",
     label: "记忆",
-    desc: "记住对话里的重要信息",
+    desc: "记录对话中的重要信息",
     commandLine: MCP_PRESET_COMMAND_LINES.memory,
+  },
+  {
+    name: "puppeteer",
+    label: "浏览器自动化",
+    desc: "控制无头浏览器抓取或截图",
+    commandLine: MCP_PRESET_COMMAND_LINES.puppeteer,
+  },
+  {
+    name: "postgres",
+    label: "PostgreSQL",
+    desc: "企业级数据库读写，需连接串参数",
+    commandLine: MCP_PRESET_COMMAND_LINES.postgres,
+  },
+  {
+    name: "sqlite",
+    label: "SQLite",
+    desc: "本地数据管理（需安装 uv / Python 3.10+）",
+    commandLine: "uvx mcp-server-sqlite --db-path <path/to/db>",
+  },
+  {
+    name: "brave-search",
+    label: "Brave Search",
+    desc: "搜索引擎集成，需 BRAVE_API_KEY 环境变量",
+    commandLine: MCP_PRESET_COMMAND_LINES["brave-search"],
+  },
+  {
+    name: "google-maps",
+    label: "Google Maps",
+    desc: "地图服务，需 GOOGLE_MAPS_API_KEY 环境变量",
+    commandLine: MCP_PRESET_COMMAND_LINES["google-maps"],
+  },
+  {
+    name: "slack",
+    label: "Slack",
+    desc: "团队协作，需 SLACK_BOT_TOKEN + SLACK_TEAM_ID",
+    commandLine: MCP_PRESET_COMMAND_LINES.slack,
   },
   {
     name: "sanshengliubu",
@@ -39,6 +94,11 @@ export const MCP_PRESETS: McpPresetMeta[] = [
     commandLine: MCP_PRESET_COMMAND_LINES.sanshengliubu,
   },
 ];
+
+/** 用户已有的 MCP 是否与某个预设名称匹配（用于 UI 标记） */
+export function isPresetName(name: string): boolean {
+  return name in MCP_PRESET_COMMAND_LINES;
+}
 
 function collapseHomeInToken(token: string, homeDir: string): string {
   if (!homeDir) return token;

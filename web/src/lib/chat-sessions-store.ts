@@ -19,6 +19,7 @@ export type ChatSessionsCache = {
     {
       input: string;
       pendingImages: unknown[];
+      pendingFiles: unknown[];
       pendingTerminalSnippets: unknown[];
     }
   >;

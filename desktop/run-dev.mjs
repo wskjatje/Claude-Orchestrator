@@ -58,7 +58,7 @@ process.on('SIGTERM', () => {
 
 console.log('[desktop] 启动 Bridge…')
 run('node', ['--watch', 'server/index.mjs'], {
-  env: { MCP_STARTUP_HEALTH: 'defer' },
+  env: { MCP_STARTUP_HEALTH: 'delayed' },
 })
 
 console.log('[desktop] 启动 Web UI…')

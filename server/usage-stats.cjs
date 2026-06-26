@@ -94,7 +94,7 @@ function applyMessage(bucket, session, msg, opts = {}) {
   if (msg.requestError) bucket.errors += 1
 
   const u = msg.usage
-  if (u && typeof u === 'object') {
+    if (u && typeof u === 'object') {
     bucket.apiTurns += 1
     const tok = usageTokens(u)
     bucket.promptTok += tok.prompt
@@ -104,7 +104,9 @@ function applyMessage(bucket, session, msg, opts = {}) {
       bucket.cloudTurns += 1
       bucket.cloudPromptTok += tok.prompt
       bucket.cloudCompletionTok += tok.completion
-      bucket.cloudCostUsd += estimateUsageCostUsd(u, mid, tokenPricing)
+      // 优先使用冻结的 costUsd（首次写入时锁定），避免后期改单价影响历史
+      const frozenCost = typeof u.costUsd === 'number' ? u.costUsd : estimateUsageCostUsd(u, mid, tokenPricing)
+      bucket.cloudCostUsd += frozenCost
     } else {
       bucket.localTurns += 1
       bucket.localPromptTok += tok.prompt

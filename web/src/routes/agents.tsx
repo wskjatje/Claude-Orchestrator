@@ -344,7 +344,7 @@ function AgentsPage() {
             meta: parsed,
             dirty: true,
             optimizing: false,
-            hint: "已生成修订稿，请审阅后点击「保存」写入磁盘",
+            hint: "已生成修订稿，审阅后保存即可",
           }
         : e,
     );
@@ -433,7 +433,7 @@ function AgentsPage() {
   const openAgentsFolder = useCallback(async () => {
     const api = getDesktop();
     if (!api?.openClaudeUserSubdir) {
-      window.alert("当前环境无法打开系统文件夹，请使用「Claude Orchestrator」桌面客户端。");
+      window.alert("当前环境无法打开系统文件夹。");
       return;
     }
     const r = await api.openClaudeUserSubdir("agents");
@@ -528,7 +528,7 @@ function AgentsPage() {
               type="button"
               onClick={() => void syncAllAgentsSkillsAndTools()}
               disabled={skillsSyncing || !desktop || listLoading}
-              title="按当前 Agent 列表全量同步 Skill 与 tools 关联"
+              title="按 Agent 列表全量同步 Skill 与 tools"
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <SparkIcon className={cn("h-3.5 w-3.5", skillsSyncing && "animate-pulse")} /> 同步 Skill 与工具
@@ -546,7 +546,7 @@ function AgentsPage() {
               type="button"
               onClick={() => void openAgentsFolder()}
               disabled={!desktop}
-              title={!desktop ? LOCAL_ONLY_HINT : "在访达中打开 ~/.claude/agents"}
+              title={!desktop ? LOCAL_ONLY_HINT : "打开 ~/.claude/agents"}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <FolderOpen className="h-3.5 w-3.5" /> 在 Finder 打开
@@ -722,7 +722,7 @@ function AgentsPage() {
             <div className="flex-1 space-y-3 overflow-y-auto p-5">
               {!active.markdownFile ? (
                 <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-foreground">
-                  当前为界面内置示例列表，无对应磁盘上的 .md。请先点「从本机刷新」加载{" "}
+                  当前为内置示例列表，请先从本机刷新加载{" "}
                   <code className="rounded bg-code-bg px-1 font-mono text-[11px]">~/.claude/agents</code>{" "}
                   后再单次调用。
                 </p>
@@ -733,7 +733,7 @@ function AgentsPage() {
                   value={tryRun.prompt}
                   onChange={e => setTryRun(t => ({ ...t, prompt: e.target.value }))}
                   rows={4}
-                  placeholder="例如：根据当前工作区写登录页 PRD 草案（须写盘时请说明路径）"
+                  placeholder="例如：为当前项目写登录页 PRD 草案"
                   className="w-full resize-none rounded-lg border border-border bg-surface p-3 text-[12.5px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
               </div>
@@ -1000,7 +1000,7 @@ function AgentEditorDrawer({
                       emptyHint={
                         poolsEmpty ? (
                           <p className="mt-1 text-[10.5px] text-muted-foreground">
-                            请先在「模型与连接」中启用模型
+                            请先在「模型配置」中启用模型
                           </p>
                         ) : null
                       }
@@ -1083,7 +1083,7 @@ function AgentEditorDrawer({
                     type="button"
                     disabled={skillsSyncing || !(stemPreview || editor.stem)}
                     onClick={onSyncSkillsTools}
-                    title="按本 Agent 的 frontmatter 或 stem 同步 Skill 文件并写回关联（不依赖固定预设表）"
+                    title="按 frontmatter 或 stem 同步 Skill 并写回关联"
                     className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
                   >
                     <SparkIcon className={cn("h-3 w-3", skillsSyncing && "animate-pulse")} />
@@ -1095,7 +1095,7 @@ function AgentEditorDrawer({
                     type="button"
                     disabled={editor.optimizing}
                     onClick={onOptimize}
-                    title="经 self_learning 生成修订稿，须审阅后保存"
+                    title="通过 self_learning 生成修订稿"
                     className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
                   >
                     <SparkIcon className={cn("h-3 w-3", editor.optimizing && "animate-pulse")} />

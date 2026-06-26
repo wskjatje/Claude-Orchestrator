@@ -138,6 +138,8 @@ export function pruneDuplicateEmptySessions<T extends SessionWithHistory>(
   sessions: T[],
   workspacePath: string | null | undefined,
   keepId: string,
+  /** 额外保留的空会话 ID 列表（例如显式创建的空会话） */
+  preserveIds?: string[],
 ): T[] {
   const keepIsEmpty = sessions.some(
     (s) =>
@@ -145,9 +147,12 @@ export function pruneDuplicateEmptySessions<T extends SessionWithHistory>(
       sessionMatchesWorkspaceTab(s, workspacePath) &&
       s.history.length === 0,
   );
+  const preserveSet = new Set(preserveIds ?? []);
   return sessions.filter((s) => {
     if (!sessionMatchesWorkspaceTab(s, workspacePath)) return true;
     if (s.history.length > 0) return true;
+    /** 显式保留的空会话不被移除 */
+    if (preserveSet.has(s.id)) return true;
     /** 活动 tab 已有对话 → 移除工作区内全部空 tab */
     if (!keepIsEmpty) return false;
     /** 仅保留 keepId 对应的空 tab */
@@ -243,7 +248,7 @@ export function resolveWorkspaceChatSessions<T extends SessionWithHistory>(
     }
   }
 
-  list = pruneDuplicateEmptySessions(list, workspacePath, activeId);
+  list = pruneDuplicateEmptySessions(list, workspacePath, activeId, explicitEmptySessionId ? [explicitEmptySessionId] : undefined);
   const nextActiveByWorkspace = { ...activeByWorkspace, [wsKey]: activeId };
   return { sessions: list, activeId, activeByWorkspace: nextActiveByWorkspace };
 }

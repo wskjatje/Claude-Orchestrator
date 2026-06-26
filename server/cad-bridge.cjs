@@ -825,7 +825,8 @@ async function runLocalOrch(payload) {
 
 async function getClaudeCliVersionSnapshot() {
   const cli =
-    loadChatSettings().claudeCliPath?.trim() || process.env.WORKBENCH_CLAUDE_CLI || '/opt/homebrew/bin/claude'
+    loadChatSettings().claudeCliPath?.trim() || process.env.WORKBENCH_CLAUDE_CLI || ''
+  if (!cli) return { ok: false, versionLine: '', error: '未配置 Claude CLI 路径' }
   try {
     const { stdout } = await execFileAsync(cli, ['--version'], { timeout: 15_000 })
     return { ok: true, versionLine: String(stdout || '').trim() }

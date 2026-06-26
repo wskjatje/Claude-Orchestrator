@@ -1,0 +1,17 @@
+# 将此文件复制为 .codex/config.toml 并编辑你的本地配置
+# Copy this file to .codex/config.toml and edit your local config
+
+[shell_environment_policy]
+inherit = "core"
+
+[shell_environment_policy.set]
+CLAUDE_CODE_MAX_OUTPUT_TOKENS = "8192"
+
+# MCP 服务器配置示例（按需取消注释并修改）
+# [mcp_servers.fetch]
+# command = "uvx"
+# args = ["mcp-server-fetch"]
+#
+# [mcp_servers.filesystem]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "~"]

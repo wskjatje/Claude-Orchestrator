@@ -42,7 +42,7 @@ function diskSkillRowToSkill(row: {
     name: displayName,
     description:
       row.description.trim() ||
-      "（可在 frontmatter 中加 description，或写好正文首段）",
+      "（可在 frontmatter 中加 description）",
     category: row.category?.trim() || "本机",
     enabled: true,
     calls: 0,
@@ -95,7 +95,7 @@ function SkillsPage() {
   const openSkillsFolder = useCallback(async () => {
     const api = getDesktop();
     if (!api?.openClaudeUserSubdir) {
-      window.alert("当前环境无法打开系统文件夹，请使用「Claude Orchestrator」桌面客户端。");
+      window.alert("当前环境无法打开系统文件夹。");
       return;
     }
     const r = await api.openClaudeUserSubdir("skills");
@@ -260,7 +260,7 @@ function SkillsPage() {
           {filtered.length === 0 && (
             <div className="col-span-full rounded-xl border border-dashed border-border py-12 text-center text-[12.5px] text-muted-foreground">
               {listFromDisk && items.length === 0 && !q
-                ? "~/.claude/skills 下暂无 .md，可与 Claude Code 共用同一目录添加 SKILL.md。"
+                ? "~/.claude/skills 下暂无 .md，可在此目录添加。"
                 : "无匹配的技能"}
             </div>
           )}

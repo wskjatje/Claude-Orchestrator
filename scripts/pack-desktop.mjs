@@ -23,7 +23,21 @@ function run(cmd, args, opts = {}) {
   }
 }
 
+function rmrf(...segments) {
+  const dir = path.join(...segments)
+  if (fs.existsSync(dir)) {
+    console.log(`\n> 清理：${path.relative(ROOT, dir)}`)
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 console.log('=== Claude Orchestrator · 打包 ===')
+
+// 1. 清理上次构建产物，确保用最新代码打包
+rmrf(ROOT, 'web', 'dist-electron')
+rmrf(ROOT, 'web', '.tanstack')
+rmrf(DESKTOP, 'release')
+rmrf(DESKTOP, 'out')
 
 run('npm', ['run', 'vendor:install'])
 run('npm', ['run', 'web:build'])

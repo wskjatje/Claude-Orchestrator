@@ -217,7 +217,7 @@ claude --model qwen2.5-coder:14b
 | 字段 | 值 |
 |------|-----|
 | Binary Path | `/opt/homebrew/bin/claude` |
-| Project | `/Users/barry/claudecode` |
+| Project | `~/claudecode` |
 
 **不要**在 Claudx 配置 provider 或 export API key。
 

@@ -22,7 +22,7 @@ type ProviderCatalogEntry = {
   notes?: string;
 };
 
-/** 项目内已添加的云供应商；catalog 为空时展示全部 */
+/** 项目内已添加的云供应商；catalog 为空时展示全部（首次迁移场景） */
 export function resolveCloudProviderCatalog(
   catalog: string[] | undefined,
   providers: ProviderCatalogEntry[],
@@ -200,9 +200,11 @@ export async function loadConfiguredModelPools(
     }
   }
 
+  // cloudModelCatalog 仅作交叉验证：只保留供应商模型中存在的条目，过滤已累积的过期模型
+  const vendorModelSet = new Set(cloudSet);
   for (const m of settings.cloudModelCatalog ?? []) {
     const id = String(m || "").trim();
-    if (id) cloudSet.add(id);
+    if (id && vendorModelSet.has(id)) cloudSet.add(id);
   }
 
   const localModels = [
@@ -218,6 +220,7 @@ export async function loadChatModelPools(
 ): Promise<ModelCatalogPools> {
   const settings = await api.getChatSettings();
   const enabledCloudProviders = new Set(settings.chatEnabledCloudProviders ?? []);
+  const providerCatalog = new Set(settings.cloudProviderCatalog ?? []);
   const enabledLocal = normalizeStringList(settings.chatEnabledLocalModels);
   const cloudSet = new Set<string>();
 
@@ -226,12 +229,24 @@ export async function loadChatModelPools(
       const r = await api.ccSwitchListProviders();
       if (r.ok) {
         for (const p of r.providers ?? []) {
-          if (!enabledCloudProviders.has(p.id)) continue;
+          // 必须同时在 cloudProviderCatalog 和 chatEnabledCloudProviders 中
+          if (!enabledCloudProviders.has(p.id) || !(providerCatalog.size === 0 || providerCatalog.has(p.id))) continue;
           for (const m of p.models ?? []) {
             const id = String(m || "").trim();
             if (id) cloudSet.add(id);
           }
         }
+        // 诊断：打印所有启用供应商及其模型
+        const activeProviders = (r.providers ?? []).filter(
+          (p) => enabledCloudProviders.has(p.id) && (providerCatalog.size === 0 || providerCatalog.has(p.id))
+        );
+        console.debug("[model-catalog] chatEnabledCloudProviders:", [...enabledCloudProviders]);
+        console.debug("[model-catalog] cloudProviderCatalog:", [...providerCatalog]);
+        console.debug("[model-catalog] enabledLocal:", enabledLocal);
+        for (const p of activeProviders) {
+          console.debug(`[model-catalog] 供应商「${p.name}」(${p.id}) 模型:`, p.models);
+        }
+        console.debug("[model-catalog] 合并 cloudModels:", [...cloudSet]);
       }
     } catch {
       /* ignore */
@@ -260,7 +275,7 @@ export function chatSettingsPreservePayload(
     claudeCliPath: s.claudeCliPath ?? "",
     orchestrationMode: s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code",
     localAgentBasename: s.localAgentBasename ?? "",
-    defaultConfirmWritePath: s.defaultConfirmWritePath ?? "docs/prd.md",
+    defaultConfirmWritePath: s.defaultConfirmWritePath ?? "",
     mcpConfigAbsolutePath: s.mcpConfigAbsolutePath ?? "",
     devMcpOrchDebug: s.devMcpOrchDebug === true,
     cloudModelCatalog: s.cloudModelCatalog ?? [],

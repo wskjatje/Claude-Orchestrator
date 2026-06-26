@@ -95,11 +95,11 @@ next_settings = {
     "model": model,
     "localOllamaModel": env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
     if "11434" in base_url
-    else cur.get("localOllamaModel") or "qwen2.5-coder:14b",
-    "claudeCliPath": cur.get("claudeCliPath") or "/opt/homebrew/bin/claude",
+    else cur.get("localOllamaModel") or "",
+    "claudeCliPath": cur.get("claudeCliPath") or "",
     "orchestrationMode": cur.get("orchestrationMode") or orchestration_mode,
-    "localAgentBasename": cur.get("localAgentBasename") or "product-manager.md",
-    "defaultConfirmWritePath": cur.get("defaultConfirmWritePath") or "docs/prd.md",
+    "localAgentBasename": cur.get("localAgentBasename") or "",
+    "defaultConfirmWritePath": cur.get("defaultConfirmWritePath") or "",
     "mcpConfigAbsolutePath": cur.get("mcpConfigAbsolutePath") or "",
     "devMcpOrchDebug": cur.get("devMcpOrchDebug") if "devMcpOrchDebug" in cur else False,
 }

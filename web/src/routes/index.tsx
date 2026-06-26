@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { AppShell } from "@/components/app-shell";
+import { useChatState } from "@/contexts/chat-state-context";
 import { WorkbenchCursorLayout } from "@/components/workbench-cursor-layout";
 import { getDesktop } from "@/lib/desktop-api";
 import {
@@ -180,6 +181,7 @@ type DiskMsg = {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    costUsd?: number;
   };
   latencyMs?: number;
   requestError?: boolean;
@@ -237,8 +239,8 @@ function mergeSessionsPreferLongerHistory(
         lastUserMessageTs(l.history) >= lastUserMessageTs(d.history));
     merged.push(
       keepLocal
-        ? { ...l, title: d.title || l.title, modelId: d.modelId || l.modelId }
-        : { ...d, modelId: d.modelId || l.modelId },
+        ? { ...l, title: l.title || d.title, modelId: d.modelId || l.modelId }
+        : { ...d, title: d.title || l.title, modelId: d.modelId || l.modelId },
     );
     localById.delete(d.id);
   }
@@ -315,14 +317,15 @@ function lastAgentStemFromHistory(hist: DiskMsg[]): string | undefined {
 }
 
 function assistantBubbleName(
-  m: Pick<DiskMsg, "agentStem" | "agentLabel">,
+  m: Pick<DiskMsg, "agentStem" | "agentLabel" | "modelId">,
   modelLabel: string,
 ): string {
+  const displayModel = m.modelId?.trim() || modelLabel;
   if (m.agentStem) {
     const label = m.agentLabel?.trim() || m.agentStem;
-    return `@${label} · ${modelLabel}`;
+    return `@${label} · ${displayModel}`;
   }
-  return modelLabel;
+  return displayModel;
 }
 
 function diskToDisplay(list: DiskMsg[], modelLabel: string): Msg[] {
@@ -405,7 +408,7 @@ function formatAssistantFailure(res: {
 }): string {
   const err = String(res.error || "").trim();
   if (res.aborted || res.error === "请求已取消") {
-    if (err && (/超时|429|配额|模型与连接|deepseek|API Key|连接失败/i.test(err))) {
+    if (err && (/超时|429|配额|模型配置|deepseek|API Key|连接失败/i.test(err))) {
       return `请求失败：${err}`;
     }
     if (err && (/已取消|已中止|生成已停止/i.test(err))) {
@@ -434,7 +437,15 @@ function ChatPage() {
     stopChainExecution,
     syncExecutionState,
   } = useOrchestrationExecution();
+  const chatCtx = useChatState();
   const sessionRevision = useChatSessionRevision();
+
+  // ---- 通知上下文 ChatPage 已挂载（GlobalChatPanel 据此决定是否接管流） ----
+  useEffect(() => {
+    chatCtx.syncChatPageMounted(true);
+    return () => chatCtx.syncChatPageMounted(false);
+  }, [chatCtx]);// eslint-disable-line
+
   const [input, setInput] = useState("");
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [chatPanelOpen, setChatPanelOpen] = useState(true);
@@ -455,6 +466,8 @@ function ChatPage() {
   const [tpl, setTpl] = useState<string | null>(null);
   const [githubOpen, setGithubOpen] = useState(false);
   /** 图像/视频技能条上的「选用模型」标签，与本地 Ollama 列表一致（仅增强提示词，发送仍用上方会话模型） */
+  /** 当前已打开（显示为标签页）的会话 ID 列表；仅活跃会话默认打开，其余需从历史中唤醒 */
+  const [openTabIds, setOpenTabIds] = useState<string[]>([]);
   const [imageModel, setImageModel] = useState("");
   const [videoModel, setVideoModel] = useState("");
   const [imgModelOpen, setImgModelOpen] = useState(false);
@@ -484,7 +497,6 @@ function ChatPage() {
     pendingTerminalSnippets: PendingTerminalSnippet[];
     editCutoff: number;
   } | null>(null);
-  const activeRequestIdsRef = useRef<Map<string, string>>(new Map());
   const newSessionInFlightRef = useRef(false);
   const streamContextRef = useRef<{ sessionId: string; requestId: string } | null>(null);
   const activeStreamRequestIdRef = useRef<string | null>(null);
@@ -621,25 +633,54 @@ function ChatPage() {
   } | null>(null);
   const activeIdRef = useRef(activeId);
   const sessionsRef = useRef<ChatSession[]>([]);
+  const prevStreamReqRef = useRef<string | null>(null);
+  /** hydration 恢复了流状态时置 true，阻止其他 effect 覆盖 */
+  const streamInProgressRef = useRef(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const messagesRef = useRef<Msg[]>([]);
   const [sendingSessions, setSendingSessions] = useState<Record<string, boolean>>({});
   const setSessionSending = useCallback((sessionId: string, value: boolean) => {
-    setSendingSessions((prev) => {
-      const next = !value
-        ? (() => {
-            const { [sessionId]: _removed, ...rest } = prev;
-            return rest;
-          })()
-        : { ...prev, [sessionId]: true };
-      sendingSessionsRef.current = next;
-      return next;
-    });
-  }, []);
+    const prev = sendingSessionsRef.current;
+    const next = !value
+      ? (() => {
+          const { [sessionId]: _removed, ...rest } = prev;
+          return rest;
+        })()
+      : { ...prev, [sessionId]: true };
+    sendingSessionsRef.current = next;
+    setSendingSessions(next);
+    chatCtx.syncSendingSessions(next);
+  }, [chatCtx]);
   const switchActiveSession = useCallback((id: string) => {
     activeIdRef.current = id;
     setActiveId(id);
-  }, []);
+    // 直接同步上下文，不依赖 useEffect（可能在组件卸载前未执行）
+    chatCtx.syncActiveId(id);
+  }, [chatCtx]);
+
+  // ---- 同步上下文的流式状态到本地：当上下文确认流已结束时，确保本地状态也清空 ----
+  // 解决 ChatPage 跨路由重新挂载时 sendChat 的 finally 块可能尚未清理完成的状态不一致问题。
+  useEffect(() => {
+    if (!sessionsHydratedRef.current) return;
+    if (chatCtx.activeStreamRequestId) return;
+    if (Object.keys(chatCtx.sendingSessions).length > 0) return;
+    // 上下文确认流已结束：同步清理本地残留的流式状态
+    if (activeStreamRequestId !== null) {
+      activeStreamRequestIdRef.current = null;
+      setActiveStreamRequestId(null);
+    }
+    if (Object.keys(sendingSessions).length > 0) {
+      sendingSessionsRef.current = {};
+      setSendingSessions({});
+    }
+  }, [chatCtx.activeStreamRequestId, chatCtx.sendingSessions, activeStreamRequestId, sendingSessions]);
+
+  // ---- 同步 openTabIds 到上下文，跨路由切换保留 ----
+  useEffect(() => {
+    if (!sessionsHydratedRef.current) return;
+    chatCtx.syncOpenTabIds(openTabIds);
+  }, [chatCtx, openTabIds]);
+
   const sending = Boolean(sendingSessions[activeId]);
   const [stopRequested, setStopRequested] = useState(false);
   useEffect(() => {
@@ -723,16 +764,18 @@ function ChatPage() {
     requestId: activeStreamRequestId,
     requestIdRef: activeStreamRequestIdRef,
     enabled: sending,
-    onDelta: (_sessionId, chunk) => {
-      const ctx = streamContextRef.current;
-      if (!ctx || !chunk) return;
-      if (ctx.sessionId !== activeIdRef.current) return;
+    onDelta: (_sessionId, chunk, _requestId) => {
+      if (!chunk) return;
+      if (activeIdRef.current !== _sessionId) return;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (!last || last.role !== "assistant") return prev;
         const nextContent =
           last.content === "__WAITING__" ? chunk : `${last.content}${chunk}`;
-        return [...prev.slice(0, -1), { ...last, content: nextContent }];
+        const updated = [...prev.slice(0, -1), { ...last, content: nextContent }];
+        // 写入 per-session 累积池（切换菜单/对话后 GlobalChatPanel 通过此池恢复）
+        chatCtx.syncSessionMessages(activeIdRef.current, updated);
+        return updated;
       });
     },
   });
@@ -828,25 +871,33 @@ function ChatPage() {
       patch: (session: ChatSession) => ChatSession,
       persistActiveId = activeIdRef.current,
     ): Promise<ChatSession[]> => {
-      let nextSessions: ChatSession[] = [];
-      setSessions((prev) => {
-        nextSessions = prev.map((s) => (s.id === sessionId ? patch(s) : s));
-        sessionsRef.current = nextSessions;
-        return nextSessions;
-      });
+      // CRITICAL: Read from sessionsRef.current directly, NOT from setSessions updater.
+      // After component unmount (user navigated away), React ignored setSessions updater,
+      // leaving nextSessions empty → persist skips → context reset → messages lost.
+      const prev = sessionsRef.current;
+      const nextSessions = prev.map((s) => (s.id === sessionId ? patch(s) : s));
+      sessionsRef.current = nextSessions;
+      setSessions(nextSessions);
       await persist(nextSessions, persistActiveId);
+      // Sync to context after persist, so GlobalChatPanel & re-mounted ChatPage get latest data
+      chatCtx.syncSessions(nextSessions);
       return nextSessions;
     },
-    [persist],
+    [persist], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   /** 首条消息写入后移除多余空 tab，避免「新对话」与已命名 tab 并存 */
   const pruneWorkspaceSessions = useCallback(
     async (keepId: string) => {
+      const cached = getChatSessionsCache();
+      const ctxExplicit = chatCtx.explicitEmptySessionId;
+      const explicitId = cached?.explicitEmptySessionId ?? ctxExplicit;
+      const preserveIds = explicitId ? [explicitId] : undefined;
       const pruned = pruneDuplicateEmptySessions(
         sessionsRef.current,
         workspacePathRef.current,
         keepId,
+        preserveIds,
       );
       if (pruned.length !== sessionsRef.current.length) {
         sessionsRef.current = pruned;
@@ -855,7 +906,7 @@ function ChatPage() {
       }
       return pruned;
     },
-    [persist],
+    [chatCtx, persist],
   );
 
   /** 本地命令（如生成任务链）写入会话历史，不调用模型 */
@@ -865,8 +916,8 @@ function ChatPage() {
       if (!sess) return;
       const hist: DiskMsg[] = [
         ...sess.history,
-        { role: "user", content: userLine, ts: Date.now() },
-        { role: "assistant", content: assistantLine, ts: Date.now(), name: "系统" },
+        { role: "user", content: userLine, ts: Date.now() } as DiskMsg,
+        { role: "assistant", content: assistantLine, ts: Date.now(), name: "系统" } as DiskMsg,
       ];
       let title = sess.title;
       if (sess.history.length === 0) {
@@ -879,11 +930,12 @@ function ChatPage() {
         setMessages(diskToDisplay(hist, ml));
       }
       clearExplicitEmptyChatSessionIf(sessionId);
+      chatCtx.syncExplicitEmptySessionId(null);
       if (sess.history.length === 0) {
         await pruneWorkspaceSessions(sessionId);
       }
     },
-    [patchSession, globalModel, pruneWorkspaceSessions],
+    [chatCtx, patchSession, globalModel, pruneWorkspaceSessions],
   );
 
   /** 统一写入 agent_exec，供日报与日志追踪 */
@@ -931,7 +983,7 @@ function ChatPage() {
         return;
       }
       const settings = await api.getChatSettings();
-      const defaultPath = settings.defaultConfirmWritePath?.trim() || "docs/prd.md";
+      const defaultPath = settings.defaultConfirmWritePath?.trim() || "";
       const sess = sessions.find((s) => s.id === activeId);
       if (!sess) return;
       const agentStem = lastAgentStemFromHistory(sess.history);
@@ -1098,9 +1150,79 @@ function ChatPage() {
     [activeId, sessions, persist],
   );
 
+  // ---- 挂载时优先从 ChatStateContext 恢复（跨导航保持最新数据） ----
+  // 当用户从设置页等返回聊天页时，context 中保存了最新会话（包括 patchSession 异步完成后的更新）
+  const contextRestoredRef = useRef(false);
+
   useEffect(() => {
     if (!hasDesktopApi) return;
+    if (sessionsHydratedRef.current) return;
+    if (contextRestoredRef.current) return;
+    if (urlNewSession) return; // 用户请求新对话，不恢复旧数据
+    if (chatCtx.sessions.length === 0) return; // 首次加载，让正常 hydration 执行
+
+    contextRestoredRef.current = true;
+    sessionsHydratedRef.current = true;
+
+    const ctxSessions = chatCtx.sessions as unknown as ChatSession[];
+    const ctxAid = chatCtx.activeId;
+
+    sessionsRef.current = ctxSessions;
+    activeIdRef.current = ctxAid;
+    setSessions(ctxSessions);
+    setActiveId(ctxAid);
+    // 从 context 恢复已打开的标签页列表（跨路由切换保留）
+    const ctxTabIds = chatCtx.openTabIds;
+    if (ctxTabIds.length > 0 && ctxTabIds.some((tid) => ctxSessions.some((s) => s.id === tid))) {
+      setOpenTabIds(ctxTabIds.includes(ctxAid) ? ctxTabIds : [...new Set([...ctxTabIds, ctxAid])]);
+    } else {
+      setOpenTabIds([ctxAid]);
+    }
+
+    // 恢复流状态：如果 GlobalChatPanel 仍在在流，同步 sending / activeStream 状态
+    if (chatCtx.activeStreamRequestId) {
+      activeStreamRequestIdRef.current = chatCtx.activeStreamRequestId;
+      setActiveStreamRequestId(chatCtx.activeStreamRequestId);
+      streamInProgressRef.current = true;
+    }
+    const ctxSending = chatCtx.sendingSessions;
+    if (Object.keys(ctxSending).length > 0) {
+      sendingSessionsRef.current = ctxSending;
+      setSendingSessions(ctxSending);
+    }
+
+    // 优先从 per-session 累积池恢复（GlobalChatPanel 在 ChatPage 卸载期间写入的流式消息）
+    const perSessionMsgs = chatCtx.perSessionMessagesRef.current[ctxAid];
+    if (perSessionMsgs?.length) {
+      setMessages(perSessionMsgs);
+      chatCtx.syncMessages(perSessionMsgs);
+    } else {
+      // 回退到会话历史
+      const active = ctxSessions.find((s) => s.id === ctxAid) ?? ctxSessions[0];
+      syncMessagesFromSession(active);
+    }
+
+    // 同步到 sessionStorage 缓存，确保 URL 驱动的导航能看到会话
+    const cachedExplicitId = getChatSessionsCache()?.explicitEmptySessionId;
+    setChatSessionsCache({
+      sessions: ctxSessions,
+      activeId: ctxAid,
+      activeByWorkspace: activeByWorkspaceRef.current,
+      workspacePath: workspacePathRef.current,
+      composerDrafts: composerDraftsRef.current,
+      explicitEmptySessionId: cachedExplicitId ?? null,
+    });
+    // 同步 explicitEmptySessionId 到 context，跨路由切换保留
+    if (cachedExplicitId) {
+      chatCtx.syncExplicitEmptySessionId(cachedExplicitId);
+    }
+  }, [hasDesktopApi, urlNewSession, chatCtx.sessions.length, chatCtx.messages.length]);// eslint-disable-line
+
+  useEffect(() => {
+    if (!hasDesktopApi) return;
+    if (sessionsHydratedRef.current) return; // 上下文恢复已处理，跳过磁盘 hydration
     void (async () => {
+      if (sessionsHydratedRef.current) return;
       const api = getDesktop();
       if (!api) {
         setMessages([
@@ -1125,11 +1247,11 @@ function ChatPage() {
         settings = {
           ollamaBase: "http://127.0.0.1:11434",
           model: AUTO_MODEL_ID,
-          localOllamaModel: "qwen2.5-coder:14b",
-          claudeCliPath: "/opt/homebrew/bin/claude",
+          localOllamaModel: "",
+          claudeCliPath: "",
           orchestrationMode: "claude-code",
           localAgentBasename: "",
-          defaultConfirmWritePath: "docs/prd.md",
+          defaultConfirmWritePath: "",
           mcpConfigAbsolutePath: "",
           devMcpOrchDebug: false,
           localModelCatalog: [],
@@ -1223,7 +1345,9 @@ function ChatPage() {
       const cacheMatchesWorkspace =
         cached &&
         chatSessionsCacheMatchesWorkspace(cached.workspacePath, workspace, cached.sessions);
-      const explicitEmptyId = cacheMatchesWorkspace ? cached.explicitEmptySessionId : null;
+      const explicitEmptyId = cacheMatchesWorkspace
+        ? cached.explicitEmptySessionId
+        : chatCtx.explicitEmptySessionId ?? null;
 
       if (cacheMatchesWorkspace && cached.sessions.length) {
         list = mergeSessionsPreferLongerHistory(
@@ -1320,6 +1444,9 @@ function ChatPage() {
 
       if (cached?.explicitEmptySessionId === aid) {
         markExplicitEmptyChatSession(aid);
+      } else if (cached?.explicitEmptySessionId && list.some((s) => s.id === cached.explicitEmptySessionId)) {
+        // 显式创建的空会话仍存在，保留标记以便跨 reload 保护
+        markExplicitEmptyChatSession(cached.explicitEmptySessionId);
       } else {
         clearExplicitEmptyChatSession();
         syncExplicitEmptyInCache(null);
@@ -1349,6 +1476,15 @@ function ChatPage() {
 
       setSessions(list);
       switchActiveSession(aid);
+      // 初始只打开活跃会话的标签页，其余通过历史下拉唤醒；
+      // 优先从 context 恢复已打开的标签页（跨路由切换保留）
+      const ctxTabIds = chatCtx.openTabIds;
+      if (ctxTabIds.length > 0 && ctxTabIds.some((tid) => list.some((s) => s.id === tid))) {
+        const merged = [...new Set([...ctxTabIds, aid])].filter((tid) => list.some((s) => s.id === tid));
+        setOpenTabIds(merged);
+      } else {
+        setOpenTabIds([aid]);
+      }
       sessionsRef.current = list;
       const active = list.find((s) => s.id === aid) ?? list[0];
       setChatSessionsCache({
@@ -1360,7 +1496,41 @@ function ChatPage() {
         explicitEmptySessionId:
           getChatSessionsCache()?.explicitEmptySessionId === aid ? aid : null,
       });
-      syncMessagesFromSession(active);
+      const explicitId = getChatSessionsCache()?.explicitEmptySessionId;
+      if (explicitId) chatCtx.syncExplicitEmptySessionId(explicitId);
+      // 优先使用 context 消息（GlobalChatPanel 持续累积的流内容 / sendChat 写入的最终回复）
+      // 只有 context 没有数据时才回退到磁盘。绝不是用磁盘数据覆盖 context！
+      if (aid && chatCtx.activeId === aid && chatCtx.messages.length > 0) {
+        setMessages(chatCtx.messages);
+        if (chatCtx.activeStreamRequestId) {
+          setActiveStreamRequestId(chatCtx.activeStreamRequestId);
+          activeStreamRequestIdRef.current = chatCtx.activeStreamRequestId;
+          sendingSessionsRef.current[aid] = true;
+          setSendingSessions((prev) => ({ ...prev, [aid]: true }));
+          streamInProgressRef.current = true;
+        }
+      } else if (chatCtx.perSessionMessagesRef.current[aid]?.length > 0) {
+        // 从 per-session 累积池恢复（切换了对话页签后回到正在流的会话）
+        const restored = chatCtx.perSessionMessagesRef.current[aid];
+        setMessages(restored);
+        chatCtx.syncMessages(restored);
+        chatCtx.syncActiveId(aid);
+        if (chatCtx.activeStreamRequestId) {
+          setActiveStreamRequestId(chatCtx.activeStreamRequestId);
+          activeStreamRequestIdRef.current = chatCtx.activeStreamRequestId;
+          sendingSessionsRef.current[aid] = true;
+          setSendingSessions((prev) => ({ ...prev, [aid]: true }));
+          streamInProgressRef.current = true;
+        }
+      } else {
+        syncMessagesFromSession(active);
+        if (active) {
+          const ml = active.modelId?.trim() || globalModel || "模型";
+          chatCtx.syncMessages(diskToDisplay(active.history, ml));
+        }
+        // 仅首次加载用磁盘数据初始化 context
+        chatCtx.syncSessions(list);
+      }
       sessionsHydratedRef.current = true;
     })();
   }, [hasDesktopApi]);
@@ -1368,8 +1538,13 @@ function ChatPage() {
   /** 离开聊天页时写入内存缓存并落盘，避免切换侧栏后丢失会话与草稿 */
   useEffect(() => {
     if (!hasDesktopApi) return;
-    return () => {
+      return () => {
       if (!sessionsHydratedRef.current) return;
+      // 如果任何会话有进行中的流请求，skip persist（sendChat 会通过 patchSession 落盘最终数据）
+      if (chatCtx.activeRequestIdsRef.current.size > 0 || Object.keys(sendingSessionsRef.current).length > 0) {
+        return;
+      }
+      // 不在清理时清除 activeStreamRequestId/sending，GlobalChatPanel 需要它们继续处理流式更新
       const list = sessionsRef.current;
       const cacheHasHistory = getChatSessionsCache()?.sessions?.some(
         (s) => (s.history?.length ?? 0) > 0,
@@ -1385,9 +1560,12 @@ function ChatPage() {
         composerDrafts: composerDraftsRef.current,
         explicitEmptySessionId: cached?.explicitEmptySessionId ?? null,
       });
+      // 同步 openTabIds 到 context，跨路由切换保留标签页状态
+      chatCtx.syncOpenTabIds(openTabIds);
       void persist(sessionsRef.current, activeIdRef.current);
     };
   }, [hasDesktopApi, persist]);
+
 
   /** 从设置页返回、供应商同步或 Bridge 恢复后重新拉取模型列表 */
   useEffect(() => {
@@ -1445,9 +1623,36 @@ function ChatPage() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
+  /** 监听流完成事件：从非空 → null 时，从 context 重新同步最终回复 */
+  useEffect(() => {
+    if (!sessionsHydratedRef.current) return;
+    const prev = prevStreamReqRef.current;
+    prevStreamReqRef.current = chatCtx.activeStreamRequestId;
+    // 流刚结束：最终消息已通过 chatCtx.syncMessages 写入 context
+    if (prev !== null && chatCtx.activeStreamRequestId === null) {
+      streamInProgressRef.current = false;
+      if (chatCtx.messages.length > 0) {
+        setMessages(chatCtx.messages);
+      }
+    }
+  }, [chatCtx.activeStreamRequestId]);
+
+  /** 持续从 context 同步最新累积消息（GlobalChatPanel 写入的 delta / sendChat 完成的最终回复） */
+  useEffect(() => {
+    if (!sessionsHydratedRef.current) return;
+    if (chatCtx.activeId === activeIdRef.current && chatCtx.messages.length > 0) {
+      setMessages(chatCtx.messages);
+    }
+  }, [chatCtx.messages, chatCtx.activeId]);
+
   const visibleSessions = useMemo(
     () => filterSessionsForWorkspaceTabs(sessions, workspacePath),
     [sessions, workspacePath],
+  );
+  /** 标签栏只显示已打开的标签页（默认仅活跃会话），其余从历史下拉唤醒 */
+  const tabSessions = useMemo(
+    () => visibleSessions.filter((s) => openTabIds.includes(s.id)),
+    [visibleSessions, openTabIds],
   );
   const activeSession =
     visibleSessions.find((s) => s.id === activeId) ?? sessions.find((s) => s.id === activeId);
@@ -1545,9 +1750,9 @@ function ChatPage() {
           const liveAgain = sessionsRef.current.find((s) => s.id === source.id);
           if (liveAgain && countUserMessages(liveAgain.history) >= uiUsers) {
             source = liveAgain;
-          } else if (!sendingSessionsRef.current[source.id] && !chainRunningRef.current) {
-            return;
           }
+          // NOTE: 不要 return 提前退出；切换会话时 messagesRef 可能仍持有上个会话的用户消息，
+          // 导致 uiUsers > sourceUsers 误判，应始终走到底部的 setMessages(msgs) 更新显示。
         }
       }
       const ml = source.modelId?.trim() || globalModel || "模型";
@@ -1591,7 +1796,15 @@ function ChatPage() {
       const ml = sess.modelId?.trim() || globalModel || "模型";
       setMessages(diskToDisplay(sess.history, ml));
     }
-  }, [globalModel]);
+    // 优先从 context 恢复已打开的标签页（跨路由切换保留），否则回退到仅打开活跃会话
+    const ctxTabIds = chatCtx.openTabIds;
+    if (ctxTabIds.length > 0 && ctxTabIds.some((tid) => list.some((s) => s.id === tid))) {
+      const merged = [...new Set([...ctxTabIds, cached.activeId])].filter((tid) => list.some((s) => s.id === tid));
+      setOpenTabIds(merged);
+    } else {
+      setOpenTabIds([cached.activeId]);
+    }
+  }, [globalModel, chatCtx]);
 
   /** 后台任务链写入会话后同步 UI（切换页签返回聊天页亦生效） */
   const refreshSessionsFromDisk = useCallback(async () => {
@@ -1599,7 +1812,11 @@ function ChatPage() {
     if (!api) return;
     try {
       const disk = await api.loadChatSessions();
+      // 如果 ChatPage 正在恢复流状态，不覆盖消息
+      if (streamInProgressRef.current) return;
       let merged: ChatSession[] = [];
+      const _preserve1 = getChatSessionsCache()?.explicitEmptySessionId || chatCtx.explicitEmptySessionId;
+      const preserveIds1: string[] | undefined = _preserve1 ? [_preserve1] : undefined;
       setSessions((prev) => {
         merged = mergeSessionsPreferLongerHistory(prev, disk.sessions, sendingSessionsRef.current);
         merged = backfillSessionWorkspaceFromActiveMap(
@@ -1610,6 +1827,7 @@ function ChatPage() {
           merged,
           workspacePathRef.current,
           activeIdRef.current,
+          preserveIds1,
         );
         sessionsRef.current = merged;
         return merged;
@@ -1646,7 +1864,18 @@ function ChatPage() {
     if (!api) return;
     void syncExecutionState();
     void api.loadChatSessions().then((disk) => {
+      // 如果 context 有该活动会话的更新数据（流进行中、或已有 assistant 回复），跳过磁盘覆盖
+      const ctxHasBetter = activeIdRef.current && chatCtx.activeId === activeIdRef.current &&
+        chatCtx.messages.length > 0 && (
+          chatCtx.activeStreamRequestId !== null ||
+          chatCtx.messages.some((m) => m.role === "assistant" && m.content !== "__WAITING__")
+        );
+      if (ctxHasBetter) {
+        return;
+      }
       let merged: ChatSession[] = [];
+      const _preserve2 = getChatSessionsCache()?.explicitEmptySessionId || chatCtx.explicitEmptySessionId;
+      const preserveIds2: string[] | undefined = _preserve2 ? [_preserve2] : undefined;
       setSessions((prev) => {
         merged = mergeSessionsPreferLongerHistory(
           prev,
@@ -1661,6 +1890,7 @@ function ChatPage() {
           merged,
           workspacePathRef.current,
           activeIdRef.current,
+          preserveIds2,
         );
         sessionsRef.current = merged;
         return merged;
@@ -1868,10 +2098,19 @@ function ChatPage() {
     setEditComposer(null);
     const api = getDesktop();
     const s = sessionsRef.current.find((x) => x.id === id);
-    if (s && s.history.length > 0) clearExplicitEmptyChatSession();
+    setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     switchActiveSession(id);
     loadComposerDraft(id);
     syncMessagesFromSession(s);
+    // 优先使用 per-session 累积消息（跨会话切换后正在流的回复仍可见）
+    const perSession = chatCtx.perSessionMessagesRef.current[id];
+    if (perSession?.length) {
+      setMessages(perSession);
+      chatCtx.syncMessages(perSession);
+    } else if (s) {
+      const ml = s.modelId?.trim() || globalModel || "模型";
+      chatCtx.syncMessages(diskToDisplay(s.history, ml));
+    }
     if (api) await persist(sessionsRef.current, id);
     setChatSessionsCache({
       sessions: sessionsRef.current,
@@ -1881,7 +2120,26 @@ function ChatPage() {
       composerDrafts: composerDraftsRef.current,
       explicitEmptySessionId: getChatSessionsCache()?.explicitEmptySessionId ?? null,
     });
+    // 直接同步上下文，不依赖 useLayoutEffect（可能在组件卸载前未执行）
+    chatCtx.syncSessions(sessionsRef.current);
   };
+
+  const handleDeleteHistorySession = useCallback(
+    async (sessionId: string) => {
+      const prev = sessionsRef.current;
+      const next = prev.filter((s) => s.id !== sessionId);
+      if (next.length === prev.length) return;
+      sessionsRef.current = next;
+      setSessions(next);
+      chatCtx.syncSessions(next);
+      const nextActiveId = activeId === sessionId ? (next[0]?.id ?? "") : activeId;
+      if (nextActiveId !== activeId) {
+        await handleSessionChange(nextActiveId);
+      }
+      await persist(next, nextActiveId);
+    },
+    [chatCtx, activeId, handleSessionChange, persist],
+  );
 
   const activateHistorySession = useCallback(
     async (sessionId: string) => {
@@ -1906,7 +2164,8 @@ function ChatPage() {
         }
         const stamped = stampSessionWorkspaceIfMissing(sess, ws);
         let next = sessionsRef.current.map((s) => (s.id === sessionId ? stamped : s));
-        next = pruneDuplicateEmptySessions(next, ws, sessionId);
+        const explicitId = getChatSessionsCache()?.explicitEmptySessionId;
+        next = pruneDuplicateEmptySessions(next, ws, sessionId, explicitId ? [explicitId] : undefined);
         sessionsRef.current = next;
         setSessions(next);
         sess = stamped;
@@ -1924,15 +2183,25 @@ function ChatPage() {
         return;
       }
 
-      if (sess.history.length > 0) clearExplicitEmptyChatSession();
+      setOpenTabIds((prev) => (prev.includes(sessionId) ? prev : [...prev, sessionId]));
       switchActiveSession(sessionId);
       loadComposerDraft(sessionId);
       syncMessagesFromSession(sess);
+      // 优先使用 per-session 累积消息（跨会话切换后正在流的回复仍可见）
+      const perSession2 = chatCtx.perSessionMessagesRef.current[sessionId];
+      if (perSession2?.length) {
+        setMessages(perSession2);
+        chatCtx.syncMessages(perSession2);
+      } else if (sess) {
+        const ml2 = sess.modelId?.trim() || globalModel || "模型";
+        chatCtx.syncMessages(diskToDisplay(sess.history, ml2));
+      }
       if (api) await persist(sessionsRef.current, sessionId);
+      // 直接同步上下文
+      chatCtx.syncSessions(sessionsRef.current);
     },
-    [resetScrollFollow, saveComposerDraft, loadComposerDraft, syncMessagesFromSession, persist],
+    [resetScrollFollow, saveComposerDraft, loadComposerDraft, syncMessagesFromSession, persist, chatCtx],
   );
-
   const handleNewSession = async () => {
     if (newSessionInFlightRef.current) return;
     newSessionInFlightRef.current = true;
@@ -1970,12 +2239,16 @@ function ChatPage() {
         return next;
       });
       switchActiveSession(id);
+      setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
       markExplicitEmptyChatSession(id);
+      chatCtx.syncExplicitEmptySessionId(id);
       setInput("");
       setPendingImages([]);
       setPendingTerminalSnippets([]);
       setMessages([{ role: "assistant", content: EMPTY_SESSION_WELCOME }]);
+      chatCtx.syncMessages([{ role: "assistant", content: EMPTY_SESSION_WELCOME }]);
       await persist(next, id);
+      chatCtx.syncSessions(next);
     } finally {
       newSessionInFlightRef.current = false;
     }
@@ -2032,6 +2305,7 @@ function ChatPage() {
         return next;
       });
       switchActiveSession(id);
+      setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
       setMessages([{ role: "assistant", content: "已绑定 Claude CLI 会话，继续对话将使用 --resume。" }]);
       await persist(next, id);
       navigate({ to: "/", search: EMPTY_CHAT_SEARCH, replace: true });
@@ -2041,12 +2315,13 @@ function ChatPage() {
   const handleCloseSession = async (id: string) => {
     const visible = filterSessionsForWorkspaceTabs(sessionsRef.current, workspacePathRef.current);
     if (visible.length <= 1) return;
+    setOpenTabIds((prev) => prev.filter((tid) => tid !== id));
     resetScrollFollow();
-    const reqId = activeRequestIdsRef.current.get(id);
+    const reqId = chatCtx.activeRequestIdsRef.current.get(id);
     const api = getDesktop();
     if (reqId && api?.claudeCodeAbort) void api.claudeCodeAbort(reqId);
     if (reqId && api?.localOrchestrationAbort) void api.localOrchestrationAbort(reqId);
-    activeRequestIdsRef.current.delete(id);
+    chatCtx.activeRequestIdsRef.current.delete(id);
     setSessionSending(id, false);
     delete composerDraftsRef.current[id];
 
@@ -2056,7 +2331,14 @@ function ChatPage() {
       id === activeIdRef.current
         ? (sortSessionsByLatest(visibleAfter)[0]?.id ?? visibleAfter[0]?.id ?? "")
         : activeIdRef.current;
-    const pruned = pruneDuplicateEmptySessions(next, workspacePathRef.current, aid || activeIdRef.current);
+    const _preserve3 = getChatSessionsCache()?.explicitEmptySessionId || chatCtx.explicitEmptySessionId;
+    const preserveIds3: string[] | undefined = _preserve3 ? [_preserve3] : undefined;
+    const pruned = pruneDuplicateEmptySessions(
+      next,
+      workspacePathRef.current,
+      aid || activeIdRef.current,
+      preserveIds3,
+    );
     if (id === activeIdRef.current && aid) {
       switchActiveSession(aid);
       loadComposerDraft(aid);
@@ -2072,7 +2354,7 @@ function ChatPage() {
     if (chainRunning) {
       stopChainExecution();
     }
-    const id = activeRequestIdsRef.current.get(activeId);
+    const id = chatCtx.activeRequestIdsRef.current.get(activeId);
     const api = getDesktop();
     if (id && api?.claudeCodeAbort) void api.claudeCodeAbort(id);
     if (id && api?.localOrchestrationAbort) void api.localOrchestrationAbort(id);
@@ -2096,7 +2378,7 @@ function ChatPage() {
       preferredMode: orchMode,
     });
     if (!resolved) {
-      toast.error("请先在「模型与连接」添加云或本地模型。");
+      toast.error("请先在「模型配置」添加云或本地模型。");
       return;
     }
     const { mode, modelId } = resolved;
@@ -2287,14 +2569,17 @@ function ChatPage() {
       setSessions(nextSessions);
       sessionsRef.current = nextSessions;
       setMessages(diskToDisplay(hist, modelLabel));
+      chatCtx.syncSessions(nextSessions);
       await persist(nextSessions, sendSessionId);
       clearExplicitEmptyChatSessionIf(sendSessionId);
+      chatCtx.syncExplicitEmptySessionId(null);
       await pruneWorkspaceSessions(sendSessionId);
       const chainResult = await handleChainChatCommand(
         text,
         route.stem,
         (opts) => runOrchestrationChain({ ...opts, pinnedSessionId: sendSessionId }),
       );
+      if (!chainResult.handled) return;
       const histWithReply = [
         ...hist,
         { role: "assistant" as const, content: chainResult.assistantText, ts: Date.now(), name: "系统" },
@@ -2413,7 +2698,7 @@ function ChatPage() {
       localModels: localOllamaTags,
       allCloudModels: configuredPoolsRef.current.cloudModels,
       allLocalModels: configuredPoolsRef.current.localModels,
-      agentModel,
+      // 不传 agentModel，聊天消息始终用聊天底部选择的模型，忽略 Agent frontmatter 中的 model
       preferredMode: orchMode,
     });
     if (!resolvedExec) {
@@ -2422,7 +2707,7 @@ function ChatPage() {
         {
           role: "assistant",
           content:
-            "请先在「设置 → 模型与连接」通过「添加云模型」或「配置本地模型」添加至少一个模型。",
+            "请先在「设置 → 模型配置」通过「添加云模型」或「配置本地模型」添加至少一个模型。",
           name: "系统",
         },
       ]);
@@ -2469,7 +2754,7 @@ function ChatPage() {
             );
           } else {
             toast.warning(
-              "当前模型不支持视觉，且未检测到本机视觉模型（可 ollama pull qwen2.5vl）。将仅发送图片提示。",
+              "当前模型不支持视觉，且未检测到本机视觉模型。将仅发送图片提示。",
               { duration: 8000 },
             );
           }
@@ -2565,6 +2850,37 @@ function ChatPage() {
     if (historyBefore.length === 0) {
       const t = displayLine || "图片";
       title = t.length > 28 ? `${t.slice(0, 28)}…` : t;
+      // 立即更新 React 会话状态，让页签立刻显示新标题
+      setSessions((prev) => {
+        const next = prev.map((s) => s.id === sendSessionId ? { ...s, title } : s);
+        sessionsRef.current = next;
+        return next;
+      });
+      chatCtx.syncSessions(sessionsRef.current);
+      // 异步调用 AI 生成更智能的标题
+      const _api = getDesktop();
+      if (_api?.claudeCodePrompt) {
+        const _sid = sendSessionId;
+        const _model = modelId;
+        const _userLine = displayLine;
+        _api.claudeCodePrompt({
+          prompt: `为这个编程对话生成一个简洁的标题（3-8个字）。标题要准确反映用户的请求意图。
+要求：
+- 使用中文
+- 只返回标题本身，不要任何额外内容、引号或标点
+
+用户的第一条消息：${_userLine.trim().slice(0, 500)}`,
+          model: _model,
+          timeoutMs: 15000,
+        }).then((r) => {
+          if (r.ok && r.content?.trim()) {
+            let nt = r.content.trim().replace(/^["'「」『』\s]|["'「」『』\s]$/g, '').slice(0, 40);
+            if (nt) {
+              void patchSession(_sid, (s) => ({ ...s, title: nt }));
+            }
+          }
+        }).catch(() => {/* 保留临时标题 */});
+      }
     }
     let hist: DiskMsg[] = [...historyBefore, userMsg];
     const wsKey = workspaceSessionKey(workspacePathRef.current) || null;
@@ -2572,6 +2888,7 @@ function ChatPage() {
       stampSessionWorkspaceIfMissing({ ...s, title, history: hist }, workspacePathRef.current),
     );
     clearExplicitEmptyChatSessionIf(sendSessionId);
+    chatCtx.syncExplicitEmptySessionId(null);
     if (historyBefore.length === 0) {
       await pruneWorkspaceSessions(sendSessionId);
     }
@@ -2582,22 +2899,26 @@ function ChatPage() {
       setPendingTerminalSnippets([]);
     }
     if (sendSessionId === activeIdRef.current) {
-      setMessages([
+      const waitingMsgs: any[] = [
         ...diskToDisplay(hist, modelId),
         {
           role: "assistant",
           name: assistantBubbleName(turnAgent, modelId),
           content: "__WAITING__",
         },
-      ]);
+      ];
+      setMessages(waitingMsgs);
+      chatCtx.syncMessages(waitingMsgs as any);
+      chatCtx.syncSessionMessages(sendSessionId, waitingMsgs as any);
       queueMicrotask(() => resetScrollFollow());
     }
 
     const reqId = newLocalId();
-    activeRequestIdsRef.current.set(sendSessionId, reqId);
+    chatCtx.activeRequestIdsRef.current.set(sendSessionId, reqId);
     streamContextRef.current = { sessionId: sendSessionId, requestId: reqId };
     activeStreamRequestIdRef.current = reqId;
     setActiveStreamRequestId(reqId);
+    chatCtx.syncActiveStreamRequestId(reqId);
 
     try {
       const sendStarted = Date.now();
@@ -2667,15 +2988,24 @@ function ChatPage() {
             ollamaBase: settings.ollamaBase,
           },
         });
-        res = await api.claudeCodePrompt({
-          prompt,
-          model: modelId,
-          requestId: reqId,
-          claudeSessionId: sess?.claudeSessionId ?? undefined,
-          isNewClaudeSession: !sess?.claudeSessionId,
-          attachmentCount: inlineAttachments?.length ?? attachmentsToSave?.length ?? 0,
-          attachments: useInlineVision ? inlineAttachments : attachmentsToSave,
-        });
+        // 优先尝试直接云 API 调用（绕过 Claude CLI，适用于未安装 Claude Code 的场景）
+        if (api.cloudDirectPrompt) {
+          res = await api.cloudDirectPrompt({
+            prompt,
+            model: modelId,
+            requestId: reqId,
+          });
+        } else {
+          res = await api.claudeCodePrompt({
+            prompt,
+            model: modelId,
+            requestId: reqId,
+            claudeSessionId: sess?.claudeSessionId ?? undefined,
+            isNewClaudeSession: !sess?.claudeSessionId,
+            attachmentCount: inlineAttachments?.length ?? attachmentsToSave?.length ?? 0,
+            attachments: useInlineVision ? inlineAttachments : attachmentsToSave,
+          });
+        }
       }
       toastIfLocalOrchestrationHints(res);
       if (!res.ok) {
@@ -2699,7 +3029,7 @@ function ChatPage() {
         const autoProjectWrite =
           Boolean(agentStemForIngest) && agentAutoWritesToProject(agentStemForIngest);
         const defaultConfirmWritePath =
-          settings.defaultConfirmWritePath?.trim() || "docs/prd.md";
+          settings.defaultConfirmWritePath?.trim() || "";
         const displayContent =
           stripLargeAssistantArtifacts(
             await ingestWorkspaceWritesAndCollapseDisplay(api, reply, toastIngestWorkspaceHint, {
@@ -2731,12 +3061,16 @@ function ChatPage() {
       await patchSession(sendSessionId, (s) => ({
         ...s,
         history: hist,
-        title,
+        modelId,
         ...(res.claudeSessionId ? { claudeSessionId: res.claudeSessionId } : {}),
       }));
       if (sendSessionId === activeIdRef.current) {
         setMessages(diskToDisplay(hist, modelId));
       }
+      // 即使组件卸载，仍通过上下文同步最终消息，以便返回时恢复
+      const finalMsgs = diskToDisplay(hist, modelId);
+      chatCtx.syncMessages(finalMsgs);
+      chatCtx.syncSessionMessages(sendSessionId, finalMsgs);
     } catch (e) {
       const errLine = e instanceof Error ? e.message : String(e);
       hist = [
@@ -2751,10 +3085,13 @@ function ChatPage() {
           ...turnAgent,
         },
       ];
-      await patchSession(sendSessionId, (s) => ({ ...s, history: hist, title }));
+      await patchSession(sendSessionId, (s) => ({ ...s, history: hist, modelId }));
       if (sendSessionId === activeIdRef.current) {
         setMessages(diskToDisplay(hist, modelId));
       }
+      const errorMsgs = diskToDisplay(hist, modelId);
+      chatCtx.syncMessages(errorMsgs);
+      chatCtx.syncSessionMessages(sendSessionId, errorMsgs);
       toast.error(errLine);
     } finally {
       await appendAgentExecEvent({
@@ -2765,12 +3102,14 @@ function ChatPage() {
         instruction: route.body || displayLine,
         modelId,
       });
-      activeRequestIdsRef.current.delete(sendSessionId);
+      chatCtx.activeRequestIdsRef.current.delete(sendSessionId);
       if (streamContextRef.current?.sessionId === sendSessionId) {
         streamContextRef.current = null;
       }
       activeStreamRequestIdRef.current = null;
       setActiveStreamRequestId(null);
+      // 即使 ChatPage 已卸载，也同步到上下文让 GlobalChatPanel 知道流已结束
+      chatCtx.syncActiveStreamRequestId(null);
       setSessionSending(sendSessionId, false);
       await pruneWorkspaceSessions(activeIdRef.current);
     }
@@ -2910,6 +3249,7 @@ function ChatPage() {
         setSessions(all);
         sessionsRef.current = all;
         switchActiveSession(aid);
+        setOpenTabIds([aid]);
         loadComposerDraft(aid);
         syncMessagesFromSession(all.find((s) => s.id === aid));
         await persist(all, aid);
@@ -3277,9 +3617,10 @@ function ChatPage() {
           onInsertTerminalSelection={insertTerminalSelection}
           chatHeader={
             <ChatPanelToolbar
-              sessions={visibleSessions}
+              sessions={tabSessions}
               activeId={activeId}
               sendingSessions={sendingSessions}
+              activeStreamRequestId={activeStreamRequestId}
               onSessionChange={(id) => void handleSessionChange(id)}
               onNewSession={() => void handleNewSession()}
               onCloseSession={(id) => void handleCloseSession(id)}
@@ -3290,6 +3631,7 @@ function ChatPage() {
               projectHistoryItems={projectHistoryItems}
               allHistoryItems={allHistoryItems}
               onSelectHistorySession={(id) => void activateHistorySession(id)}
+              onDeleteHistorySession={(id) => void handleDeleteHistorySession(id)}
               onHistoryOpen={handleHistoryOpen}
             />
           }

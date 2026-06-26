@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Clock,
-  Loader2,
-  MessageSquare,
   MoreHorizontal,
   PanelRightClose,
   Plus,
@@ -20,6 +18,7 @@ type Props = {
   sessions: Session[];
   activeId: string;
   sendingSessions: Record<string, boolean>;
+  activeStreamRequestId: string | null;
   onSessionChange: (id: string) => void;
   onNewSession: () => void;
   onCloseSession: (id: string) => void;
@@ -30,6 +29,7 @@ type Props = {
   projectHistoryItems: ChatHistoryListItem[];
   allHistoryItems: ChatHistoryListItem[];
   onSelectHistorySession: (sessionId: string) => void;
+  onDeleteHistorySession: (sessionId: string) => void;
   onHistoryOpen?: () => void;
 };
 
@@ -42,11 +42,13 @@ export function ChatSessionTabs({
   onCloseSession,
   hasDesktopApi,
   onClosePanel,
+  activeStreamRequestId,
   terminalOpen,
   onToggleTerminal,
   projectHistoryItems,
   allHistoryItems,
   onSelectHistorySession,
+  onDeleteHistorySession,
   onHistoryOpen,
 }: Props) {
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -83,6 +85,10 @@ export function ChatSessionTabs({
     setHistoryOpen(false);
   };
 
+  const handleDeleteHistory = (sessionId: string) => {
+    onDeleteHistorySession(sessionId);
+  };
+
   return (
     <div className="chat-session-tabs-bar group/chat-tabs flex h-[35px] min-h-[35px] shrink-0 items-stretch border-b border-border bg-card/90">
       <div
@@ -94,28 +100,44 @@ export function ChatSessionTabs({
       >
         {sessions.map((s) => {
           const active = s.id === activeId;
-          const sending = Boolean(sendingSessions[s.id]);
+          const sending = Boolean(sendingSessions[s.id]) && activeStreamRequestId !== null;
           return (
             <div
               key={s.id}
               data-session-id={s.id}
               role="tab"
               aria-selected={active}
+              aria-busy={sending || undefined}
               className={cn(
                 "chat-session-tab group relative flex h-[35px] max-w-[200px] min-w-[72px] shrink-0 cursor-pointer items-center gap-1.5 border-r border-border/70 px-2 text-[11px] transition-colors",
                 active
                   ? "bg-background text-foreground"
                   : "bg-transparent text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                active && sending && "chat-session-tab--sending",
               )}
               onClick={() => onSessionChange(s.id)}
               title={s.title}
             >
+              {/* Cursor 式思考指示器：均衡条动画 */}
               {sending ? (
-                <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" aria-hidden />
+                <span className="thinking-dots shrink-0" aria-hidden>
+                  <span className="thinking-dot" />
+                  <span className="thinking-dot" />
+                  <span className="thinking-dot" />
+                </span>
               ) : (
-                <MessageSquare className="h-3 w-3 shrink-0 opacity-50" aria-hidden />
+                <span className="inline-block h-2 w-2 shrink-0 rounded-full opacity-40" aria-hidden />
               )}
-              <span className="min-w-0 flex-1 truncate font-medium">{s.title}</span>
+              <span
+                className={cn(
+                  "chat-tab-title",
+                  sending && "chat-tab-title--sending",
+                )}
+              >
+                {s.title}
+              </span>
+              {/* Cursor 式底部思考进度条 */}
+              {sending && active && <span className="chat-tab-progress" aria-hidden />}
               {sessions.length > 1 ? (
                 <button
                   type="button"
@@ -190,6 +212,7 @@ export function ChatSessionTabs({
               activeId={activeId}
               sendingSessions={sendingSessions}
               onSelectSession={handleSelectHistory}
+              onDeleteSession={handleDeleteHistory}
             />
           </PopoverContent>
         </Popover>

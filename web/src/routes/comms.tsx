@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
 import { PageBanner, PageRoot } from "@/components/page-layout";
 import {
@@ -32,6 +32,7 @@ import {
 } from "@/lib/ui-copy";
 import {
   MCP_PRESETS,
+  MCP_TEMPLATE_ENV,
   type McpPresetMeta,
   resolvePresetCommandLineForForm,
   resolveMcpCommandLine,
@@ -53,6 +54,7 @@ type McpRow = {
   commandBin: string | null;
   args: string[];
   url: string | null;
+  env: Record<string, string>;
   status: string;
   last_health_at: string | null;
   healthError: string | null;
@@ -65,9 +67,10 @@ type McpForm = {
   transport: Transport;
   commandLine: string;
   url: string;
+  env: Record<string, string>;
 };
 
-const EMPTY_FORM: McpForm = { name: "", transport: "stdio", commandLine: "", url: "" };
+const EMPTY_FORM: McpForm = { name: "", transport: "stdio", commandLine: "", url: "", env: {} };
 
 type McpTemplate = McpPresetMeta;
 
@@ -84,6 +87,7 @@ function templateToForm(t: McpTemplate, bundledLines?: Record<string, string>): 
     transport: "stdio",
     commandLine: resolvePresetCommandLineForForm(t.name, bundledLines) || t.commandLine,
     url: "",
+    env: { ...(MCP_TEMPLATE_ENV[t.name] ?? {}) },
   };
 }
 
@@ -92,14 +96,19 @@ function buildUpsertPayload(form: McpForm): Parameters<
 >[0] | { error: string } {
   const name = form.name.trim();
   if (!name) return { error: "请填写名称" };
+  const hasEnv = form.env && Object.keys(form.env).length > 0;
   if (form.transport === "stdio") {
     const parsed = parseStdioCommand(form.commandLine);
     if (!parsed) return { error: "请填写启动命令" };
-    return { name, transport: "stdio", command: parsed.command, args: parsed.args };
+    const payload: Record<string, unknown> = { name, transport: "stdio", command: parsed.command, args: parsed.args };
+    if (hasEnv) payload.env = form.env;
+    return payload as Parameters<NonNullable<ReturnType<typeof getDesktop>["upsertClaudeMcpServer"]>>[0];
   }
   const url = form.url.trim();
   if (!url) return { error: "请填写 URL" };
-  return { name, transport: form.transport, url };
+  const payload: Record<string, unknown> = { name, transport: form.transport, url };
+  if (hasEnv) payload.env = form.env;
+  return payload as Parameters<NonNullable<ReturnType<typeof getDesktop>["upsertClaudeMcpServer"]>>[0];
 }
 
 function mcpSaveErrorMessage(error: string | null | undefined): string {
@@ -161,6 +170,11 @@ function mcpServersFromClaudeJson(data: unknown, homeDir = ""): McpRow[] {
     const args = Array.isArray(c.args) ? c.args.map(String) : [];
     const url = typeof c.url === "string" ? c.url : null;
     const enabled = c.disabled !== true;
+    const envRaw = c.env && typeof c.env === "object" ? (c.env as Record<string, unknown>) : {};
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(envRaw)) {
+      if (typeof v === "string") env[k] = v;
+    }
     const command =
       transport === "stdio"
         ? resolveMcpCommandLine(name, commandBin, args, homeDir)
@@ -174,6 +188,7 @@ function mcpServersFromClaudeJson(data: unknown, homeDir = ""): McpRow[] {
       commandBin,
       args,
       url,
+      env,
       status: enabled ? "unknown" : "disabled",
       last_health_at: null,
       healthError: null,
@@ -187,6 +202,7 @@ function rowToForm(row: McpRow): McpForm {
     transport: row.transport,
     commandLine: row.transport === "stdio" ? row.command ?? "" : "",
     url: row.url ?? "",
+    env: row.env ?? {},
   };
 }
 
@@ -205,6 +221,8 @@ function McpPage() {
   const [q, setQ] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [bundledLines, setBundledLines] = useState<Record<string, string>>({});
+  const [refreshingAll, setRefreshingAll] = useState(false);
+  const initialLoaded = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -271,11 +289,82 @@ function McpPage() {
   };
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void (async () => {
+      await load();
+      if (!initialLoaded.current) {
+        initialLoaded.current = true;
+        // 首次加载后自动全量健康检查（不阻塞页面渲染）
+        await runHealthCheckAll();
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const enabledCount = useMemo(() => rows.filter((r) => r.enabled).length, [rows]);
   const onlineCount = useMemo(() => rows.filter((r) => r.enabled && r.status === "ok").length, [rows]);
+
+  const runHealthCheck = async (row: McpRow) => {
+    if (!row.enabled) {
+      toast.info(`${row.name} 已停用，请先启用再检查`);
+      return;
+    }
+    setChecking(row.id);
+    setRows((arr) =>
+      arr.map((item) => (item.id === row.id ? { ...item, status: "checking" } : item)),
+    );
+    try {
+      const api = getDesktop();
+      if (!api?.mcpHealthCheckOne) {
+        toast.error("当前环境不支持健康检查");
+        return;
+      }
+      const r = await api.mcpHealthCheckOne(row.name);
+      if (!r.ok || !r.server) {
+        toast.error(r.error || "健康检查失败");
+        return;
+      }
+      if (r.repaired) {
+        const detail = r.repairs?.length ? r.repairs.join("；") : "已修正已知配置问题";
+        toast.info(`已自动修复 MCP 配置：${detail}`);
+      }
+      if (r.server.status === "ok") {
+        toast.info(`${row.name} 在线`);
+      } else {
+        toast.error(r.server.error || `${row.name} 异常`);
+      }
+      setRows((arr) =>
+        arr.map((item) =>
+          item.id === row.id
+            ? {
+                ...item,
+                status: r.server!.status,
+                last_health_at: r.server!.last_health_at ?? new Date().toISOString(),
+                healthError: r.server!.error ?? null,
+              }
+            : item,
+        ),
+      );
+    } finally {
+      setChecking(null);
+    }
+  };
+
+  const runHealthCheckAll = useCallback(async () => {
+    const api = getDesktop();
+    if (!api?.mcpHealthCheckAll) return;
+    setRefreshingAll(true);
+    // 将所有启用 MCP 设为 checking 状态
+    setRows((arr) => arr.map((r) => (r.enabled ? { ...r, status: "checking" as const } : r)));
+    try {
+      const r = await api.mcpHealthCheckAll();
+      if (r.ok) {
+        // 全量检查完成后重新读取快照更新 UI
+        await load();
+      }
+    } finally {
+      setRefreshingAll(false);
+    }
+  }, [load]);
 
   const persistMcp = useCallback(
     async (payload: Parameters<NonNullable<ReturnType<typeof getDesktop>["upsertClaudeMcpServer"]>>[0]) => {
@@ -293,12 +382,16 @@ function McpPage() {
       }
       toast.success(`已添加 ${r.name ?? payload.name}`);
       await load();
-      setActiveId(`local-${r.name ?? payload.name}`);
+      const addedName = r.name ?? payload.name;
+      setActiveId(`local-${addedName}`);
       setDrawerMode("view");
       setForm(EMPTY_FORM);
-      return { ok: true as const, name: r.name ?? payload.name };
+      // 添加后自动触发健康检查
+      const healthRow: McpRow = { id: `local-${addedName}`, name: addedName, enabled: true } as McpRow;
+      await runHealthCheck(healthRow);
+      return { ok: true as const, name: addedName };
     },
-    [load],
+    [load, runHealthCheck],
   );
 
   const filtered = useMemo(() => {
@@ -312,23 +405,6 @@ function McpPage() {
         (s.url ?? "").toLowerCase().includes(term),
     );
   }, [rows, q]);
-
-  const missingTemplates = useMemo(() => {
-    const installed = new Set(rows.map((r) => r.name));
-    return MCP_TEMPLATES.filter((t) => !installed.has(t.name));
-  }, [rows]);
-
-  const filteredMissingTemplates = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return missingTemplates;
-    return missingTemplates.filter(
-      (t) =>
-        t.name.toLowerCase().includes(term) ||
-        t.label.toLowerCase().includes(term) ||
-        t.desc.toLowerCase().includes(term) ||
-        t.commandLine.toLowerCase().includes(term),
-    );
-  }, [missingTemplates, q]);
 
   const active = rows.find((s) => s.id === activeId) ?? null;
 
@@ -418,54 +494,12 @@ function McpPage() {
       if (activeId === row.id) {
         setDrawerMode("view");
       }
+      // 启用后自动触发健康检查
+      if (nextEnabled) {
+        await runHealthCheck({ ...row, enabled: true, id: `local-${row.name}` });
+      }
     } finally {
       setToggling(null);
-    }
-  };
-
-  const runHealthCheck = async (row: McpRow) => {
-    if (!row.enabled) {
-      toast.info(`${row.name} 已停用，请先启用再检查`);
-      return;
-    }
-    setChecking(row.id);
-    setRows((arr) =>
-      arr.map((item) => (item.id === row.id ? { ...item, status: "checking" } : item)),
-    );
-    try {
-      const api = getDesktop();
-      if (!api?.mcpHealthCheckOne) {
-        toast.error("当前环境不支持健康检查");
-        return;
-      }
-      const r = await api.mcpHealthCheckOne(row.name);
-      if (!r.ok || !r.server) {
-        toast.error(r.error || "健康检查失败");
-        return;
-      }
-      if (r.repaired) {
-        const detail = r.repairs?.length ? r.repairs.join("；") : "已修正已知配置问题";
-        toast.info(`已自动修复 MCP 配置：${detail}`);
-      }
-      if (r.server.status === "ok") {
-        toast.info(`${row.name} 在线`);
-      } else {
-        toast.error(r.server.error || `${row.name} 异常`);
-      }
-      setRows((arr) =>
-        arr.map((item) =>
-          item.id === row.id
-            ? {
-                ...item,
-                status: r.server!.status,
-                last_health_at: r.server!.last_health_at ?? new Date().toISOString(),
-                healthError: r.server!.error ?? null,
-              }
-            : item,
-        ),
-      );
-    } finally {
-      setChecking(null);
     }
   };
 
@@ -481,11 +515,11 @@ function McpPage() {
             <>
               <button
                 type="button"
-                disabled={!hasDesktopApi || loading}
-                onClick={() => void load()}
+                disabled={!hasDesktopApi || loading || refreshingAll}
+                onClick={() => { void load(); void runHealthCheckAll(); }}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
               >
-                <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> 刷新
+                <RefreshCw className={cn("h-3.5 w-3.5", (loading || refreshingAll) && "animate-spin")} /> {refreshingAll ? "检查中…" : "刷新"}
               </button>
               <button
                 type="button"
@@ -533,16 +567,10 @@ function McpPage() {
             </div>
             <span className="text-[12px] text-muted-foreground">
               已配置 <b className="text-foreground">{filtered.length}</b> 个
-              {filteredMissingTemplates.length > 0 ? (
-                <>
-                  {" "}
-                  · 可添加 <b className="text-foreground">{filteredMissingTemplates.length}</b> 个内置模板
-                </>
-              ) : null}
             </span>
           </div>
 
-          {filtered.length === 0 && filteredMissingTemplates.length === 0 && !loading ? (
+          {filtered.length === 0 && !loading ? (
             <div className="rounded-xl border border-dashed border-border py-16 text-center">
               <Server className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
               <p className="text-[13px] font-medium text-foreground">
@@ -621,39 +649,6 @@ function McpPage() {
                     <span className="text-[11px] text-muted-foreground">点击查看详情</span>
                   </div>
                 </button>
-              ))}
-              {filteredMissingTemplates.map((t) => (
-                <div
-                  key={`preset-${t.name}`}
-                  className="rounded-xl border border-dashed border-primary/30 bg-primary/[0.03] p-4 shadow-xs"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Plus className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-[12.5px] font-semibold text-foreground">{t.label}</span>
-                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">内置模板</span>
-                      </div>
-                      <p className="mt-1 text-[11px] text-muted-foreground">{t.desc}</p>
-                      <p className="mt-1 line-clamp-2 font-mono text-[10.5px] text-muted-foreground">
-                        {resolvePresetCommandLineForForm(t.name, bundledLines) || t.commandLine}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-2.5">
-                    <span className="font-mono text-[10px] text-muted-foreground">{t.name}</span>
-                    <button
-                      type="button"
-                      disabled={!hasDesktopApi || saving}
-                      onClick={() => void addTemplate(t)}
-                      className="rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-40"
-                    >
-                      一键添加
-                    </button>
-                  </div>
-                </div>
               ))}
             </div>
           )}
@@ -859,6 +854,21 @@ function McpDrawer({
                   </pre>
                 </div>
               ) : null}
+
+              {active.env && Object.keys(active.env).length > 0 ? (
+                <div>
+                  <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">环境变量</div>
+                  <div className="space-y-1">
+                    {Object.entries(active.env).map(([k, v]) => (
+                      <div key={k} className="flex gap-2 rounded border border-border bg-code-bg/40 px-2.5 py-1.5 font-mono text-[11px]">
+                        <span className="shrink-0 text-primary">{k}</span>
+                        <span className="text-muted-foreground">=</span>
+                        <span className="break-all text-foreground">{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : null}
         </div>
@@ -944,6 +954,11 @@ function McpTemplatePicker({
                   <span className="font-mono text-[11px] text-muted-foreground">({t.name})</span>
                 </div>
                 <div className="text-[11px] text-muted-foreground">{t.desc}</div>
+                {MCP_TEMPLATE_ENV[t.name] ? (
+                  <div className="mt-0.5 text-[10.5px] text-warning/80">
+                    需填环境变量：{Object.keys(MCP_TEMPLATE_ENV[t.name]).join("、")}
+                  </div>
+                ) : null}
                 <div className="mt-1 truncate font-mono text-[10.5px] text-foreground/80">
                   {resolvePresetCommandLineForForm(t.name, bundledLines) || t.commandLine}
                 </div>
@@ -1035,6 +1050,66 @@ function McpFormFields({
           />
         </div>
       )}
+      {/* 环境变量 */}
+      <div>
+        <div className="mb-1 flex items-center justify-between">
+          <label className="text-[11px] font-medium text-muted-foreground">环境变量</label>
+          <button
+            type="button"
+            onClick={() => {
+              const next = { ...form.env };
+              const key = `VAR_${Object.keys(next).length}`;
+              next[key] = "";
+              onChange({ ...form, env: next });
+            }}
+            className="text-[11px] text-primary hover:underline"
+          >
+            + 添加
+          </button>
+        </div>
+        {Object.keys(form.env).length === 0 ? (
+          <p className="text-[11px] text-muted-foreground/60">（可选）无环境变量</p>
+        ) : (
+          <div className="space-y-1.5">
+            {Object.entries(form.env).map(([k, v], i) => (
+              <div key={i} className="flex gap-1.5">
+                <input
+                  value={k}
+                  onChange={(e) => {
+                    const next = { ...form.env };
+                    delete next[k];
+                    next[e.target.value] = v;
+                    onChange({ ...form, env: next });
+                  }}
+                  placeholder="KEY"
+                  className="h-7 w-2/5 rounded border border-border bg-surface px-2 font-mono text-[11px] outline-none focus:border-primary"
+                />
+                <input
+                  value={v}
+                  onChange={(e) => {
+                    const next = { ...form.env, [k]: e.target.value };
+                    onChange({ ...form, env: next });
+                  }}
+                  placeholder="VALUE"
+                  className="h-7 flex-1 rounded border border-border bg-surface px-2 font-mono text-[11px] outline-none focus:border-primary"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = { ...form.env };
+                    delete next[k];
+                    onChange({ ...form, env: next });
+                  }}
+                  className="h-7 px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
+                  title="删除"
+                >
+                  x
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

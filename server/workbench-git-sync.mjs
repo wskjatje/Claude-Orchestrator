@@ -847,9 +847,60 @@ export function savePersonalGithubSettings(body) {
       typeof body?.gitUserEmail === 'string'
         ? body.gitUserEmail.trim().slice(0, 320)
         : cur.gitUserEmail || '',
-    upstreamGithubRepo:
-      typeof body?.upstreamGithubRepo === 'string' && body.upstreamGithubRepo.trim()
-        ? body.upstreamGithubRepo.trim().slice(0, 500)
-        : cur.upstreamGithubRepo || DEFAULT_UPSTREAM_REPO,
   })
+}
+
+/**
+ * 对当前分支执行本地提交（仅 add + commit，不 push）。
+ * @param {object} opts
+ * @param {string} opts.reason - 提交说明
+ * @returns {Promise<{ok: boolean, committed: boolean, branch?: string, commitHash?: string, error?: string, combined?: string}>}
+ */
+export async function commitCurrentBranch(opts = {}) {
+  const reason = String(opts.reason || '').trim()
+  if (!reason) {
+    return { ok: false, error: '请填写本次变更说明', committed: false }
+  }
+
+  const boot = await ensurePackagedGitRepository()
+  if (!boot.ok) {
+    return { ok: false, error: boot.error, committed: false }
+  }
+
+  const branch = await currentBranch()
+
+  const add = await runGit(['add', '-A'])
+  if (!add.ok) {
+    return { ok: false, error: add.combined || add.error, committed: false }
+  }
+
+  const diffCached = await runGit(['diff', '--cached', '--quiet'])
+  if (diffCached.ok) {
+    return {
+      ok: true,
+      committed: false,
+      branch,
+      combined: '没有需要提交的变更。',
+    }
+  }
+
+  const message = buildPersonalCommitMessage(reason)
+  const identity = await ensureGitIdentity(loadChatSettings())
+  if (!identity.ok) {
+    return { ok: false, error: identity.error, committed: false }
+  }
+
+  const commit = await runGit(['commit', '-m', message])
+  if (!commit.ok) {
+    return { ok: false, error: commit.combined || commit.error, committed: false }
+  }
+
+  const hash = await runGit(['rev-parse', 'HEAD'])
+  return {
+    ok: true,
+    committed: true,
+    branch,
+    commitHash: hash.ok ? hash.stdout.trim().slice(0, 12) : '',
+    combined: commit.combined || `已提交到 ${branch}`,
+  }
 }

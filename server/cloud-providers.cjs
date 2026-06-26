@@ -3,6 +3,9 @@
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const dns = require('node:dns')
+const https = require('node:https')
+const http = require('node:http')
 const projectDb = require('./project-db.cjs')
 const { PROJECT_DATA_DIR, PROJECT_DB_PATH } = require('./paths.mjs')
 
@@ -16,7 +19,7 @@ function attachDb(fn) {
 }
 
 function defaultStore() {
-  return { version: 1, currentProviderId: '', providers: {} }
+  return { version: 1, currentProviderId: '', providers: {}, ccSwitchMigrated: false }
 }
 
 function loadStore() {
@@ -69,6 +72,10 @@ function normalizeCloudModelId(model) {
   if (/^deepseek-reasoner$/i.test(m)) return 'deepseek-v4-pro'
   if (/^deepseek-v4-flash$/i.test(m)) return 'deepseek-v4-flash'
   if (/^deepseek-v4-pro$/i.test(m)) return 'deepseek-v4-pro'
+  // Gemini 显示名 → API 模型 ID：去掉前缀、转小写、空格变中划线
+  if (/^gemini\s/i.test(m)) {
+    return m.replace(/^gemini\s+/i, '').trim().toLowerCase().replace(/\s+/g, '-')
+  }
   return m
 }
 
@@ -76,6 +83,303 @@ function mapDeepSeekModelForClaude(model) {
   return normalizeCloudModelId(model)
 }
 
+/**
+ * 已知云模型供应商 market 列表（本地 Ollama 模型不在此列）。
+ * 所有供应商通过直接 API 调用（OpenAI-compatible 或原生 API）。
+ * directApi: true 表示可直接通过 OpenAI-compatible API 访问。
+ * directApiBase: 该供应商的默认 API 端点地址。
+ */
+const KNOWN_CLOUD_PROVIDERS = [
+  { name: 'Anthropic', needsCcr: false, defaultPricing: { inputPer1M: 3, outputPer1M: 15 } },
+  { name: 'DeepSeek', needsCcr: false, directApi: true, directApiBase: 'https://api.deepseek.com/v1', fetchModelsStrategy: 'openai-compatible', fetchModelsPath: '/v1/models', defaultPricing: { inputPer1M: 0.27, outputPer1M: 1.1 } },
+  { name: 'OpenAI', needsCcr: false, directApi: true, directApiBase: 'https://api.openai.com/v1', fetchModelsStrategy: 'openai-compatible', defaultPricing: { inputPer1M: 2.5, outputPer1M: 10 } },
+  { name: 'Google Gemini', needsCcr: false, directApi: true, directApiBase: 'https://generativelanguage.googleapis.com/v1beta/models/', fetchModelsStrategy: 'gemini', defaultPricing: { inputPer1M: 0.15, outputPer1M: 0.6 } },
+  { name: 'Groq', needsCcr: false, directApi: true, directApiBase: 'https://api.groq.com/openai/v1', fetchModelsStrategy: 'openai-compatible', defaultPricing: { inputPer1M: 0.2, outputPer1M: 0.6 } },
+  { name: 'Mistral', needsCcr: false, directApi: true, directApiBase: 'https://api.mistral.ai/v1', fetchModelsStrategy: 'openai-compatible', defaultPricing: { inputPer1M: 0.5, outputPer1M: 1.5 } },
+  { name: 'xAI (Grok)', needsCcr: false, directApi: true, directApiBase: 'https://api.x.ai/v1', fetchModelsStrategy: 'openai-compatible', defaultPricing: { inputPer1M: 2, outputPer1M: 8 } },
+  { name: 'Cohere', needsCcr: false, directApi: true, directApiBase: 'https://api.cohere.com/v1', fetchModelsStrategy: 'openai-compatible', defaultPricing: { inputPer1M: 0.5, outputPer1M: 1.5 } },
+  { name: 'Together AI', needsCcr: false, directApi: true, directApiBase: 'https://api.together.xyz/v1', fetchModelsStrategy: 'openai-compatible', defaultPricing: { inputPer1M: 0.5, outputPer1M: 1.5 } },
+  { name: 'Perplexity', needsCcr: false, directApi: true, directApiBase: 'https://api.perplexity.ai', fetchModelsStrategy: 'openai-compatible', defaultPricing: { inputPer1M: 1, outputPer1M: 5 } },
+  { name: 'Fireworks AI', needsCcr: false, directApi: true, directApiBase: 'https://api.fireworks.ai/v1', fetchModelsStrategy: 'openai-compatible', defaultPricing: { inputPer1M: 0.2, outputPer1M: 0.6 } },
+  { name: 'Replicate', needsCcr: false, directApi: true },
+  { name: 'Anyscale', needsCcr: false, directApi: true, fetchModelsStrategy: 'openai-compatible' },
+  { name: 'OctoAI', needsCcr: false, directApi: true, fetchModelsStrategy: 'openai-compatible' },
+  { name: 'AI21 Labs', needsCcr: false, directApi: true, fetchModelsStrategy: 'openai-compatible' },
+  { name: 'Voyage AI', needsCcr: false, directApi: true },
+  { name: 'Baidu (文心)', needsCcr: false, directApi: true, fetchModelsStrategy: 'openai-compatible' },
+  { name: 'Alibaba (通义)', needsCcr: false, directApi: true, fetchModelsStrategy: 'openai-compatible' },
+  { name: 'Zhipu (智谱)', needsCcr: false, directApi: true, fetchModelsStrategy: 'openai-compatible' },
+  { name: 'Moonshot (月之暗面)', needsCcr: false, directApi: true, fetchModelsStrategy: 'openai-compatible' },
+  { name: 'MiniMax', needsCcr: false, directApi: true, fetchModelsStrategy: 'openai-compatible' },
+  { name: '01.AI (零一万物)', needsCcr: false, directApi: true, fetchModelsStrategy: 'openai-compatible' },
+  { name: 'Amazon Bedrock', needsCcr: false, directApi: true },
+  { name: 'Azure OpenAI', needsCcr: false, directApi: true },
+]
+
+/**
+ * 返回完整已知供应商列表。
+ */
+function listKnownProviders(_currentProviderId) {
+  const seen = new Set()
+  return KNOWN_CLOUD_PROVIDERS.filter((p) => {
+    if (seen.has(p.name)) return false
+    seen.add(p.name)
+    return true
+  }).map(({ name, needsCcr, directApi, directApiBase, defaultPricing, fetchModelsStrategy }) => ({
+    name,
+    needsCcr,
+    ...(directApi && directApiBase ? { defaultEndpoint: directApiBase } : {}),
+    ...(defaultPricing ? { defaultInputPrice: defaultPricing.inputPer1M, defaultOutputPrice: defaultPricing.outputPer1M } : {}),
+    ...(fetchModelsStrategy ? { canFetchModels: true } : {}),
+  }))
+}
+
+/**
+ * 判断供应商是否需要 ccr 协议翻译（已废弃，始终返回 false）。
+ */
+function providerNeedsCcrProxy() {
+  return { needsCcr: false, ccrEndpoint: '', reason: '' }
+}
+
+/**
+ * 从所有已存储的供应商构建完整的 tokenPricing 表。
+ * 每个模型的单价 = 供应商存储的 inputPrice/outputPrice。
+ * 结果可直接存入 settings.tokenPricing 供 estimateUsageCostUsd 使用。
+ */
+function buildTokenPricingFromProviders(providers) {
+  const pricing = {}
+  const list = Array.isArray(providers) ? providers : Object.values(loadStore().providers || {})
+  for (const p of list) {
+    if (!Array.isArray(p.models)) continue
+    const inputPer1M = Number(p.inputPrice) || 0
+    const outputPer1M = Number(p.outputPrice) || 0
+    if (inputPer1M <= 0 && outputPer1M <= 0) continue
+    for (const m of p.models) {
+      if (m) pricing[m] = { inputPer1M, outputPer1M }
+    }
+  }
+  return pricing
+}
+
+/**
+ * 判断供应商是否支持直接 OpenAI-compatible API 调用。
+ */
+function supportsDirectApi(providerName) {
+  const n = String(providerName || '').trim()
+  if (!n) return { direct: false, apiBase: '' }
+  const known = KNOWN_CLOUD_PROVIDERS.find((p) => p.name === n)
+  if (known && known.directApi) {
+    return { direct: true, apiBase: known.directApiBase || '' }
+  }
+  // 当供应商名称不在已知列表但 endpoint 指向 OpenAI 兼容端点时，
+  // 允许通过供应商存储的 endpoint 直接调用（由调用方传入）
+  return { direct: false, apiBase: '' }
+}
+
+/**
+ * 当 providerName 不可用时，用模型名尝试匹配已知 directApi 供应商。
+ */
+function inferDirectApiFromModel(modelName) {
+  const m = String(modelName || '').toLowerCase()
+  for (const p of KNOWN_CLOUD_PROVIDERS) {
+    if (!p.directApi || !p.directApiBase) continue
+    const pn = p.name.toLowerCase()
+    // 模型名包含供应商名（或其核心词），如 "gemini-3-flash-live" 包含 "gemini"
+    if (m.includes(pn) || pn.split(/[\s(]/).some(part => part.length > 2 && m.includes(part))) {
+      return { direct: true, apiBase: p.directApiBase, providerName: p.name }
+    }
+  }
+  // 二次启发：模型名不含已知供应商词，但符合 Gemini 命名模式
+  if (/gemini/i.test(m) || (/^\d[\w.-]*/.test(m) && /(flash|live|exp|pro|thinking|vision|ultra)/i.test(m))) {
+    const gemini = KNOWN_CLOUD_PROVIDERS.find(p => p.name === 'Google Gemini')
+    if (gemini && gemini.directApi && gemini.directApiBase) {
+      return { direct: true, apiBase: gemini.directApiBase, providerName: gemini.name }
+    }
+  }
+  return { direct: false, apiBase: '', providerName: '' }
+}
+
+/**
+ * 自动从供应商 API 获取可用模型列表。
+ * 获取策略由 KNOWN_CLOUD_PROVIDERS 中的 fetchModelsStrategy 声明：
+ *   'openai-compatible' — GET {base}/models → data[].id
+ *   'gemini'            — GET /v1beta/models?key= → models[].name（过滤 generateContent 方法）
+ *   未声明 / 自定义供应商 — 按端点特征启发式推断，默认为 openai-compatible。
+ * 返回 { ok, models, provider, defaultInputPrice, defaultOutputPrice }。
+ */
+async function fetchProviderModels({ providerName, endpoint, apiKey, timeoutMs = 15_000 } = {}) {
+  if (!providerName) return { ok: false, error: '供应商名称不能为空', models: [] }
+
+  // 未传 API Key 时尝试从已存储的供应商中查找
+  let resolvedKey = String(apiKey || '').trim()
+  if (!resolvedKey) {
+    const store = loadStore()
+    const providers = listProviderRecords(store)
+    for (const { rec } of providers) {
+      if (rec.name === providerName) {
+        resolvedKey = String(rec.apiKey || '').trim()
+        break
+      }
+    }
+  }
+  if (!resolvedKey) return { ok: false, error: 'API Key 不能为空（已保存的供应商中未找到该名称）', models: [] }
+
+  // 查找获取策略
+  const known = KNOWN_CLOUD_PROVIDERS.find((p) => p.name === providerName)
+  let strategy = known?.fetchModelsStrategy || ''
+  const base = String(endpoint || '').trim().replace(/\/+$/, '')
+
+  // 未声明策略时按端点启发式推断
+  if (!strategy) {
+    if (/generativelanguage\.googleapis/i.test(base) || /gemini/i.test(providerName)) {
+      strategy = 'gemini'
+    } else {
+      strategy = 'openai-compatible' // 绝大多数直接 API 供应商兼容
+    }
+  }
+
+  const knownPricing = known?.defaultPricing
+  const defaultInputPrice = knownPricing?.inputPer1M || 0
+  const defaultOutputPrice = knownPricing?.outputPer1M || 0
+
+  try {
+    let models = []
+
+    if (strategy === 'gemini') {
+      const cleanBase = base
+        .replace(/\/?models\/?$/i, '')
+        .replace(/\/v1beta\/?/i, '/v1beta')
+        .replace(/\/+$/, '')
+      const apiBase = cleanBase || 'https://generativelanguage.googleapis.com/v1beta'
+      const url = `${apiBase}/models?key=${encodeURIComponent(resolvedKey)}`
+      const { status, data } = await httpGetJson(url, timeoutMs)
+      if (status !== 200) return { ok: false, error: `Gemini API 返回 ${status}`, models: [] }
+      const rawModels = Array.isArray(data?.models) ? data.models : []
+      models = rawModels
+        .filter((m) => {
+          const methods = m.supportedGenerationMethods || m.supportedMethods || []
+          return Array.isArray(methods) && methods.some((s) => /generateContent/i.test(s))
+        })
+        .map((m) => String(m.name || '').replace(/^models\//, '').trim())
+        .filter(Boolean)
+    } else {
+      // openai-compatible
+      const modelsPath = known?.fetchModelsPath
+      let url
+      if (modelsPath) {
+        // 有显式 fetchModelsPath 时，用 base 的 origin 拼接（防止 path 段重复）
+        let originBase = base || ''
+        if (!originBase) originBase = known?.directApiBase || 'https://api.openai.com'
+        try {
+          const parsed = new URL(originBase)
+          originBase = parsed.origin
+        } catch {
+          originBase = 'https://api.openai.com'
+        }
+        url = `${originBase}${modelsPath}`
+      } else {
+        // 默认：{base}/models
+        const apiBase = base || 'https://api.openai.com/v1'
+        url = `${apiBase.replace(/\/+$/, '')}/models`
+      }
+      const { status, data } = await httpGetJson(url, timeoutMs, { Authorization: `Bearer ${resolvedKey}` })
+      if (status !== 200) return { ok: false, error: `API 返回 ${status}`, models: [] }
+      const rawModels = Array.isArray(data?.data) ? data.data : []
+      models = rawModels
+        .map((m) => String(m.id || '').trim())
+        .filter(Boolean)
+    }
+
+    return { ok: true, models, provider: providerName, defaultInputPrice, defaultOutputPrice }
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e).slice(0, 200), models: [] }
+  }
+}
+
+/**
+ * 用公共 DNS 解析域名，绕过本地代理/VPN 对 DNS 的劫持。
+ */
+function resolveHostnameSimple(hostname) {
+  const dnsServers = [
+    ['8.8.8.8', '1.1.1.1'],
+    ['1.1.1.1', '8.8.4.4'],
+    ['208.67.222.222', '208.67.220.220'],
+  ]
+  const tryResolve = (servers) => new Promise((resolve) => {
+    let resolver
+    try {
+      resolver = new dns.Resolver({ timeout: 3000, tries: 1 })
+      resolver.setServers(servers)
+    } catch { resolve(''); return }
+    resolver.resolve4(hostname, (err, addresses) => {
+      if (err || !Array.isArray(addresses) || !addresses.length) { resolve(''); return }
+      const ip = addresses[0]
+      resolve(ip === '127.0.0.1' || ip === '0.0.0.0' || ip.startsWith('192.168.') ? '' : ip)
+    })
+  })
+
+  return (async () => {
+    for (const servers of dnsServers) {
+      const ip = await tryResolve(servers)
+      if (ip) return ip
+    }
+    try {
+      const addresses = await dns.promises.resolve4(hostname)
+      const ip = Array.isArray(addresses) && addresses.length ? addresses[0] : ''
+      return (ip && ip !== '127.0.0.1' && ip !== '0.0.0.0' && !ip.startsWith('192.168.')) ? ip : ''
+    } catch {
+      return ''
+    }
+  })()
+}
+
+/**
+ * 轻量 GET 请求，返回 { status, data }。data 为解析后的 JSON 对象。
+ * 会尝试绕过本地代理/VPN 的 DNS 劫持。
+ */
+function httpGetJson(url, timeoutMs, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const isHttps = url.startsWith('https://')
+    const lib = isHttps ? https : http
+    const parsed = new URL(url)
+    const hostname = parsed.hostname
+
+    // 先解析 DNS，避免被本地代理劫持
+    resolveHostnameSimple(hostname).then((realIp) => {
+      const opts = {
+        hostname: realIp || hostname,
+        port: parsed.port || (isHttps ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: 'GET',
+        headers: { Accept: 'application/json', ...headers, Host: hostname },
+        timeout: timeoutMs,
+        servername: hostname,
+      }
+      const req = lib.request(opts, (res) => {
+        let buf = ''
+        res.on('data', (chunk) => { buf += chunk.toString() })
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(buf)
+            resolve({ status: res.statusCode, data })
+          } catch {
+            resolve({ status: res.statusCode, data: null })
+          }
+        })
+      })
+      req.on('error', (e) => reject(e))
+      req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')) })
+      req.end()
+    }).catch((e) => reject(e))
+  })
+}
+
+/**
+ * 将当前选中供应商的 apiKey 同步到 ccr 配置文件（已废弃）。
+ */
+function syncCcrConfigForProvider() {
+  return { syncOk: false }
+}
 function buildProviderEnv(input) {
   const endpoint = String(input.endpoint || '').trim().replace(/\/$/, '')
   const apiKey = String(input.apiKey || '').trim()
@@ -112,6 +416,8 @@ function providerToSummary(id, rec, isCurrent) {
     models: [...(rec.models || [])],
     hasApiKey: Boolean(String(rec.apiKey || '').trim()),
     apiKeyPreview: maskApiKey(rec.apiKey),
+    inputPrice: Number(rec.inputPrice) || 0,
+    outputPrice: Number(rec.outputPrice) || 0,
   }
 }
 
@@ -231,12 +537,18 @@ function upsertProvider(input) {
     ...new Set([sonnet, ...extraModels].map((m) => normalizeCloudModelId(m)).filter(Boolean)),
   ]
   const now = Date.now()
+  // 取用户自定义单价（允许覆盖默认）或从已知供应商取默认
+  const knownDefault = KNOWN_CLOUD_PROVIDERS.find((p) => p.name === name)?.defaultPricing || {}
+  const inputPrice = Number(input.inputPrice ?? input.inputPer1M ?? knownDefault.inputPer1M ?? 0)
+  const outputPrice = Number(input.outputPrice ?? input.outputPer1M ?? knownDefault.outputPer1M ?? 0)
   store.providers[id] = {
     id,
     name,
     endpoint: String(input.endpoint || existing?.endpoint || '').trim(),
     apiKey,
     models,
+    inputPrice,
+    outputPrice,
     websiteUrl: String(input.homepage || input.websiteUrl || existing?.websiteUrl || '').trim(),
     notes: String(input.notes || '项目内配置').trim(),
     createdAt: existing?.createdAt || now,
@@ -330,6 +642,7 @@ function resolveEnvForModel(modelId) {
     providerId: hit.id,
     providerName: rec.name,
     model: pickModel,
+    models: rec.models || [],
   }
 }
 
@@ -422,11 +735,6 @@ async function collectCloudModelPool({ aliases = [], settings = {}, fetchRemote 
     }
   }
 
-  if (Array.isArray(settings.cloudModelCatalog)) {
-    for (const m of settings.cloudModelCatalog) {
-      if (allowCloud(m)) models.add(String(m || '').trim())
-    }
-  }
   const curModel = String(settings.model || '').trim()
   if (curModel && allowCloud(curModel)) models.add(curModel)
 
@@ -469,7 +777,7 @@ async function syncProvidersToWorkbench({ loadChatSettings, saveChatSettings, lo
     ...cur,
     model: String(sonnet).trim() || cur.model,
     cloudModelCatalog: await filterCloudModelList(
-      [...new Set([...(cur.cloudModelCatalog || []), ...pool])],
+      pool,
       cur,
     ),
   }
@@ -509,7 +817,12 @@ function providersConfigured() {
 /** 一次性从 CC Switch 导入（若项目尚无供应商） */
 function migrateFromCcSwitchIfEmpty() {
   const store = loadStore()
-  if (Object.keys(store.providers || {}).length > 0) return false
+  if (store.ccSwitchMigrated) return false
+  if (Object.keys(store.providers || {}).length > 0) {
+    store.ccSwitchMigrated = true
+    saveStore(store)
+    return false
+  }
 
   const ccDb = path.join(os.homedir(), '.cc-switch', 'cc-switch.db')
   if (!fs.existsSync(ccDb)) return false
@@ -561,6 +874,7 @@ function migrateFromCcSwitchIfEmpty() {
         if (row.is_current) store.currentProviderId = row.id
       }
       if (Object.keys(store.providers).length) {
+        store.ccSwitchMigrated = true
         saveStore(store)
         return true
       }
@@ -570,7 +884,13 @@ function migrateFromCcSwitchIfEmpty() {
   } catch {
     /* ignore migration errors */
   }
+  store.ccSwitchMigrated = true
+  saveStore(store)
   return false
+}
+
+function geminiDirectEndpointError() {
+  return ''  // Gemini 直连已支持，不再需要错误提示
 }
 
 module.exports = {
@@ -589,4 +909,12 @@ module.exports = {
   writeClaudeSettingsFromEnv,
   mapDeepSeekModelForClaude,
   migrateFromCcSwitchIfEmpty,
+  providerNeedsCcrProxy,
+  supportsDirectApi,
+  inferDirectApiFromModel,
+  buildTokenPricingFromProviders,
+  fetchProviderModels,
+  listKnownProviders,
+  normalizeCloudModelId,
+  geminiDirectEndpointError,
 }

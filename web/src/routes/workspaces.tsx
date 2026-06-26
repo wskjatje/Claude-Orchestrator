@@ -45,7 +45,7 @@ function WorkspacesPage() {
     }
     if (typeof api.getWorkspaceHistory !== "function") {
       setHistory(p ? [{ path: p, openedAt: Date.now() }] : []);
-      setHint(`${WORKSPACE_HISTORY_API_OFFLINE} 若仍为空，请刷新页面。`);
+      setHint(`${WORKSPACE_HISTORY_API_OFFLINE} 刷新页面重试。`);
       return;
     }
     try {
@@ -120,7 +120,7 @@ function WorkspacesPage() {
     if (!api) return;
     await api.clearWorkspace();
     setCwd(null);
-    setHint("已清除工作区（聊天写入将受限直至重新选择）。");
+    setHint("已清除工作区，聊天写入将受限。");
   };
 
   return (
@@ -146,7 +146,7 @@ function WorkspacesPage() {
               <div className="rounded-xl border border-border bg-secondary/50 px-4 py-3 text-[12px] text-muted-foreground">{hint}</div>
             ) : null}
 
-            <PageSection title="当前工作区" hint={<InfoHint>全应用唯一可修改工作区的入口</InfoHint>}>
+            <PageSection title="当前工作区" hint={<InfoHint>唯一修改入口</InfoHint>}>
               <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                 <div className="flex items-start gap-2 rounded-lg border border-border bg-surface px-3 py-2.5">
                   <FolderTree className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -186,7 +186,7 @@ function WorkspacesPage() {
             <PageSection title="打开记录" hint={<InfoHint>{WORKSPACE_HISTORY_HINT}</InfoHint>}>
               {!history.length ? (
                 <div className="rounded-lg border border-dashed border-border bg-surface/50 px-4 py-8 text-center text-[12px] text-muted-foreground">
-                  暂无打开记录。选择工作区后会自动记录。
+                  暂无记录，选择工作区后自动记录。
                 </div>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-border bg-surface">

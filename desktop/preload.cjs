@@ -108,6 +108,9 @@ const desktop = {
   ccSwitchSetCurrentProvider: (body) => rpc('cc-switch:setCurrentProvider', body),
   ccSwitchSyncWorkbench: () => rpc('cc-switch:syncWorkbench'),
   ccSwitchRefreshCloudModels: (opts) => rpc('cc-switch:refreshCloudModels', opts),
+  ccSwitchProviderNeedsCcr: (opts) => rpc('cc-switch:providerNeedsCcr', opts),
+  ccSwitchListKnownProviders: () => rpc('cc-switch:listKnownProviders'),
+  ccSwitchFetchProviderModels: (body) => rpc('cc-switch:fetchProviderModels', body),
   readReferenceFilesAsImageAttachments: (filePaths) =>
     rpc('reference-files:readAsImageAttachments', filePaths),
   saveChatImageAttachments: (attachments) => rpc('chat:saveImageAttachments', attachments),
@@ -134,6 +137,7 @@ const desktop = {
   workbenchGitDeployPersonal: (payload) =>
     rpc('workbench-git:deployPersonal', payload ? [payload] : []),
   workbenchGitPushPersonal: (payload) => rpc('workbench-git:pushPersonal', payload ?? {}),
+  workbenchGitCommitBranch: (payload) => rpc('workbench-git:commitBranch', payload ?? {}),
   workbenchGitSaveGithubSettings: (body) => rpc('workbench-git:saveGithubSettings', body),
   chooseClaudeCliExecutable: () => rpc('claude-code:chooseCliExecutable'),
   claudeCodeRunChainStep: (payload) => rpc('claude-code:runChainStep', payload),
@@ -204,6 +208,10 @@ const desktop = {
   onOrchestrationChainStatus: (fn) => onEvent('orchestration:chain-status', fn),
   getOpenclawGatewayToken: () => Promise.resolve({ ok: false, error: '未配置', token: undefined }),
   logout: () => rpc('reset:logout'),
+
+  envDeployCheck: () => rpc('env:deployCheck'),
+  envDeployInstall: () => rpc('env:deployInstall'),
+  envDeployVerify: () => rpc('env:deployVerify'),
 }
 
 contextBridge.exposeInMainWorld('__ELECTRON_DESKTOP__', true)

@@ -25,7 +25,7 @@ export const DEFAULT_WORKSPACE =
   PROJECT_ROOT
 
 export const DEFAULT_CLAUDE_CLI =
-  process.env.WORKBENCH_CLAUDE_CLI?.trim() || '/opt/homebrew/bin/claude'
+  process.env.WORKBENCH_CLAUDE_CLI?.trim() || ''
 
 export function ensureProjectDataDir() {
   fs.mkdirSync(PROJECT_DATA_DIR, { recursive: true })

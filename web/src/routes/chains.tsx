@@ -963,7 +963,7 @@ function PresetChainDrawer({
               ) : null}
             </div>
             <p className="mb-2 text-[11px] text-muted-foreground">
-              可先填上方项目信息自动生成步骤，也可直接改 Agent 和每步任务说明。
+              可先填项目信息自动生成步骤，也可直接编辑。
             </p>
             <ChainStepsEditor steps={steps} agents={agents} skills={skills} mcps={mcps} onStepsChange={onStepsChange} />
           </div>
@@ -1219,7 +1219,7 @@ function ChainAddDrawer({
               步骤 <RequiredMark />
             </div>
             <p className="mb-2 text-[11px] text-muted-foreground">
-              每一步：① Agent（Skill 自动带入）；② MCP（可选）；③ 任务说明。多步时点「添加步骤」。官方请回列表点虚线卡片。
+              每一步：选 Agent（Skill 自动带入）、选 MCP（可选）、写任务说明。多步可继续添加。
             </p>
             <ChainStepsEditor steps={steps} agents={agents} skills={skills} mcps={mcps} onStepsChange={onStepsChange} />
           </div>

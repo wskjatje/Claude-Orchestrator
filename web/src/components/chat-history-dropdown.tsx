@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, Circle, Loader2, Search } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   filterHistoryItems,
@@ -20,6 +20,7 @@ type Props = {
   activeId: string;
   sendingSessions: Record<string, boolean>;
   onSelectSession: (sessionId: string) => void;
+  onDeleteSession: (sessionId: string) => void;
 };
 
 function HistoryRow({
@@ -28,38 +29,48 @@ function HistoryRow({
   sending,
   showWorkspace,
   onSelect,
+  onDelete,
 }: {
   item: ChatHistoryListItem;
   active: boolean;
   sending: boolean;
   showWorkspace: boolean;
   onSelect: () => void;
+  onDelete: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className={cn(
-        "chat-history-dropdown-row group/row flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition",
-        active ? "bg-secondary/80 text-foreground" : "text-foreground hover:bg-secondary/60",
-      )}
-      onClick={onSelect}
-    >
-      {sending ? (
-        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
-      ) : active ? (
-        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />
-      ) : (
-        <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/45" />
-      )}
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12px] leading-snug">{item.title}</span>
-        {showWorkspace ? (
-          <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-            {shortenWorkspaceLabel(workspaceSessionKey(item.workspacePath))}
-          </span>
-        ) : null}
-      </span>
-    </button>
+    <div className="group/row flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-secondary/60">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-2"
+        onClick={onSelect}
+      >
+        {sending ? (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+        ) : active ? (
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" />
+        ) : (
+          <Circle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/45" />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-left text-[12px] leading-snug">{item.title}</span>
+          {showWorkspace ? (
+            <span className="mt-0.5 block truncate text-left text-[10px] text-muted-foreground">
+              {shortenWorkspaceLabel(workspaceSessionKey(item.workspacePath))}
+            </span>
+          ) : null}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover/row:opacity-100 focus-visible:opacity-100"
+        title="删除此对话"
+        aria-label={`删除 ${item.title}`}
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+    </div>
   );
 }
 
@@ -72,6 +83,7 @@ export function ChatHistoryDropdown({
   activeId,
   sendingSessions,
   onSelectSession,
+  onDeleteSession,
 }: Props) {
   const [query, setQuery] = useState("");
   const source = scope === "project" ? projectItems : allItems;
@@ -140,6 +152,7 @@ export function ChatHistoryDropdown({
                     sending={Boolean(sendingSessions[item.id])}
                     showWorkspace={false}
                     onSelect={() => onSelectSession(item.id)}
+                    onDelete={() => onDeleteSession(item.id)}
                   />
                 ))}
               </div>
@@ -160,6 +173,7 @@ export function ChatHistoryDropdown({
                     sending={Boolean(sendingSessions[item.id])}
                     showWorkspace={false}
                     onSelect={() => onSelectSession(item.id)}
+                    onDelete={() => onDeleteSession(item.id)}
                   />
                 ))}
               </div>

@@ -36,23 +36,84 @@
       {
         "from": "../server",
         "to": "backend/server",
-        "filter": ["**/*", "!**/.DS_Store"]
+        "filter": [
+          "**/*",
+          "!**/.DS_Store",
+          "!**/*.tar.gz",
+          "!**/*.tgz",
+          "!**/*.tar",
+          "!**/*.zip",
+          "!**/*.gz",
+          "!**/*.bz2",
+          "!**/*.xz",
+          "!**/*.7z",
+          "!**/*.rar"
+        ]
       },
       {
         "from": "../web/dist-electron",
-        "to": "backend/web-dist"
+        "to": "backend/web-dist",
+        "filter": [
+          "**/*",
+          "!**/.DS_Store",
+          "!**/*.tar.gz",
+          "!**/*.tgz",
+          "!**/*.tar",
+          "!**/*.zip",
+          "!**/*.gz",
+          "!**/*.bz2",
+          "!**/*.xz",
+          "!**/*.7z",
+          "!**/*.rar"
+        ]
       },
       {
         "from": "../node_modules/ws",
-        "to": "backend/node_modules/ws"
+        "to": "backend/node_modules/ws",
+        "filter": [
+          "**/*",
+          "!**/*.tar.gz",
+          "!**/*.tgz",
+          "!**/*.tar",
+          "!**/*.zip",
+          "!**/*.gz",
+          "!**/*.bz2",
+          "!**/*.xz",
+          "!**/*.7z",
+          "!**/*.rar"
+        ]
       },
       {
         "from": "../node_modules/node-pty",
-        "to": "backend/node_modules/node-pty"
+        "to": "backend/node_modules/node-pty",
+        "filter": [
+          "**/*",
+          "!**/*.tar.gz",
+          "!**/*.tgz",
+          "!**/*.tar",
+          "!**/*.zip",
+          "!**/*.gz",
+          "!**/*.bz2",
+          "!**/*.xz",
+          "!**/*.7z",
+          "!**/*.rar"
+        ]
       },
       {
         "from": "../node_modules/node-addon-api",
-        "to": "backend/node_modules/node-addon-api"
+        "to": "backend/node_modules/node-addon-api",
+        "filter": [
+          "**/*",
+          "!**/*.tar.gz",
+          "!**/*.tgz",
+          "!**/*.tar",
+          "!**/*.zip",
+          "!**/*.gz",
+          "!**/*.bz2",
+          "!**/*.xz",
+          "!**/*.7z",
+          "!**/*.rar"
+        ]
       }
     ],
     "asar": true,

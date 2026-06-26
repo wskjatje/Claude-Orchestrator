@@ -73,9 +73,7 @@ export async function loadConfiguredModelPools(settings) {
   const localModels = [
     ...new Set((settings?.localModelCatalog ?? []).map((m) => String(m || '').trim()).filter(Boolean)),
   ]
-  const cloudSet = new Set(
-    (settings?.cloudModelCatalog ?? []).map((m) => String(m || '').trim()).filter(Boolean),
-  )
+  const cloudSet = new Set()
   try {
     const providers = cloudProviders.listProviders()
     const allowed = new Set(settings?.cloudProviderCatalog ?? [])
@@ -101,6 +99,9 @@ export async function loadChatModelPools(settings) {
   const enabledCloud = new Set(
     (settings?.chatEnabledCloudProviders ?? []).map((id) => String(id || '').trim()).filter(Boolean),
   )
+  const providerCatalog = new Set(
+    (settings?.cloudProviderCatalog ?? []).map((id) => String(id || '').trim()).filter(Boolean),
+  )
   const enabledLocal = (settings?.chatEnabledLocalModels ?? [])
     .map((m) => String(m || '').trim())
     .filter(Boolean)
@@ -112,6 +113,7 @@ export async function loadChatModelPools(settings) {
   try {
     for (const p of cloudProviders.listProviders()) {
       if (!enabledCloud.has(p.id)) continue
+      if (providerCatalog.size > 0 && !providerCatalog.has(p.id)) continue
       for (const m of p.models || []) {
         const id = String(m || '').trim()
         if (id) cloudSet.add(id)

@@ -8,6 +8,8 @@ import { OrchestrationExecutionProvider } from "@/hooks/use-orchestration-execut
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { SchedulerNotifications } from "@/components/scheduler-notifications";
+import { ChatStateProvider } from "@/contexts/chat-state-context";
+import { GlobalChatPanel } from "@/components/global-chat-panel";
 
 const themeBootstrap = `
 (function(){try{var dark=window.matchMedia('(prefers-color-scheme: dark)').matches;var r=document.documentElement;r.classList.toggle('dark',dark);r.style.colorScheme=dark?'dark':'light';}catch(e){}})();
@@ -84,13 +86,16 @@ function RootComponent() {
     <ThemeProvider>
       <DesktopHydrationProvider>
         <OrchestrationExecutionProvider>
+          <ChatStateProvider>
           <TooltipProvider delayDuration={150}>
             <>
               <Outlet />
+              <GlobalChatPanel />
               <SchedulerNotifications />
               <Toaster position="bottom-center" duration={2200} richColors={false} closeButton visibleToasts={1} />
             </>
           </TooltipProvider>
+          </ChatStateProvider>
         </OrchestrationExecutionProvider>
       </DesktopHydrationProvider>
     </ThemeProvider>

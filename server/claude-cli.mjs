@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import https from 'node:https'
+import dns from 'node:dns'
 import { createRequire } from 'node:module'
 import { loadChatSettings, getWorkspaceCwd, loadUiPrefs } from './store.mjs'
 import { readGlobalClaudeEnv } from './paths.mjs'
@@ -77,7 +79,7 @@ export async function resolveClaudePath() {
   }
 }
 
-/** Gemini/ccr/DeepSeek 等：CLI 用 sonnet 别名，真实模型由 env ANTHROPIC_DEFAULT_* 映射 */
+/** 第三方 API：CLI 用 sonnet 别名，真实模型由 env ANTHROPIC_DEFAULT_* 映射 */
 function isThirdPartyAnthropicBase(base) {
   const b = String(base || '').trim().toLowerCase()
   if (!b) return false
@@ -95,12 +97,12 @@ function syncEnvDefaultModels(env, model) {
   }
 }
 
-/** Claude Code / DeepSeek API 实际使用的模型 ID（deepseek-chat 在 CLI 侧已不可用） */
+/** 将用户配置的模型 ID 映射为实际 API 可用的模型标识 */
 function mapApiModelId(model, env) {
   const m = String(model || '').trim()
   if (!m || /^(inherit|auto)$/i.test(m)) return m
-  if (/^deepseek-chat$/i.test(m)) return 'deepseek-v4-flash'
-  if (/^deepseek-reasoner$/i.test(m)) return 'deepseek-v4-pro'
+  const normalized = cloudProviders.normalizeCloudModelId(m)
+  if (normalized !== m) return normalized
   // OpenRouter 聚合站：自动补充供应商前缀（如 openai/gpt-4o）
   if (env && isOpenRouterEndpoint(env.ANTHROPIC_BASE_URL) && !m.includes('/')) {
     const base = m.toLowerCase()
@@ -128,7 +130,6 @@ function resolveClaudeCliModel(model, env) {
   if (haiku && m === haiku) return 'haiku'
   if (opus && m === opus) return 'opus'
   if (/^gemini-/i.test(m) || /^claude-/i.test(m)) return 'sonnet'
-  if (/^deepseek-/i.test(m)) return 'sonnet'
   if (isThirdPartyAnthropicBase(env.ANTHROPIC_BASE_URL)) return 'sonnet'
   return m
 }
@@ -136,11 +137,11 @@ function resolveClaudeCliModel(model, env) {
 function defaultTimeoutMs(env) {
   const fromEnv = Number(process.env.WORKBENCH_CLAUDE_TIMEOUT_MS)
   if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv
+  // Gemini / 第三方 API 给更长超时
   const base = String(env.ANTHROPIC_BASE_URL || '')
-  if (base.includes(':3456') || /gemini/i.test(String(env.ANTHROPIC_DEFAULT_SONNET_MODEL || ''))) {
+  if (/gemini/i.test(String(env.ANTHROPIC_DEFAULT_SONNET_MODEL || '')) || /gemini/i.test(base)) {
     return 360_000
   }
-  if (/deepseek\.com/i.test(base)) return 300_000
   return 180_000
 }
 
@@ -158,30 +159,25 @@ function friendlyClaudeError(raw, env, providerName = '') {
   if (/429|quota|rate.?limit|RESOURCE_EXHAUSTED/i.test(t)) {
     return (
       'Gemini API 配额/频率超限（429）。请在 Google AI Studio 检查 API Key 用量与计费；' +
-      '或在「设置 → 模型与连接」改用 Ollama 等其它供应商。ccr 重试可能需 2–3 分钟才返回此错误。' +
+      '或在「设置 → 模型与连接」改用其它供应商。' +
       (t.includes('429') ? '' : ` 详情：${t.slice(0, 180)}`)
     )
   }
+  if (/API_KEY_INVALID|API key expired|invalid.*api.?key/i.test(t)) {
+    return `${who} API Key 无效或已过期。请在「设置 → 模型与连接」更新 API Key。`
+  }
   if (/fetch failed|ECONNREFUSED|ConnectionRefused|ETIMEDOUT|socket hang up|Unable to connect to API/i.test(t)) {
-    if (/127\.0\.0\.1:3456|localhost:3456/.test(base)) {
-      return (
-        '无法连接本地 Claude Code Router（ccr :3456）。请在终端执行 `ccr start` 并保持运行；' +
-        '或在模型下拉中改用其它直连供应商（无需 ccr）。' +
-        ` 原始错误：${t.slice(0, 200)}`
-      )
-    }
     return `${who} 连接失败（${base || '默认端点'}）：${t.slice(0, 240)}`
   }
   if (/Not logged in|Please run \/login/i.test(t)) {
-    return 'Claude Code 未登录。请在终端运行 claude 后执行 /login，或在「设置 → 模型与连接」配置 Gemini/Ollama 等云供应商。'
+    return 'Claude Code 未登录。请在终端运行 claude 后执行 /login，或在「设置 → 模型与连接」配置其它云供应商。'
   }
   if (/退出码\s*143|exit code 143|SIGTERM/i.test(t)) {
     return '请求已取消或超时中断。若未手动停止，请检查模型连接或在「设置 → 模型与连接」更换供应商。'
   }
   if (/issue with the selected model/i.test(t)) {
     return (
-      '当前模型配置不受支持。请在「设置 → 模型与连接」检查模型 ID 和 API 端点是否正确。' +
-      (t.includes('deepseek-chat') ? ' （列表中的 deepseek-chat 会自动映射为 deepseek-v4-flash）' : '')
+      '当前模型配置不受支持。请在「设置 → 模型与连接」检查模型 ID 和 API 端点是否正确。'
     )
   }
   return t
@@ -192,16 +188,10 @@ function timeoutHint(env, model, providerName = '', attachmentCount = 0) {
   const who = providerName ? `供应商「${providerName}」` : '当前供应商'
   const imageNote =
     attachmentCount > 0
-      ? ` 您附带了 ${attachmentCount} 张截图：部分供应商不支持直接看图，若未用本机视觉模型预解析，Claude Code 会多次 Read 读盘，易触发超时。建议减少附图、在设置中配置 Ollama 视觉模型（如 qwen2.5vl），或改用「本地 MCP」模式。`
+      ? ` 您附带了 ${attachmentCount} 张截图：部分供应商不支持直接看图，若未用本机视觉模型预解析，Claude Code 会多次 Read 读盘，易触发超时。建议减少附图、在设置中配置 Ollama 视觉模型，或改用「本地 MCP」模式。`
       : ''
-  if (base.includes(':3456') || /gemini/i.test(String(env.ANTHROPIC_DEFAULT_SONNET_MODEL || ''))) {
-    return `${imageNote} Gemini/ccr 在配额不足(429)时会长时间重试；请检查 Google API 用量或更换供应商。`.trim()
-  }
-  if (/deepseek\.com/i.test(base)) {
-    return (
-      `${imageNote} 请在「设置 → 模型与连接」确认 ${who} 的 API 地址与模型 ID 是否正确。` +
-      ' 若 API 测试正常仍超时，多为 Agent 多轮或 MCP 连接过慢；可先发一句简单消息验证，或在设置中关闭离线 MCP。'
-    ).trim()
+  if (/gemini/i.test(String(env.ANTHROPIC_DEFAULT_SONNET_MODEL || ''))) {
+    return `${imageNote} Gemini 在配额不足(429)时会长时间重试；请检查 Google API 用量或更换供应商。`.trim()
   }
   return (
     `${imageNote} 请在「设置 → 模型与连接」检查 ${who} 的 API 地址、Key 与模型 ID。` +
@@ -257,7 +247,14 @@ async function preflightAnthropicEndpoint(env, model, providerName = '') {
       return `${who} API Key 无效或未授权（HTTP 401）。请在「设置 → 模型与连接」更新 API Key。`
     }
     if (res.status === 404 || /model.*not found|unknown model|invalid model/i.test(detail)) {
-      return `${who} 不识别模型「${modelId}」（HTTP ${res.status}）。请在「设置 → 模型与连接」检查模型名称是否正确。`
+      const migrated = cloudProviders.normalizeCloudModelId(modelId)
+      const geminiHint =
+        migrated !== modelId && /^gemini-/i.test(modelId)
+          ? ` 该实验/旧版模型已下线，建议改用「${migrated}」。`
+          : /^gemini-2\.0-flash-exp$/i.test(modelId)
+            ? ' 该实验模型已下线，请改用 gemini-2.5-flash。'
+            : ''
+      return `${who} 不识别模型「${modelId}」（HTTP ${res.status}）。请在「设置 → 模型与连接」检查模型名称是否正确。${geminiHint}`
     }
     return `${who} 拒绝请求（HTTP ${res.status}）：${detail.slice(0, 240)}`
   } catch (e) {
@@ -266,6 +263,334 @@ async function preflightAnthropicEndpoint(env, model, providerName = '') {
     }
     return `${who} 连接失败（${base}）：${String(e?.message || e).slice(0, 200)}`
   }
+}
+
+/**
+ * 多级 DNS 解析：Google DNS → Cloudflare DNS → 系统 DNS。
+ * 返回解析到的真实公网 IP，若全部被拦截则返回空。
+ */
+function resolveHostnameDns(hostname) {
+  const dnsServers = [
+    ['8.8.8.8', '1.1.1.1'],    // Google
+    ['1.1.1.1', '8.8.4.4'],    // Cloudflare
+    ['208.67.222.222', '208.67.220.220'], // OpenDNS
+  ]
+  const tryResolve = (servers) => new Promise((resolve) => {
+    const resolver = new dns.Resolver({ timeout: 3000, tries: 1 })
+    try { resolver.setServers(servers) } catch { resolve(''); return }
+    resolver.resolve4(hostname, (err, addresses) => {
+      if (err || !Array.isArray(addresses) || !addresses.length) { resolve(''); return }
+      const ip = addresses[0]
+      resolve(ip === '127.0.0.1' || ip === '0.0.0.0' || ip.startsWith('192.168.') ? '' : ip)
+    })
+  })
+
+  return (async () => {
+    for (const servers of dnsServers) {
+      const ip = await tryResolve(servers)
+      if (ip) return ip
+    }
+    // 最后尝试系统 DNS（可能会被本地拦截）
+    try {
+      const addresses = await dns.promises.resolve4(hostname)
+      const ip = Array.isArray(addresses) && addresses.length ? addresses[0] : ''
+      return (ip && ip !== '127.0.0.1' && ip !== '0.0.0.0' && !ip.startsWith('192.168.')) ? ip : ''
+    } catch {
+      return ''
+    }
+  })()
+}
+
+/**
+ * 用 https.request + Google DNS 直接调用 OpenAI-compatible Chat Completions API。
+ */
+async function callOpenAiCompatibleApi({
+  prompt,
+  model,
+  endpoint,
+  apiKey,
+  requestId,
+  onDelta,
+  timeoutMs,
+  abortSignal,
+  providerName,
+}) {
+  const base = endpoint.replace(/\/$/, '')
+  const apiModel = String(model || '').trim() || 'gpt-4o'
+  const who = providerName || apiModel
+  const limit = Math.min(Math.max(timeoutMs || 180_000, 30_000), 600_000)
+  const stream = typeof onDelta === 'function'
+
+  let parsedUrl
+  try {
+    parsedUrl = new URL(`${base}/chat/completions`)
+  } catch {
+    return { ok: false, content: '', error: `供应商「${who}」API 端点格式错误：${base}`, aborted: false }
+  }
+
+  const hostname = parsedUrl.hostname
+  const realIp = await resolveHostnameDns(hostname)
+  if (!realIp) {
+    return {
+      ok: false, content: '', error:
+        `供应商「${who}」无法解析域名（${hostname}）——本机 DNS 可能被本地代理/翻墙软件拦截。` +
+        '请暂停 VPN/代理后重试，或在「设置 → 模型与连接」检查 API 端点与网络。',
+      aborted: false,
+    }
+  }
+  const isHttps = parsedUrl.protocol === 'https:'
+
+  const bodyRaw = JSON.stringify({
+    model: apiModel,
+    messages: [{ role: 'user', content: prompt }],
+    stream,
+    max_tokens: 8192,
+  })
+
+  const requestOptions = {
+    hostname: realIp || hostname,
+    port: parsedUrl.port || (isHttps ? 443 : 80),
+    path: parsedUrl.pathname + parsedUrl.search,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Length': Buffer.byteLength(bodyRaw),
+      Host: hostname,
+    },
+    servername: hostname,
+    rejectUnauthorized: true,
+    agent: false,
+  }
+
+  const transport = https
+
+  return new Promise((resolve) => {
+    let timedOut = false
+    let finished = false
+    const req = transport.request(requestOptions)
+
+    req.setTimeout(limit, () => { timedOut = true; req.destroy(new Error('timeout')) })
+
+    if (abortSignal && !abortSignal.aborted) {
+      abortSignal.addEventListener('abort', () => {
+        if (!timedOut && !finished) { timedOut = true; req.destroy(new Error('aborted')) }
+      }, { once: true })
+    }
+
+    req.on('response', (res) => {
+      const chunks = []
+      let fullContent = ''
+      const cleanup = () => { finished = true }
+
+      if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+        res.on('data', (chunk) => chunks.push(chunk))
+        res.on('end', () => {
+          cleanup()
+          const errBody = Buffer.concat(chunks).toString('utf8').slice(0, 300)
+          if (res.statusCode === 401 || /invalid.*api.?key|unauthorized/i.test(errBody)) {
+            resolve({ ok: false, content: '', error: `供应商「${who}」API Key 无效或已过期。请在「设置 → 模型与连接」更新 API Key。`, aborted: false })
+          } else {
+            resolve({ ok: false, content: '', error: `供应商「${who}」返回 ${res.statusCode}。${errBody ? ` ${errBody}` : ''}`, aborted: false })
+          }
+        })
+        return
+      }
+
+      if (!stream) {
+        res.on('data', (chunk) => chunks.push(chunk))
+        res.on('end', () => {
+          cleanup()
+          try {
+            const data = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+            resolve({ ok: true, content: data?.choices?.[0]?.message?.content || '', error: null, aborted: false })
+          } catch {
+            resolve({ ok: false, content: '', error: `供应商「${who}」响应解析失败`, aborted: false })
+          }
+        })
+        return
+      }
+
+      let buf = ''
+      const emit = () => {
+        let idx
+        while ((idx = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, idx).trim()
+          buf = buf.slice(idx + 1)
+          if (!line || line === 'data: [DONE]') continue
+          if (!line.startsWith('data: ')) continue
+          try {
+            const json = JSON.parse(line.slice(6))
+            const delta = json?.choices?.[0]?.delta?.content
+            if (delta) { fullContent += delta; if (onDelta && !timedOut) onDelta(delta, requestId) }
+          } catch { /* skip */ }
+        }
+      }
+      res.on('data', (chunk) => { buf += chunk.toString('utf8'); emit() })
+      res.on('end', () => { cleanup(); emit(); resolve({ ok: true, content: fullContent, error: null, aborted: false }) })
+    })
+
+    req.on('error', (e) => {
+      finished = true
+      if (timedOut) { resolve({ ok: false, content: '', error: `供应商「${who}」请求超时`, aborted: true }) }
+      else { resolve({ ok: false, content: '', error: `供应商「${who}」连接失败：${String(e?.message || e).slice(0, 240)}`, aborted: false }) }
+    })
+
+    req.write(bodyRaw)
+    req.end()
+  })
+}
+
+/**
+ * 用 https.request + Google DNS 直接调用 Google Gemini API。
+ */
+async function callGeminiApi({
+  prompt,
+  model,
+  endpoint,
+  apiKey,
+  requestId,
+  onDelta,
+  timeoutMs,
+  abortSignal,
+  providerName,
+}) {
+  const base = endpoint.replace(/\/$/, '')
+  const limit = Math.min(Math.max(timeoutMs || 180_000, 30_000), 600_000)
+  const stream = typeof onDelta === 'function'
+
+  // Gemini 使用 x-goog-api-key 认证
+  const authHeader = apiKey
+  // 模型名清洗：统一小写、空格变短横，确保以 gemini- 开头
+  const cleaned = String(model || '').trim().toLowerCase().replace(/\s+/g, '-')
+  const apiModel = cleaned.startsWith('gemini-') ? cleaned : `gemini-${cleaned}` || 'gemini-2.0-flash'
+  const who = providerName || apiModel
+  // 分离 base URL 中的 /v1beta 部分
+  const v1betaBase = base.includes('/v1beta') ? base.split('/v1beta')[0] + '/v1beta' : base + '/v1beta'
+  const modelEndpoint = stream
+    ? `${v1betaBase}/models/${apiModel}:streamGenerateContent?alt=sse`
+    : `${v1betaBase}/models/${apiModel}:generateContent`
+
+  let parsedUrl
+  try {
+    parsedUrl = new URL(modelEndpoint)
+  } catch {
+    return { ok: false, content: '', error: `供应商「${who}」API 端点格式错误：${base}`, aborted: false }
+  }
+
+  const hostname = parsedUrl.hostname
+  const realIp = await resolveHostnameDns(hostname)
+  if (!realIp) {
+    return {
+      ok: false, content: '', error:
+        `供应商「${who}」无法解析域名（${hostname}）——本机 DNS 可能被本地代理/翻墙软件拦截。` +
+        '请暂停 VPN/代理后重试，或在「设置 → 模型与连接」检查 API 端点与网络。',
+      aborted: false,
+    }
+  }
+  const isHttps = parsedUrl.protocol === 'https:'
+
+  const bodyRaw = JSON.stringify({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { maxOutputTokens: 8192 },
+  })
+
+  const requestOptions = {
+    hostname: realIp || hostname,
+    port: parsedUrl.port || (isHttps ? 443 : 80),
+    path: parsedUrl.pathname + parsedUrl.search,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': authHeader,
+      'Content-Length': Buffer.byteLength(bodyRaw),
+      Host: hostname,
+    },
+    servername: hostname,
+    rejectUnauthorized: true,
+    agent: false,
+  }
+
+  const transport = https
+
+  return new Promise((resolve) => {
+    let timedOut = false
+    let finished = false
+    const req = transport.request(requestOptions)
+
+    req.setTimeout(limit, () => { timedOut = true; req.destroy(new Error('timeout')) })
+
+    if (abortSignal && !abortSignal.aborted) {
+      abortSignal.addEventListener('abort', () => {
+        if (!timedOut && !finished) { timedOut = true; req.destroy(new Error('aborted')) }
+      }, { once: true })
+    }
+
+    req.on('response', (res) => {
+      const chunks = []
+      let fullContent = ''
+      const cleanup = () => { finished = true }
+
+      if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+        res.on('data', (chunk) => chunks.push(chunk))
+        res.on('end', () => {
+          cleanup()
+          const errBody = Buffer.concat(chunks).toString('utf8').slice(0, 300)
+          if (res.statusCode === 401 || /API_KEY_INVALID|invalid.*api.?key|unauthorized/i.test(errBody)) {
+            resolve({ ok: false, content: '', error: `供应商「${who}」API Key 无效或已过期。请在「设置 → 模型与连接」更新 API Key。`, aborted: false })
+          } else if (res.statusCode === 403 || res.statusCode === 429) {
+            resolve({ ok: false, content: '', error: `供应商「${who}」返回 ${res.statusCode}（配额/权限不足）。${errBody ? ` ${errBody.slice(0, 200)}` : ''}`, aborted: false })
+          } else {
+            resolve({ ok: false, content: '', error: `供应商「${who}」返回 ${res.statusCode}。${errBody ? ` ${errBody}` : ''}`, aborted: false })
+          }
+        })
+        return
+      }
+
+      if (!stream) {
+        res.on('data', (chunk) => chunks.push(chunk))
+        res.on('end', () => {
+          cleanup()
+          try {
+            const data = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+            const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || data?.text || ''
+            resolve({ ok: true, content: text, error: null, aborted: false })
+          } catch {
+            resolve({ ok: false, content: '', error: `供应商「${who}」响应解析失败`, aborted: false })
+          }
+        })
+        return
+      }
+
+      // Gemini streaming SSE: data: {"candidates":[{...}]}
+      let buf = ''
+      const emit = () => {
+        let idx
+        while ((idx = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, idx).trim()
+          buf = buf.slice(idx + 1)
+          if (!line || line === 'data: [DONE]') continue
+          if (!line.startsWith('data: ')) continue
+          try {
+            const json = JSON.parse(line.slice(6))
+            const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+            if (text) { fullContent += text; if (onDelta && !timedOut) onDelta(text, requestId) }
+          } catch { /* skip */ }
+        }
+      }
+      res.on('data', (chunk) => { buf += chunk.toString('utf8'); emit() })
+      res.on('end', () => { cleanup(); emit(); resolve({ ok: true, content: fullContent, error: null, aborted: false }) })
+    })
+
+    req.on('error', (e) => {
+      finished = true
+      if (timedOut) { resolve({ ok: false, content: '', error: `供应商「${who}」请求超时`, aborted: true }) }
+      else { resolve({ ok: false, content: '', error: `供应商「${who}」连接失败：${String(e?.message || e).slice(0, 240)}`, aborted: false }) }
+    })
+
+    req.write(bodyRaw)
+    req.end()
+  })
 }
 
 export async function runClaudeCodePrint({
@@ -280,15 +605,6 @@ export async function runClaudeCodePrint({
   isNewClaudeSession,
   onDelta,
 }) {
-  const snap = await resolveClaudePath()
-  if (!snap.claudePath || snap.resolveError) {
-    return {
-      ok: false,
-      error: snap.resolveError || '未检测到 Claude Code CLI',
-      content: '',
-      aborted: false,
-    }
-  }
   if (!prompt?.trim()) {
     return { ok: false, error: '提示词为空', content: '', aborted: false }
   }
@@ -313,6 +629,95 @@ export async function runClaudeCodePrint({
       process.env.MCP_CONNECTION_NONBLOCKING ??
       (process.env.WORKBENCH_MCP_NONBLOCKING !== '0' ? 'true' : 'false'),
   }
+
+  // === 路由决策：端点判断 ===
+  // 端点指向本地（127.0.0.1 / localhost / 内网）→ 走 claude CLI
+  // 端点指向外网（api.openai.com 等）→ 直接调用 API
+  const providerEndpoint = String(claudeEnv.ANTHROPIC_BASE_URL || '').trim()
+  let endpointHost = ''
+  try { endpointHost = new URL(providerEndpoint).hostname } catch {}
+
+  const isLocalEndpoint =
+    !endpointHost ||
+    endpointHost === '127.0.0.1' ||
+    endpointHost === 'localhost' ||
+    endpointHost === '0.0.0.0' ||
+    endpointHost.startsWith('192.168.') ||
+    /^10\.\d+\.\d+\.\d+$/.test(endpointHost) ||
+    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(endpointHost)
+
+  // --- 供应商已知支持 directApi，用已知 directApiBase 覆盖存储的 endpoint 以确保路径正确 ---
+  let effectiveEndpoint = providerEndpoint
+  let rawModel = String(model || '').trim()
+  let directInfo = cloudProviders.supportsDirectApi(resolved.providerName)
+  // providerName 未匹配时，通过模型名启发式推断
+  if ((!directInfo.direct || !directInfo.apiBase) && isLocalEndpoint) {
+    const inferred = cloudProviders.inferDirectApiFromModel(rawModel)
+    if (inferred.direct && inferred.apiBase) {
+      directInfo = inferred
+    }
+  }
+  if (directInfo.direct && directInfo.apiBase && (isLocalEndpoint || resolved.providerName)) {
+    effectiveEndpoint = directInfo.apiBase
+  }
+
+  // ---- 远程端点 / 已知 directApi 供应商 → 直接 API ----
+  if ((!isLocalEndpoint && providerEndpoint) || (isLocalEndpoint && effectiveEndpoint !== providerEndpoint)) {
+    const directApiKey = String(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || '').trim()
+    if (!directApiKey) {
+      return { ok: false, content: '', error: '供应商未配置 API Key，请在「设置 → 模型与连接」中添加。', aborted: false }
+    }
+    const useExplicitModel = rawModel && !/^(sonnet|opus|haiku|inherit|auto)$/i.test(rawModel)
+    const directModel = useExplicitModel
+      ? mapApiModelId(rawModel, env)
+      : mapApiModelId(env.ANTHROPIC_DEFAULT_SONNET_MODEL || rawModel || 'gpt-4o', env)
+
+    const maxTimeout = Math.min(Math.max(timeoutMs || 180_000, 30_000), 600_000)
+
+    // 检测 Gemini 端点 → 走 Gemini 原生 API
+    const isGemini = /generativelanguage\.googleapis|googleapis\.com\/.*\/models/i.test(effectiveEndpoint)
+
+    try {
+      if (isGemini) {
+        const r = await callGeminiApi({
+          prompt: prompt.trim(),
+          model: directModel,
+          endpoint: effectiveEndpoint,
+          apiKey: directApiKey,
+          providerName: resolved.providerName,
+          requestId: requestId?.trim(),
+          onDelta: typeof onDelta === 'function' ? onDelta : undefined,
+          timeoutMs: maxTimeout,
+        })
+        if (r) return r
+      } else {
+        const r = await callOpenAiCompatibleApi({
+          prompt: prompt.trim(),
+          model: directModel,
+          endpoint: effectiveEndpoint,
+          apiKey: directApiKey,
+          providerName: resolved.providerName,
+          requestId: requestId?.trim(),
+          onDelta: typeof onDelta === 'function' ? onDelta : undefined,
+          timeoutMs: maxTimeout,
+        })
+        if (r) return r
+      }
+    } catch (e) {
+      return { ok: false, content: '', error: `API 调用异常（端点：${providerEndpoint}，模型：${directModel}）：${String(e?.message || e).slice(0, 200)}`, aborted: false }
+    }
+  }
+
+  // ---- 本地端点 → claude CLI 路径（Anthropic 兼容端点） ----
+  const snap = await resolveClaudePath()
+  if (!snap.claudePath || snap.resolveError) {
+    return {
+      ok: false,
+      error: snap.resolveError || '未检测到 Claude Code CLI',
+      content: '',
+      aborted: false,
+    }
+  }
   const cliModel = resolveClaudeCliModel(model, env)
 
   const cwd = getWorkspaceCwd()
@@ -331,7 +736,7 @@ export async function runClaudeCodePrint({
       ok: false,
       error:
         `${who} 的模型「${String(model || '').trim() || '默认'}」不支持图片输入（与 Cursor 相同：非视觉模型不可带图）。` +
-        ' 请切换到 Claude Sonnet / Gemini 等视觉模型，或改用「本地 MCP」+ Ollama 视觉模型（如 qwen2.5vl）。',
+        ' 请切换到 Claude Sonnet / Gemini 等视觉模型，或改用「本地 MCP」+ Ollama 视觉模型。',
       content: '',
       aborted: false,
     }
@@ -371,7 +776,7 @@ export async function runClaudeCodePrint({
   const imageCountForTimeout = imageCount
   const limit = timeoutMsForRequest(env, timeoutMs, imageCountForTimeout)
 
-  const rawModel = String(model || '').trim()
+  rawModel = String(model || '').trim()
   const useExplicitModel =
     rawModel && !/^(sonnet|opus|haiku|inherit|auto)$/i.test(rawModel)
   const apiModel = useExplicitModel
@@ -558,7 +963,7 @@ export async function claudeCliStatus() {
   const snap = await resolveClaudePath()
   let hint = snap.resolveError
   if (!hint && !snap.claudePath) {
-    hint = '未检测到 claude；请在设置中配置 /opt/homebrew/bin/claude'
+    hint = '未检测到 claude，请在设置中配置 claude 可执行文件路径'
   }
   return {
     ok: true,

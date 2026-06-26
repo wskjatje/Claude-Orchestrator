@@ -14,7 +14,7 @@ export function useChatStream(opts: {
   requestId: string | null;
   requestIdRef?: RefObject<string | null>;
   enabled: boolean;
-  onDelta: (sessionId: string, content: string) => void;
+  onDelta: (sessionId: string, content: string, requestId: string) => void;
 }) {
   const optsRef = useRef(opts);
   optsRef.current = opts;
@@ -30,7 +30,7 @@ export function useChatStream(opts: {
       if (payload.requestId !== liveRequestId) return;
       const chunk = payload.content ?? "";
       if (!chunk) return;
-      onDelta(activeSessionId, chunk);
+      onDelta(activeSessionId, chunk, liveRequestId);
     });
 
     return off;

@@ -7,6 +7,7 @@ type Props = {
   sessions: Session[];
   activeId: string;
   sendingSessions: Record<string, boolean>;
+  activeStreamRequestId: string | null;
   onSessionChange: (id: string) => void;
   onNewSession: () => void;
   onCloseSession: (id: string) => void;
@@ -17,6 +18,7 @@ type Props = {
   projectHistoryItems: ChatHistoryListItem[];
   allHistoryItems: ChatHistoryListItem[];
   onSelectHistorySession: (sessionId: string) => void;
+  onDeleteHistorySession: (sessionId: string) => void;
   onHistoryOpen?: () => void;
 };
 

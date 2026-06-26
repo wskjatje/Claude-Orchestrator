@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AppLogo } from "@/components/app-logo";
 import { SidebarFooter } from "@/components/sidebar-footer";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { APP_NAME } from "@/lib/ui-copy";
 import { useBridge } from "@/hooks/use-bridge";
 import { useDesktopReady } from "@/hooks/use-desktop-ready";
@@ -206,31 +207,42 @@ export function AppShell({
                   {group.items.map((item) => {
                     const active = isActive(item.to);
                     const Icon = item.icon;
+                    const link = (
+                      <Link
+                        to={item.to}
+                        onClick={() => setMobileNavOpen(false)}
+                        className={cn(
+                          "group flex items-center rounded-lg text-[13px] font-medium transition-colors duration-150",
+                          workbench
+                            ? "justify-center px-0 py-2 md:px-0 md:py-2"
+                            : "gap-2.5 px-2.5 py-1.5",
+                          active
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
+                        )}
+                      >
+                        <Icon
+                          className={cn(
+                            "h-4 w-4 shrink-0 transition-colors",
+                            workbench && "h-[18px] w-[18px]",
+                            active ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground/70",
+                          )}
+                        />
+                        <span className={cn(workbench && "sr-only md:sr-only")}>{item.label}</span>
+                      </Link>
+                    );
                     return (
                       <li key={item.to}>
-                        <Link
-                          to={item.to}
-                          onClick={() => setMobileNavOpen(false)}
-                          title={item.label}
-                          className={cn(
-                            "group flex items-center rounded-lg text-[13px] font-medium transition-colors duration-150",
-                            workbench
-                              ? "justify-center px-0 py-2 md:px-0 md:py-2"
-                              : "gap-2.5 px-2.5 py-1.5",
-                            active
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                              : "text-sidebar-foreground/80 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground",
-                          )}
-                        >
-                          <Icon
-                            className={cn(
-                              "h-4 w-4 shrink-0 transition-colors",
-                              workbench && "h-[18px] w-[18px]",
-                              active ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground/70",
-                            )}
-                          />
-                          <span className={cn(workbench && "sr-only md:sr-only")}>{item.label}</span>
-                        </Link>
+                        {workbench ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>{link}</TooltipTrigger>
+                            <TooltipContent side="right" sideOffset={8}>
+                              {item.label}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          link
+                        )}
                       </li>
                     );
                   })}

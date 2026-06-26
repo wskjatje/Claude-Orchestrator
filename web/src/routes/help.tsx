@@ -112,7 +112,7 @@ const aboutGroups: CardGroup[] = [
     items: [
       {
         label: "Claude Orchestrator",
-        desc: "本机优先：连接 Claude Code，在本地执行对话与工具调用",
+        desc: "本机优先：连接 Claude Code 执行对话与工具调用",
       },
       {
         label: "编排能力",

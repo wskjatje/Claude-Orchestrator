@@ -33,6 +33,7 @@ import {
 import {
   checkUpstreamUpdates,
   getWorkbenchGitStatus,
+  commitCurrentBranch,
   pullClaudeCodeFromGithub,
   pullFromPersonalGithub,
   pushClaudeCodeToPersonalGithub,
@@ -58,7 +59,7 @@ import {
   setMcpServerEnabled,
   upsertMcpServer,
 } from './claude-mcp-config.mjs'
-import { formatUsd } from './token-pricing.mjs'
+import { formatUsd, estimateUsageCostUsd } from './token-pricing.mjs'
 import { gitDiff, listPanelTree, readTextFile, shellSnapshot } from './workspace.mjs'
 import { lintWorkspaceFiles } from './workspace-lint.mjs'
 import { pickFolderNative, pickReferenceFilesNative } from './native-dialog.mjs'
@@ -76,6 +77,7 @@ import {
 const require = createRequire(import.meta.url)
 const cadBridge = require('./cad-bridge.cjs')
 const cloudProviders = require('./cloud-providers.cjs')
+const cloudDirect = require('./cloud-direct.cjs')
 const projectDb = require('./project-db.cjs')
 const projectLogs = require('./project-logs.cjs')
 const agentExecRegistry = require('./agent-exec-registry.cjs')
@@ -222,8 +224,26 @@ export const handlers = {
 
   'chat-sessions:get': async () => loadChatSessions(),
   'chat-sessions:save': async (args) => {
-    const r = saveChatSessions(args?.[0])
-    broadcast('chat-sessions:changed', args?.[0] || {})
+    const body = args?.[0] || {}
+    // 冻结 costUsd：将当前单价写入每条有 usage 但无 costUsd 的消息
+    const settings = loadChatSettings()
+    const tokenPricing = settings.tokenPricing || {}
+    if (Array.isArray(body.sessions)) {
+      for (const sess of body.sessions) {
+        if (!Array.isArray(sess.history)) continue
+        for (const msg of sess.history) {
+          const u = msg?.usage
+          if (!u || typeof u !== 'object') continue
+          if (typeof u.costUsd === 'number') continue // 已冻结
+          const modelId = String(msg.modelId || sess.modelId || '').trim()
+          if (modelId) {
+            u.costUsd = estimateUsageCostUsd(u, modelId, tokenPricing)
+          }
+        }
+      }
+    }
+    const r = saveChatSessions(body)
+    broadcast('chat-sessions:changed', body)
     return r
   },
 
@@ -334,7 +354,7 @@ export const handlers = {
       )
       if (models.length) {
         const nextCatalog = await cloudProviders.filterCloudModelList(
-          [...new Set([...(settings.cloudModelCatalog || []), ...models])],
+          [...new Set(models)],
           settings,
         )
         if (JSON.stringify(settings.cloudModelCatalog || []) !== JSON.stringify(nextCatalog)) {
@@ -378,6 +398,22 @@ export const handlers = {
   'claude-code:cliStatus': async () => claudeCliStatus(),
 
   'claude-code:doctor': async () => runClaudeDoctor(),
+
+  'cloud-direct:prompt': async (args) => {
+    const p = args?.[0] || {}
+    const result = await cloudDirect.directPrompt({
+      prompt: p.prompt,
+      model: p.model,
+      requestId: p.requestId,
+      timeoutMs: p.timeoutMs,
+    })
+    return result
+  },
+
+  'cloud-direct:abort': async (args) => {
+    const body = args?.[0] || {}
+    return cloudDirect.directAbort(body?.requestId)
+  },
 
   'claude-projects:listRecent': async (args) => {
     const body = args?.[0] || {}
@@ -441,7 +477,7 @@ export const handlers = {
 
   'claude-code:chooseCliExecutable': async () => ({
     ok: true,
-    path: loadChatSettings().claudeCliPath || '/opt/homebrew/bin/claude',
+    path: loadChatSettings().claudeCliPath || '',
   }),
 
   'claude-code:restartDesktop': async () => ({ ok: true }),
@@ -497,6 +533,11 @@ export const handlers = {
     savePersonalGithubSettings(body)
     broadcast('chat-settings:changed', {})
     return { ok: true }
+  },
+
+  'workbench-git:commitBranch': async (args) => {
+    const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+    return commitCurrentBranch({ reason: body.reason })
   },
 
   'ollama:listModels': async (args) => {
@@ -602,6 +643,25 @@ export const handlers = {
     configured: cloudProviders.providersConfigured(),
   }),
 
+  'cc-switch:providerNeedsCcr': async (args) => {
+    try {
+      const providerName = args?.[0]?.name || args?.[0]?.providerName || ''
+      const result = cloudProviders.providerNeedsCcrProxy(providerName)
+      return { ok: true, ...result }
+    } catch (e) {
+      return { ok: false, error: e.message, needsCcr: false, ccrEndpoint: '', reason: '' }
+    }
+  },
+
+  'cc-switch:listKnownProviders': async () => {
+    try {
+      const providers = cloudProviders.listKnownProviders()
+      return { ok: true, providers }
+    } catch (e) {
+      return { ok: false, error: e.message, providers: [] }
+    }
+  },
+
   'cc-switch:listProviders': async () => {
     try {
       const providers = cloudProviders.listProviders()
@@ -620,7 +680,17 @@ export const handlers = {
         const nextCatalog = [
           ...new Set([...(settings.cloudProviderCatalog || []), result.providerId]),
         ]
-        saveChatSettings({ ...settings, cloudProviderCatalog: nextCatalog })
+        // 首供应商自动启用聊天
+        const currEnabled = settings.chatEnabledCloudProviders || []
+        const nextEnabled = currEnabled.length ? currEnabled : [result.providerId]
+        // 保存后重建 tokenPricing 表（覆盖所有供应商的模型 × 单价）
+        const allProviders = cloudProviders.listProviders()
+        const tokenPricing = cloudProviders.buildTokenPricingFromProviders(allProviders)
+        saveChatSettings({ ...settings, cloudProviderCatalog: nextCatalog, chatEnabledCloudProviders: nextEnabled, tokenPricing })
+        const providerName = String(body.name || '').trim()
+        if (providerName && result.provider) {
+          // CCR 同步已移除
+        }
       }
       if (body.syncWorkbench !== false) {
         try {
@@ -653,10 +723,13 @@ export const handlers = {
         const nextChatEnabled = (settings.chatEnabledCloudProviders || []).filter(
           (id) => id !== result.providerId,
         )
+        const allProviders = cloudProviders.listProviders()
+        const tokenPricing = cloudProviders.buildTokenPricingFromProviders(allProviders)
         saveChatSettings({
           ...settings,
           cloudProviderCatalog: nextCatalog,
           chatEnabledCloudProviders: nextChatEnabled,
+          tokenPricing,
         })
       }
       broadcast('chat-settings:changed', {})
@@ -700,6 +773,20 @@ export const handlers = {
     }
   },
 
+  'cc-switch:fetchProviderModels': async (args) => {
+    const body = args?.[0] || {}
+    try {
+      const r = await cloudProviders.fetchProviderModels({
+        providerName: body.providerName || body.name,
+        endpoint: body.endpoint,
+        apiKey: body.apiKey,
+      })
+      return { ok: r.ok, models: r.models, error: r.error }
+    } catch (e) {
+      return { ok: false, error: e?.message || String(e), models: [] }
+    }
+  },
+
   'cc-switch:refreshCloudModels': async (args) => {
     try {
       const settings = loadChatSettings()
@@ -710,7 +797,7 @@ export const handlers = {
         fetchRemote,
       })
       const nextCatalog = await cloudProviders.filterCloudModelList(
-        [...new Set([...(settings.cloudModelCatalog || []), ...pool.models])],
+        pool.models,
         settings,
       )
       saveChatSettings({ ...settings, cloudModelCatalog: nextCatalog })
@@ -728,6 +815,21 @@ export const handlers = {
   },
 
   ...cadBridge.createHandlers(),
+
+  'env:deployCheck': async () => {
+    const { deployCheck } = await import('./env-deploy.mjs')
+    return deployCheck()
+  },
+
+  'env:deployInstall': async () => {
+    const { deployInstall } = await import('./env-deploy.mjs')
+    return deployInstall()
+  },
+
+  'env:deployVerify': async () => {
+    const { deployVerify } = await import('./env-deploy.mjs')
+    return deployVerify()
+  },
 }
 
 export async function dispatchRpc(channel, args = []) {
@@ -743,8 +845,48 @@ ensureDefaultWorkspace()
 try {
   const sess = loadChatSessions()
   const settings = loadChatSettings()
+  // 启动时从已存储的供应商重建 tokenPricing 表
+  const allProviders = cloudProviders.listProviders()
+  const rebuiltPricing = cloudProviders.buildTokenPricingFromProviders(allProviders)
+  if (Object.keys(rebuiltPricing).length > 0) {
+    saveChatSettings({ ...settings, tokenPricing: rebuiltPricing })
+  }
+  // 启动时重建 cloudModelCatalog：仅保留当前供应商在册的模型，清除累积的过期条目
+  const currentCloudModels = new Set()
+  for (const p of allProviders) {
+    for (const m of p.models || []) {
+      const id = String(m || '').trim()
+      if (id && id !== '#') currentCloudModels.add(id)
+    }
+  }
+  if (currentCloudModels.size > 0) {
+    const rebuilt = [...currentCloudModels].sort()
+    const oldCatalog = settings.cloudModelCatalog || []
+    if (JSON.stringify(rebuilt) !== JSON.stringify(oldCatalog)) {
+      saveChatSettings({ ...settings, cloudModelCatalog: rebuilt })
+    }
+  }
+  const mergedPricing = { ...rebuiltPricing, ...(settings.tokenPricing || {}) }
+  // 一次性回填：为已有 usage 但无 costUsd 的消息冻结费用
+  let mutated = false
+  if (Array.isArray(sess.sessions)) {
+    for (const ses of sess.sessions) {
+      if (!Array.isArray(ses.history)) continue
+      for (const msg of ses.history) {
+        const u = msg?.usage
+        if (!u || typeof u !== 'object') continue
+        if (typeof u.costUsd === 'number') continue
+        const modelId = String(msg.modelId || ses.modelId || '').trim()
+        if (modelId) {
+          u.costUsd = estimateUsageCostUsd(u, modelId, mergedPricing)
+          mutated = true
+        }
+      }
+    }
+  }
+  if (mutated) saveChatSessions(sess)
   usageStats.rebuildFromSessions(sess.sessions || [], {
-    tokenPricing: settings.tokenPricing || {},
+    tokenPricing: mergedPricing,
     cloudModelCatalog: settings.cloudModelCatalog || [],
   })
 } catch {

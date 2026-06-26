@@ -7,6 +7,7 @@ import { InfoHint } from "@/components/info-hint";
 import { RequiredMark } from "@/components/required-mark";
 import { chatSettingsPreservePayload } from "@/lib/model-catalog";
 import { ModelsConnectionsPanel } from "@/components/models-connections-panel";
+import { DeployDialog } from "@/components/deploy-dialog";
 import { PageRoot, SettingsLayout, SettingsNavItem } from "@/components/page-layout";
 import { useDesktopReady, useHasDesktop } from "@/hooks/use-desktop-ready";
 import { getDesktop, isWebBridge } from "@/lib/desktop-api";
@@ -89,7 +90,7 @@ function SettingsOverview({
         <div className="rounded-xl border border-border bg-surface-elevated px-3 py-2.5 shadow-xs">
           <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">默认模型</div>
           <div className="mt-0.5 truncate font-mono text-[12px] font-semibold text-foreground">{modelLabel}</div>
-          <div className="mt-1 text-[10.5px] text-muted-foreground">模型与连接 Tab</div>
+          <div className="mt-1 text-[10.5px] text-muted-foreground">模型配置</div>
         </div>
       </div>
       <p className="text-[11.5px] leading-relaxed text-muted-foreground">{tabHint[activeTab]}</p>
@@ -107,7 +108,7 @@ function SettingsPage() {
   );
   const [hint, setHint] = useState("");
   /** 一键「确认写入」时，无可用 workspace-write 块则写入此相对路径 */
-  const [defaultConfirmWritePathInput, setDefaultConfirmWritePathInput] = useState("docs/prd.md");
+  const [defaultConfirmWritePathInput, setDefaultConfirmWritePathInput] = useState("");
   /** 本地 MCP：mcpServers JSON 绝对路径；空则 ~/.claude/config.json → mcp.json */
   const [mcpConfigAbsolutePathInput, setMcpConfigAbsolutePathInput] = useState("");
   const [settingsTab, setSettingsTab] = useState<"general" | "models" | "advanced">("general");
@@ -135,7 +136,7 @@ function SettingsPage() {
       if (!api) return;
       const s = await api.getChatSettings();
       setOrchestrationModeSelect(s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code");
-      setDefaultConfirmWritePathInput(s.defaultConfirmWritePath?.trim() || "docs/prd.md");
+      setDefaultConfirmWritePathInput(s.defaultConfirmWritePath?.trim() || "");
       setModelSelect(s.model || "");
       setMcpConfigAbsolutePathInput(s.mcpConfigAbsolutePath?.trim() ?? "");
       setHint("");
@@ -159,7 +160,7 @@ function SettingsPage() {
     const s = await api.getChatSettings();
     await api.saveChatSettings({
       ...chatSettingsPreservePayload(s),
-      defaultConfirmWritePath: defaultConfirmWritePathInput.trim() || "docs/prd.md",
+      defaultConfirmWritePath: defaultConfirmWritePathInput.trim(),
     });
     setHint("已保存：一键确认写入默认路径。");
   };
@@ -184,10 +185,10 @@ function SettingsPage() {
                 通用
               </SettingsNavItem>
               <SettingsNavItem active={settingsTab === "models"} onClick={() => setSettingsTab("models")}>
-                模型与连接
+                模型配置
               </SettingsNavItem>
               <SettingsNavItem active={settingsTab === "advanced"} onClick={() => setSettingsTab("advanced")}>
-                编排与高级
+                高级
               </SettingsNavItem>
             </>
           }
@@ -275,11 +276,12 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
   const [upstreamGithubRepo, setUpstreamGithubRepo] = useState("https://github.com/anthropics/claude-code.git");
   const [pushReason, setPushReason] = useState("");
   const [workspacePath, setWorkspacePath] = useState("");
-  const [gitBusy, setGitBusy] = useState<"pull" | "pullPersonal" | "deployPersonal" | "push" | "save" | "checkUpstream" | null>(null);
+  const [gitBusy, setGitBusy] = useState<"pull" | "pullPersonal" | "deployPersonal" | "push" | "commitBranch" | "save" | "checkUpstream" | null>(null);
   const [gitStatus, setGitStatus] = useState<Awaited<
     ReturnType<NonNullable<ReturnType<typeof getDesktop>>["workbenchGitStatus"]>
   > | null>(null);
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
+  const [deployDialogOpen, setDeployDialogOpen] = useState(false);
 
   const refreshGitStatus = useCallback(async () => {
     const api = getDesktop();
@@ -422,6 +424,31 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
   const deployFromRepo = async () => {
     const api = getDesktop();
     if (!api?.workbenchGitDeployPersonal) return;
+    // 先检查环境依赖
+    if (api.envDeployCheck) {
+      try {
+        const env = await api.envDeployCheck();
+        if (!env.ok) {
+          // 环境有问题 → 打开部署检查对话框，让用户修复
+          setDeployDialogOpen(true);
+          return;
+        }
+      } catch {
+        // 检测失败不影响部署
+      }
+    }
+    setGitBusy("deployPersonal");
+    try {
+      const r = await api.workbenchGitDeployPersonal();
+      gitToast(r.ok ? r.summary || "已部署到本地。" : briefGitError(r.error, "部署失败"), r.ok ? "success" : "error");
+    } finally {
+      setGitBusy(null);
+    }
+  };
+
+  const deployFromRepoSilent = async () => {
+    const api = getDesktop();
+    if (!api?.workbenchGitDeployPersonal) return;
     setGitBusy("deployPersonal");
     try {
       const r = await api.workbenchGitDeployPersonal();
@@ -472,131 +499,230 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
     }
   };
 
+  const commitBranch = async () => {
+    const api = getDesktop();
+    if (!api?.workbenchGitCommitBranch) return;
+    const reason = pushReason.trim();
+    if (!reason) {
+      gitToast("请填写变更说明。", "error");
+      return;
+    }
+    setGitBusy("commitBranch");
+    try {
+      const r = await api.workbenchGitCommitBranch({ reason });
+      if (!r.ok) {
+        gitToast(briefGitError(r.error, "提交失败"), "error");
+        return;
+      }
+      setPushReason("");
+      if (r.committed) {
+        gitToast(`已提交到 ${r.branch || "当前分支"}（${r.commitHash || ""}）。`);
+      } else {
+        gitToast("没有需要提交的变更。");
+      }
+      await refreshGitStatus();
+    } finally {
+      setGitBusy(null);
+    }
+  };
+
   const personalRepoShort = personalGithubRepo.trim().replace(/^https:\/\/github\.com\//, "") || "未配置";
 
   return (
     <>
-      <div className="mx-auto w-full max-w-3xl space-y-3">
+      <div className="mx-auto w-full max-w-5xl space-y-3">
         <Section title="GitHub 同步">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-elevated px-4 py-3 shadow-xs">
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-mono text-[12px] text-foreground">{personalRepoShort}</p>
-              {gitStatus?.ok ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  <span className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 font-mono text-[10px]">
-                    <GitBranch className="h-3 w-3" />
-                    {gitStatus.branch || "—"}
+          {/* ── 仓库摘要栏 ── */}
+          <div className="group relative overflow-hidden rounded-xl border border-border bg-surface-elevated shadow-xs transition-all duration-200 hover:shadow-sm">
+            {/* 顶部渐变装饰条 */}
+            <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-primary/60 via-accent/50 to-transparent" />
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 pl-[18px]">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-secondary/50">
+                    <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate font-mono text-[12px] font-medium text-foreground">
+                      {personalRepoShort}
+                    </p>
+                    {gitStatus?.ok && (
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {gitStatus.branch || "—"}
+                        </span>
+                        <span className="text-[9px] text-muted-foreground/40">·</span>
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2 py-[1px] text-[9.5px] font-medium",
+                            gitStatus.dirty
+                              ? "bg-amber-500/10 text-amber-600"
+                              : "bg-emerald-500/10 text-emerald-600",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 rounded-full",
+                              gitStatus.dirty ? "bg-amber-500" : "bg-emerald-500",
+                            )}
+                          />
+                          {gitStatus.dirty ? "有改动" : "干净"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={!desktop}
+                onClick={() => setConfigDrawerOpen(true)}
+                className="btn-row shrink-0 gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px]"
+              >
+                <Settings className="h-3.5 w-3.5" /> 仓库配置
+              </button>
+            </div>
+          </div>
+
+          {/* ── 双列卡片：官方 + 个人仓库 ── */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* 官方 Claude Code */}
+            <div className="group relative overflow-hidden rounded-xl border border-border bg-surface-elevated shadow-xs transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+              <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-sky-500/60 via-blue-400/50 to-transparent" />
+              <div className="p-5 pt-[18px]">
+                <div className="mb-3 flex items-center gap-2.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/60 bg-sky-500/10 text-sky-600">
+                    <Download className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-[13px] font-semibold text-foreground">官方 Claude Code</span>
+                </div>
+                <p className="mb-4 text-[11.5px] leading-relaxed text-muted-foreground">
+                  从 Anthropic 官方仓库同步 Agent、Skill、任务链与 MCP 预设等编排资产。
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={!desktop || gitBusy !== null}
+                    onClick={() => void checkUpstreamUpdates()}
+                    className="btn-row gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px]"
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5", gitBusy === "checkUpstream" && "animate-spin")} />
+                    {gitBusy === "checkUpstream" ? "检测中…" : "检测更新"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!desktop || gitBusy !== null}
+                    onClick={() => void pullFromGithub()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-600 to-blue-500 px-3.5 py-1.5 text-[11.5px] font-semibold text-white shadow-xs transition-all duration-150 hover:shadow-sm hover:brightness-110 disabled:opacity-40"
+                  >
+                    <Download className={cn("h-3.5 w-3.5", gitBusy === "pull" && "animate-pulse")} />
+                    {gitBusy === "pull" ? "同步中…" : "同步官方"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 个人仓库 */}
+            <div className="group relative overflow-hidden rounded-xl border border-border bg-surface-elevated shadow-xs transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+              <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-primary/60 via-accent/50 to-transparent" />
+              <div className="p-5 pt-[18px]">
+                <div className="mb-3 flex items-center gap-2.5">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/60 bg-primary-soft text-primary">
+                    <Upload className="h-3.5 w-3.5" />
+                  </div>
+                  <span className="text-[13px] font-semibold text-foreground">个人仓库</span>
+                </div>
+                {workspacePath ? (
+                  <p className="mb-3 truncate font-mono text-[10.5px] text-muted-foreground" title={workspacePath}>
+                    工作区：{workspacePath}
+                  </p>
+                ) : (
+                  <p className="mb-3 text-[10.5px] text-warning">
+                    未选择工作区，推送说明将无法带上项目名。
+                  </p>
+                )}
+
+                <label className="block">
+                  <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-foreground/80">
+                    <span className="h-1 w-1 rounded-full bg-primary/60" />
+                    {GIT_PUSH_REASON_LABEL} <RequiredMark />
                   </span>
-                  <span
+                  <textarea
+                    value={pushReason}
+                    onChange={(e) => setPushReason(e.target.value)}
+                    disabled={!desktop}
+                    placeholder={GIT_PUSH_REASON_PLACEHOLDER}
+                    rows={2}
+                    spellCheck={false}
+                    required
+                    className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[11.5px] outline-none transition placeholder:text-muted-foreground/50 focus:border-primary/50 focus:ring-2 focus:ring-primary/15 disabled:opacity-40"
+                  />
+                </label>
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    disabled={!desktop || gitBusy !== null}
+                    onClick={() => void deployFromRepo()}
                     className={cn(
-                      "rounded-md px-2 py-0.5 text-[10px]",
-                      gitStatus.dirty ? "bg-warning/10 text-warning" : "bg-success/10 text-success",
+                      "btn-row gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px]",
+                      "border-emerald-500/20 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400",
                     )}
                   >
-                    {gitStatus.dirty ? "有改动" : "干净"}
-                  </span>
+                    <FolderInput className={cn("h-3.5 w-3.5", gitBusy === "deployPersonal" && "animate-pulse")} />
+                    {gitBusy === "deployPersonal" ? "部署中…" : "部署到本地"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!desktop || gitBusy !== null}
+                    onClick={() => void commitBranch()}
+                    className="btn-row gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px]"
+                  >
+                    <GitBranch className={cn("h-3.5 w-3.5", gitBusy === "commitBranch" && "animate-pulse")} />
+                    {gitBusy === "commitBranch" ? "提交中…" : "提交分支"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim() || !gitUserName.trim() || !gitUserEmail.trim()}
+                    onClick={() => void pullFromPersonal()}
+                    className="btn-row gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px]"
+                  >
+                    <Download className={cn("h-3.5 w-3.5", gitBusy === "pullPersonal" && "animate-pulse")} />
+                    {gitBusy === "pullPersonal" ? "拉取中…" : "拉取"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !desktop ||
+                      gitBusy !== null ||
+                      !personalGithubRepo.trim() ||
+                      !gitUserName.trim() ||
+                      !gitUserEmail.trim()
+                    }
+                    onClick={() => void pushToPersonal()}
+                    className="btn-row gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px]"
+                  >
+                    <Upload className={cn("h-3.5 w-3.5", gitBusy === "push" && "animate-pulse")} />
+                    {gitBusy === "push" ? "推送中…" : "推送"}
+                  </button>
                 </div>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              disabled={!desktop}
-              onClick={() => setConfigDrawerOpen(true)}
-              className="btn-row shrink-0"
-            >
-              <Settings className="h-3.5 w-3.5" /> 仓库配置
-            </button>
-          </div>
 
-          <div className="mt-3 rounded-xl border border-border bg-surface-elevated p-4 shadow-xs">
-            <p className="mb-3 text-[13px] font-semibold text-foreground">官方 Claude Code</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!desktop || gitBusy !== null}
-                onClick={() => void checkUpstreamUpdates()}
-                className="btn-row"
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", gitBusy === "checkUpstream" && "animate-spin")} />
-                {gitBusy === "checkUpstream" ? "检测中…" : "检测官方更新"}
-              </button>
-              <button
-                type="button"
-                disabled={!desktop || gitBusy !== null}
-                onClick={() => void pullFromGithub()}
-                className="btn-gradient-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold disabled:opacity-40"
-              >
-                <Download className={cn("h-3.5 w-3.5", gitBusy === "pull" && "animate-pulse")} />
-                {gitBusy === "pull" ? "同步中…" : "同步官方"}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-3 rounded-xl border border-border bg-surface-elevated p-4 shadow-xs">
-            <p className="mb-3 text-[13px] font-semibold text-foreground">个人仓库</p>
-            {workspacePath ? (
-              <p className="mb-3 truncate font-mono text-[11px] text-muted-foreground" title={workspacePath}>
-                当前工作区：{workspacePath}
-              </p>
-            ) : (
-              <p className="mb-3 text-[11px] text-warning">未选择工作区，推送说明将无法带上项目名。请先在「工作目录」中选择。</p>
-            )}
-            <label className="block">
-              <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">
-                {GIT_PUSH_REASON_LABEL} <RequiredMark />
-              </span>
-              <textarea
-                value={pushReason}
-                onChange={(e) => setPushReason(e.target.value)}
-                disabled={!desktop}
-                placeholder={GIT_PUSH_REASON_PLACEHOLDER}
-                rows={3}
-                spellCheck={false}
-                required
-                className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
-              />
-            </label>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={!desktop || gitBusy !== null}
-                  onClick={() => void deployFromRepo()}
-                  className="btn-row"
-                >
-                  <FolderInput className={cn("h-3.5 w-3.5", gitBusy === "deployPersonal" && "animate-pulse")} />
-                  {gitBusy === "deployPersonal" ? "部署中…" : "部署到本地"}
-                </button>
-                <button
-                  type="button"
-                  disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim() || !gitUserName.trim() || !gitUserEmail.trim()}
-                  onClick={() => void pullFromPersonal()}
-                  className="btn-row"
-                >
-                  <Download className={cn("h-3.5 w-3.5", gitBusy === "pullPersonal" && "animate-pulse")} />
-                  {gitBusy === "pullPersonal" ? "拉取中…" : "拉取"}
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    !desktop ||
-                    gitBusy !== null ||
-                    !personalGithubRepo.trim() ||
-                    !gitUserName.trim() ||
-                    !gitUserEmail.trim()
-                  }
-                  onClick={() => void pushToPersonal()}
-                  className="btn-row"
-                >
-                  <Upload className={cn("h-3.5 w-3.5", gitBusy === "push" && "animate-pulse")} />
-                  {gitBusy === "push" ? "推送中…" : "推送"}
-                </button>
+                <div className="mt-3 flex items-start gap-2 rounded-lg bg-muted/40 px-3 py-2">
+                  <span className="mt-[2px] shrink-0 text-[10px] text-muted-foreground">ⓘ</span>
+                  <div className="text-[10.5px] leading-relaxed text-muted-foreground">
+                    <span>{GIT_PUSH_HINT}</span>
+                    <span className="ml-1">{GIT_DEPLOY_HINT}</span>
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground/70 hover:text-muted-foreground">
+                        详细说明
+                      </summary>
+                      <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground/60">
+                        {GIT_PUSH_HINT_DETAIL}
+                      </p>
+                    </details>
+                  </div>
+                </div>
               </div>
-              <p className="text-[11px] text-muted-foreground sm:max-w-sm sm:text-right">
-                {GIT_PUSH_HINT}
-                <InfoHint side="left">{GIT_PUSH_HINT_DETAIL}</InfoHint>
-                <span className="mt-1 block">{GIT_DEPLOY_HINT}</span>
-              </p>
             </div>
           </div>
         </Section>
@@ -619,6 +745,8 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
           onSave={() => void saveGithubSettings()}
         />
       ) : null}
+
+      <DeployDialog open={deployDialogOpen} onOpenChange={setDeployDialogOpen} onReady={deployFromRepoSilent} />
     </>
   );
 }

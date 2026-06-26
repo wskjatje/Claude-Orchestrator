@@ -151,6 +151,8 @@ export function installDesktopBridge() {
     claudeCodeAbort: (requestId) => rpc('claude-code:abort', requestId),
     localOrchestrationPrompt: (payload) => rpc('local-orchestration:prompt', payload),
     localOrchestrationAbort: (requestId) => rpc('local-orchestration:abort', requestId),
+    cloudDirectPrompt: (payload) => rpc('cloud-direct:prompt', payload),
+    cloudDirectAbort: (requestId) => rpc('cloud-direct:abort', { requestId }),
     claudeCodeListModels: () => rpc('claude-code:listModels'),
     ccSwitchStatus: () => rpc('cc-switch:status'),
     ccSwitchListProviders: () => rpc('cc-switch:listProviders'),
@@ -159,6 +161,9 @@ export function installDesktopBridge() {
     ccSwitchSetCurrentProvider: (body) => rpc('cc-switch:setCurrentProvider', body),
     ccSwitchSyncWorkbench: () => rpc('cc-switch:syncWorkbench'),
     ccSwitchRefreshCloudModels: (opts) => rpc('cc-switch:refreshCloudModels', opts),
+    ccSwitchProviderNeedsCcr: (opts) => rpc('cc-switch:providerNeedsCcr', opts),
+    ccSwitchListKnownProviders: () => rpc('cc-switch:listKnownProviders'),
+    ccSwitchFetchProviderModels: (body) => rpc('cc-switch:fetchProviderModels', body),
     readReferenceFilesAsImageAttachments: (filePaths) =>
       rpc('reference-files:readAsImageAttachments', filePaths),
     saveChatImageAttachments: (attachments) => rpc('chat:saveImageAttachments', attachments),
@@ -185,6 +190,7 @@ export function installDesktopBridge() {
     workbenchGitDeployPersonal: (payload?: { overwrite?: boolean }) =>
       rpc('workbench-git:deployPersonal', payload ? [payload] : []),
     workbenchGitPushPersonal: (payload) => rpc('workbench-git:pushPersonal', payload ?? {}),
+    workbenchGitCommitBranch: (payload) => rpc('workbench-git:commitBranch', payload ?? {}),
     workbenchGitSaveGithubSettings: (body) => rpc('workbench-git:saveGithubSettings', body),
     chooseClaudeCliExecutable: () => rpc('claude-code:chooseCliExecutable'),
     claudeCodeRunChainStep: (payload) => rpc('claude-code:runChainStep', payload),

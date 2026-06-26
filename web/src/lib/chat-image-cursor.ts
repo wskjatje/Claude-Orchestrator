@@ -111,7 +111,7 @@ export function modelSupportsChatVision(opts: {
 }
 
 export function visionRequiredError(modelLabel: string): string {
-  return `当前模型「${modelLabel}」不支持图片。请切换到支持视觉的模型（如 Claude Sonnet、Gemini），或改用「本地 MCP」并安装 Ollama 视觉模型（如 qwen2.5vl）。`;
+  return `当前模型「${modelLabel}」不支持图片。请切换到支持视觉的模型（如 Claude Sonnet、Gemini），或改用「本地 MCP」并安装 Ollama 视觉模型。`;
 }
 
 /** 读取 dataUrl 尺寸并按 Cursor/Claude Code 规则缩小 */
