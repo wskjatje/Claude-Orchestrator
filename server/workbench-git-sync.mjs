@@ -19,6 +19,12 @@ const execFileAsync = promisify(execFile)
 
 export const DEFAULT_UPSTREAM_REPO = 'https://github.com/anthropics/claude-code.git'
 
+/** 个人仓库根目录：取用户选中的工作目录，若无则回退到当前项目 */
+function resolvePersonalRoot() {
+  const ws = loadWorkspace()
+  return ws && fs.existsSync(ws) ? path.resolve(ws) : PROJECT_ROOT
+}
+
 /** Never stage these when pushing to a personal fork (local deps / runtime / private data / build artifacts). */
 const PUSH_EXCLUDE_PATHS = [
   '.claudecode',
@@ -94,11 +100,11 @@ function isSqliteFile(abs) {
   }
 }
 
-async function unstageSensitivePaths() {
+async function unstageSensitivePaths(cwd) {
   for (const excluded of PUSH_EXCLUDE_PATHS) {
-    await runGit(['reset', 'HEAD', '--', excluded])
+    await runGit(['reset', 'HEAD', '--', excluded], { cwd })
   }
-  const list = await runGit(['diff', '--cached', '--name-only'])
+  const list = await runGit(['diff', '--cached', '--name-only'], { cwd })
   if (!list.ok) return
   const dbLike = list.stdout
     .trim()
@@ -110,12 +116,12 @@ async function unstageSensitivePaths() {
       return BINARY_PUSH_BLOCK_EXT.some((ext) => lower.endsWith(ext))
     })
   for (const rel of dbLike) {
-    await runGit(['reset', 'HEAD', '--', rel])
+    await runGit(['reset', 'HEAD', '--', rel], { cwd })
   }
 }
 
-async function scanStagedFilesForSecrets() {
-  const list = await runGit(['diff', '--cached', '--name-only'])
+async function scanStagedFilesForSecrets(cwd) {
+  const list = await runGit(['diff', '--cached', '--name-only'], { cwd })
   if (!list.ok) return { ok: true }
   const files = list.stdout
     .trim()
@@ -131,7 +137,8 @@ async function scanStagedFilesForSecrets() {
       continue
     }
     if (SECRET_SCAN_SKIP_PREFIXES.some((p) => rel.startsWith(p))) continue
-    const abs = path.join(PROJECT_ROOT, rel)
+    const root = cwd || PROJECT_ROOT
+    const abs = path.join(root, rel)
     try {
       if (!fs.existsSync(abs)) continue
       const stat = fs.statSync(abs)
@@ -188,12 +195,12 @@ function loadUpstreamSyncManifest() {
   }
 }
 
-async function resolveRemoteBranchRef(remoteName, branch) {
+async function resolveRemoteBranchRef(remoteName, branch, cwd) {
   const primary = `${remoteName}/${branch}`
-  const verify = await runGit(['rev-parse', '--verify', primary])
+  const verify = await runGit(['rev-parse', '--verify', primary], { cwd })
   if (verify.ok) return primary
   const fallback = `${remoteName}/main`
-  const verifyMain = await runGit(['rev-parse', '--verify', fallback])
+  const verifyMain = await runGit(['rev-parse', '--verify', fallback], { cwd })
   if (verifyMain.ok) return fallback
   return null
 }
@@ -202,8 +209,8 @@ async function resolveUpstreamRef(branch) {
   return resolveRemoteBranchRef('upstream', branch)
 }
 
-async function resolveOriginRef(branch) {
-  return resolveRemoteBranchRef('origin', branch)
+async function resolveOriginRef(branch, cwd) {
+  return resolveRemoteBranchRef('origin', branch, cwd)
 }
 
 function combineOutput(stdout, stderr) {
@@ -241,8 +248,8 @@ function isOfficialRemote(url) {
   return u.includes('anthropics/claude-code')
 }
 
-async function readRemotes() {
-  const r = await runGit(['remote', '-v'])
+async function readRemotes(cwd) {
+  const r = await runGit(['remote', '-v'], { cwd })
   if (!r.ok) return { ok: false, error: r.combined || r.error, remotes: [] }
   const remotes = []
   for (const line of r.stdout.split('\n')) {
@@ -253,30 +260,30 @@ async function readRemotes() {
   return { ok: true, remotes }
 }
 
-async function currentBranch() {
-  const r = await runGit(['rev-parse', '--abbrev-ref', 'HEAD'])
+async function currentBranch(cwd) {
+  const r = await runGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd })
   if (!r.ok) return 'main'
   const b = r.stdout.trim()
   return b && b !== 'HEAD' ? b : 'main'
 }
 
-async function readLocalGitConfig(key) {
-  const r = await runGit(['config', '--get', key])
+async function readLocalGitConfig(key, cwd) {
+  const r = await runGit(['config', '--get', key], { cwd })
   if (!r.ok) return ''
   return r.stdout.trim()
 }
 
-async function resolveGitIdentity(settings = loadChatSettings()) {
+async function resolveGitIdentity(settings = loadChatSettings(), cwd) {
   let name = String(settings.gitUserName || '').trim()
   let email = String(settings.gitUserEmail || '').trim()
-  if (!name) name = await readLocalGitConfig('user.name')
-  if (!email) email = await readLocalGitConfig('user.email')
+  if (!name) name = await readLocalGitConfig('user.name', cwd)
+  if (!email) email = await readLocalGitConfig('user.email', cwd)
   return { name, email }
 }
 
 /** Push 与个人 pull 共用同一份 Git 身份，写入本仓库 local config */
-async function ensureGitIdentity(settings = loadChatSettings()) {
-  const { name, email } = await resolveGitIdentity(settings)
+async function ensureGitIdentity(settings = loadChatSettings(), cwd) {
+  const { name, email } = await resolveGitIdentity(settings, cwd)
   if (!name || !email) {
     return {
       ok: false,
@@ -284,9 +291,9 @@ async function ensureGitIdentity(settings = loadChatSettings()) {
         '请在本页填写 Git 用户名与邮箱（推送与个人拉取共用），或先在终端配置 git config user.name / user.email',
     }
   }
-  const setName = await runGit(['config', 'user.name', name])
+  const setName = await runGit(['config', 'user.name', name], { cwd })
   if (!setName.ok) return { ok: false, error: setName.combined || setName.error }
-  const setEmail = await runGit(['config', 'user.email', email])
+  const setEmail = await runGit(['config', 'user.email', email], { cwd })
   if (!setEmail.ok) return { ok: false, error: setEmail.combined || setEmail.error }
   return { ok: true, name, email }
 }
@@ -332,12 +339,13 @@ export function buildDefaultPushReason(workspaceDir = loadWorkspace()) {
     : '同步 Agent、Skill、任务链与 MCP 配置'
 }
 
-async function ensurePackagedGitRepository() {
+async function ensurePackagedGitRepository(cwd) {
+  const root = cwd || PROJECT_ROOT
   if (!isPackagedWorkbench()) return { ok: true, initialized: false }
-  if (fs.existsSync(path.join(PROJECT_ROOT, '.git'))) return { ok: true, initialized: false }
+  if (fs.existsSync(path.join(root, '.git'))) return { ok: true, initialized: false }
 
-  fs.mkdirSync(PROJECT_ROOT, { recursive: true })
-  const gitignorePath = path.join(PROJECT_ROOT, '.gitignore')
+  fs.mkdirSync(root, { recursive: true })
+  const gitignorePath = path.join(root, '.gitignore')
   if (!fs.existsSync(gitignorePath)) {
     fs.writeFileSync(
       gitignorePath,
@@ -345,7 +353,7 @@ async function ensurePackagedGitRepository() {
       'utf8',
     )
   }
-  const readmePath = path.join(PROJECT_ROOT, 'README.md')
+  const readmePath = path.join(root, 'README.md')
   if (!fs.existsSync(readmePath)) {
     fs.writeFileSync(
       readmePath,
@@ -354,28 +362,28 @@ async function ensurePackagedGitRepository() {
     )
   }
 
-  const init = await runGit(['init', '-b', 'main'])
+  const init = await runGit(['init', '-b', 'main'], { cwd: root })
   if (!init.ok) {
     return { ok: false, error: init.combined || init.error || '初始化 Git 仓库失败' }
   }
   return { ok: true, initialized: true, combined: init.combined }
 }
 
-async function ensurePersonalOrigin(personalUrl) {
+async function ensurePersonalOrigin(personalUrl, cwd) {
   const url = String(personalUrl || '').trim()
   if (!url) return { ok: false, error: '请填写个人 GitHub 仓库地址' }
-  const remotes = await readRemotes()
+  const remotes = await readRemotes(cwd)
   if (!remotes.ok) return remotes
 
   let origin = remotes.remotes.find((x) => x.name === 'origin')
   if (origin && isOfficialRemote(origin.url)) {
-    await runGit(['remote', 'rename', 'origin', 'upstream'])
+    await runGit(['remote', 'rename', 'origin', 'upstream'], { cwd })
     origin = null
   }
   if (origin) {
-    if (origin.url !== url) await runGit(['remote', 'set-url', 'origin', url])
+    if (origin.url !== url) await runGit(['remote', 'set-url', 'origin', url], { cwd })
   } else {
-    const add = await runGit(['remote', 'add', 'origin', url])
+    const add = await runGit(['remote', 'add', 'origin', url], { cwd })
     if (!add.ok) return { ok: false, error: add.combined || add.error }
   }
   return { ok: true, url }
@@ -385,6 +393,7 @@ export async function getWorkbenchGitStatus() {
   const workspacePath = loadWorkspace() || ''
   const defaultPushReason = buildDefaultPushReason(workspacePath)
 
+  // 先用 PROJECT_ROOT 检测官方同步相关状态（保持不变）
   if (!fs.existsSync(path.join(PROJECT_ROOT, '.git'))) {
     if (isPackagedWorkbench()) {
       const boot = await ensurePackagedGitRepository()
@@ -403,6 +412,20 @@ export async function getWorkbenchGitStatus() {
   const upstream = remotes.ok ? remotes.remotes.find((x) => x.name === 'upstream') : null
   const origin = remotes.ok ? remotes.remotes.find((x) => x.name === 'origin') : null
   const identity = await resolveGitIdentity(settings)
+
+  // 检查个人仓库（工作目录）状态
+  const personalRoot = resolvePersonalRoot()
+  let personalBranch = ''
+  let personalDirty = false
+  let personalDirtySummary = ''
+  if (personalRoot !== PROJECT_ROOT && fs.existsSync(path.join(personalRoot, '.git'))) {
+    const pb = await currentBranch(personalRoot)
+    personalBranch = pb
+    const ps = await runGit(['status', '--porcelain'], { cwd: personalRoot })
+    personalDirty = Boolean(ps.stdout.trim())
+    personalDirtySummary = ps.stdout.trim().slice(0, 4000)
+  }
+
   return {
     ok: true,
     repoRoot: PROJECT_ROOT,
@@ -420,6 +443,11 @@ export async function getWorkbenchGitStatus() {
       '个人仓库：推送以本地为准覆盖远程；拉取仅用于从 GitHub 取回并部署到本机',
     workspacePath,
     defaultPushReason,
+    // 个人工作目录额外状态
+    personalRoot,
+    personalBranch,
+    personalDirty,
+    personalDirtySummary,
   }
 }
 
@@ -569,22 +597,24 @@ export async function pullFromPersonalGithub(opts = {}) {
     return { ok: false, error: '请先填写个人 GitHub 仓库地址' }
   }
 
-  const ensure = await ensurePersonalOrigin(personalUrl)
+  const personalRoot = resolvePersonalRoot()
+
+  const ensure = await ensurePersonalOrigin(personalUrl, personalRoot)
   if (!ensure.ok) return { ok: false, error: ensure.error, combined: ensure.error }
 
-  const identity = await ensureGitIdentity(settings)
+  const identity = await ensureGitIdentity(settings, personalRoot)
   if (!identity.ok) return { ok: false, error: identity.error, combined: identity.error }
 
-  const history = await ensureFullHistoryFromRemote('origin', { remoteUrl: personalUrl })
+  const history = await ensureFullHistoryFromRemote('origin', { remoteUrl: personalUrl, cwd: personalRoot })
   if (!history.ok) {
     return { ok: false, error: history.error, combined: history.combined }
   }
 
-  const branch = await currentBranch()
-  const fetch = await runGit(['fetch', 'origin'], { timeout: 600_000 })
+  const branch = await currentBranch(personalRoot)
+  const fetch = await runGit(['fetch', 'origin'], { cwd: personalRoot, timeout: 600_000 })
   if (!fetch.ok) return { ok: false, error: fetch.combined || fetch.error, combined: fetch.combined }
 
-  const originRef = await resolveOriginRef(branch)
+  const originRef = await resolveOriginRef(branch, personalRoot)
   if (!originRef) {
     return {
       ok: false,
@@ -593,7 +623,7 @@ export async function pullFromPersonalGithub(opts = {}) {
     }
   }
 
-  const merge = await runGit(['merge', '--no-edit', originRef])
+  const merge = await runGit(['merge', '--no-edit', originRef], { cwd: personalRoot })
   if (!merge.ok) {
     const conflict = /CONFLICT|Automatic merge failed/i.test(merge.combined || '')
     return {
@@ -605,8 +635,8 @@ export async function pullFromPersonalGithub(opts = {}) {
     }
   }
 
-  const head = await runGit(['log', '-1', '--oneline'])
-  const deployed = importPersonalGithubArtifacts()
+  const head = await runGit(['log', '-1', '--oneline'], { cwd: personalRoot })
+  const deployed = importPersonalGithubArtifacts({ personalRoot })
   const lines = [
     `已从个人仓库 ${originRef} 拉取并合并全部内容（完整同步）：`,
     history.unshallowed ? history.combined : '',
@@ -630,7 +660,8 @@ export async function pullFromPersonalGithub(opts = {}) {
 }
 
 export function deployPersonalGithubArtifacts(opts = {}) {
-  const result = importPersonalGithubArtifacts(opts)
+  const personalRoot = opts.personalRoot || resolvePersonalRoot()
+  const result = importPersonalGithubArtifacts({ ...opts, personalRoot })
   return {
     ...result,
     combined: result.ok
@@ -657,17 +688,19 @@ function buildPersonalCommitMessage(reason) {
   return `${subject}\n\n${bodyParts.join('\n').trimEnd()}`
 }
 
-async function isShallowClone() {
-  return fs.existsSync(path.join(PROJECT_ROOT, '.git', 'shallow'))
+async function isShallowClone(cwd) {
+  return fs.existsSync(path.join(cwd || PROJECT_ROOT, '.git', 'shallow'))
 }
 
 /** Shallow clones reference missing parents; GitHub rejects the pack (index-pack failed). */
 async function ensureFullHistoryFromRemote(remoteName, opts = {}) {
-  if (!(await isShallowClone())) return { ok: true, unshallowed: false }
+  const cwd = opts.cwd || PROJECT_ROOT
+
+  if (!(await isShallowClone(cwd))) return { ok: true, unshallowed: false }
 
   if (remoteName === 'origin') {
     const url = String(opts.remoteUrl || loadChatSettings().personalGithubRepo || '').trim()
-    const ensure = await ensurePersonalOrigin(url)
+    const ensure = await ensurePersonalOrigin(url, cwd)
     if (!ensure.ok) return ensure
   } else {
     const upstreamUrl = (
@@ -677,7 +710,7 @@ async function ensureFullHistoryFromRemote(remoteName, opts = {}) {
     if (!ensure.ok) return ensure
   }
 
-  const fetch = await runGit(['fetch', '--unshallow', remoteName], { timeout: 600_000 })
+  const fetch = await runGit(['fetch', '--unshallow', remoteName], { cwd, timeout: 600_000 })
   if (!fetch.ok) {
     return {
       ok: false,
@@ -692,15 +725,18 @@ async function ensureFullHistoryFromRemote(remoteName, opts = {}) {
   }
 }
 
-async function ensureFullHistoryForPush() {
+async function ensureFullHistoryForPush(cwd) {
   const settings = loadChatSettings()
   return ensureFullHistoryFromRemote('origin', {
     remoteUrl: settings.personalGithubRepo,
+    cwd,
   })
 }
 
 export async function pushClaudeCodeToPersonalGithub(opts = {}) {
-  const boot = await ensurePackagedGitRepository()
+  const personalRoot = resolvePersonalRoot()
+
+  const boot = await ensurePackagedGitRepository(personalRoot)
   if (!boot.ok) {
     return { ok: false, error: boot.error, combined: boot.error }
   }
@@ -723,13 +759,14 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     return { ok: false, error: '请先填写个人 GitHub 仓库地址' }
   }
 
-  const ensure = await ensurePersonalOrigin(personalUrl)
+  const ensure = await ensurePersonalOrigin(personalUrl, personalRoot)
   if (!ensure.ok) return { ok: false, error: ensure.error, combined: ensure.error }
 
-  const identity = await ensureGitIdentity(settings)
+  const identity = await ensureGitIdentity(settings, personalRoot)
   if (!identity.ok) return { ok: false, error: identity.error, combined: identity.error }
 
-  const exported = exportPersonalGithubArtifacts()
+  // 导出到工作目录（个人仓库根目录）
+  const exported = exportPersonalGithubArtifacts({ personalRoot })
   if (!exported.ok) {
     return {
       ok: false,
@@ -740,13 +777,13 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
   }
   const exportNote = exported.summary ? `已导出可共享配置：${exported.summary}` : ''
 
-  const branch = await currentBranch()
-  const add = await runGit(['add', '-A'])
+  const branch = await currentBranch(personalRoot)
+  const add = await runGit(['add', '-A'], { cwd: personalRoot })
   if (!add.ok) return { ok: false, error: add.combined || add.error, combined: add.combined }
 
-  await unstageSensitivePaths()
+  await unstageSensitivePaths(personalRoot)
 
-  const secretScan = await scanStagedFilesForSecrets()
+  const secretScan = await scanStagedFilesForSecrets(personalRoot)
   if (!secretScan.ok) {
     return {
       ok: false,
@@ -757,16 +794,16 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     }
   }
 
-  const diffCached = await runGit(['diff', '--cached', '--quiet'])
+  const diffCached = await runGit(['diff', '--cached', '--quiet'], { cwd: personalRoot })
   const nothingToCommit = diffCached.ok
   let commitLog = ''
   if (!nothingToCommit) {
-    const commit = await runGit(['commit', '-m', message])
+    const commit = await runGit(['commit', '-m', message], { cwd: personalRoot })
     if (!commit.ok) return { ok: false, error: commit.combined || commit.error, combined: commit.combined }
     commitLog = commit.combined
   }
 
-  const history = await ensureFullHistoryForPush()
+  const history = await ensureFullHistoryForPush(personalRoot)
   if (!history.ok) {
     return {
       ok: false,
@@ -777,7 +814,7 @@ export async function pushClaudeCodeToPersonalGithub(opts = {}) {
     }
   }
 
-  const push = await runGit(['push', '--force', '-u', 'origin', branch])
+  const push = await runGit(['push', '--force', '-u', 'origin', branch], { cwd: personalRoot })
   if (!push.ok) {
     const combined = push.combined || push.error || ''
     let errorMsg = combined || '推送到个人仓库失败'
@@ -862,19 +899,21 @@ export async function commitCurrentBranch(opts = {}) {
     return { ok: false, error: '请填写本次变更说明', committed: false }
   }
 
-  const boot = await ensurePackagedGitRepository()
+  const personalRoot = resolvePersonalRoot()
+
+  const boot = await ensurePackagedGitRepository(personalRoot)
   if (!boot.ok) {
     return { ok: false, error: boot.error, committed: false }
   }
 
-  const branch = await currentBranch()
+  const branch = await currentBranch(personalRoot)
 
-  const add = await runGit(['add', '-A'])
+  const add = await runGit(['add', '-A'], { cwd: personalRoot })
   if (!add.ok) {
     return { ok: false, error: add.combined || add.error, committed: false }
   }
 
-  const diffCached = await runGit(['diff', '--cached', '--quiet'])
+  const diffCached = await runGit(['diff', '--cached', '--quiet'], { cwd: personalRoot })
   if (diffCached.ok) {
     return {
       ok: true,
@@ -885,17 +924,17 @@ export async function commitCurrentBranch(opts = {}) {
   }
 
   const message = buildPersonalCommitMessage(reason)
-  const identity = await ensureGitIdentity(loadChatSettings())
+  const identity = await ensureGitIdentity(loadChatSettings(), personalRoot)
   if (!identity.ok) {
     return { ok: false, error: identity.error, committed: false }
   }
 
-  const commit = await runGit(['commit', '-m', message])
+  const commit = await runGit(['commit', '-m', message], { cwd: personalRoot })
   if (!commit.ok) {
     return { ok: false, error: commit.combined || commit.error, committed: false }
   }
 
-  const hash = await runGit(['rev-parse', 'HEAD'])
+  const hash = await runGit(['rev-parse', 'HEAD'], { cwd: personalRoot })
   return {
     ok: true,
     committed: true,

@@ -16,10 +16,19 @@ import { exportFrontendAppsDoc } from './frontend-app-catalog.mjs'
 
 const AGENTS_SRC = path.join(os.homedir(), '.claude', 'agents')
 const SKILLS_SRC = path.join(os.homedir(), '.claude', 'skills')
-const AGENTS_DEST = path.join(PROJECT_ROOT, 'docs', 'agents')
-const SKILLS_DEST = path.join(PROJECT_ROOT, 'docs', 'skills')
-const CHAINS_DEST = path.join(PROJECT_ROOT, 'docs', 'chains')
-const MCP_DEST = path.join(PROJECT_ROOT, '.mcp.json')
+
+/**
+ * 根据个人根目录解析导出目标路径
+ */
+function personalDestPaths(personalRoot) {
+  const root = personalRoot || PROJECT_ROOT
+  return {
+    agentsDest: path.join(root, 'docs', 'agents'),
+    skillsDest: path.join(root, 'docs', 'skills'),
+    chainsDest: path.join(root, 'docs', 'chains'),
+    mcpDest: path.join(root, '.mcp.json'),
+  }
+}
 
 const SENSITIVE_ENV_KEY = /(?:api[_-]?key|secret|token|password|credential|auth(?:orization)?)/i
 
@@ -72,7 +81,7 @@ function sanitizeMcpServerConfig(cfg) {
   return normalizeMcpServerEntry(next)
 }
 
-function exportSanitizedMcpConfig() {
+function exportSanitizedMcpConfig(mcpDest) {
   const settings = loadChatSettings()
   const read = readMcpConfigFile(settings.mcpConfigAbsolutePath)
   if (!read.ok) {
@@ -80,8 +89,8 @@ function exportSanitizedMcpConfig() {
   }
   const servers = read.data?.mcpServers
   if (!servers || typeof servers !== 'object' || !Object.keys(servers).length) {
-    if (fs.existsSync(MCP_DEST)) {
-      fs.unlinkSync(MCP_DEST)
+    if (fs.existsSync(mcpDest)) {
+      fs.unlinkSync(mcpDest)
     }
     return { ok: true, exported: false, path: null, reason: '无 MCP 服务器配置' }
   }
@@ -97,16 +106,16 @@ function exportSanitizedMcpConfig() {
   }
 
   if (!Object.keys(mcpServers).length) {
-    if (fs.existsSync(MCP_DEST)) fs.unlinkSync(MCP_DEST)
+    if (fs.existsSync(mcpDest)) fs.unlinkSync(mcpDest)
     return { ok: true, exported: false, path: null, reason: '无有效 MCP 条目' }
   }
 
   const payload = { mcpServers }
-  fs.writeFileSync(MCP_DEST, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
+  fs.writeFileSync(mcpDest, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
   return {
     ok: true,
     exported: true,
-    path: path.relative(PROJECT_ROOT, MCP_DEST).replace(/\\/g, '/'),
+    path: path.relative(PROJECT_ROOT, mcpDest).replace(/\\/g, '/'),
     serverCount: Object.keys(mcpServers).length,
   }
 }
@@ -162,7 +171,7 @@ function resetExportDir(dir) {
   ensureDir(dir)
 }
 
-function exportOrchestrationChains() {
+function exportOrchestrationChains(chainsDest) {
   const srcDir = orchestrationChainsDir()
   if (!fs.existsSync(srcDir)) {
     return { ok: true, exported: false, chains: [], count: 0, reason: '无任务链目录' }
@@ -170,13 +179,13 @@ function exportOrchestrationChains() {
 
   const chainFiles = fs.readdirSync(srcDir).filter((f) => f.endsWith('.json'))
   if (!chainFiles.length) {
-    if (fs.existsSync(CHAINS_DEST)) {
-      fs.rmSync(CHAINS_DEST, { recursive: true, force: true })
+    if (fs.existsSync(chainsDest)) {
+      fs.rmSync(chainsDest, { recursive: true, force: true })
     }
     return { ok: true, exported: false, chains: [], count: 0, reason: '无任务链' }
   }
 
-  resetExportDir(CHAINS_DEST)
+  resetExportDir(chainsDest)
   const copied = []
   const summaries = []
 
@@ -185,7 +194,7 @@ function exportOrchestrationChains() {
       const raw = JSON.parse(fs.readFileSync(path.join(srcDir, file), 'utf8'))
       const sanitized = sanitizeChainRecordForExport(raw)
       if (!sanitized || !sanitized.state.steps.length) continue
-      const dest = path.join(CHAINS_DEST, `${sanitized.id}.json`)
+      const dest = path.join(chainsDest, `${sanitized.id}.json`)
       fs.writeFileSync(dest, `${JSON.stringify(sanitized, null, 2)}\n`, 'utf8')
       const rel = path.relative(PROJECT_ROOT, dest).replace(/\\/g, '/')
       copied.push(rel)
@@ -203,7 +212,7 @@ function exportOrchestrationChains() {
   }
 
   if (!copied.length) {
-    fs.rmSync(CHAINS_DEST, { recursive: true, force: true })
+    fs.rmSync(chainsDest, { recursive: true, force: true })
     return { ok: true, exported: false, chains: [], count: 0, reason: '无有效任务链' }
   }
 
@@ -233,7 +242,7 @@ function exportOrchestrationChains() {
     }
   }
 
-  const indexDest = path.join(CHAINS_DEST, 'index.json')
+  const indexDest = path.join(chainsDest, 'index.json')
   fs.writeFileSync(indexDest, `${JSON.stringify(indexPayload, null, 2)}\n`, 'utf8')
   copied.push(path.relative(PROJECT_ROOT, indexDest).replace(/\\/g, '/'))
 
@@ -242,23 +251,29 @@ function exportOrchestrationChains() {
     exported: true,
     chains: copied,
     count: summaries.length,
-    path: path.relative(PROJECT_ROOT, CHAINS_DEST).replace(/\\/g, '/'),
+    path: path.relative(PROJECT_ROOT, chainsDest).replace(/\\/g, '/'),
   }
 }
 
 /**
  * 推送个人 GitHub 前：将 ~/.claude/agents、skills、任务链与脱敏 MCP 写入仓库可提交路径。
  * 本地配置、日志、会话等仍保留在本机；.claudecode 等路径由推送排除列表拦截，不会进入 GitHub。
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.personalRoot] - 个人仓库根目录（工作目录），默认 PROJECT_ROOT
  */
-export function exportPersonalGithubArtifacts() {
-  ensureDir(AGENTS_DEST)
-  ensureDir(SKILLS_DEST)
+export function exportPersonalGithubArtifacts(opts = {}) {
+  const { personalRoot } = opts
+  const { agentsDest, skillsDest, chainsDest, mcpDest } = personalDestPaths(personalRoot)
 
-  const agents = copyMarkdownTree(AGENTS_SRC, AGENTS_DEST)
-  const skills = copyMarkdownTree(SKILLS_SRC, SKILLS_DEST)
-  const chains = exportOrchestrationChains()
-  const mcp = exportSanitizedMcpConfig()
-  const appsDoc = exportFrontendAppsDoc()
+  ensureDir(agentsDest)
+  ensureDir(skillsDest)
+
+  const agents = copyMarkdownTree(AGENTS_SRC, agentsDest)
+  const skills = copyMarkdownTree(SKILLS_SRC, skillsDest)
+  const chains = exportOrchestrationChains(chainsDest)
+  const mcp = exportSanitizedMcpConfig(mcpDest)
+  const appsDoc = exportFrontendAppsDoc(undefined, personalRoot)
 
   const paths = [...agents, ...skills, ...(chains.chains || [])]
   if (mcp.exported && mcp.path) paths.push(mcp.path)

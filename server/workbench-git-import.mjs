@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
 import { PROJECT_ROOT } from './paths.mjs'
 import { loadChatSettings } from './store.mjs'
 import {
@@ -16,10 +15,18 @@ import {
 const require = createRequire(import.meta.url)
 const chainsApi = require('./orchestration-chains.cjs')
 
-const AGENTS_SRC = path.join(PROJECT_ROOT, 'docs', 'agents')
-const SKILLS_SRC = path.join(PROJECT_ROOT, 'docs', 'skills')
-const CHAINS_SRC = path.join(PROJECT_ROOT, 'docs', 'chains')
-const MCP_SRC = path.join(PROJECT_ROOT, '.mcp.json')
+/**
+ * 根据个人根目录解析导入源路径
+ */
+function personalSrcPaths(personalRoot) {
+  const root = personalRoot || PROJECT_ROOT
+  return {
+    agentsSrc: path.join(root, 'docs', 'agents'),
+    skillsSrc: path.join(root, 'docs', 'skills'),
+    chainsSrc: path.join(root, 'docs', 'chains'),
+    mcpSrc: path.join(root, '.mcp.json'),
+  }
+}
 
 const AGENTS_DEST = path.join(os.homedir(), '.claude', 'agents')
 const SKILLS_DEST = path.join(os.homedir(), '.claude', 'skills')
@@ -66,13 +73,13 @@ function normalizeImportedMcpServer(name, cfg) {
   return normalizeMcpServerEntry(next)
 }
 
-function importMcpFromRepo(customPath) {
-  if (!fs.existsSync(MCP_SRC)) {
+function importMcpFromRepo(customPath, mcpSrc) {
+  if (!fs.existsSync(mcpSrc)) {
     return { ok: true, imported: 0, path: null, reason: '无 .mcp.json' }
   }
   let repoData
   try {
-    repoData = JSON.parse(fs.readFileSync(MCP_SRC, 'utf8'))
+    repoData = JSON.parse(fs.readFileSync(mcpSrc, 'utf8'))
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e), imported: 0 }
   }
@@ -97,15 +104,15 @@ function importMcpFromRepo(customPath) {
   return { ok: true, imported, path: written.path }
 }
 
-function loadChainRecordsFromDocs() {
-  if (!fs.existsSync(CHAINS_SRC)) {
+function loadChainRecordsFromDocs(chainsSrc) {
+  if (!fs.existsSync(chainsSrc)) {
     return { ok: true, records: [], reason: '无 docs/chains 目录' }
   }
   const records = []
-  for (const file of fs.readdirSync(CHAINS_SRC)) {
+  for (const file of fs.readdirSync(chainsSrc)) {
     if (!file.endsWith('.json') || file === 'index.json') continue
     try {
-      const raw = JSON.parse(fs.readFileSync(path.join(CHAINS_SRC, file), 'utf8'))
+      const raw = JSON.parse(fs.readFileSync(path.join(chainsSrc, file), 'utf8'))
       if (raw && typeof raw === 'object' && raw.id) records.push(raw)
     } catch {
       /* skip invalid */
@@ -117,23 +124,29 @@ function loadChainRecordsFromDocs() {
 /**
  * 将仓库内 docs/agents、docs/skills、docs/chains、.mcp.json 部署到本机运行目录。
  * 与 push 前 exportPersonalGithubArtifacts 互为逆操作。
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.personalRoot] - 个人仓库根目录（工作目录），默认 PROJECT_ROOT
  */
 export function importPersonalGithubArtifacts(opts = {}) {
+  const { personalRoot, overwrite } = opts
+  const { agentsSrc, skillsSrc, chainsSrc, mcpSrc } = personalSrcPaths(personalRoot)
+
   ensureDir(AGENTS_DEST)
   ensureDir(SKILLS_DEST)
 
-  const agents = copyMarkdownTree(AGENTS_SRC, AGENTS_DEST)
-  const skills = copyMarkdownTree(SKILLS_SRC, SKILLS_DEST)
+  const agents = copyMarkdownTree(agentsSrc, AGENTS_DEST)
+  const skills = copyMarkdownTree(skillsSrc, SKILLS_DEST)
 
-  const chainLoad = loadChainRecordsFromDocs()
+  const chainLoad = loadChainRecordsFromDocs(chainsSrc)
   const chainImport = chainLoad.records?.length
     ? chainsApi.importOrchestrationChainRecords(chainLoad.records, {
-        overwrite: opts.overwrite !== false,
+        overwrite: overwrite !== false,
       })
     : { ok: true, imported: 0, skipped: 0, results: [] }
 
   const settings = loadChatSettings()
-  const mcp = importMcpFromRepo(settings.mcpConfigAbsolutePath)
+  const mcp = importMcpFromRepo(settings.mcpConfigAbsolutePath, mcpSrc)
 
   const summary = []
   if (agents.length) summary.push(`${agents.length} 个 Agent → ~/.claude/agents/`)

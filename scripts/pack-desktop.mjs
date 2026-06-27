@@ -42,6 +42,10 @@ rmrf(DESKTOP, 'out')
 run('npm', ['run', 'vendor:install'])
 run('npm', ['run', 'web:build'])
 
+// 2. 预渲染 SSR HTML 作为 SPA 入口（TanStack Start 无独立 SPA 入口）
+console.log('\n> 预渲染 SSR SPA 入口…\n')
+run('node', ['scripts/prerender-spa-entry.mjs'])
+
 if (!fs.existsSync(path.join(WEB_DIST, 'index.html'))) {
   console.error(`\n错误：未找到 ${WEB_DIST}/index.html，请先修复 web 构建。\n`)
   process.exit(1)

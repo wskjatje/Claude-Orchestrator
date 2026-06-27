@@ -546,11 +546,17 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
                   {gitStatus?.ok && (
                     <div className="mt-0.5 flex items-center gap-2">
                       <span className="font-mono text-[10px] text-muted-foreground">
-                        {gitStatus.branch || "—"}
+                        {(gitStatus.personalBranch || gitStatus.branch || "—")}
                       </span>
                       <span className="text-[9px] text-muted-foreground/40">·</span>
                       <span className="text-[10px] text-muted-foreground">
-                        {gitStatus.dirty ? "有改动" : "干净"}
+                        {gitStatus.personalDirty !== undefined
+                          ? gitStatus.personalDirty
+                            ? "有改动"
+                            : "干净"
+                          : gitStatus.dirty
+                            ? "有改动"
+                            : "干净"}
                       </span>
                     </div>
                   )}
@@ -785,16 +791,6 @@ function GitHubConfigDrawer({
               onChange={(e) => onPersonalGithubRepoChange(e.target.value)}
               disabled={!desktop}
               placeholder="https://github.com/你的用户名/repo.git"
-              spellCheck={false}
-              className="h-9 w-full rounded-lg border border-border bg-surface px-3 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">官方 upstream</span>
-            <input
-              value={upstreamGithubRepo}
-              onChange={(e) => onUpstreamGithubRepoChange(e.target.value)}
-              disabled={!desktop}
               spellCheck={false}
               className="h-9 w-full rounded-lg border border-border bg-surface px-3 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
             />

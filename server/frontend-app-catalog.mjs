@@ -76,10 +76,13 @@ export function buildFrontendAppsCommitSection(catalog = loadFrontendAppCatalog(
 }
 
 /** 写入 docs/claude-orchestrator-apps.md，供 GitHub 仓库阅读 */
-export function exportFrontendAppsDoc(catalog = loadFrontendAppCatalog()) {
+export function exportFrontendAppsDoc(catalog = loadFrontendAppCatalog(), personalRoot) {
   if (!catalog?.groups?.length) {
     return { ok: false, error: '未找到前端应用目录配置', path: null }
   }
+
+  const root = personalRoot || PROJECT_ROOT
+  const appsDocPath = path.join(root, 'docs/claude-orchestrator-apps.md')
 
   const product = catalog.productName || 'Claude Orchestrator'
   const lines = [
@@ -146,10 +149,10 @@ export function exportFrontendAppsDoc(catalog = loadFrontendAppCatalog()) {
     '',
   )
 
-  fs.mkdirSync(path.dirname(APPS_DOC_PATH), { recursive: true })
-  fs.writeFileSync(APPS_DOC_PATH, `${lines.join('\n').trimEnd()}\n`, 'utf8')
+  fs.mkdirSync(path.dirname(appsDocPath), { recursive: true })
+  fs.writeFileSync(appsDocPath, `${lines.join('\n').trimEnd()}\n`, 'utf8')
   return {
     ok: true,
-    path: path.relative(PROJECT_ROOT, APPS_DOC_PATH).replace(/\\/g, '/'),
+    path: path.relative(PROJECT_ROOT, appsDocPath).replace(/\\/g, '/'),
   }
 }
