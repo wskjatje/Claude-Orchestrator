@@ -1,5 +1,6 @@
 import { useSyncExternalStore, type RefObject } from "react";
 import { ChatComposerShell, type ChatComposerShellProps } from "@/components/chat-composer-shell";
+import { ChainQuickTrigger, type QuickChainOption } from "@/components/chain-quick-trigger";
 import { cn } from "@/lib/utils";
 import {
   getComposerFileBarState,
@@ -10,13 +11,19 @@ export type ChatComposerCursorProps = ChatComposerShellProps & {
   dockRef: RefObject<HTMLDivElement | null>;
   chainStatusLabel: string;
   chainStatusTone: "active" | "paused" | "done" | "neutral" | "idle";
+  /** 快速添加 / 触发任务链的回调 */
+  onAddTask?: (chainId: string) => Promise<void>;
+  /** 可选的任务链选项列表 */
+  chainOptions?: QuickChainOption[];
 };
 
-/** Cursor 式 Composer：底部始终保留输入框；历史编辑在顶部内联 Composer。 */
+/** Composer：底部始终保留输入框；历史编辑在顶部内联 Composer。 */
 export function ChatComposerCursor({
   dockRef,
   chainStatusLabel,
   chainStatusTone,
+  onAddTask,
+  chainOptions,
   editHistoryActive,
   onCancelEdit,
   ...shellProps
@@ -61,7 +68,7 @@ export function ChatComposerCursor({
       {chainStatusLabel &&
       chainStatusLabel !== "链：—" &&
       chainStatusTone !== "done" ? (
-        <div className="mt-1.5 flex justify-start px-0.5">
+        <div className="mt-1.5 flex items-center justify-between gap-2 px-0.5">
           <span
             className={cn(
               "inline-flex max-w-full truncate rounded-full border px-2.5 py-0.5 text-[10.5px] font-medium",
@@ -80,6 +87,22 @@ export function ChatComposerCursor({
           >
             {chainStatusLabel}
           </span>
+          {onAddTask && chainOptions && chainOptions.length > 0 ? (
+            <ChainQuickTrigger
+              disabled={Boolean(shellProps.disabled)}
+              chains={chainOptions}
+              onTriggerChain={onAddTask}
+            />
+          ) : null}
+        </div>
+      ) : null}
+      {!chainStatusLabel && onAddTask && chainOptions && chainOptions.length > 0 ? (
+        <div className="mt-1.5 flex justify-end px-0.5">
+          <ChainQuickTrigger
+            disabled={Boolean(shellProps.disabled)}
+            chains={chainOptions}
+            onTriggerChain={onAddTask}
+          />
         </div>
       ) : null}
     </div>

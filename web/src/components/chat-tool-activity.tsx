@@ -24,7 +24,7 @@ function toolMeta(name: string) {
   return TOOL_META[name] ?? { icon: Wrench, label: name };
 }
 
-/** Cursor 式单行工具活动（无厚重气泡） */
+/** 单行工具活动（无厚重气泡） */
 export function ChatToolActivityRow({ name, arg, status }: ToolActivityItem) {
   const meta = toolMeta(name);
   const Icon = meta.icon;
@@ -48,7 +48,7 @@ export function ChatToolActivityRow({ name, arg, status }: ToolActivityItem) {
   );
 }
 
-/** 连续工具调用合并为 Cursor 式紧凑列表 */
+/** 连续工具调用合并为紧凑列表 */
 export function ChatToolActivityGroup({ items }: { items: ToolActivityItem[] }) {
   if (!items.length) return null;
   return (

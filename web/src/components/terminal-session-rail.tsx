@@ -2,7 +2,7 @@ import { SplitSquareHorizontal, TerminalSquare, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TerminalSession } from "@/components/terminal-sessions-view";
 
-/** 类 Cursor：多终端时在面板右侧竖向列表 */
+/** 多终端时在面板右侧竖向列表 */
 export function TerminalSessionRail({
   sessions,
   activeId,

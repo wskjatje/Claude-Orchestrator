@@ -13,6 +13,14 @@ export function formatGitErrorMessage(error?: string, fallback = "操作失败")
     return "推送被拒绝，请检查网络、权限或个人仓库地址。"
   }
 
+  const isNetworkError = lines.some(
+    (l) =>
+      /Couldn't connect|Failed to connect|Connection timed out|ECONNREFUSED|ENETUNREACH|Could not resolve host/i.test(l),
+  )
+  if (isNetworkError) {
+    return "网络无法连接 GitHub，请检查：① 是否可正常访问 github.com；② 代理（HTTP_PROXY/HTTPS_PROXY）是否正确配置；③ 可在下方「仓库配置」中切换 GitHub 镜像地址。"
+  }
+
   const errLine = lines.find((l) => /^error:/i.test(l))
   if (errLine) return errLine.replace(/^error:\s*/i, "")
 

@@ -77,7 +77,7 @@ export function useWorkbenchTerminalBridgeOptional() {
   return useContext(WorkbenchTerminalBridgeContext);
 }
 
-/** 等待终端就绪后发送命令（类 Cursor：聊天触发 → 底部终端执行） */
+/** 等待终端就绪后发送命令（聊天触发 → 底部终端执行） */
 export async function runCommandInWorkbenchTerminal(
   bridge: Pick<
     WorkbenchTerminalBridgeValue,

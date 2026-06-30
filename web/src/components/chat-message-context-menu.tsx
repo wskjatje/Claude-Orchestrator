@@ -41,7 +41,7 @@ type ChatMessageContextMenuProps = {
   children: ReactNode;
 };
 
-/** Cursor 式聊天气泡右键：复制 / 写入工作区 / 从本条生成任务链 */
+/** 聊天气泡右键：复制 / 写入工作区 / 从本条生成任务链 */
 export function ChatMessageContextMenu({
   rowRef,
   content,

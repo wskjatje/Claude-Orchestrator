@@ -184,7 +184,7 @@
   --sidebar-border: oklch(0.92 0.01 40);
   --sidebar-ring: oklch(0.68 0.15 25);
   --chat-panel: oklch(0.985 0.004 55);
-  /* VS Code / Cursor 资源管理器列表 */
+  /* 资源管理器列表 */
   --explorer-row-hover: oklch(0.955 0.004 50);
   --explorer-row-active: oklch(0.905 0.006 50);
   --explorer-row-active-fg: oklch(0.28 0.02 30);
@@ -203,7 +203,7 @@
 }
 
 .dark {
-  /* Cursor 夜间：背景 / 侧栏 / 编辑器 / 聊天 / 面板 分层 */
+  /* 夜间：背景 / 侧栏 / 编辑器 / 聊天 / 面板 分层 */
   --background: oklch(0.128 0.006 285);
   --foreground: oklch(0.92 0.004 285);
   --card: oklch(0.17 0.008 285);
@@ -462,7 +462,7 @@
     caret-color: var(--foreground);
   }
 
-  /** 语法高亮由 codemirror-cursor-theme（VS Code / Cursor token）驱动，勿用 .cm-* 覆盖 */
+  /** 语法高亮由 codemirror-cursor-theme 驱动，勿用 .cm-* 覆盖 */
 
   .cm-ide-hover {
     max-width: 420px;
@@ -744,7 +744,7 @@
     padding: 0 8px;
   }
 
-  /** 编辑器 / 文件预览 / 侧栏 diff — 与 Cursor 编辑器字号一致 */
+  /** 编辑器 / 文件预览 / 侧栏 diff 字号 */
   .workbench-code,
   .workbench-code pre {
     font-family: var(--font-mono);
@@ -883,7 +883,7 @@
   }
 
   /**
-   * Markdown 预览统一版（对齐 Cursor Preview）
+   * Markdown 预览统一版
    * 层次：标题 > 正文 > 引用；行内代码/代码块独立配色
    */
   .workbench-md-unified {
@@ -1045,7 +1045,7 @@
     grid-template-rows: auto minmax(0, 1fr);
   }
 
-  /** Cursor 式：列表内完整轮次（用户提问在上、回复在下），最新消息靠近底部输入框 */
+  /** 列表内完整轮次（用户提问在上、回复在下），最新消息靠近底部输入框 */
   .chat-turn-user {
     width: 100%;
     min-width: 0;
@@ -1059,7 +1059,7 @@
     min-width: 0;
   }
 
-  /** Cursor 式：顶部固定栏承载用户提问（原列表内气泡移入此处） */
+  /** 顶部固定栏承载用户提问（原列表内气泡移入此处） */
   .chat-sticky-user-header {
     z-index: 12;
     flex-shrink: 0;
@@ -1094,7 +1094,7 @@
     border-style: dashed;
   }
 
-  /** Cursor 式重新发起确认弹框 */
+  /** 重新发起确认弹框 */
   .chat-resend-confirm-dialog {
     border-radius: 12px;
     border-color: color-mix(in oklab, var(--border) 85%, transparent);
@@ -1103,7 +1103,7 @@
       0 0 0 1px color-mix(in oklab, var(--border) 40%, transparent);
   }
 
-  /** Cursor 式聊天历史下拉 */
+  /** 聊天历史下拉 */
   .chat-history-dropdown {
     overflow: hidden;
   }
@@ -1230,7 +1230,7 @@
     background-color: var(--secondary);
   }
 
-  /** Cursor 式消息行 */
+  /** 消息行 */
   .chat-message-row {
     display: flex;
     width: 100%;
@@ -1280,10 +1280,6 @@
 
   .chat-message-time {
     font-variant-numeric: tabular-nums;
-  }
-
-  .dark .chat-message-meta {
-    display: none;
   }
 
   .chat-bubble-user {
@@ -1381,7 +1377,7 @@
     padding: 0 0.625rem;
   }
 
-  /** 夜间 Cursor 式文件改动卡片（内联 diff） */
+  /** 夜间文件改动卡片（内联 diff） */
   .dark .chat-file-edit-stack {
     display: flex;
     flex-direction: column;
@@ -1482,7 +1478,7 @@
     line-height: 1.5;
   }
 
-  /** Cursor 式可折叠内容区（文件 diff / 终端） */
+  /** 可折叠内容区（文件 diff / 终端） */
   .dark .chat-cursor-collapsible {
     position: relative;
   }
@@ -1667,7 +1663,7 @@
     content: none;
   }
 
-  /** diff 行着色（Cursor 式 +/-） */
+  /** diff 行着色（+/-） */
   .chat-md pre.chat-diff-block code {
     background: transparent;
   }
@@ -1718,7 +1714,7 @@
     line-height: var(--line-height-ui);
   }
 
-  /** 夜间 Cursor 式思考块 */
+  /** 夜间思考块 */
   .dark .chat-thought-block {
     margin: 2px 0 4px;
   }
@@ -1778,7 +1774,7 @@
     font-size: var(--font-size-sm);
   }
 
-  /** 夜间 Cursor 式工具活动行 */
+  /** 夜间工具活动行 */
   .dark .chat-tool-activity-group {
     display: flex;
     flex-direction: column;
@@ -1836,7 +1832,7 @@
     font-size: var(--font-size-sm);
   }
 
-  /** 夜间 Cursor 式终端输出块 */
+  /** 夜间终端输出块 */
   .dark .chat-terminal-output {
     margin: 6px 0;
     overflow: hidden;
@@ -1903,7 +1899,7 @@
     padding: 8px var(--chat-inline-padding, 10px) 10px;
   }
 
-  /** Cursor 式：输入框底栏左下角 Agent / Model（选择后仍固定展示） */
+  /** 输入框底栏左下角 Agent / Model（选择后仍固定展示） */
   .composer-cursor-controls {
     min-height: 28px;
     flex-wrap: wrap;
@@ -1935,14 +1931,14 @@
     background-color: color-mix(in oklab, var(--secondary) 90%, transparent);
   }
 
-  /** Cursor 式终端上下文 chip（composer 内） */
+  /** 终端上下文 chip（composer 内） */
   .terminal-context-chip {
     border: 1px solid var(--terminal-chip-border);
     background-color: var(--terminal-chip-bg);
     color: var(--terminal-chip-fg);
   }
 
-  /** Cursor / VS Code 资源管理器树 */
+  /** 资源管理器树 */
   .explorer-panel-toolbar {
     min-height: 35px;
   }
@@ -2167,7 +2163,7 @@
     background-color: var(--explorer-modified-dot);
   }
 
-  /** Workbench 资源管理器 — 白天与预览/编辑区同色；夜间沿用 Cursor/VS Code 深色侧栏 */
+  /** Workbench 资源管理器 — 白天与预览/编辑区同色；夜间沿用深色侧栏 */
   .workbench-explorer-sidebar {
     color: var(--sidebar-foreground);
   }
@@ -2183,7 +2179,7 @@
     --explorer-row-active-fg: #ffffff;
     --explorer-indent-guide: #404040;
     --explorer-modified-dot: #3794ff;
-    /* Cursor / VS Code gitDecoration.* */
+    /* gitDecoration.* */
     --explorer-git-modified: #e2c08d;
     --explorer-git-untracked: #73b8ff;
     --explorer-git-added: #73c991;
@@ -2233,7 +2229,7 @@
     background-color: var(--explorer-row-hover);
   }
 
-  /** 夜间工作台：Cursor 式分区边框与字号 */
+  /** 夜间工作台：分区边框与字号 */
   .dark .workbench-editor-pane {
     background-color: var(--code-bg);
     border-right: 1px solid var(--border);
@@ -2313,7 +2309,7 @@
   }
 }
 
-/* ===== Cursor 式聊天标签页思考动画 ===== */
+/* ===== 聊天标签页思考动画 ===== */
 
 /** 思考指示器：三个均衡条 */
 .thinking-dots {
@@ -2395,7 +2391,7 @@
   box-shadow: inset 0 -1.5px 0 var(--primary);
 }
 
-/** Cursor 式标签名：发送时渐变脉冲 */
+/** 标签名：发送时渐变脉冲 */
 .chat-tab-title {
   min-width: 0;
   flex: 1;

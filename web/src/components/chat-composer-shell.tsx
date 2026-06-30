@@ -16,7 +16,7 @@ export type ChatComposerShellProps = {
   onSend: () => void;
   onStop: () => void;
   onPaste: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
-  /** Cursor 式：拖拽文件/图片到 Composer */
+  /** 拖拽文件/图片到 Composer */
   onDropFiles?: (files: File[], cursor: number) => void;
   placeholder: string;
   disabled: boolean;
@@ -44,7 +44,7 @@ export type ChatComposerShellProps = {
   variant?: "dock" | "inline";
 };
 
-/** Cursor 式 Composer 主体（底栏与顶部内联编辑共用） */
+/** Composer 主体（底栏与顶部内联编辑共用） */
 export function ChatComposerShell({
   textareaRef,
   input,
@@ -120,7 +120,7 @@ export function ChatComposerShell({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Cursor 式拖拽高亮蒙层 */}
+      {/* 拖拽高亮蒙层 */}
       {dragOver && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-primary/5">
           <div className="flex flex-col items-center gap-1.5 rounded-xl border-2 border-dashed border-primary/40 px-6 py-3">
@@ -145,7 +145,7 @@ export function ChatComposerShell({
       ) : null}
 
       <div className={cn("chat-composer-body px-3", hasAttachments ? "pt-2.5" : "pt-3")}>
-        {/* 图片缩略图 — Cursor 风格：56×56，无文件名，X 在图片上方 */}
+        {/* 图片缩略图 — 56×56，无文件名，X 在图片上方 */}
         {pendingImages.length > 0 ? (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {pendingImages.map((img) => (
@@ -160,7 +160,7 @@ export function ChatComposerShell({
                   alt={img.name || ""}
                   className="h-14 w-14 object-cover"
                 />
-                {/* 删除按钮 — Cursor 式：图片右上角半透明圆形 */}
+                {/* 删除按钮 — 图片右上角半透明圆形 */}
                 <button
                   type="button"
                   className="absolute right-1 top-1 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-black/45 text-white/90 opacity-0 shadow transition hover:bg-black/65 group-hover/img:opacity-100"
@@ -177,7 +177,7 @@ export function ChatComposerShell({
           </div>
         ) : null}
 
-        {/* 非图片文件 chip — Cursor 式：带 File 图标的 pill */}
+        {/* 非图片文件 chip — 带 File 图标的 pill */}
         <ComposerFileAttachments files={pendingFiles} onRemove={onRemoveFile} className="mb-2" />
 
         <ComposerTerminalAttachments

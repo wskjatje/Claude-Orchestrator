@@ -135,7 +135,9 @@ function writeClaudeAgentMarkdownContent(basenameRaw, content) {
 
 function stemFromAgentBasenameForOrchestration(raw) {
   const t = typeof raw === 'string' ? raw.trim() : ''
-  if (!t) return ''
+  if (!t) return '__general__'
+  const lowerT = t.toLowerCase()
+  if (lowerT === 'auto' || lowerT === '__auto__') return '__general__'
   const base = path.basename(t.replace(/\\/g, '/'))
   const lower = base.toLowerCase()
   return lower.endsWith('.md') ? base.slice(0, -3).trim() : base.trim()

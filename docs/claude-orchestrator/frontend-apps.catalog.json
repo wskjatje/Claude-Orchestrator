@@ -16,7 +16,7 @@
         {
           "route": "/",
           "name": "聊天 · 工作台",
-          "summary": "Cursor 式三栏主界面",
+          "summary": "三栏主界面",
           "description": "项目主入口：左侧资源面板、中间编辑/预览、右侧 Claude 对话。",
           "features": [
             "左栏 Tab：文件树、Git 状态、改动列表；支持工作区目录浏览",

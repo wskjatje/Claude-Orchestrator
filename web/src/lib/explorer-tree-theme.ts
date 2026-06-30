@@ -1,4 +1,4 @@
-/** VS Code / Cursor gitDecoration 语义色 */
+/** gitDecoration 语义色 */
 export type ExplorerGitTone = "modified" | "untracked" | "added" | "deleted" | "renamed" | "neutral";
 
 export function gitStatusTone(letter: string | undefined): ExplorerGitTone {

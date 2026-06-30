@@ -1,6 +1,6 @@
 # Claude Code + CC Switch 多 Provider 配置
 
-本仓库已从 GitHub 克隆 [anthropics/claude-code](https://github.com/anthropics/claude-code) 源码；日常 CLI 由 **单一 runtime** 维护，**不在 Claudx / Cursor / 终端** 分散配置 provider。
+本仓库已从 GitHub 克隆 [anthropics/claude-code](https://github.com/anthropics/claude-code) 源码；日常 CLI 由 **单一 runtime** 维护，**不在其他工具** 分散配置 provider。
 
 ## 架构约束（长期固定）
 
@@ -10,13 +10,13 @@
 | Runtime | Homebrew cask | `/opt/homebrew/bin/claude` |
 | Local inference | Ollama | `http://localhost:11434` |
 | Workspace shell | Claudx | Project: `~/claudecode` |
-| Editor | Cursor | 不单独 export API key |
+| Editor | 本机 | 不单独 export API key |
 | Governance | 本仓库 | `CLAUDE.md` + `.claude/settings.json` |
 
-**禁止**：在 Claudx、Cursor、多个 terminal profile 里各自配 provider / API key —— 会导致 topology 重新污染。
+**禁止**：在其他工具或多个 terminal profile 里各自配 provider / API key —— 会导致 topology 重新污染。
 
 ```
-Cursor / Claudx
+编辑器
       ↓
 Claude Code  (/opt/homebrew/bin/claude)
       ↓

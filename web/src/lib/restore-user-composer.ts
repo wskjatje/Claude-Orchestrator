@@ -40,7 +40,7 @@ export type RestoredUserComposer = {
   attachments: (UserImageAttachment & { id: string })[];
 };
 
-/** 将磁盘中的用户消息还原为 Composer 可编辑状态（Cursor 式重新发送）。 */
+/** 将磁盘中的用户消息还原为 Composer 可编辑状态。 */
 export function restoreUserMsgToComposer(msg: {
   content: string;
   attachments?: UserImageAttachment[];

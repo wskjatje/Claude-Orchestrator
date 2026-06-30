@@ -1,7 +1,7 @@
 import { MessageCirclePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** 终端选区浮动按钮（类 Cursor「Add to Chat ⌘L」） */
+/** 终端选区浮动按钮（Add to Chat） */
 export function TerminalAddToChatButton({
   onClick,
   className,

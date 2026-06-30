@@ -20,7 +20,7 @@ function inferExt(ext?: string, fileName?: string): string {
   return base.split(".").pop()?.toLowerCase() ?? "";
 }
 
-/** vscode-icons — 与 Cursor Material Icon Theme 文件名规则对齐 */
+/** vscode-icons — 按文件名规则匹配图标 */
 export function explorerIconifyId(ext?: string, fileName?: string, isDir?: boolean, expanded?: boolean): string {
   if (isDir) {
     return expanded ? "vscode-icons:folder-opened" : "vscode-icons:folder";

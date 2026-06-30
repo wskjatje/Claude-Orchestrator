@@ -8,7 +8,7 @@
   "official": true,
   "userModified": false,
   "createdAt": "2026-06-14T03:15:16.998Z",
-  "updatedAt": "2026-06-27T02:20:40.210Z",
+  "updatedAt": "2026-06-30T03:29:19.643Z",
   "state": {
     "status": "idle",
     "currentIndex": 0,
@@ -16,7 +16,7 @@
       {
         "agentName": "project-manager",
         "taskId": "WBS-链-01",
-        "instruction": "【Agent】global://project-manager（~/.claude/agents/project-manager.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】WBS 表格：编号 | 摘要 | Agent | 依赖 | DoD\n\n【禁止】不写代码/UI\n\n【读取·强制】须优先阅读工作区上游产物（跑链时应用会自动注入已存在文件正文）：`docs/prd.md`、`docs/sprint-backlog.md`。\n【读取·兜底】若上游 md 尚未落盘，须阅读 `docs/chain-steps/` 下前序步骤摘要；仍缺失时用 read / readWorkspaceTextFile / listWorkspaceMarkdownFiles 补读，并在一句话内说明缺失项。\n【禁止臆造输入】禁止编造未读过的 PRD/WBS/架构/Backlog 正文；不得假设 Django/Flask 等未在工作区出现的栈。\n\n【落盘路径·强制】你是 global://project-manager。写入工作区时 ```workspace-write``` 的 path **默认必须是** `docs/wbs.md`；同一 Agent 多次交付仍用此路径（追加或覆盖须在正文说明）；禁止写入其它 Agent 专属文件（如 product-manager→docs/prd.md、project-manager→docs/wbs.md、product-sprint-prioritizer→docs/sprint-backlog.md、frontend-engineer→docs/frontend-implementation.md、qa-engineer→docs/qa-report.md），除非用户明确要求合并到指定路径。未在映射表中的角色默认 `docs/agents/{stem}.md` 或 `docs/{类别}/{角色名}.md`。\n【落盘·任务链】跑链/Multi-Agent 时须输出合法 ```workspace-write``` JSON（path 默认 `docs/wbs.md`）；系统据此真正写盘。禁止仅写「已落盘」口述或虚构「【工作区已写入】」。\n【落盘·单聊】普通对话（非跑链）仍须先询问用户是否落盘，获明确同意后再写 workspace-write。",
+        "instruction": "【Agent】global://project-manager（~/.claude/agents/project-manager.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】WBS 表格：编号 | 摘要 | Agent | 依赖 | DoD\n\n【禁止】不写代码/UI\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/sprint-backlog.md`.\n\n【PATH】`docs/wbs.md` — Produce structured markdown. Your full reply is auto-saved here.",
         "skills": [
           "wbs-decompose",
           "dependency-orchestration",
@@ -30,7 +30,7 @@
       {
         "agentName": "software-architect",
         "taskId": "WBS-链-02",
-        "instruction": "【Agent】global://software-architect（~/.claude/agents/software-architect.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】模块边界、接口契约、数据流与技术选型\n\n【禁止】不写具体页面 HTML/CSS\n\n【读取·强制】须优先阅读工作区上游产物（跑链时应用会自动注入已存在文件正文）：`docs/prd.md`、`docs/wbs.md`、`docs/sprint-backlog.md`。\n【读取·兜底】若上游 md 尚未落盘，须阅读 `docs/chain-steps/` 下前序步骤摘要；仍缺失时用 read / readWorkspaceTextFile / listWorkspaceMarkdownFiles 补读，并在一句话内说明缺失项。\n【禁止臆造输入】禁止编造未读过的 PRD/WBS/架构/Backlog 正文；不得假设 Django/Flask 等未在工作区出现的栈。\n\n【落盘路径·强制】你是 global://software-architect。写入工作区时 ```workspace-write``` 的 path **默认必须是** `docs/architecture-note.md`；同一 Agent 多次交付仍用此路径（追加或覆盖须在正文说明）；禁止写入其它 Agent 专属文件（如 product-manager→docs/prd.md、project-manager→docs/wbs.md、product-sprint-prioritizer→docs/sprint-backlog.md、frontend-engineer→docs/frontend-implementation.md、qa-engineer→docs/qa-report.md），除非用户明确要求合并到指定路径。未在映射表中的角色默认 `docs/agents/{stem}.md` 或 `docs/{类别}/{角色名}.md`。\n【落盘·自动】须输出合法 ```workspace-write``` JSON 写入默认路径；若无合法围栏，系统会将摘要写入 docs/chain-steps/{任务ID}-software-architect.md 或自动写入 `docs/architecture-note.md`。\n【禁止虚构落盘】禁止自行撰写「【工作区已写入】」等小节，除非正文内确实存在合法 workspace-write 围栏。",
+        "instruction": "【Agent】global://software-architect（~/.claude/agents/software-architect.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】模块边界、接口契约、数据流与技术选型\n\n【禁止】不写具体页面 HTML/CSS\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/wbs.md`, `docs/sprint-backlog.md`.\n\n【PATH】`docs/architecture-note.md` — Produce structured markdown. Your full reply is auto-saved here.",
         "skills": [
           "arch-boundary-definition",
           "api-contract-design",
@@ -43,7 +43,7 @@
       {
         "agentName": "backend-engineer",
         "taskId": "WBS-链-03",
-        "instruction": "【Agent】global://backend-engineer（~/.claude/agents/backend-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【交付】按对话中已确认的范围、验收标准与工作区相关文档执行。\n\n【任务】在架构边界内落地服务端骨架（路由/models 等），保证可运行或可通过静态检查；代码写 src/，说明落默认 md\n\n【读取·强制】须优先阅读工作区上游产物（跑链时应用会自动注入已存在文件正文）：`docs/prd.md`、`docs/architecture-note.md`、`docs/wbs.md`。\n【读取·兜底】若上游 md 尚未落盘，须阅读 `docs/chain-steps/` 下前序步骤摘要；仍缺失时用 read / readWorkspaceTextFile / listWorkspaceMarkdownFiles 补读，并在一句话内说明缺失项。\n【禁止臆造输入】禁止编造未读过的 PRD/WBS/架构/Backlog 正文；不得假设 Django/Flask 等未在工作区出现的栈。\n\n【落盘路径·强制】你是 global://backend-engineer。写入工作区时 ```workspace-write``` 的 path **默认必须是** `docs/api-summary.md`；同一 Agent 多次交付仍用此路径（追加或覆盖须在正文说明）；禁止写入其它 Agent 专属文件（如 product-manager→docs/prd.md、project-manager→docs/wbs.md、product-sprint-prioritizer→docs/sprint-backlog.md、frontend-engineer→docs/frontend-implementation.md、qa-engineer→docs/qa-report.md），除非用户明确要求合并到指定路径。未在映射表中的角色默认 `docs/agents/{stem}.md` 或 `docs/{类别}/{角色名}.md`。\n【落盘·自动】须输出合法 ```workspace-write``` JSON 写入默认路径；若无合法围栏，系统会将摘要写入 docs/chain-steps/{任务ID}-backend-engineer.md 或自动写入 `docs/api-summary.md`。\n【禁止虚构落盘】禁止自行撰写「【工作区已写入】」等小节，除非正文内确实存在合法 workspace-write 围栏。\n【代码落盘】业务代码须写入 src/ 等源目录（围栏首行写相对路径，或代码首行 `# src/...` 注释）；说明文档仍用默认 md 路径。",
+        "instruction": "【Agent】global://backend-engineer（~/.claude/agents/backend-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【交付】按对话中已确认的范围、验收标准与工作区相关文档执行。\n\n【任务】在架构边界内落地服务端骨架（路由/models 等），保证可运行或可通过静态检查；代码写 src/，说明落默认 md\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/architecture-note.md`, `docs/wbs.md`.\n\n【PATH】`docs/api-summary.md`\n【CODE WRITE】Code→src/ via ```workspace-write```. Your doc reply is auto-saved.",
         "skills": [
           "backend-implementation",
           "data-layer-design",
@@ -56,7 +56,7 @@
       {
         "agentName": "code-reviewer",
         "taskId": "WBS-链-04",
-        "instruction": "【Agent】global://code-reviewer（~/.claude/agents/code-reviewer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【附加上游】本轮链式任务已改动的 src/ 与 server/ 文件\n\n【任务】代码评审：风险点与必须修改项列表；不代替用户合并\n\n【读取·强制】须优先阅读工作区上游产物（跑链时应用会自动注入已存在文件正文）：`docs/frontend-implementation.md`、`docs/api-summary.md`。\n【读取·兜底】若上游 md 尚未落盘，须阅读 `docs/chain-steps/` 下前序步骤摘要；仍缺失时用 read / readWorkspaceTextFile / listWorkspaceMarkdownFiles 补读，并在一句话内说明缺失项。\n【禁止臆造输入】禁止编造未读过的 PRD/WBS/架构/Backlog 正文；不得假设 Django/Flask 等未在工作区出现的栈。\n\n【落盘路径·强制】你是 global://code-reviewer。写入工作区时 ```workspace-write``` 的 path **默认必须是** `docs/code-review-report.md`；同一 Agent 多次交付仍用此路径（追加或覆盖须在正文说明）；禁止写入其它 Agent 专属文件（如 product-manager→docs/prd.md、project-manager→docs/wbs.md、product-sprint-prioritizer→docs/sprint-backlog.md、frontend-engineer→docs/frontend-implementation.md、qa-engineer→docs/qa-report.md），除非用户明确要求合并到指定路径。未在映射表中的角色默认 `docs/agents/{stem}.md` 或 `docs/{类别}/{角色名}.md`。\n【落盘·自动】须输出合法 ```workspace-write``` JSON 写入默认路径；若无合法围栏，系统会将摘要写入 docs/chain-steps/{任务ID}-code-reviewer.md 或自动写入 `docs/code-review-report.md`。\n【禁止虚构落盘】禁止自行撰写「【工作区已写入】」等小节，除非正文内确实存在合法 workspace-write 围栏。",
+        "instruction": "【Agent】global://code-reviewer（~/.claude/agents/code-reviewer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【附加上游】本轮链式任务已改动的 src/ 与 server/ 文件\n\n【任务】代码评审：风险点与必须修改项列表；不代替用户合并\n\n【READ】Read upstream artifacts first (pre-injected): `docs/frontend-implementation.md`, `docs/api-summary.md`.\n\n【PATH】`docs/code-review-report.md` — Produce structured markdown. Your full reply is auto-saved here.",
         "skills": [
           "security-review",
           "correctness-review",
@@ -70,7 +70,7 @@
       {
         "agentName": "qa-engineer",
         "taskId": "WBS-链-05",
-        "instruction": "【Agent】global://qa-engineer（~/.claude/agents/qa-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【附加上游】server/ 与 src/ 本轮改动\n\n【任务】对照验收标准出 QA 报告与阻塞项\n\n【读取·强制】须优先阅读工作区上游产物（跑链时应用会自动注入已存在文件正文）：`docs/prd.md`、`docs/frontend-implementation.md`、`docs/api-summary.md`。\n【读取·兜底】若上游 md 尚未落盘，须阅读 `docs/chain-steps/` 下前序步骤摘要；仍缺失时用 read / readWorkspaceTextFile / listWorkspaceMarkdownFiles 补读，并在一句话内说明缺失项。\n【禁止臆造输入】禁止编造未读过的 PRD/WBS/架构/Backlog 正文；不得假设 Django/Flask 等未在工作区出现的栈。\n\n【落盘路径·强制】你是 global://qa-engineer。写入工作区时 ```workspace-write``` 的 path **默认必须是** `docs/qa-report.md`；同一 Agent 多次交付仍用此路径（追加或覆盖须在正文说明）；禁止写入其它 Agent 专属文件（如 product-manager→docs/prd.md、project-manager→docs/wbs.md、product-sprint-prioritizer→docs/sprint-backlog.md、frontend-engineer→docs/frontend-implementation.md、qa-engineer→docs/qa-report.md），除非用户明确要求合并到指定路径。未在映射表中的角色默认 `docs/agents/{stem}.md` 或 `docs/{类别}/{角色名}.md`。\n【落盘·自动】须输出合法 ```workspace-write``` JSON 写入默认路径；若无合法围栏，系统会将摘要写入 docs/chain-steps/{任务ID}-qa-engineer.md 或自动写入 `docs/qa-report.md`。\n【禁止虚构落盘】禁止自行撰写「【工作区已写入】」等小节，除非正文内确实存在合法 workspace-write 围栏。",
+        "instruction": "【Agent】global://qa-engineer（~/.claude/agents/qa-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【附加上游】server/ 与 src/ 本轮改动\n\n【任务】对照验收标准出 QA 报告与阻塞项\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/frontend-implementation.md`, `docs/api-summary.md`.\n\n【PATH】`docs/qa-report.md` — Produce structured markdown. Your full reply is auto-saved here.",
         "skills": [
           "test-strategy",
           "automated-test-cases",

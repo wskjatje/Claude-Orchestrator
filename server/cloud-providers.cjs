@@ -292,8 +292,40 @@ async function fetchProviderModels({ providerName, endpoint, apiKey, timeoutMs =
 
     return { ok: true, models, provider: providerName, defaultInputPrice, defaultOutputPrice }
   } catch (e) {
-    return { ok: false, error: String(e?.message || e).slice(0, 200), models: [] }
+    const msg = String(e?.message || e).slice(0, 300)
+    // 将常见 Node.js 网络/TLS/连接错误译为友好中文提示
+    const friendly = friendlyNetworkError(msg, providerName)
+    return { ok: false, error: friendly || msg, models: [] }
   }
+}
+
+/**
+ * 将 Node.js 底层网络/TLS/DNS 错误译为用户友好的中文提示。
+ */
+function friendlyNetworkError(msg, providerName) {
+  const name = providerName || '该供应商'
+  if (/Client network socket disconnected.*TLS/i.test(msg)) {
+    return `无法与 ${name} 建立安全连接，请检查网络环境（防火墙/VPN/代理）是否阻拦了外网 HTTPS 请求。`
+  }
+  if (/ECONNREFUSED/i.test(msg)) {
+    return `连接 ${name} 被拒绝（ECONNREFUSED），请确认 API 端点地址是否正确。`
+  }
+  if (/ENOTFOUND|getaddrinfo.*ENOTFOUND/i.test(msg)) {
+    return `无法解析 ${name} 的域名（DNS 解析失败），请检查网络或更换 DNS。`
+  }
+  if (/ETIMEDOUT|request time/i.test(msg)) {
+    return `连接 ${name} 超时（ETIMEDOUT），请检查 API 端点与网络连通性。`
+  }
+  if (/ECONNRESET|socket.*reset|connection.*reset/i.test(msg)) {
+    return `与 ${name} 的连接被重置（ECONNRESET），请检查网络环境。`
+  }
+  if (/certificate|UNABLE_TO_VERIFY|SELF_SIGNED/i.test(msg)) {
+    return `${name} 的 SSL/TLS 证书验证失败，请确认 API 端点使用了有效的 HTTPS 证书。`
+  }
+  if (/fetch failed|network.*error/i.test(msg)) {
+    return `无法连接到 ${name}，请检查 API 端点地址与网络环境。`
+  }
+  return ''
 }
 
 /**
@@ -579,7 +611,7 @@ function deleteProvider(providerId) {
     if (remaining.length) {
       store.currentProviderId = remaining[0]
       const rec = store.providers[remaining[0]]
-      const model = rec?.models?.[0] || 'sonnet'
+      const model = rec?.models?.[0] || ''
       const { env } = buildProviderEnv({ ...rec, model })
       writeClaudeSettingsFromEnv(env)
     } else {
@@ -615,7 +647,7 @@ function setCurrentProvider(providerId, preferredModel) {
   return {
     ok: true,
     providerId: id,
-    model: model || rec.models?.[0] || 'sonnet',
+    model: model || rec.models?.[0] || '',
   }
 }
 

@@ -2,10 +2,6 @@ import type { DesktopApi } from "@/types/desktop";
 import type { PriorTurn, UserImageAttachment } from "@/lib/ollama-messages";
 import { agentStemFromBasename } from "@/lib/agent-basename";
 
-function workspaceDirTrimmed(dir: string | null): dir is string {
-  return typeof dir === "string" && dir.trim().length > 0;
-}
-
 export type ClaudeOrchestrationHints = {
   /** Claude Code CLI --model，编排层（sonnet / opus / haiku） */
   orchestratorModel?: string;
@@ -27,7 +23,7 @@ export async function buildClaudeCodePrompt(
     userLine: string;
     userAttachments?: UserImageAttachment[];
     savedImagePaths?: string[];
-    /** Cursor 式：附图经 stream-json inline 送入 Claude Code，不再提示 Read 落盘 */
+    /** 附图经 stream-json inline 送入 Claude Code，不再提示 Read 落盘 */
     inlineVision?: boolean;
     /** Claude Code --resume：历史已在 CLI 会话内，勿重复折叠 priorHistory */
     sessionResume?: boolean;
@@ -38,23 +34,12 @@ export async function buildClaudeCodePrompt(
     skipDefaultRoleBlock?: boolean;
     /** 当前 Agent 可调用的任务链摘要（对话 /chain 与引导用） */
     chainCatalogSnippet?: string;
+    /** MCP Ollama 聊天工具名（默认 ollama_chat） */
+    mcpChatToolName?: string;
+    /** MCP 模型列举工具名（默认 ollama_list_models） */
+    mcpListModelsToolName?: string;
   },
 ): Promise<string> {
-  let executionSnapshot = "";
-  if (workspaceDirTrimmed(opts.workspaceDir)) {
-    try {
-      const snap = await desktop.workspaceGetExecutionSnapshot();
-      if (snap?.ok && typeof snap.text === "string" && snap.text.trim()) {
-        executionSnapshot =
-          "\n【当前项目执行情况快照】\n" +
-          "以下为应用从你的「所选工作区」采集的客观事实；若须写入磁盘请使用 ```workspace-write``` JSON。\n\n" +
-          snap.text.trim();
-      }
-    } catch {
-      executionSnapshot = "\n【快照】采集失败，可忽略。\n";
-    }
-  }
-
   let crossAgentSnippet = "";
   if (typeof desktop.getCrossAgentContext === "function") {
     try {
@@ -70,11 +55,11 @@ export async function buildClaudeCodePrompt(
   const orch = opts.orchestration ?? {};
   const localHint =
     orch.localOllamaModel?.trim() ||
-    "（用户未在设置中指定，可先 ollama_list_models 再选）";
-  const orchName = orch.orchestratorModel?.trim() || "（由会话选择）";
+    "（未设置）";
+  const orchName = orch.orchestratorModel?.trim() || "（默认）";
 
   const stem = agentStemFromBasename(opts.localAgentBasename ?? undefined);
-  const roleBlock = opts.skipDefaultRoleBlock
+  const roleBlock = opts.skipDefaultRoleBlock || stem === "__general__"
     ? ""
     : [
         `【角色】Agent「${stem}」`,
@@ -85,13 +70,17 @@ export async function buildClaudeCodePrompt(
         .filter(Boolean)
         .join("\n");
 
+  const mcpChatTool = opts.mcpChatToolName?.trim() || "ollama_chat";
+  const mcpListModelsTool = opts.mcpListModelsToolName?.trim() || "ollama_list_models";
+
   const preamble = [
-    "【环境】Claude Code CLI；本机 Ollama 须经 MCP 工具 ollama_chat 调用。",
-    `【模型】编排 ${orchName}；Ollama ${localHint}`,
+    `【环境】Claude Code CLI；Ollama 经 MCP ${mcpChatTool} 调用。`,
+    `【模型】${orchName}；Ollama ${localHint}`,
     opts.workspaceDir ? `【工作区】${opts.workspaceDir}` : "",
-    "【语言】简体中文（代码与路径除外）。",
-    "【写盘】保存到工作区时使用 ```workspace-write``` JSON。",
-    executionSnapshot,
+    "【语言】zh_CN（代码/路径除外）。",
+    stem === "__general__"
+      ? "【MUST_NOT】不可使用 workspace-write。纯问答不写文件；仅用户明确要求写/生成/保存/更新时才可写。"
+      : "【写盘】```workspace-write``` JSON。",
     crossAgentSnippet,
   ]
     .filter(Boolean)
@@ -122,7 +111,7 @@ export async function buildClaudeCodePrompt(
 
   let userBlock = opts.userLine;
   if (opts.inlineVision) {
-    /* 图片由 Claude Code stream-json content blocks 直送模型，与 Cursor 一致 */
+    /* 图片由 Claude Code stream-json content blocks 直送模型 */
   } else if (opts.savedImagePaths?.length) {
     userBlock += `\n\n【附图·已落盘】用户上传 ${opts.savedImagePaths.length} 张截图，工作区相对路径：\n${opts.savedImagePaths.map((p) => `- ${p}`).join("\n")}\n请使用 Read 工具读取上述图片并结合用户问题分析（例如 HTTP 404 页面、终端报错）；禁止声称无法查看图片。`;
   } else if (opts.userAttachments?.length) {
@@ -134,8 +123,8 @@ export async function buildClaudeCodePrompt(
   }
   blocks.push(`### 用户（本轮）\n${userBlock}`);
   blocks.push(
-    "### 指令\n" +
-      "1）理解「用户（本轮）」意图；2）如需本机开源模型推理，先判定权限与任务范围，再调用 MCP 工具 `ollama_chat`（勿跳过 Claude 编排）；3）如需列举已安装模型，可调用 `ollama_list_models`；4）其它工具/MCP/Skill 按工作区配置执行。",
+    "### INSTRUCTIONS\n" +
+      "1) Understand user intent. 2) For local open-source model, check scope then call MCP `" + mcpChatTool + "`. 3) List models: `" + mcpListModelsTool + "`. 4) Other tools/MCP/Skills per workspace config.",
   );
 
   return blocks.join("\n\n");

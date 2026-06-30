@@ -8,7 +8,7 @@
   "official": true,
   "userModified": false,
   "createdAt": "2026-06-14T03:15:16.998Z",
-  "updatedAt": "2026-06-27T02:20:40.210Z",
+  "updatedAt": "2026-06-30T03:29:19.643Z",
   "state": {
     "status": "idle",
     "currentIndex": 0,
@@ -16,7 +16,7 @@
       {
         "agentName": "devops-engineer",
         "taskId": "REL-1",
-        "instruction": "【Agent】global://devops-engineer（~/.claude/agents/devops-engineer.md）\n【输入】`docs/architecture-note.md`、`docs/qa-report.md`（若有）\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】发布步骤、回滚方案、环境变量与监控检查清单\n\n【读取·强制】须优先阅读工作区上游产物（跑链时应用会自动注入已存在文件正文）：`docs/architecture-note.md`、`docs/release-plan.md`。\n【读取·兜底】若上游 md 尚未落盘，须阅读 `docs/chain-steps/` 下前序步骤摘要；仍缺失时用 read / readWorkspaceTextFile / listWorkspaceMarkdownFiles 补读，并在一句话内说明缺失项。\n【禁止臆造输入】禁止编造未读过的 PRD/WBS/架构/Backlog 正文；不得假设 Django/Flask 等未在工作区出现的栈。\n\n【落盘路径·强制】你是 global://devops-engineer。写入工作区时 ```workspace-write``` 的 path **默认必须是** `docs/release-plan.md`；同一 Agent 多次交付仍用此路径（追加或覆盖须在正文说明）；禁止写入其它 Agent 专属文件（如 product-manager→docs/prd.md、project-manager→docs/wbs.md、product-sprint-prioritizer→docs/sprint-backlog.md、frontend-engineer→docs/frontend-implementation.md、qa-engineer→docs/qa-report.md），除非用户明确要求合并到指定路径。未在映射表中的角色默认 `docs/agents/{stem}.md` 或 `docs/{类别}/{角色名}.md`。\n【落盘·自动】须输出合法 ```workspace-write``` JSON 写入默认路径；若无合法围栏，系统会将摘要写入 docs/chain-steps/{任务ID}-devops-engineer.md 或自动写入 `docs/release-plan.md`。\n【禁止虚构落盘】禁止自行撰写「【工作区已写入】」等小节，除非正文内确实存在合法 workspace-write 围栏。\n【代码落盘】业务代码须写入 src/ 等源目录（围栏首行写相对路径，或代码首行 `# src/...` 注释）；说明文档仍用默认 md 路径。",
+        "instruction": "【Agent】global://devops-engineer（~/.claude/agents/devops-engineer.md）\n【输入】`docs/architecture-note.md`、`docs/qa-report.md`（若有）\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】发布步骤、回滚方案、环境变量与监控检查清单\n\n【READ】Read upstream artifacts first (pre-injected): `docs/architecture-note.md`, `docs/release-plan.md`.\n\n【PATH】`docs/release-plan.md`\n【CODE WRITE】Code→src/ via ```workspace-write```. Your doc reply is auto-saved.",
         "skills": [
           "cicd-workflow",
           "release-rollback",

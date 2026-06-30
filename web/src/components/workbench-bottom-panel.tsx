@@ -88,7 +88,7 @@ function channelLabel(id: OutputChannelId): string {
   return OUTPUT_CHANNELS.find((c) => c.id === id)?.label ?? id;
 }
 
-/** 中间栏底部面板（类 Cursor：问题 / 输出 / 调试 / 终端 / 端口） */
+/** 最底部面板（问题 / 输出 / 调试 / 终端 / 端口） */
 export function WorkbenchBottomPanel({ onClose }: { onClose: () => void }) {
   const { problems, errorCount, warningCount, lintOpenFiles, linting } = useWorkbenchProblems();
   const ws = useWorkbenchWorkspace();

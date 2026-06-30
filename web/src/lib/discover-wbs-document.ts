@@ -12,14 +12,7 @@ export type ReadWorkspaceTextResult = {
   text?: string | null;
 };
 
-const DEFAULT_WBS_CANDIDATE_PATHS = [
-  "docs/wbs.md",
-  "docs/sprint-backlog.md",
-  "docs/wbs_hie_egs.md",
-  "docs/wbs_v1.2.md",
-  "docs/wbs_v1.md",
-  "docs/project-status.md",
-];
+export const DEFAULT_WBS_CANDIDATE_PATHS: string[] = [];
 
 function normalizeRelPath(raw: string): string {
   return String(raw ?? "").replace(/\\/g, "/").trim();

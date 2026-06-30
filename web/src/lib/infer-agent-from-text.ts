@@ -37,8 +37,8 @@ export function inferAgentStemFromText(text: string): string {
     return "project-manager";
   }
   if (/(写作|文案|文章|博客)/i.test(t)) {
-    return "product-manager";
+    return "__general__";
   }
 
-  return "product-manager";
+  return "__general__";
 }

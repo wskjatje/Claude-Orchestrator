@@ -4,6 +4,8 @@ import { relatedArtifactPathsForAgent } from "@/lib/agent-artifact-paths";
 
 const EXPLICIT_PATH_RE =
   /\b((?:docs|app|data|scripts|frontend|src|test|tests)(?:\/[a-zA-Z0-9_.-]+)+\.(?:md|txt|json|yaml|yml))\b/g;
+/** 方案 E：@ 前缀引用，支持任意常见扩展名 */
+const AT_REFERENCE_RE = /@([a-zA-Z0-9_.\-/]+\.(?:md|txt|json|yaml|yml|ts|tsx|js|jsx|css|html|py|go|rs|cpp|c|cxx|h|hpp|java|kt|swift|rb|php|vue|svelte))\b/g;
 
 function uniq(paths: string[]): string[] {
   return [...new Set(paths.map((p) => p.replace(/\\/g, "/")))];
@@ -12,20 +14,29 @@ function uniq(paths: string[]): string[] {
 function extractExplicitRelativePaths(line: string): string[] {
   const out = new Set<string>();
   let m: RegExpExecArray | null;
-  const re = new RegExp(EXPLICIT_PATH_RE.source, "g");
-  while ((m = re.exec(line)) !== null) {
+
+  // 匹配 @ 前缀引用：@README.md、@src/index.tsx、@docs/prd.md
+  const atRe = new RegExp(AT_REFERENCE_RE.source, "g");
+  while ((m = atRe.exec(line)) !== null) {
     const p = m[1];
     if (!p.includes("..")) out.add(p.replace(/\\/g, "/"));
   }
+
+  // 匹配不带 @ 前缀的传统路径格式
+  const legacyRe = new RegExp(EXPLICIT_PATH_RE.source, "g");
+  while ((m = legacyRe.exec(line)) !== null) {
+    const p = m[1];
+    if (!p.includes("..")) out.add(p.replace(/\\/g, "/"));
+  }
+
   return [...out];
 }
 
 function defaultImplicitCandidates(settings: { defaultConfirmWritePath?: string }): string[] {
   return uniq([
-    settings.defaultConfirmWritePath?.trim() || "docs/prd.md",
-    "docs/prd_v1.2.md",
-    "docs/prd.md",
-  ]);
+    settings.defaultConfirmWritePath?.trim() || "",
+    "README.md",
+  ].filter(Boolean));
 }
 
 /**
@@ -45,7 +56,7 @@ export function shouldTryImplicitPrdFiles(
     return /(?:需求|PRD|prd|产品经理|项目|实现|检查|优化|落地|范围|验收|现状)/i.test(bodyOrLine);
   }
   if (!cmd.matched) {
-    return /(?:需求文档|产品经理需求|根据.*PRD|任务拆解|WBS|优化|WEB|web\s*应用|项目|按照|上文)/i.test(
+    return /(?:需求文档|产品经理需求|根据.*PRD|任务拆解|WBS|WEB|web\s*应用)/i.test(
       displayLine,
     );
   }
@@ -57,9 +68,9 @@ export function shouldInjectFollowUpWorkspaceContext(displayLine: string): boole
   const s = displayLine.trim();
   if (!s) return false;
   return (
-    /(?:按照|根据|依).*?(?:以上|上文|前面|刚才|优化)/i.test(s) ||
-    /继续.*?(?:优化|写|做|完善)/i.test(s) ||
-    /(?:上面|前文)(?:的|说|提到)?/i.test(s) ||
+    /(?:按照|根据|依).*?(?:以上|上文|前面|刚才).*(?:优化|执行|实现|修改|调整|生成|整理|写入|落盘|完善)/i.test(s) ||
+    /继续.*?(?:执行|优化|写|做|完善|实现|修改|落地)/i.test(s) ||
+    /(?:上面|前文)(?:的|说|提到)?(?:.*)(?:优化|执行|修改|方案|实现)/i.test(s) ||
     /^执行(?:优化|改进|方案)?$/i.test(s) ||
     /执行.*优化|落地.*优化|按.*优化建议/i.test(s) ||
     /(?:将|把).*(?:以上|上文|前面).*(?:生成|整理|写入|落盘|保存)/i.test(s) ||
@@ -67,32 +78,81 @@ export function shouldInjectFollowUpWorkspaceContext(displayLine: string): boole
   );
 }
 
-/** 极短且泛指「WEB应用/本项目」时，主动读 README/PRD 与目录树 */
+/** 用户问"当前项目是什么"或泛指「WEB应用/本项目」时，注入 README/PRD 与目录树 */
 export function shouldInjectProjectBootstrap(displayLine: string): boolean {
   const s = displayLine.trim();
   if (!s || s.length > 96) return false;
-  return /^(WEB应用|web\s*应用|本项目|当前项目|这个仓库|工作区)$/i.test(s);
+  return (
+    /^(WEB应用|web\s*应用|本项目|当前项目|这个仓库|工作区)$/i.test(s) ||
+    /^告诉我\s*(?:这|当前|本).*(?:项目|仓库|工作区)/.test(s) ||
+    /^(?:这(?:是|个)|当前)(?:项目|仓库|工作区)\s*(?:是|做什么|干什么|属于)/.test(s) ||
+    /^(?:这是什么|这是什么项目|这是什么仓库|这是做什么的)$/.test(s)
+  );
 }
 
-function flattenPanelTree(
-  nodes: { name: string; type: string; children?: unknown[] }[],
-  prefix = "",
-  out: string[] = [],
-  depth = 0,
-): string[] {
-  if (depth > 4 || out.length > 120) return out;
-  for (const n of nodes) {
-    if (!n?.name) continue;
-    const p = prefix ? `${prefix}/${n.name}` : n.name;
-    if (n.type === "file") out.push(p);
-    else {
-      out.push(`${p}/`);
-      if (Array.isArray(n.children)) {
-        flattenPanelTree(n.children as typeof nodes, p, out, depth + 1);
-      }
-    }
+/**
+ * 是否跳过工作区上下文注入。
+ * 当用户消息明显与工作区项目无关（系统/Agent/设置/技能/链/任务等），
+ * 跳过注入可每轮节省 500-2000 token。
+ */
+function shouldSkipWorkspaceContext(displayLine: string): boolean {
+  const s = displayLine.trim();
+  if (!s) return false;
+  // Agent/智能体/技能/角色 列表或配置
+  if (
+    /(?:有哪些|列出|查看|当前|切换|选择)\s*(?:agent|Agent|智能体|技能|角色)/.test(s) ||
+    /^(?:agent|Agent|智能体|技能|角色)[.．、：:]*(?:列表|配置|设置|管理|目录)/.test(s)
+  )
+    return true;
+  // 设置/模式/模型相关（非项目开发问题）
+  if (
+    /^(?:设置|模式|配置|模型|云端模型|本地模型)(?:在哪|在哪里|是什么|怎么|有什么用|如何)/.test(s) ||
+    /(?:查看|打开|修改|保存)\s*(?:设置|配置|选项|偏好)/.test(s)
+  )
+    return true;
+  // 历史/会话导航
+  if (
+    /(?:历史|会话|聊天)(?:记录|列表|管理|切换|\s*在哪)/.test(s) ||
+    /(?:切换|打开|关闭)\s*(?:会话|聊天|对话)/.test(s)
+  )
+    return true;
+  // 任务链/流水线/发布
+  if (
+    /^(?:任务链|流水线|发布|pipeline|chain|工作流)\s*(?:配置|设置|查看|是什么|怎么用)/i.test(s) ||
+    /(?:三省六部|任务链|automation.*chain)/i.test(s)
+  )
+    return true;
+  // 纯确认/感谢（短句）
+  if (
+    /^(?:好的|知道了|收到|可以|嗯|行|谢谢|感谢|明白了|没问题|ok|OK|好\s*的|好\s*吧|好嘞|可以\s*了|完成)$/.test(s)
+  )
+    return true;
+  return false;
+}
+
+const MAX_FILE_CHARS = 4_000;
+const MAX_APPENDIX_CHARS = 20_000;
+
+/**
+ * 扫描工作区 docs/ 目录，返回真实文件清单 markdown。
+ * 供 Auto 和链路模式共用，阻断模型对虚构路径（如 architecture-note.md）的模式联想。
+ */
+export async function buildDocsFileListHint(desktop: DesktopApi): Promise<string> {
+  if (typeof desktop.listWorkspaceMarkdownFiles !== "function") return "";
+  try {
+    const ls = await desktop.listWorkspaceMarkdownFiles();
+    if (!ls?.ok || !Array.isArray(ls.files)) return "";
+    const docsFiles = ls.files
+      .filter((f) => f.relPath.startsWith("docs/") && f.relPath.endsWith(".md"))
+      .slice(0, 60)
+    if (!docsFiles.length) return "";
+    return (
+      "\n\n【docs/ 实际文件清单】（仅列出真实存在的文件，不在列表中的文档不存在）\n" +
+      docsFiles.map((f) => `- ${f.relPath}`).join("\n")
+    );
+  } catch {
+    return "";
   }
-  return out;
 }
 
 async function buildWorkspaceContextAppendix(desktop: DesktopApi): Promise<{
@@ -107,28 +167,10 @@ async function buildWorkspaceContextAppendix(desktop: DesktopApi): Promise<{
       const snap = await desktop.workspaceGetExecutionSnapshot();
       if (snap?.ok && typeof snap.text === "string" && snap.text.trim()) {
         parts.push(
-          "【当前工作区执行情况快照】\n" +
-            "以下为应用从所选工作区采集的客观事实；请据此理解项目，勿编造 Django/Flask 等无关模板。\n\n" +
+          "【工作区快照】\n" +
             snap.text.trim(),
         );
         injectedPaths.push("（工作区快照）");
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  if (typeof desktop.listWorkspacePanelTree === "function") {
-    try {
-      const tree = await desktop.listWorkspacePanelTree();
-      if (tree?.ok && Array.isArray(tree.tree) && tree.tree.length > 0) {
-        const lines = flattenPanelTree(tree.tree as { name: string; type: string; children?: unknown[] }[]);
-        if (lines.length) {
-          parts.push(
-            "【工作区目录树（节选）】\n" + lines.slice(0, 100).join("\n"),
-          );
-          injectedPaths.push("（目录树）");
-        }
       }
     } catch {
       /* ignore */
@@ -139,18 +181,20 @@ async function buildWorkspaceContextAppendix(desktop: DesktopApi): Promise<{
   if (typeof read === "function") {
     const candidates = [
       "README.md",
-      "docs/TO1-requirements.md",
-      "docs/architecture-layers.md",
-      "docs/prd.md",
-      "pyproject.toml",
       "package.json",
+      "pyproject.toml",
+      "Cargo.toml",
+      "go.mod",
+      "Gemfile",
+      "composer.json",
+      "desktop/package.json",
     ];
     let readmeDone = false;
     for (const rel of candidates) {
       try {
         const r = await read(rel);
         if (r?.ok && typeof r.text === "string" && r.text.trim()) {
-          parts.push(`【工作区文件：${rel}】\n${r.text.trim().slice(0, 16_000)}`);
+          parts.push(`【工作区文件：${rel}】\n${r.text.trim().slice(0, MAX_FILE_CHARS)}`);
           injectedPaths.push(rel);
           if (rel === "README.md") readmeDone = true;
           if (readmeDone && parts.length >= 3) break;
@@ -162,17 +206,19 @@ async function buildWorkspaceContextAppendix(desktop: DesktopApi): Promise<{
   }
 
   const antiTemplate =
-    "【强制·读工作区】以上内容为当前仓库真实文件。禁止假设 Django/Flask（若无 manage.py/settings.py）；" +
-    "禁止重复粘贴 pip install / runserver 等通用教程。" +
-    "若用户要求「执行/落地优化」，须基于上述 README/docs 给出针对本仓库的具体改动（路径+要点），" +
-    "需要写盘时使用 ```workspace-write``` JSON 或 MCP workspace-write 工具，勿只输出空泛 bash。";
+    "【强制】项目定义以 package.json/README.md 为权威来源。" +
+    "勿引用任务跟踪文件的猜测内容。勿虚构不存在的文档。" +
+    "纯询问场景无需写文档/任务跟踪文件。落地优化须基于真实文件给具体改动。";
+
+  // 共享函数：注入实际 docs/ 文件列表
+  const docsFileList = await buildDocsFileListHint(desktop);
 
   if (!parts.length) return { appendix: "", injectedPaths: [] };
   parts.push(antiTemplate);
+  if (docsFileList) parts.push(docsFileList.trim());
   const joined =
-    "\n\n---\n（以下由应用从当前工作区自动注入，请优先阅读再回答，禁止再向用户索要已在下列内容中的信息）\n\n" +
+    "\n\n---\n【工作区注入】\n\n" +
     parts.join("\n\n");
-  const MAX_APPENDIX_CHARS = 20_000;
   return {
     appendix:
       joined.length > MAX_APPENDIX_CHARS
@@ -186,6 +232,8 @@ export type ExpandWorkspaceFilesOptions = {
   settings: { defaultConfirmWritePath?: string };
   cmd: ParsedAgentCommand;
   displayLine: string;
+  /** 方案 G：当前是否在任务链中执行。链中只读根文档 + 上一步产出，避免冗余注入。 */
+  chainRunning?: boolean;
 };
 
 /**
@@ -251,7 +299,7 @@ export async function expandUserLineWithWorkspaceFiles(
   baseUserLine: string,
   opts: ExpandWorkspaceFilesOptions,
 ): Promise<{ expanded: string; injectedPaths: string[] }> {
-  const { settings, cmd, displayLine } = opts;
+  const { settings, cmd, displayLine, chainRunning } = opts;
   const injected: { path: string; text: string }[] = [];
   const seen = new Set<string>();
 
@@ -271,14 +319,23 @@ export async function expandUserLineWithWorkspaceFiles(
       shouldTryImplicitPrdFiles(cmd, displayLine, baseUserLine) && injected.length === 0;
 
     if (cmd.matched && typeof read === "function") {
-      for (const rel of relatedArtifactPathsForAgent(cmd.stem)) {
+      const upstreamPaths = relatedArtifactPathsForAgent(cmd.stem);
+      // 方案 G：链中只读根文档 + 上一步产出（前 2 个），非链模式保持全量读取
+      const candidates = opts.chainRunning ? upstreamPaths.slice(0, 2) : upstreamPaths;
+      const foundPaths: string[] = [];
+      const missingPaths: string[] = [];
+      for (const rel of candidates) {
         if (seen.has(rel)) continue;
         const r = await read(rel);
         if (r?.ok && typeof r.text === "string" && r.text.trim()) {
           seen.add(rel);
           injected.push({ path: rel, text: r.text });
+          foundPaths.push(rel);
+        } else {
+          missingPaths.push(rel);
         }
       }
+      // 不再注入缺失文件声明
     }
 
     if (tryImplicit) {
@@ -305,11 +362,10 @@ export async function expandUserLineWithWorkspaceFiles(
 
   const workspaceAppendix = injected.length
     ? injected
-        .map(
-          ({ path, text }) =>
-            `\n\n---\n（以下由应用从当前工作区自动读入：${path}）\n\n${text}`,
-        )
-        .join("")
+          .map(({ path, text }) =>
+            `\n\n---\n【工作区：${path}】\n\n${text}`,
+          )
+          .join("")
     : "";
 
   let agentsAppendix = "";
@@ -325,10 +381,11 @@ export async function expandUserLineWithWorkspaceFiles(
   /** @type {string[]} */
   const contextInjected: string[] = [];
   const needBootstrap =
-    shouldInjectFollowUpWorkspaceContext(displayLine) ||
-    shouldInjectProjectBootstrap(displayLine) ||
-    (injected.length === 0 &&
-      shouldTryImplicitPrdFiles(cmd, displayLine, baseUserLine));
+    !shouldSkipWorkspaceContext(displayLine) &&
+    (shouldInjectFollowUpWorkspaceContext(displayLine) ||
+      shouldInjectProjectBootstrap(displayLine) ||
+      (injected.length === 0 &&
+        shouldTryImplicitPrdFiles(cmd, displayLine, baseUserLine)));
   if (needBootstrap && typeof desktop.workspaceGetExecutionSnapshot === "function") {
     const ctx = await buildWorkspaceContextAppendix(desktop);
     contextAppendix = ctx.appendix;
@@ -343,4 +400,106 @@ export async function expandUserLineWithWorkspaceFiles(
     expanded: baseUserLine + workspaceAppendix + contextAppendix + agentsAppendix,
     injectedPaths: [...injected.map((x) => x.path), ...contextInjected, ...agentsInjected],
   };
+}
+
+// 工作区文件路径模式（agent 指令中常见）
+const INSTRUCTION_FILE_RE =
+  /\b((?:docs|config|src|app|server|web|scripts)\/[a-zA-Z0-9_\-./]+\.(?:md|txt|json|yaml|yml|toml))\b/g;
+const ROOT_BOOTSTRAP_RE =
+  /\b((?:README|CLAUDE|CHANGELOG|CONTRIBUTING|package|tsconfig|vite)\.(?:md|json|ts))\b/g;
+const CHAIN_STEP_GLOB_RE = /docs\/chain-steps\/\*\.md/g;
+
+/**
+ * 扫描提示词中 agent 指令提及的工作区文件，逐条检查存在性并注入实际状态。
+ * 供 cloud-direct 等无工具调用能力的场景使用，避免 LLM 虚构不存在的文件内容。
+ */
+export async function preReadInstructedWorkspaceFiles(
+  api: DesktopApi,
+  text: string,
+  skipPaths?: string[],
+): Promise<string> {
+  const paths = new Set<string>();
+
+  // 匹配 docs/xxx.md 等指令式路径
+  let m: RegExpExecArray | null;
+  const dirRe = new RegExp(INSTRUCTION_FILE_RE.source, "g");
+  while ((m = dirRe.exec(text)) !== null) {
+    const p = m[1].replace(/\\/g, "/");
+    if (!p.includes("..")) paths.add(p);
+  }
+  // 匹配 README.md / package.json 等根文件
+  const rootRe = new RegExp(ROOT_BOOTSTRAP_RE.source, "g");
+  while ((m = rootRe.exec(text)) !== null) {
+    const p = m[1].replace(/\\/g, "/");
+    if (!p.includes("..")) paths.add(p);
+  }
+
+  // 展开 docs/chain-steps/*.md 通配符
+  let chainStepFiles: string[] = [];
+  if (CHAIN_STEP_GLOB_RE.test(text) && typeof api.listWorkspaceMarkdownFiles === "function") {
+    try {
+      const listed = await api.listWorkspaceMarkdownFiles();
+      if (listed?.ok && Array.isArray(listed.files)) {
+        chainStepFiles = listed.files
+          .map((f) => (f as { relPath: string }).relPath)
+          .filter((rel) => rel.startsWith("docs/chain-steps/") && rel.endsWith(".md"))
+          .slice(0, 10);
+        for (const p of chainStepFiles) paths.add(p);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // 去重：跳过已由 expandUserLineWithWorkspaceFiles 注入的路径
+  if (skipPaths?.length) {
+    for (const p of skipPaths) {
+      paths.delete(p);
+    }
+  }
+
+  if (paths.size === 0) return "";
+
+  const found: { rel: string; content: string }[] = [];
+  const missing: string[] = [];
+  let totalChars = 0;
+  const MAX_CHARS = 20_000;
+
+  const read = api.readWorkspaceTextFile;
+  for (const rel of paths) {
+    if (totalChars >= MAX_CHARS) break;
+    if (!read) break;
+    try {
+      const r = await read(rel);
+      if (r?.ok && r.text) {
+        const MAX_FILE = 30_000;
+        const content =
+          r.text.length > MAX_FILE ? r.text.slice(0, MAX_FILE) + "\n\n...（截断）" : r.text;
+        found.push({ rel, content });
+        totalChars += content.length;
+      } else {
+        missing.push(rel);
+      }
+    } catch {
+      missing.push(rel);
+    }
+  }
+
+  if (!found.length) return "";
+
+  const lines: string[] = ["\n\n---\n【工作区文件】"];
+
+  if (found.length) {
+    lines.push("\n✅ 已读取：");
+    for (const f of found) {
+      lines.push(`  - ${f.rel}`);
+    }
+    for (const f of found) {
+      lines.push(`\n【${f.rel}】\n${f.content}`);
+    }
+  }
+
+  lines.push("\n---\n");
+
+  return lines.join("\n");
 }

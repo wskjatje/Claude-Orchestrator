@@ -71,33 +71,33 @@ export const AGENT_ROUTING_PRESETS: Record<string, AgentRoutingPreset> = {
     skills: ["交互流程", "视觉规范", "组件与可访问性基线"],
     tools: ["readWorkspaceTextFile", "workspace-write"],
   },
+  "__general__": {
+    skills: [],
+    tools: ["readWorkspaceTextFile", "listWorkspaceMarkdownFiles", "listFiles", "grep"],
+  },
 };
 
-function buildRoutingToolHint(mode: AgentRoutingMode, preset: AgentRoutingPreset): string {
+function buildRoutingToolHint(stem: string, mode: AgentRoutingMode, preset: AgentRoutingPreset, mcpChatToolName?: string, mcpListModelsToolName?: string): string {
+  const chatTool = mcpChatToolName?.trim() || "ollama_chat";
+  const listTool = mcpListModelsToolName?.trim() || "ollama_list_models";
+  const always = [...preset.tools];
+  if (stem !== "__general__") always.push("workspace-write");
   if (mode === "local-mcp") {
-    return [...new Set([...preset.tools, "ollama_list_models", "ollama_chat", "workspace-write"])].join("、");
+    return [...new Set([...always, listTool, chatTool])].join("、");
   }
-  return [...preset.tools, "MCP（按需）", "workspace-write"].join("、");
+  return [...always, "MCP（按需）"].join("、");
 }
 
 function buildAgentScopeGuard(stem: string, body: string): string {
   if (!UI_TASK_RE.test(body)) return "";
   if (UI_IMPLEMENTATION_STEMS.has(stem)) return "";
-  if (stem === "product-manager") {
-    return "【本职边界·强制】用户描述含页面/UI 需求：只产出 PRD 要点、验收标准、范围与非目标；禁止写「登录页面设计描述」、HTML/CSS 或视觉稿。需要 UI 时请明确建议 `/agent design-ui-designer` 或 `/agent frontend-engineer`。";
-  }
-  if (stem === "product-sprint-prioritizer") {
-    return "【本职边界·强制】用户描述功能（如登录页）：只产出冲刺优先级、用户故事列表（含验收标准）、RICE/MoSCoW 排序与依赖；禁止写页面布局/HTML/CSS/「整体布局·详细设计」类 UI 稿。UI 设计 → design-ui-designer；前端实现 → frontend-engineer。";
-  }
-  if (stem === "project-manager") {
-    return "【本职边界·强制】只拆解 WBS/里程碑/依赖与风险；禁止代写页面设计或前端代码。";
-  }
-  if (stem === "software-architect") {
-    return "【本职边界·强制】只产出架构边界、模块划分、接口契约；禁止代写具体页面 HTML/CSS。";
-  }
-  return "【本职边界·强制】用户任务含页面/UI，但 global://" +
-    stem +
-    " 不包含画界面；须按 ~/.claude/agents 中该角色定义作答，并说明应委派给哪个 Agent。";
+  const hints: Record<string, string> = {
+    "product-manager": "Output PRD only. NO UI → delegate to design-ui-designer or frontend-engineer.",
+    "product-sprint-prioritizer": "Output sprint priority/user stories only. NO UI drafts.",
+    "project-manager": "WBS/milestones only. NO page design or frontend code.",
+    "software-architect": "Architecture/contracts only. NO page HTML/CSS.",
+  };
+  return `【BOUNDARY】${hints[stem] || `${stem} does not render UI. Delegate UI to the appropriate agent.`}`;
 }
 
 /**
@@ -107,34 +107,45 @@ export function buildAgentRoutedInstruction(
   stem: string,
   body: string,
   mode: AgentRoutingMode,
+  toolOverrides?: { mcpChatToolName?: string; mcpListModelsToolName?: string },
 ): string {
   const cleanBody = body.trim();
-  const lock =
-    `【角色锁定】你只扮演 global://${stem}；禁止自称其它 Agent，禁止混淆产品经理与项目经理等不同职务。禁止在同一回复中分段扮演「Agent: 需求分析员/架构师/前端…」；其它职务须由任务链下一步或用户另发 /agent 指令调用。`;
-  const scopeGuard = buildAgentScopeGuard(stem, cleanBody);
-  const executeHint = !cleanBody
-    ? UI_IMPLEMENTATION_STEMS.has(stem)
-      ? "【执行指令】你已接管本轮。请阅读上文用户目标与 assistant 已有设计说明，直接产出**新的**可交付物（完整 HTML/CSS 代码，或 ```workspace-write``` 写入工作区相对路径）。禁止逐字重复上一条 assistant 回复。"
-      : `【执行指令】你已接管 global://${stem}。请仅按该 Agent 本职阅读上文并产出对应交付物；禁止写其它 Agent 负责的内容（尤其禁止 UI 设计稿若你不是设计/前端 Agent）。`
-    : "";
-  const preset = AGENT_ROUTING_PRESETS[stem];
-  const designDeliver = UI_IMPLEMENTATION_STEMS.has(stem)
-    ? "【交付】须给出可直接使用的页面代码（HTML+CSS）或 workspace-write 落盘；不要只写抽象设计要点清单。"
-    : "";
-  const artifactPathHint = buildAgentArtifactPathHint(stem);
-  if (!preset) {
-    return [lock, scopeGuard, artifactPathHint, executeHint, designDeliver, cleanBody]
+
+  const writePolicy =
+    "【WRITE】```workspace-write``` on user file request only. Don't claim 'written' without a valid fence.";
+
+  // 通用 Agent：无角色锁
+  if (stem === "__general__") {
+    return [
+      "【SCOPE】General-purpose. Read workspace files first. Chat/code/UI/arch/terminal/deploy as needed.",
+      "【REPLY】Short Chinese (≤5 points): conclusion, paths, next. No long plans or JSON echo.",
+      "【MUST_NOT】No workspace-write unless user explicitly asks to write/save/create/生成/保存/写入/更新. Pure Q&A → never write.",
+      cleanBody,
+    ]
       .filter(Boolean)
       .join("\n\n")
       .trim();
   }
+
+  const artifactPathHint = buildAgentArtifactPathHint(stem);
+  const lock = `【ROLE】global://${stem}. Single role per reply. Other roles → /agent or next chain step.`;
+  const scopeGuard = buildAgentScopeGuard(stem, cleanBody);
+  const preset = AGENT_ROUTING_PRESETS[stem];
+
+  if (!preset) {
+    return [lock, scopeGuard, artifactPathHint, cleanBody, writePolicy]
+      .filter(Boolean)
+      .join("\n\n")
+      .trim();
+  }
+
   const routingBlock = [
-    `【路由】~/.claude/agents/${stem}.md → Skill：${preset.skills.join("、")} → 工具：${buildRoutingToolHint(mode, preset)}。`,
-    "【语言】除代码/路径/库名/API 外，说明与小结须用简体中文；勿用英文小节标题堆砌计划书。",
-    "【反馈】最终对用户可见的说明控制在短段落 + 要点列表；勿逐条复述工具返回全文。",
-    designDeliver,
-  ]
+    `【ROUTE】${stem} → Skills: ${preset.skills.join("、")} → Tools: ${buildRoutingToolHint(stem, mode, preset, toolOverrides?.mcpChatToolName, toolOverrides?.mcpListModelsToolName)}.`,
+    "【REPLY】Short Chinese (≤5 points): conclusion, paths, verification, next.",
+  ];
+
+  return [lock, scopeGuard, artifactPathHint, cleanBody, ...routingBlock, writePolicy]
     .filter(Boolean)
-    .join("\n");
-  return [lock, scopeGuard, artifactPathHint, executeHint, cleanBody, routingBlock].filter(Boolean).join("\n\n").trim();
+    .join("\n\n")
+    .trim();
 }

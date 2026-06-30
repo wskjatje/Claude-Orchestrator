@@ -86,7 +86,7 @@ function MarkdownCodeBlock({
   );
 }
 
-/** Cursor 式 Markdown：标题、列表、带复制按钮的代码块。 */
+/** Markdown：标题、列表、带复制按钮的代码块。 */
 export function ChatMarkdown({ content, className }: ChatMarkdownProps) {
   return (
     <div className={cn("chat-md min-w-0 leading-relaxed text-foreground", className)}>

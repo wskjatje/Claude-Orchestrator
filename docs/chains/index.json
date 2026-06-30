@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-06-27T02:25:37.000Z",
+  "exportedAt": "2026-06-30T03:29:32.245Z",
   "activeChainId": null,
   "chains": [
     {
@@ -154,22 +154,6 @@
       "category": "pipeline",
       "enabled": true,
       "stepCount": 11
-    },
-    {
-      "id": "chain-mqevek5s-3gv5e",
-      "name": "WBS · docs/project-status.md",
-      "description": "WBS 来源：docs/project-status.md · 工作区同步",
-      "category": "custom",
-      "enabled": true,
-      "stepCount": 85
-    },
-    {
-      "id": "chain-mqevojya-20rgs",
-      "name": "WBS · docs/sprint-backlog.md",
-      "description": "WBS 来源：docs/sprint-backlog.md · 工作区同步",
-      "category": "custom",
-      "enabled": true,
-      "stepCount": 45
     }
   ]
 }

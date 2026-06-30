@@ -6,6 +6,16 @@ import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { getDesktop } from "@/lib/desktop-api";
 import { AUTO_MODEL_ID, chatSettingsPreservePayload, isAutoModelSelection, resolveCloudProviderCatalog } from "@/lib/model-catalog";
 import { BRIDGE_OFFLINE_TOAST } from "@/lib/ui-copy";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export type CcSwitchProvider = {
   id: string;
@@ -87,6 +97,12 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     message: string;
     discovered: string[];
   }>({ status: "idle", message: "", discovered: [] });
+
+  const [confirmDelete, setConfirmDelete] = useState<{
+    type: "cloud" | "local";
+    id: string;
+    name: string;
+  } | null>(null);
 
   const closeDrawer = useCallback(() => {
     setDrawer("closed");
@@ -544,25 +560,28 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     setLocalPick(new Set(notAdded));
   };
 
-  const deleteCloudProvider = async (p: CcSwitchProvider) => {
+  const deleteCloudProvider = (p: CcSwitchProvider) => {
     if (cloudChatEnabledSet.has(p.id)) {
       toast.error("请先在聊天中停用该供应商，再删除");
       return;
     }
+    setConfirmDelete({ type: "cloud", id: p.id, name: p.name });
+  };
+
+  const deleteCloudProviderAction = async (id: string, name: string) => {
     const api = getDesktop();
     if (!api?.ccSwitchDeleteProvider) {
       toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
-    if (!window.confirm(`确定删除云模型「${p.name}」？此操作不可撤销。`)) return;
     setBusy("save");
     try {
-      const r = await api.ccSwitchDeleteProvider({ providerId: p.id });
+      const r = await api.ccSwitchDeleteProvider({ providerId: id });
       if (!r.ok) {
         toast.error(r.error || "删除失败");
         return;
       }
-      toast.success(`已删除「${p.name}」`);
+      toast.success(`已删除「${name}」`);
       await refreshProviders();
       onSettingsUpdated?.();
     } catch (e) {
@@ -572,22 +591,25 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     }
   };
 
-  const removeLocalModel = async (model: string) => {
-    const api = getDesktop();
-    if (!api) return;
+  const removeLocalModel = (model: string) => {
     if (localChatEnabledSet.has(model)) {
       toast.error("请先在聊天中停用该模型，再删除");
       return;
     }
-    if (!window.confirm(`确定从列表中删除本地模型「${model}」？`)) return;
+    setConfirmDelete({ type: "local", id: model, name: model });
+  };
+
+  const deleteLocalModelAction = async (id: string) => {
+    const api = getDesktop();
+    if (!api) return;
     setBusy("local");
     try {
       const s = await api.getChatSettings();
-      const catalog = (s.localModelCatalog ?? []).filter((m) => m !== model);
-      const nextLocalEnabled = (s.chatEnabledLocalModels ?? []).filter((m) => m !== model);
-      const nextModel = s.model === model ? catalog[0] ?? AUTO_MODEL_ID : s.model ?? "";
+      const catalog = (s.localModelCatalog ?? []).filter((m) => m !== id);
+      const nextLocalEnabled = (s.chatEnabledLocalModels ?? []).filter((m) => m !== id);
+      const nextModel = s.model === id ? catalog[0] ?? AUTO_MODEL_ID : s.model ?? "";
       const nextMcp =
-        s.localOllamaModel === model ? catalog[0] ?? "" : s.localOllamaModel ?? "";
+        s.localOllamaModel === id ? catalog[0] ?? "" : s.localOllamaModel ?? "";
       await api.saveChatSettings({
         ...chatSettingsPreservePayload(s),
         localModelCatalog: catalog,
@@ -1466,6 +1488,31 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           </div>
         </div>
       ) : null}
+
+      <AlertDialog open={confirmDelete !== null} onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定删除{confirmDelete?.type === "cloud" ? "云模型" : "本地模型"}「{confirmDelete?.name}」？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const item = confirmDelete;
+                setConfirmDelete(null);
+                if (!item) return;
+                if (item.type === "cloud") void deleteCloudProviderAction(item.id, item.name);
+                else void deleteLocalModelAction(item.id);
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

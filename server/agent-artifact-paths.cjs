@@ -86,6 +86,8 @@ const CATEGORY_PREFIX_DIRS = [
   ['medical', 'docs/medical'],
 ].sort((a, b) => b[0].length - a[0].length)
 
+const CHAIN_STEP_DIR = 'docs/chain-steps'
+
 function normalizeAgentStem(raw) {
   const t = String(raw || '')
     .trim()
@@ -163,13 +165,11 @@ function buildAgentArtifactPathHint(stemRaw) {
   const stem = normalizeAgentStem(stemRaw)
   if (!stem) return ''
   const path = defaultArtifactPathForAgent(stem)
-  const examples =
-    'product-manager→docs/prd.md、project-manager→docs/wbs.md、product-sprint-prioritizer→docs/sprint-backlog.md、frontend-engineer→docs/frontend-implementation.md、qa-engineer→docs/qa-report.md'
   return (
-    `【落盘路径·强制】你是 global://${stem}。写入工作区时 \`\`\`workspace-write\`\`\` 的 path **默认必须是** \`${path}\`；` +
-    `同一 Agent 多次交付仍用此路径（追加或覆盖须在正文说明）；` +
-    `禁止写入其它 Agent 专属文件（如 ${examples}），除非用户明确要求合并到指定路径。` +
-    `未在映射表中的角色默认 \`docs/agents/{stem}.md\` 或 \`docs/{类别}/{角色名}.md\`。`
+    `【落盘路径】global://${stem} 默认 => \`${path}\`；` +
+    `同一 Agent 多次交付仍用此路径（追加/覆盖须说明）。` +
+    `禁止写入其它 Agent 专属文件（如 product-manager→docs/prd.md）。` +
+    `未映射角色 => \`docs/agents/{stem}.md\` 或 \`docs/{类别}/{名}.md\`。`
   )
 }
 
@@ -177,6 +177,7 @@ module.exports = {
   AGENT_ARTIFACT_PATHS,
   AGENT_STEM_ALIASES,
   UPSTREAM_ARTIFACTS,
+  CHAIN_STEP_DIR,
   normalizeAgentStem,
   defaultArtifactPathForAgent,
   upstreamArtifactPathsForAgent,

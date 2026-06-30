@@ -1,9 +1,5 @@
+import { defaultArtifactPathForAgent } from "@/lib/agent-artifact-paths";
 import type { DesktopApi } from '@/types/desktop'
-import { agentAutoWritesToProject, agentRequiresManualConfirmWrite } from '@/lib/write-policy'
-import {
-  buildConfirmWriteItems,
-  extractClaimedWritePathFromText,
-} from '@/lib/confirm-write'
 
 /** 是否为 active-chain / 任务链顶层结构（与写文件 JSON 区分） */
 function looksLikeActiveChainJson(obj: unknown): boolean {
@@ -260,126 +256,34 @@ function looksLikeFakeWorkspaceWriteClaim(text: string): boolean {
   return false
 }
 
-async function tryFallbackWriteFromClaimOrAgent(
-  desktop: DesktopApi,
-  assistantText: string,
-  onToast: ((msg: string) => void) | undefined,
-  meta?: { agentStem?: string; defaultConfirmWritePath?: string },
-): Promise<string[] | null> {
-  const stem = meta?.agentStem?.trim() || ''
-  if (stem && agentRequiresManualConfirmWrite(stem)) return null
-
-  const claimed = extractClaimedWritePathFromText(assistantText)
-  let items: { path: string; content: string }[] = []
-
-  if (claimed) {
-    let body = stripWorkspaceWriteFencesForHistory(assistantText)
-      .replace(/\n*【工作区已写入】[\s\S]*$/u, '')
-      .replace(/[^\n]*已写入[^\n]*\n?/gi, '')
-      .trim()
-    if (body.length > 40) items = [{ path: claimed, content: body }]
-  }
-
-  if (!items.length && stem) {
-    items = buildConfirmWriteItems(
-      assistantText,
-      meta?.defaultConfirmWritePath || 'docs/prd.md',
-      stem,
-    )
-  }
-
-  if (!items.length || typeof desktop.workspaceApplyWriteFence !== 'function') return null
-  try {
-    const res = await desktop.workspaceApplyWriteFence(items)
-    if (res?.written?.length) {
-      onToast?.(
-        claimed
-          ? `已按助手说明写入：${res.written.join('，')}`
-          : `已写入 Agent 产物：${res.written.join('，')}`,
-      )
-      return res.written
-    }
-    if (res?.error) onToast?.(`未能写入工作区：${res.error}`)
-  } catch (e) {
-    onToast?.(`工作区写入异常：${String(e)}`)
-  }
-  return null
-}
-
 export async function ingestWorkspaceWritesAndCollapseDisplay(
   desktop: DesktopApi,
   assistantText: string,
   onToast?: (msg: string) => void,
   meta?: { agentStem?: string; autoWriteProject?: boolean; defaultConfirmWritePath?: string },
 ): Promise<string> {
-  const stem = meta?.agentStem?.trim() || ''
-  const manualOnly = stem ? agentRequiresManualConfirmWrite(stem) : false
-  const autoWrite =
-    !manualOnly &&
-    (meta?.autoWriteProject ?? (stem ? agentAutoWritesToProject(stem) : false))
 
-  if (!manualOnly) {
-    const ing = await ingestAssistantWorkspaceWrites(desktop, assistantText, onToast)
-    if (ing.n > 0 && ing.paths.length > 0) {
-      return collapseWorkspaceWriteForHistory(assistantText, ing.paths)
-    }
+  // 单聊模式：所有 Agent 仅响应显式 workspace-write fence
+  // 自动写默认路径和嗅探"已写入"的兜底不再执行
+  // 任务链执行不受影响，走 ingestChainStepWorkspaceWrites
+  const ing = await ingestAssistantWorkspaceWrites(desktop, assistantText, onToast)
+  if (ing.n > 0 && ing.paths.length > 0) {
+    return collapseWorkspaceWriteForHistory(assistantText, ing.paths)
   }
-
-  if (
-    autoWrite &&
-    typeof desktop.workspaceIngestFromAssistantText === 'function' &&
-    stem
-  ) {
-    try {
-      const wr = await desktop.workspaceIngestFromAssistantText({
-        text: assistantText,
-        agentName: stem,
-        ensureAgentArtifact: false,
-        ensureChainArtifact: false,
-        autoWriteProject: true,
-        manualConfirmOnly: false,
-      })
-      if (wr?.written?.length) {
-        onToast?.(`已自动写入项目：${wr.written.join('，')}`)
-        return collapseWorkspaceWriteForHistory(assistantText, wr.written)
-      }
-      if (wr && wr.ok === false && wr.error) {
-        onToast?.(`落盘：${wr.error}`)
-      }
-    } catch (e) {
-      onToast?.(`落盘异常：${e instanceof Error ? e.message : String(e)}`)
-    }
-  }
-
-  if (autoWrite) {
-    const fallbackWritten = await tryFallbackWriteFromClaimOrAgent(
-      desktop,
-      assistantText,
-      onToast,
-      meta,
-    )
-    if (fallbackWritten?.length) {
-      return collapseWorkspaceWriteForHistory(assistantText, fallbackWritten)
-    }
-  }
-
   if (looksLikeFakeWorkspaceWriteClaim(assistantText)) {
-    onToast?.(
-      manualOnly
-        ? '产品经理/项目经理的产出需手动落盘：请点击输入栏旁「确认写入」，或发送「确认写入」。'
-        : '检测到回复中含「已写入」等表述，但本轮未成功落盘。请检查 ```workspace-write``` JSON 是否合法。',
-    )
+    onToast?.('检测到回复中含「已写入」等表述，但本轮无合法 workspace-write 围栏，未执行写盘。')
   }
   return assistantText
 }
 
-/** 任务链/WBS 每步：先解析 workspace-write；若无则主进程写入 docs/chain-steps/{taskId}-{agent}.md */
+/** 任务链/WBS 每步：先解析 workspace-write；若无则客户端直接写 chain artifact，不再 RPC 到服务端 */
 export async function ingestChainStepWorkspaceWrites(
   desktop: DesktopApi,
   assistantText: string,
   meta: { agentName: string; taskId?: string },
   onToast?: (msg: string) => void,
 ): Promise<{ displayText: string; writtenPaths: string[] }> {
+  // Step 1: 解析 workspace-write fence
   const ing = await ingestAssistantWorkspaceWrites(desktop, assistantText, onToast)
   let written = ing.paths
   if (ing.n > 0 && written.length > 0) {
@@ -388,41 +292,32 @@ export async function ingestChainStepWorkspaceWrites(
       writtenPaths: written,
     }
   }
-  const manualOnly = agentRequiresManualConfirmWrite(meta.agentName)
-  const autoWrite = agentAutoWritesToProject(meta.agentName)
-  if (typeof desktop.workspaceIngestFromAssistantText === 'function') {
+
+  // Step 2: 无 fence → 系统自动落盘到该 Agent 的预设产物路径，不再需要模型操心写格式
+  const body = assistantText.trim()
+  if (body && meta.taskId) {
+    const chainPath = defaultArtifactPathForAgent(meta.agentName)
     try {
-      const wr = await desktop.workspaceIngestFromAssistantText({
-        text: assistantText,
-        agentName: meta.agentName,
-        taskId: meta.taskId ?? '',
-        ensureChainArtifact: true,
-        autoWriteProject: autoWrite,
-        manualConfirmOnly: manualOnly,
-      })
-      if (wr?.written?.length) {
-        written = wr.written
-        onToast?.(
-          manualOnly
-            ? `已写入步骤摘要（产品/项目类须确认写入正式文档）：${written.join('，')}`
-            : `已自动写入项目：${written.join('，')}`,
-        )
-        const displayText =
-          wr.displayText && typeof wr.displayText === 'string'
-            ? wr.displayText
-            : collapseWorkspaceWriteForHistory(assistantText, written)
-        return { displayText, writtenPaths: written }
-      }
-      if (wr && wr.ok === false && wr.error) {
-        onToast?.(`步骤落盘：${wr.error}`)
+      const res = await desktop.workspaceApplyWriteFence([
+        { path: chainPath, content: body },
+      ])
+      if (res?.written?.length) {
+        written = res.written
+        onToast?.(`任务链步骤摘要已写入：${written.join('，')}`)
+        return {
+          displayText: collapseWorkspaceWriteForHistory(assistantText, written),
+          writtenPaths: written,
+        }
       }
     } catch (e) {
-      onToast?.(`步骤落盘异常：${e instanceof Error ? e.message : String(e)}`)
+      onToast?.(`任务链步骤落盘异常：${e instanceof Error ? e.message : String(e)}`)
     }
   }
+
+  // Step 3: 处理假写入声明
   if (looksLikeFakeWorkspaceWriteClaim(assistantText)) {
     onToast?.(
-      '检测到回复中含「工作区已写入」表述，但本轮未成功落盘。任务链已尝试写入 docs/chain-steps/；若仍失败请检查是否已选择工作区。',
+      '检测到回复中含「工作区已写入」表述，但本轮无合法 workspace-write 围栏，未写盘。',
     )
   }
   return { displayText: assistantText, writtenPaths: written }

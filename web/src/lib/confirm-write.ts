@@ -62,20 +62,10 @@ function inferCanonicalMdPathByContent(text: string): string | null {
   return null;
 }
 
-/** 用户仅发送此类短句时，触发「一键确认写入」，不调模型。 */
-export function isConfirmWriteOnlyMessage(text: string): boolean {
-  const t = text.trim();
-  if (!t || t.length > 48) return false;
-  return /^(?:确认\s*写入|同意\s*写入|确认\s*落盘|同意\s*落盘|一键\s*落盘|写入\s*工作区|\/confirm-write)\s*[!！。.]*$/iu.test(
-    t,
-  );
-}
-
 /** 用户要求把会话/任务链里已有代码批量写入项目（不调模型，扫历史助手气泡） */
 export function isBulkWriteProjectMessage(text: string): boolean {
   const t = text.trim();
   if (!t) return false;
-  if (isConfirmWriteOnlyMessage(t)) return false;
   return (
     /(?:将|把).*(?:以上|上文|前面|任务链|所有|全部).*(?:代码|文件|产物)?.*(?:写入|落盘|保存)/i.test(t) ||
     /(?:批量|全部).*(?:写入|落盘|保存)/i.test(t) ||
@@ -87,7 +77,6 @@ export function isBulkWriteProjectMessage(text: string): boolean {
 export function userWantsArtifactPersist(displayLine: string): boolean {
   const s = displayLine.trim();
   if (!s) return false;
-  if (isConfirmWriteOnlyMessage(s)) return true;
   return (
     /(?:生成|整理|写入|落盘|保存).*(?:文档|文件|工作区|prd|PRD|wbs|WBS)/i.test(s) ||
     /(?:将|把).*(?:以上|上文|前面).*(?:生成|整理|写入|落盘|保存)/i.test(s)
@@ -130,7 +119,7 @@ export function buildConfirmWriteItems(
   const fallback =
     stemPath ||
     defaultRelativePath.trim().replace(/^[/\\]+/, "").replace(/\\/g, "/") ||
-    "docs/prd.md";
+    "";
   const parsed = parseWorkspaceWriteItemsFromBubble(assistantRaw);
   if (parsed.length > 0) return parsed;
   let body = assistantRaw.trim();

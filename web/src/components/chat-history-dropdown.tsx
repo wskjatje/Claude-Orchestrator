@@ -74,7 +74,7 @@ function HistoryRow({
   );
 }
 
-/** Cursor 式历史下拉内容（Bridge / SQLite 数据，非浏览器存储） */
+/** 历史下拉内容（Bridge / SQLite 数据，非浏览器存储） */
 export function ChatHistoryDropdown({
   scope,
   onScopeChange,

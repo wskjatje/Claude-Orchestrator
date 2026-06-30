@@ -14,7 +14,7 @@ type ChatCursorCollapsibleProps = {
   hideToggle?: boolean;
 };
 
-/** Cursor 式：默认收起约 4 行，底部 overlay chevron 或头部 chevron 展开 */
+/** 默认收起约 4 行，底部 overlay chevron 或头部 chevron 展开 */
 export function ChatCursorCollapsible({
   lineCount,
   collapseAfterLines = 4,
@@ -76,7 +76,7 @@ export function ChatCursorCollapsible({
   );
 }
 
-/** 文件卡片头部左侧 chevron（Cursor 式） */
+/** 文件卡片头部左侧 chevron */
 export function ChatCursorCollapsibleChevron({
   expanded,
   collapsible,

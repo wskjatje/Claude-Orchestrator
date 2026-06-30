@@ -855,7 +855,6 @@ function createHandlers() {
         ensureChainArtifact: Boolean(payload.ensureChainArtifact),
         ensureAgentArtifact: Boolean(payload.ensureAgentArtifact),
         autoWriteProject: payload.autoWriteProject,
-        manualConfirmOnly: payload.manualConfirmOnly,
       })
     },
 

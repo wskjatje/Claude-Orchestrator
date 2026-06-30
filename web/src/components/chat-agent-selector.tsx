@@ -6,7 +6,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getDesktop } from "@/lib/desktop-api";
-import { agentStemFromBasename, isAutoAgentBasename } from "@/lib/agent-basename";
+import { agentStemFromBasename, GENERAL_AGENT_DISPLAY_NAME, isAutoAgentBasename } from "@/lib/agent-basename";
 import {
   agentMatchesDisplayQuery,
   resolveAgentDisplayName,
@@ -78,17 +78,13 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
   }, [reload]);
 
   const activeAgent = agents.find((a) => a.stem === activeStem);
-  const defaultAutoAgent = agents.find((a) => a.stem === "product-manager");
-  const defaultAutoLabel =
-    defaultAutoAgent?.displayName ??
-    resolveAgentDisplayName({ stem: "product-manager", nameZh: "全面的产品领导者" });
   const subtitle = isAuto
-    ? `Agent · 默认与「${defaultAutoLabel}」对话`
+    ? GENERAL_AGENT_DISPLAY_NAME
     : (activeAgent?.displayName ?? activeStem);
-  const buttonLabel = isAuto ? "Agent" : ((activeAgent?.displayName ?? activeStem) || "Agent");
+  const buttonLabel = isAuto ? GENERAL_AGENT_DISPLAY_NAME : ((activeAgent?.displayName ?? activeStem) || GENERAL_AGENT_DISPLAY_NAME);
 
   const q = query.trim().toLowerCase();
-  const showAuto = !q || q.includes("auto") || q.includes("agent") || q.includes("自动") || q.includes("关键词");
+  const showAuto = !q || q.includes("auto") || q.includes("agent") || q.includes("自动") || q.includes("关键词") || q.includes("通用");
 
   const filteredAgents = useMemo(() => {
     if (!q) return agents;
@@ -176,9 +172,9 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
               onClick={() => pickAgent(AUTO_AGENT_VALUE)}
             >
               <div className="min-w-0 flex-1">
-                <div className="font-medium">Auto</div>
+                <div className="font-medium">{GENERAL_AGENT_DISPLAY_NAME}</div>
                 <div className="text-[10.5px] text-muted-foreground">
-                  自动模式 · 默认与「{defaultAutoLabel}」对话，并按关键词路由其它 Agent
+                  通用模式 · 不设角色限制
                 </div>
               </div>
               {isAuto ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={2.25} /> : null}

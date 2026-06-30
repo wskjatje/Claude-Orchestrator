@@ -59,7 +59,7 @@ export function evalDebugExpression(source: string): void {
 
 let consolePatched = false;
 
-/** 捕获页面 console 输出到调试控制台（与 Cursor Debug Console 类似） */
+/** 捕获页面 console 输出到调试控制台 */
 export function installDebugConsoleCapture() {
   if (consolePatched || typeof window === "undefined") return;
   consolePatched = true;

@@ -173,7 +173,6 @@ export type DesktopApi = {
     ensureAgentArtifact?: boolean
     /** 实现类 Agent：自动从 workspace-write / 代码块落盘到项目路径 */
     autoWriteProject?: boolean
-    manualConfirmOnly?: boolean
   }) => Promise<{
     ok: boolean
     error?: string
@@ -289,7 +288,7 @@ export type DesktopApi = {
     tree?: WorkspacePanelTreeNode[]
     /** git status --porcelain 中的相对路径，供资源管理器「已修改」圆点 */
     gitChanged?: string[]
-    /** git status 字母（U/M/A/…），与 Cursor 资源管理器右侧一致 */
+    /** git status 字母（U/M/A/…） */
     gitStatus?: { path: string; letter: string }[]
     error?: string | null
   }>
@@ -350,6 +349,10 @@ export type DesktopApi = {
     upstreamGithubRepo?: string
     /** 模型单价表 { modelName: { inputPer1M, outputPer1M } } */
     tokenPricing?: Record<string, { inputPer1M: number; outputPer1M: number }>
+    /** MCP Ollama 聊天工具名（空=默认 ollama_chat） */
+    mcpChatToolName?: string
+    /** MCP 模型列举工具名（空=默认 ollama_list_models） */
+    mcpListModelsToolName?: string
   }>
   getUiPrefs?: () => Promise<{
     ok: boolean

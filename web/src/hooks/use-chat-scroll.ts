@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouterState } from "@tanstack/react-router";
 
-/** 与 Cursor 一致：距底部在此范围内视为「跟随最新」 */
+/** 距底部在此范围内视为「跟随最新」 */
 const SCROLL_BOTTOM_EPS = 56;
 const LAYOUT_FREEZE_MS = 400;
 

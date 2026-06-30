@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { TerminalSession } from "@/components/terminal-sessions-view";
 
-/** 类 Cursor：仅一个终端时，顶栏右侧显示 shell 下拉 */
+/** 仅一个终端时，顶栏右侧显示 shell 下拉 */
 export function TerminalSessionPicker({
   sessions,
   activeId,

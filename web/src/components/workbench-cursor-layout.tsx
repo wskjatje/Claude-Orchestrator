@@ -37,7 +37,7 @@ export function WorkbenchCursorLayout({
   rightOpen,
   onRightOpenChange,
 }: {
-  /** Cursor 式：会话 / 模型控件置于聊天面板顶栏 */
+  /** 会话 / 模型控件置于聊天面板顶栏 */
   chatHeader?: ReactNode;
   /** Portal 挂载点：聊天主体在 ChatPage 中 createPortal，与工作区 Provider 解耦 */
   chatBodyMountRef: Ref<HTMLDivElement | null>;

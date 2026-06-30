@@ -1,7 +1,7 @@
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { cn } from "@/lib/utils";
 
-/** Cursor 式 Markdown 预览：层次清晰、与源码配色体系一致 */
+/** Markdown 预览：层次清晰、与源码配色体系一致 */
 export function WorkbenchMarkdownPreview({
   content,
   className,

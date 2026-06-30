@@ -65,7 +65,7 @@ function modelSupportsVision(name) {
 }
 
 /**
- * Claude Code / Cursor：官方 Anthropic 与部分第三方 vision 模型可 inline 传图。
+ * 官方 Anthropic 与部分第三方 vision 模型可 inline 传图。
  * @param {string} modelId
  * @param {{ ANTHROPIC_BASE_URL?: string }} [env]
  */
@@ -106,7 +106,7 @@ function buildAnthropicContentBlocks(text, attachments) {
 }
 
 /**
- * Claude Code `--input-format stream-json` 单轮 user 消息（Cursor 式 inline vision）
+ * Claude Code `--input-format stream-json` 单轮 user 消息（inline vision）
  * @param {string} text
  * @param {{ kind?: string; dataUrl?: string; mime?: string }[]} attachments
  */

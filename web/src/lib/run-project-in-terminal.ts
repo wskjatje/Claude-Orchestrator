@@ -37,7 +37,7 @@ function isRunProjectIntent(text: string): boolean {
   );
 }
 
-/** Cursor 风格回复：检测失败时的详细说明 */
+/** 检测失败时的详细说明 */
 function formatTerminalRunFailedReply(plan: ProjectRunPlan): string {
   const lines: string[] = [];
   lines.push("## 无法自动运行");
@@ -63,7 +63,7 @@ function formatTerminalRunFailedReply(plan: ProjectRunPlan): string {
   return lines.join("\n");
 }
 
-/** Cursor 风格回复：静态 HTML 项目运行结果 */
+/** 静态 HTML 项目运行结果 */
 function formatStaticRunReply(
   plan: ProjectRunPlan,
   preview: { ok: boolean; displayText: string; url?: string | null },
@@ -101,7 +101,7 @@ function formatStaticRunReply(
   return lines.join("\n");
 }
 
-/** Cursor 风格：Python / npm-script 项目运行结果（多段：分析 → 依赖 → 执行 → 摘要） */
+/** Python / npm-script 项目运行结果（多段：分析 → 依赖 → 执行 → 摘要） */
 function formatPreviewRunReply(
   plan: ProjectRunPlan,
   preview: {
@@ -244,7 +244,7 @@ function formatPreviewRunReply(
 }
 
 /**
- * Cursor 式「运行项目」：检测 → 分析 → 后台执行 → 捕获输出 → 状态摘要。
+ *「运行项目」：检测 → 分析 → 后台执行 → 捕获输出 → 状态摘要。
  * Python/npm-script 项目通过 workspaceStartPreview 在服务端管理进程并捕获输出，
  * 静态 HTML 项目通过 performProjectPreview 启动本地静态服务。
  */

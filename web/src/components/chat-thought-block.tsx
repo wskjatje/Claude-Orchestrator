@@ -10,7 +10,7 @@ function normalizeThoughtTitle(title: string): string {
   return t || "Thought";
 }
 
-/** Cursor 式可折叠思考块（默认收起） */
+/** 可折叠思考块（默认收起） */
 export function ChatThoughtBlock({ title, body }: { title: string; body: string }) {
   const [open, setOpen] = useState(false);
   const label = useMemo(() => normalizeThoughtTitle(title), [title]);

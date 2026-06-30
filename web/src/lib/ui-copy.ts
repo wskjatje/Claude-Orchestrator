@@ -10,19 +10,11 @@ export const BRIDGE_OFFLINE_LEGACY =
 
 export const BRIDGE_OFFLINE_TOAST = "未连接本机服务，请启动应用后重试";
 
-export const BRIDGE_RESTART_TOAST = "连接异常，请重启 Claude Orchestrator 后重试";
-
-export const BRIDGE_CONNECTED_SIDEBAR = "本机服务已连接";
-
-export const BRIDGE_CONNECTING_SIDEBAR = "正在连接…";
-
 export const BRIDGE_CONNECTED_VERSION = "已连接";
 
 export const BRIDGE_OFFLINE_VERSION = "未连接";
 
 export const BRIDGE_ELECTRON_VERSION = "桌面版";
-
-export const HELP_DOCS_EXTERNAL_URL = "https://code.claude.com/docs";
 
 /** @deprecated 请改用 BRIDGE_OFFLINE_TOAST */
 export const MSG_BRIDGE_OFFLINE = BRIDGE_OFFLINE_TOAST;
@@ -30,8 +22,6 @@ export const MSG_BRIDGE_OFFLINE = BRIDGE_OFFLINE_TOAST;
 export const MSG_API_NOT_READY = "功能暂不可用，请重启 Claude Orchestrator 后刷新页面。";
 
 export const MSG_API_OUTDATED = "应用版本过旧，请重启 Claude Orchestrator 后再试。";
-
-export const MSG_FEATURE_REQUIRES_CONNECTION = "请先连接本机服务。";
 
 export const MSG_MODEL_SETTINGS = "请在「设置 → 模型配置」中检查 API 地址、密钥与模型 ID。";
 
@@ -55,16 +45,9 @@ export const PAGE_DESC = {
   scheduled: "定时任务配置",
   help: "文档指引、快捷键与版本信息",
   settings: {
-    general: "默认落盘路径与通用偏好",
-    models: "云模型与本地 Ollama 模型池",
-    advanced: "代码同步、分支策略与环境部署",
+    basic: "管理运行环境：模型供应商、本地 Ollama 与项目概览",
+    advanced: "Git 同步编排资产、管理提交分支、检查部署环境",
   },
-} as const;
-
-export const SETTINGS_TAB_HINT = {
-  general: "配置默认写入路径与应用行为偏好。",
-  models: "管理云模型 API 与本地 Ollama 模型，同步至聊天页。",
-  advanced: "Git 同步编排资产、管理提交分支、检查部署环境。",
 } as const;
 
 export const GIT_PUSH_HINT = "推送后直接更新远程。";
@@ -98,10 +81,6 @@ export const USAGE_SECTION_DESC = "用量统计。";
 
 export const TODAY_KPIS_DESC = "今日关键指标。";
 
-export const CONFIRM_WRITE_SECTION_HINT = "回复不含落盘块时使用此默认路径写入。";
-
-export const CONFIRM_WRITE_FOOTER = "部分角色需在聊天中确认后再执行写入。";
-
 export const HELP_SECTION_DESC = {
   guide: "Agent、Skill、任务链与 MCP 快速上手指南",
   external: "官方文档与社区资源",
@@ -109,14 +88,6 @@ export const HELP_SECTION_DESC = {
   about: "版本信息与反馈",
 } as const;
 
-export const NO_DISK_AGENTS = "请连接本机服务后刷新 Agent 列表。";
-
-export const SETTINGS_SAVED_LOCAL = "设置存储在本机，不会同步至云端。";
-
-export const SETTINGS_SAVED_PROJECT =
-  "设置存储在项目目录中，不会同步至云端。";
-
-export const WORKSPACE_PICK_HINT = "选择 AI 可访问的项目根目录。";
 
 export const WORKSPACE_HISTORY_HINT = "最近使用的项目文件夹。";
 

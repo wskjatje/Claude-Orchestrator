@@ -21,10 +21,10 @@ import {
   loadChatModelPools,
   loadConfiguredModelPools,
   normalizeChatModelSelection,
-  parseAgentModelFromFrontmatter,
   resolveModelForExecution,
 } from "@/lib/model-catalog";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { GENERAL_AGENT_DISPLAY_NAME, isAutoAgentBasename } from "@/lib/agent-basename";
 import {
   useOrchestrationExecution,
   useChatSessionRevision,
@@ -36,7 +36,6 @@ import {
   modelSupportsChatVision,
   normalizePendingImageFiles,
   visionRequiredError,
-  CHAT_INLINE_IMAGE_MAX,
 } from "@/lib/chat-image-cursor";
 import { type PriorTurn, type UserImageAttachment } from "@/lib/ollama-messages";
 import {
@@ -62,7 +61,7 @@ import { resolveAgentForTurn } from "@/lib/resolve-agent-for-turn";
 import { resolveAgentDisplayName } from "@/lib/agent-display-name";
 import { maybeToastMissingWorkspaceWrite } from "@/lib/maybe-toast-workspace-write";
 import { restoreUserMsgToComposer } from "@/lib/restore-user-composer";
-import { buildConfirmWriteItems, isConfirmWriteOnlyMessage, isBulkWriteProjectMessage } from "@/lib/confirm-write";
+import { buildConfirmWriteItems, isBulkWriteProjectMessage } from "@/lib/confirm-write";
 import { performBulkWriteFromHistory } from "@/lib/bulk-write-from-history";
 import { runProjectFromChat } from "@/lib/run-project-in-terminal";
 import { MSG_BRIDGE_OFFLINE } from "@/lib/user-messages";
@@ -73,20 +72,18 @@ import {
   performStopPreview,
 } from "@/lib/project-preview";
 import { isOpenTerminalMessage } from "@/lib/workspace-terminal-client";
-import { agentAutoWritesToProject } from "@/lib/write-policy";
 import { defaultArtifactPathForAgent } from "@/lib/agent-artifact-paths";
-import { expandUserLineWithWorkspaceFiles } from "@/lib/expand-user-line-workspace-files";
+import { expandUserLineWithWorkspaceFiles, preReadInstructedWorkspaceFiles, buildDocsFileListHint } from "@/lib/expand-user-line-workspace-files";
 import { buildAgentRoutedInstruction } from "@/lib/agent-skill-routing";
 import { buildSubagentUserLine, parseAgentCommand } from "@/lib/parse-agent-command";
 import { toast } from "sonner";
 import {
   Plus, Zap, PenLine, Code2, Image as ImageIcon, Presentation, Play, MoreHorizontal,
-  Send, X, Paperclip, Github, Sparkles, Circle, Diamond, Check,
+  Send, X, Check,
   ArrowLeftRight, Flashlight, Disc, Music, CheckSquare, PieChart, Sparkle,
-  Square, AlignJustify, AlignLeft, Menu, ChevronDown, PanelRightOpen,
-  StopCircle, RotateCcw, Save, Waypoints, MessageCircle,
+  ChevronDown, PanelRightOpen,
+  MessageCircle,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { ChatComposerCursor } from "@/components/chat-composer-cursor";
 import type { ChatComposerShellProps } from "@/components/chat-composer-shell";
 import { type PendingFileEntry } from "@/components/composer-file-attachments";
@@ -95,8 +92,16 @@ import { useChatScroll } from "@/hooks/use-chat-scroll";
 import { useChatStream } from "@/hooks/use-chat-stream";
 import { ChatPanelToolbar } from "@/components/chat-panel-toolbar";
 import { ChatResendConfirmDialog } from "@/components/chat-resend-confirm-dialog";
+import { GithubDialog } from "@/components/chat/github-dialog";
 import { toChatHistoryListItem } from "@/lib/chat-history-groups";
 import { sortSessionsByLatest } from "@/lib/chat-session-activity";
+import {
+  CHAIN_TEMPLATES,
+  applyChainTemplate,
+  getChainTemplate,
+  officialChainId,
+} from "@/lib/chain-templates";
+import type { QuickChainOption } from "@/components/chain-quick-trigger";
 import { shouldSkipCheckpointConfirm } from "@/lib/chat-checkpoint-prefs";
 import {
   filterSessionsForWorkspace,
@@ -132,22 +137,14 @@ function fullChatSettingsPayload(
   return chatSettingsPreservePayload(s);
 }
 
-/** 本地 MCP 编排返回的 orchestrationHints（如 Ollama 曾拒绝 tools 而已降级重试） */
-function toastIfLocalOrchestrationHints(res: unknown) {
-  const hints = (res as { orchestrationHints?: string[] })?.orchestrationHints;
-  if (!Array.isArray(hints) || !hints.some((s) => String(s ?? "").trim())) return;
-  toast.warning(
-    hints
-      .map((s) => String(s ?? "").trim())
-      .filter(Boolean)
-      .join("\n"),
-    { duration: 10_000 },
-  );
+/** ingest 阶段解析/虚构落盘等提示（已停用） */
+function toastIngestWorkspaceHint(_msg: string) {
+  // 不再弹出 info 提示
 }
 
-/** ingest 阶段解析/虚构落盘等提示（须先于气泡落库展示） */
-function toastIngestWorkspaceHint(msg: string) {
-  toast.warning(msg, { duration: 12_000 });
+/** 本地 MCP 编排返回的 orchestrationHints（已停用） */
+function toastIfLocalOrchestrationHints(_res: unknown) {
+  // 不再弹出 info 提示
 }
 
 export const Route = createFileRoute("/")({
@@ -224,11 +221,11 @@ function mergeSessionsPreferLongerHistory(
 ): ChatSession[] {
   const localById = new Map(local.map((s) => [s.id, s]));
   const merged: ChatSession[] = [];
-  const bootstrapFromDisk = local.length === 0;
   for (const d of disk) {
     const l = localById.get(d.id);
     if (!l) {
-      if (bootstrapFromDisk) merged.push(d);
+      // 磁盘中有而本地没有的会话，全部保留（磁盘是持久化真相源）
+      merged.push(d);
       continue;
     }
     const keepLocal =
@@ -239,8 +236,8 @@ function mergeSessionsPreferLongerHistory(
         lastUserMessageTs(l.history) >= lastUserMessageTs(d.history));
     merged.push(
       keepLocal
-        ? { ...l, title: l.title || d.title, modelId: d.modelId || l.modelId }
-        : { ...d, title: d.title || l.title, modelId: d.modelId || l.modelId },
+        ? { ...l, title: l.title || d.title, modelId: d.modelId || l.modelId, workspacePath: l.workspacePath || d.workspacePath }
+        : { ...d, title: d.title || l.title, modelId: d.modelId || l.modelId, workspacePath: d.workspacePath || l.workspacePath },
     );
     localById.delete(d.id);
   }
@@ -323,7 +320,8 @@ function assistantBubbleName(
   const displayModel = m.modelId?.trim() || modelLabel;
   if (m.agentStem) {
     const label = m.agentLabel?.trim() || m.agentStem;
-    return `@${label} · ${displayModel}`;
+    const displayName = m.agentStem === "__general__" ? GENERAL_AGENT_DISPLAY_NAME : label;
+    return `@${displayName} · ${displayModel}`;
   }
   return displayModel;
 }
@@ -342,6 +340,29 @@ function diskToDisplay(list: DiskMsg[], modelLabel: string): Msg[] {
       m.role === "user" && m.terminalSnippets?.length ? m.terminalSnippets : undefined,
     historyIndex: m.role === "user" ? historyIndex : undefined,
   }));
+}
+
+/** Auto 模式：纯对话 prompt，不含 Agent/工具指令，仅带基本工作区上下文 */
+function buildPlainChatPrompt(
+  priorHistory: PriorTurn[],
+  userLine: string,
+  workspaceDir: string | null,
+): string {
+  const preamble: string[] = [];
+  if (workspaceDir) {
+    preamble.push(`【工作区】${workspaceDir}`);
+  }
+  preamble.push("【语言】zh_CN（代码/路径除外）。");
+  preamble.push("【注意】你是普通聊天助手，不是 Agent，没有工具可用，不能读取文件、不能调用终端。请直接回答用户问题。不要输出 XML 工具调用标签。");
+  const preambleText = preamble.join("\n");
+  const blocks: string[] = [preambleText];
+  for (const m of priorHistory) {
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    const tag = m.role === "user" ? "用户" : "助手";
+    blocks.push(`${tag}：${m.content}`);
+  }
+  blocks.push(`用户：${userLine}`);
+  return blocks.join("\n\n");
 }
 
 function userMessageForHistoryIndex(
@@ -422,6 +443,14 @@ function formatAssistantFailure(res: {
   return `请求失败：${err || "未知错误"}`;
 }
 
+function genSessionId() {
+  try {
+    return `s${crypto.randomUUID()}`;
+  } catch {
+    return `s${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+}
+
 function ChatPage() {
   const hasDesktopApi = useHasDesktop();
   const navigate = useNavigate();
@@ -477,12 +506,33 @@ function ChatPage() {
   const inlineTaRef = useRef<HTMLTextAreaElement>(null);
   /** 非 Electron（浏览器预览）时的附件兜底 */
   const attachInputRef = useRef<HTMLInputElement>(null);
-  /** 输入框内待发送的图片（粘贴 / 选图），样式贴近 Cursor 附件条 */
+  /** 输入框内待发送的图片（粘贴 / 选图） */
   const [pendingImages, setPendingImages] = useState<(UserImageAttachment & { id: string })[]>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingFileEntry[]>([]);
   const [pendingTerminalSnippets, setPendingTerminalSnippets] = useState<PendingTerminalSnippet[]>([]);
   const [editHistoryIndex, setEditHistoryIndex] = useState<number | null>(null);
   const editHistoryIndexRef = useRef<number | null>(null);
+
+  // ---- settings 缓存：减少 IPC 重复调用 ----
+  type ChatSettings = Awaited<ReturnType<DesktopApi["getChatSettings"]>>;
+  const settingsCacheRef = useRef<ChatSettings | null>(null);
+  const getCachedSettings = useCallback(
+    async (api: DesktopApi): Promise<ChatSettings> => {
+      if (settingsCacheRef.current) return settingsCacheRef.current;
+      const s = await api.getChatSettings();
+      settingsCacheRef.current = s;
+      return s;
+    },
+    [],
+  );
+  useEffect(() => {
+    const api = getDesktop();
+    if (!api?.onChatSettingsChanged) return;
+    return api.onChatSettingsChanged(() => {
+      settingsCacheRef.current = null;
+    });
+  }, []);
+
   const [editComposer, setEditComposer] = useState<{
     input: string;
     pendingImages: (UserImageAttachment & { id: string })[];
@@ -503,6 +553,8 @@ function ChatPage() {
   const [activeStreamRequestId, setActiveStreamRequestId] = useState<string | null>(null);
   const sendingSessionsRef = useRef<Record<string, boolean>>({});
   const chainRunningRef = useRef(false);
+  const chainDocsInjectedRef = useRef(false);
+  const expandInjectedPathsRef = useRef<string[]>([]);
   const composerDraftsRef = useRef<
     Record<
       string,
@@ -685,6 +737,7 @@ function ChatPage() {
   const [stopRequested, setStopRequested] = useState(false);
   useEffect(() => {
     chainRunningRef.current = chainRunning;
+    if (chainRunning) chainDocsInjectedRef.current = false;
   }, [chainRunning]);
 
   const workflowBusy = sending || chainRunning;
@@ -982,7 +1035,7 @@ function ChatPage() {
         toast.warning("无可写入的正文。");
         return;
       }
-      const settings = await api.getChatSettings();
+      const settings = await getCachedSettings(api);
       const defaultPath = settings.defaultConfirmWritePath?.trim() || "";
       const sess = sessions.find((s) => s.id === activeId);
       if (!sess) return;
@@ -1027,28 +1080,6 @@ function ChatPage() {
     [activeId, sessions, persist],
   );
 
-  const performConfirmWrite = useCallback(async () => {
-    const api = getDesktop();
-    if (!api) return;
-    const sess = sessions.find((s) => s.id === activeId);
-    if (!sess) return;
-    const lastAsst = [...sess.history]
-      .reverse()
-      .find(
-        (m) =>
-          m.role === "assistant" &&
-          !m.requestError &&
-          typeof m.content === "string" &&
-          m.content.trim() &&
-          m.content !== "__WAITING__",
-      );
-    if (!lastAsst) {
-      toast.warning("没有可写入的上一条助手回复。请先让助手生成 PRD 等内容。");
-      return;
-    }
-    await performConfirmWriteForText(lastAsst.content, "确认写入");
-  }, [sessions, activeId, performConfirmWriteForText]);
-
   const handleBubbleWriteToWorkspace = useCallback(
     (content: string) => {
       void performConfirmWriteForText(content, "确认写入（本条气泡）");
@@ -1090,7 +1121,7 @@ function ChatPage() {
         ...(res.ok ? {} : { requestError: true }),
       };
       const hist = [...sess.history, userLine, asstLine];
-      const settings = await api.getChatSettings();
+      const settings = await getCachedSettings(api);
       const modelLabel = sess.modelId?.trim() || settings.model || "模型";
       const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
       setSessions(nextSessions);
@@ -1129,7 +1160,7 @@ function ChatPage() {
           ...(res.ok ? {} : { requestError: true }),
         };
         const hist = [...sess.history, userLine, asstLine];
-        const settings = await api.getChatSettings();
+        const settings = await getCachedSettings(api);
         const modelLabel = sess.modelId?.trim() || settings.model || "模型";
         const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
         setSessions(nextSessions);
@@ -1236,7 +1267,7 @@ function ChatPage() {
       let bridgeOk = true;
       let settings: Awaited<ReturnType<typeof api.getChatSettings>>;
       try {
-        settings = await api.getChatSettings();
+        settings = await getCachedSettings(api);
       } catch (e) {
         bridgeOk = false;
         const msg = e instanceof Error ? e.message : String(e);
@@ -1381,8 +1412,11 @@ function ChatPage() {
         }
       }
 
+      // 缓存合并后补齐 workspacePath（缓存中的旧数据可能缺少此字段）
+      list = backfillSessionWorkspaceFromActiveMap(list, activeByWorkspace);
+
       const createEmptySession = (): ChatSession => ({
-        id: `s${Date.now()}`,
+        id: genSessionId(),
         title: "新对话",
         modelId: migratedGlobal,
         history: [],
@@ -1668,6 +1702,16 @@ function ChatPage() {
       ),
     [sessions],
   );
+  /** 快速触发任务链的选项列表（内置模板） */
+  const chainOptions = useMemo((): QuickChainOption[] => {
+    return CHAIN_TEMPLATES.map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      stepCount: t.steps.length,
+      group: t.id === "pipeline-agent-self-learning" ? "self-learning" : t.category,
+    }));
+  }, []);
   const displayModel = activeSession?.modelId?.trim() || globalModel || "未选模型";
   const primaryModelFallback = AUTO_MODEL_ID;
 
@@ -2141,6 +2185,46 @@ function ChatPage() {
     [chatCtx, activeId, handleSessionChange, persist],
   );
 
+  /** 快速触发任务链：同步模板 → 创建链 → 激活 → 执行 */
+  const handleAddTask = useCallback(
+    async (templateId: string) => {
+      const api = getDesktop();
+      if (!api?.orchestrationCreateChain || !api.orchestrationActivateChain) {
+        toast.error("任务链功能不可用，请重启应用。");
+        return;
+      }
+      if (chainRunningRef.current) {
+        toast.info("任务链已在后台执行中。");
+        return;
+      }
+      await syncOfficialGenericChains();
+      const template = getChainTemplate(templateId);
+      if (!template) {
+        toast.error("未找到对应的任务链模板。");
+        return;
+      }
+      const steps = applyChainTemplate(template, {});
+      const chainR = await api.orchestrationCreateChain({
+        name: template.name,
+        description: template.description,
+        category: template.category,
+        templateId: template.id,
+        state: { status: "idle", currentIndex: 0, steps },
+      });
+      if (!chainR.ok || !chainR.chain) {
+        toast.error(chainR.error ?? "创建任务链失败");
+        return;
+      }
+      const actR = await api.orchestrationActivateChain(chainR.chain.id);
+      if (!actR.ok) {
+        toast.error(actR.error ?? "激活任务链失败");
+        return;
+      }
+      await runOrchestrationChain({ skipConfirm: true });
+    },
+    [runOrchestrationChain],
+  );
+
   const activateHistorySession = useCallback(
     async (sessionId: string) => {
       let sess = sessionsRef.current.find((s) => s.id === sessionId);
@@ -2215,9 +2299,9 @@ function ChatPage() {
       if (!api) return;
 
       const ws = workspacePathRef.current;
-      const settings = await api.getChatSettings();
+      const settings = await getCachedSettings(api);
       const mode: OrchMode = settings.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
-      const id = `s${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const id = genSessionId();
       const ns: ChatSession = {
         id,
         title: "新对话",
@@ -2287,9 +2371,9 @@ function ChatPage() {
     void (async () => {
       const api = getDesktop();
       if (!api) return;
-      const id = `s${Date.now()}`;
+      const id = genSessionId();
       const ws = workspacePathRef.current;
-      const settings = await api.getChatSettings();
+      const settings = await getCachedSettings(api);
       const ns: ChatSession = {
         id,
         title: "Claude 会话",
@@ -2325,16 +2409,18 @@ function ChatPage() {
     setSessionSending(id, false);
     delete composerDraftsRef.current[id];
 
-    const next = sessionsRef.current.filter((s) => s.id !== id);
-    const visibleAfter = filterSessionsForWorkspaceTabs(next, workspacePathRef.current);
+    // 关闭标签页 ≠ 删除对话：保留 session 在内存中，以便历史下拉仍可访问
+    const nextActiveCandidates = sessionsRef.current.filter((s) => s.id !== id);
+    const visibleAfter = filterSessionsForWorkspaceTabs(nextActiveCandidates, workspacePathRef.current);
     const aid =
       id === activeIdRef.current
         ? (sortSessionsByLatest(visibleAfter)[0]?.id ?? visibleAfter[0]?.id ?? "")
         : activeIdRef.current;
     const _preserve3 = getChatSessionsCache()?.explicitEmptySessionId || chatCtx.explicitEmptySessionId;
     const preserveIds3: string[] | undefined = _preserve3 ? [_preserve3] : undefined;
+    // 仅修剪空会话（无历史的），有内容的会话全部保留
     const pruned = pruneDuplicateEmptySessions(
-      next,
+      sessionsRef.current,
       workspacePathRef.current,
       aid || activeIdRef.current,
       preserveIds3,
@@ -2368,7 +2454,7 @@ function ChatPage() {
     }
     const sess = sessions.find((s) => s.id === activeId);
     if (!sess) return;
-    const settings = await api.getChatSettings();
+    const settings = await getCachedSettings(api);
     const resolved = resolveModelForExecution({
       selectedModel: sess.modelId || settings.model,
       cloudModels: orchestratorModels,
@@ -2561,7 +2647,7 @@ function ChatPage() {
         ...sess.history,
         { role: "user" as const, content: text, ts: Date.now() },
       ];
-      const settings = await api.getChatSettings();
+      const settings = await getCachedSettings(api);
       const modelLabel = sess.modelId?.trim() || settings.model || "模型";
       const nextSessions = sessionsRef.current.map((s) =>
         s.id === sendSessionId ? { ...s, title: chainTitle, history: hist } : s,
@@ -2594,12 +2680,6 @@ function ChatPage() {
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isConfirmWriteOnlyMessage(text)) {
-      setInput("");
-      await performConfirmWrite();
-      return;
-    }
-
     if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isBulkWriteProjectMessage(text)) {
       setInput("");
       await performBulkWriteProject(text);
@@ -2618,7 +2698,7 @@ function ChatPage() {
             { role: "user" as const, content: text, ts: Date.now() },
             { role: "assistant" as const, content: summary, ts: Date.now() },
           ];
-          const settings = await api.getChatSettings();
+          const settings = await getCachedSettings(api);
           const modelLabel = sess.modelId?.trim() || settings.model || "模型";
           const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
           setSessions(nextSessions);
@@ -2641,7 +2721,7 @@ function ChatPage() {
           ts: Date.now(),
         },
       ];
-      const settings = await api.getChatSettings();
+      const settings = await getCachedSettings(api);
       const modelLabel = sess.modelId?.trim() || settings.model || "模型";
       const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
       setSessions(nextSessions);
@@ -2656,7 +2736,7 @@ function ChatPage() {
       return;
     }
 
-    const settings = await api.getChatSettings();
+    const settings = await getCachedSettings(api);
 
     resetScrollFollow();
 
@@ -2674,23 +2754,17 @@ function ChatPage() {
     );
 
     const route = resolveAgentForTurn(displayLine, localAgentBasename);
-    const cmd = { matched: true as const, stem: route.stem, body: route.body };
-    const turnAgent = stemAgentMeta(cmd.stem);
+    // 自动模式（底栏显示「通用」/ 未选择 Agent）：不走 Agent 路由，保持普通聊天
+    const isAgentMode = !isAutoAgentBasename(localAgentBasename) || route.source === "slash" || route.stem === "__general__";
+    // cmd.stem 在非 Agent 模式下使用无害的标记值 "__auto__"，确保下游代码不报错
+    const cmd = isAgentMode
+      ? ({ matched: true as const, stem: route.stem, body: route.body } as const)
+      : ({ matched: true as const, stem: "__auto__", body: displayLine } as const);
+    const turnAgent = isAgentMode ? stemAgentMeta(route.stem) : { agentStem: "", agentLabel: "" };
 
-    let agentModel: string | undefined;
-    let agentMarkdownMissing = false;
-    if (api.readClaudeAgentMarkdown) {
-      try {
-        const agentDoc = await api.readClaudeAgentMarkdown(`${cmd.stem}.md`);
-        if (agentDoc.ok && agentDoc.content?.trim()) {
-          agentModel = parseAgentModelFromFrontmatter(agentDoc.content);
-        } else {
-          agentMarkdownMissing = true;
-        }
-      } catch {
-        agentMarkdownMissing = true;
-      }
-    }
+    let localUserLineFinal = displayLine;
+    let cloudUserLineFinal = displayLine;
+    let chainCatalogSnippet = "";
 
     const resolvedExec = resolveModelForExecution({
       selectedModel: sess.modelId || settings.model,
@@ -2724,13 +2798,24 @@ function ChatPage() {
           : null;
     const historyBefore =
       editCutoff != null ? sess.history.slice(0, editCutoff) : sess.history;
-    const priorForApi: PriorTurn[] = historyBefore.map((m) => {
+    const priorForApi: PriorTurn[] = historyBefore
+      .filter((m) => {
+        // Auto 模式：过滤掉携带 Agent 标签的旧助手回复（避免跨模式污染）
+        if (isAgentMode) return true;
+        return m.role === "user" || !m.agentStem;
+      })
+      .map((m) => {
       if (m.role === "user") {
         const t: PriorTurn = { role: "user", content: m.content };
         if (m.attachments?.length) t.attachments = m.attachments;
         return t;
       }
       return { role: "assistant", content: m.content };
+    })
+    // __general__ 模式：滤除含 workspace-write fence 的旧助手回复，防止历史污染驱动重复写盘
+    .filter((m): m is PriorTurn => {
+      if (route.stem !== "__general__" || m.role === "user") return true;
+      return !/```workspace-write\b[\s\S]*?```/i.test(m.content);
     });
 
     let visionEnrichedNote: string | undefined;
@@ -2747,17 +2832,6 @@ function ChatPage() {
             orchestratorModel: modelId,
           });
           attachmentsToSave = undefined;
-          if (enriched.visionModel) {
-            toast.info(
-              `当前模型「${modelId}」不支持视觉，已通过本机 Ollama 视觉模型（${enriched.visionModel}）将图片转为文字描述`,
-              { duration: 6000 },
-            );
-          } else {
-            toast.warning(
-              "当前模型不支持视觉，且未检测到本机视觉模型。将仅发送图片提示。",
-              { duration: 8000 },
-            );
-          }
           // 提取 enrichment 追加的描述段（后端已 append 到 userLine 末尾）
           if (enriched.userLine && enriched.userLine !== displayLine) {
             const idx = enriched.userLine.indexOf("\n\n【系统·附图");
@@ -2794,38 +2868,54 @@ function ChatPage() {
       return;
     }
 
-    if (mode === "local-mcp" && agentMarkdownMissing) {
-      toast.warning(`未找到 Agent 文件 ${cmd.stem}.md，将以通用编排身份回复。`, {
-        duration: 6000,
-      });
+    // 非 Agent 模式下仍需要拼接图片描述
+    if (!isAgentMode && visionEnrichedNote) {
+      localUserLineFinal += `\n${visionEnrichedNote}`;
+      cloudUserLineFinal = localUserLineFinal;
     }
 
-    const baseForExpand = route.body;
-    const { expanded: expandedBase, injectedPaths } = await expandUserLineWithWorkspaceFiles(
-      api,
-      baseForExpand,
-      { settings, cmd, displayLine },
-    );
-    if (injectedPaths.length > 0) {
-      toast.info("已把文件内容并入本轮提示词（只读）", {
-        description: `从工作区读取：${injectedPaths.join("，")}\n未修改磁盘上的任何文件；与底部「确认写入」「按WBS开工」无关。`,
-        duration: 6500,
+    if (isAgentMode) {
+      if (api.readClaudeAgentMarkdown) {
+        try {
+          await api.readClaudeAgentMarkdown(`${route.stem}.md`);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const baseForExpand = route.body;
+      const { expanded: expandedBase, injectedPaths: expandInjectedPaths } = await expandUserLineWithWorkspaceFiles(
+        api,
+        baseForExpand,
+        { settings, cmd, displayLine, chainRunning: chainRunningRef.current },
+      );
+      expandInjectedPathsRef.current = expandInjectedPaths || [];
+      const routedBase = buildAgentRoutedInstruction(route.stem, expandedBase, mode, {
+        mcpChatToolName: settings.mcpChatToolName || undefined,
+        mcpListModelsToolName: settings.mcpListModelsToolName || undefined,
       });
-    }
-    const routedBase = buildAgentRoutedInstruction(cmd.stem, expandedBase, mode);
-    await syncOfficialGenericChains();
-    const chainListR = await api.orchestrationListChains?.();
-    const chainCatalogSnippet = buildAgentChainCatalogMarkdown(
-      cmd.stem,
-      chainListR?.ok ? (chainListR.items ?? []) : [],
-      [],
-    );
-    const localUserLineFinal = visionEnrichedNote
-      ? `${chainCatalogSnippet ? `${routedBase}\n\n${chainCatalogSnippet}` : routedBase}\n${visionEnrichedNote}`
-      : chainCatalogSnippet
-        ? `${routedBase}\n\n${chainCatalogSnippet}`
-        : routedBase;
-    const cloudUserLineFinal = buildSubagentUserLine(cmd.stem, localUserLineFinal);
+      await syncOfficialGenericChains();
+      const chainListR = await api.orchestrationListChains?.();
+      chainCatalogSnippet = buildAgentChainCatalogMarkdown(
+        route.stem,
+        chainListR?.ok ? (chainListR.items ?? []) : [],
+        [],
+      );
+      // 链模式：追加真实 docs/ 文件清单（每链第一轮注入一次，避免后续追问重复注入）
+      if (chainRunningRef.current && !chainDocsInjectedRef.current) {
+        const docsHint = await buildDocsFileListHint(api);
+        if (docsHint) {
+          chainCatalogSnippet += docsHint;
+          chainDocsInjectedRef.current = true;
+        }
+      }
+      localUserLineFinal = visionEnrichedNote
+        ? `${chainCatalogSnippet ? `${routedBase}\n\n${chainCatalogSnippet}` : routedBase}\n${visionEnrichedNote}`
+        : chainCatalogSnippet
+          ? `${routedBase}\n\n${chainCatalogSnippet}`
+          : routedBase;
+      cloudUserLineFinal = buildSubagentUserLine(route.stem, localUserLineFinal);
+      }
 
     setStopRequested(false);
     setSessionSending(sendSessionId, true);
@@ -2931,14 +3021,16 @@ function ChatPage() {
         usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
       };
       const basenameOverride = `${cmd.stem}.md`;
-      await appendAgentExecEvent({
-        agent: cmd.stem,
-        mode,
-        source: "chat_command",
-        phase: "start",
-        instruction: route.body || displayLine,
-        modelId,
-      });
+      if (isAgentMode) {
+        await appendAgentExecEvent({
+          agent: cmd.stem,
+          mode,
+          source: "chat_command",
+          phase: "start",
+          instruction: route.body || displayLine,
+          modelId,
+        });
+      }
 
       if (mode === "local-mcp") {
         res = await api.localOrchestrationPrompt({
@@ -2947,7 +3039,7 @@ function ChatPage() {
           userAttachments: attachmentsToSave,
           orchestratorModel: modelId,
           requestId: reqId,
-          agentBasenameOverride: basenameOverride,
+          agentBasenameOverride: isAgentMode ? basenameOverride : undefined,
         });
       } else {
         const workspaceDir = await api.getWorkspace();
@@ -2959,11 +3051,6 @@ function ChatPage() {
           if (priorImages.length || attachmentsToSave?.length) {
             const merged = mergeInlineAttachments(priorImages, attachmentsToSave);
             inlineAttachments = merged.attachments.length ? merged.attachments : undefined;
-            if (merged.truncated) {
-              toast.warning(`附图超过 ${CHAT_INLINE_IMAGE_MAX} 张，仅保留最近 ${CHAT_INLINE_IMAGE_MAX} 张`, {
-                duration: 6000,
-              });
-            }
           }
         }
         const useInlineVision = Boolean(inlineAttachments?.length);
@@ -2971,27 +3058,43 @@ function ChatPage() {
           const saved = await api.saveChatImageAttachments(attachmentsToSave);
           if (saved.ok && saved.paths?.length) savedImagePaths = saved.paths;
         }
-        const prompt = await buildClaudeCodePrompt(api, {
-          workspaceDir,
-          priorHistory: priorForApi,
-          userLine: cloudUserLineFinal,
-          userAttachments: useInlineVision ? undefined : attachmentsToSave,
-          savedImagePaths: useInlineVision ? undefined : savedImagePaths,
-          inlineVision: useInlineVision,
-          sessionResume: claudeSessionResume,
-          localAgentBasename: basenameOverride,
-          skipDefaultRoleBlock: true,
-          chainCatalogSnippet,
-          orchestration: {
-            orchestratorModel: modelId,
-            localOllamaModel: settings.localOllamaModel,
-            ollamaBase: settings.ollamaBase,
-          },
-        });
+        let prompt: string;
+        if (isAgentMode) {
+          prompt = await buildClaudeCodePrompt(api, {
+            workspaceDir,
+            priorHistory: priorForApi,
+            userLine: cloudUserLineFinal,
+            userAttachments: useInlineVision ? undefined : attachmentsToSave,
+            savedImagePaths: useInlineVision ? undefined : savedImagePaths,
+            inlineVision: useInlineVision,
+            sessionResume: claudeSessionResume,
+            localAgentBasename: basenameOverride,
+            skipDefaultRoleBlock: true,
+            chainCatalogSnippet,
+            mcpChatToolName: settings.mcpChatToolName || undefined,
+            mcpListModelsToolName: settings.mcpListModelsToolName || undefined,
+            orchestration: {
+              orchestratorModel: modelId,
+              localOllamaModel: settings.localOllamaModel,
+              ollamaBase: settings.ollamaBase,
+            },
+          });
+        } else {
+          // Auto 模式：纯对话提示，不含 Agent/工具指令，仅带基本工作区上下文
+          prompt = buildPlainChatPrompt(priorForApi, cloudUserLineFinal, workspaceDir);
+        }
         // 优先尝试直接云 API 调用（绕过 Claude CLI，适用于未安装 Claude Code 的场景）
         if (api.cloudDirectPrompt) {
+          let finalPrompt = prompt;
+          // 非 Agent 模式下不预读文件（避免注入 WBS 等 Agent 产物）
+          if (isAgentMode) {
+            const preReadAppendix = await preReadInstructedWorkspaceFiles(api, prompt, expandInjectedPathsRef.current).catch(() => "");
+            if (preReadAppendix) {
+              finalPrompt = `${preReadAppendix}\n\n---\n\n${prompt}`;
+            }
+          }
           res = await api.cloudDirectPrompt({
-            prompt,
+            prompt: finalPrompt,
             model: modelId,
             requestId: reqId,
           });
@@ -3025,17 +3128,11 @@ function ChatPage() {
       } else {
         const reply = res.content || "";
         maybeToastMissingWorkspaceWrite(reply);
-        const agentStemForIngest = cmd.stem;
-        const autoProjectWrite =
-          Boolean(agentStemForIngest) && agentAutoWritesToProject(agentStemForIngest);
-        const defaultConfirmWritePath =
-          settings.defaultConfirmWritePath?.trim() || "";
+        const agentStemForIngest = isAgentMode ? cmd.stem : undefined;
         const displayContent =
           stripLargeAssistantArtifacts(
             await ingestWorkspaceWritesAndCollapseDisplay(api, reply, toastIngestWorkspaceHint, {
               ...(agentStemForIngest ? { agentStem: agentStemForIngest } : {}),
-              ...(autoProjectWrite ? { autoWriteProject: true } : {}),
-              defaultConfirmWritePath,
             }),
           ) || "（助手未返回可见正文）";
         const am: DiskMsg = {
@@ -3214,7 +3311,7 @@ function ChatPage() {
           }
         }
 
-        const settings = await api.getChatSettings();
+        const settings = await getCachedSettings(api);
         const mode: OrchMode =
           settings.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
         const modelId = pickOrchestratorModel(
@@ -3230,7 +3327,7 @@ function ChatPage() {
           nextWs,
           activeByWorkspaceRef.current,
           () => ({
-            id: `s${Date.now()}`,
+            id: genSessionId(),
             title: "新对话",
             modelId,
             history: [],
@@ -3294,7 +3391,6 @@ function ChatPage() {
     if (opts?.autoRun && (runningNow || sending)) {
       stopChainExecution();
       stopChat();
-      toast.info("已请求停止当前工作流，准备从 WBS 第 0 步重新开始…", { duration: 2600 });
       const deadline = Date.now() + 6000;
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 120));
@@ -3302,18 +3398,17 @@ function ChatPage() {
         if (!running && !sendingRef.current) break;
       }
       const stillBusy = await syncExecutionState();
-      if (stillBusy || sendingRef.current) {
-        const error = "旧流程仍在收尾，请稍后再试。";
-        if (!opts?.recordUserLine) toast.warning(error, { duration: 3600 });
-        return { ok: false, error };
-      }
+    if (stillBusy || sendingRef.current) {
+      const error = "旧流程仍在收尾，请稍后再试。";
+      return { ok: false, error };
+    }
     }
     if (!api.orchestrationCreateChain || !api.orchestrationActivateChain) {
       const error = "当前版本未暴露任务链注册接口，请重启到最新桌面应用。";
       if (!opts?.recordUserLine) toast.error(error);
       return { ok: false, error };
     }
-    const settings = await api.getChatSettings();
+    const settings = await getCachedSettings(api);
     const readWorkspaceTextFile = api.readWorkspaceTextFile;
     if (typeof readWorkspaceTextFile !== "function") {
       const error = "当前版本未暴露工作区读文件接口，请重启到最新桌面应用。";
@@ -3353,7 +3448,6 @@ function ChatPage() {
         {
           preferredPath: opts?.preferredPath,
           extraCandidatePaths: [
-            "docs/project-status.md",
             settings.defaultConfirmWritePath?.trim() || "",
           ],
           wbsFilenameOnly: false,
@@ -3363,42 +3457,25 @@ function ChatPage() {
         pickedPath = fallback.path;
         pickedText = fallback.text;
         wbsDiscoverSource = fallback.source;
-        if (!opts?.quietPickToast) {
-          toast.info(
-            `未找到 docs/wbs*.md，已从 ${pickedPath} 识别任务分配（/agent 或 WBS 表格）并生成任务链。`,
-            { duration: 5600 },
-          );
-        }
       }
     }
 
     if (!pickedText) {
       const error =
-        "未读取到可解析的 WBS。请确认 docs/wbs.md 或 sprint-backlog 等文档含「编号 | 工作摘要 | 执行 Agent」表格。";
+        "未读取到可解析的 WBS。请确认项目中含有含「编号 | 工作摘要 | 执行 Agent」表格的文档。";
       if (!opts?.recordUserLine) {
         toast.error(
-          "未读取到可解析的 WBS。请先用 `/agent project-manager` 生成含「编号 | 工作摘要 | 执行 Agent」表格并落盘到 docs/wbs.md；project-shepherd 默认写入 docs/project-status.md，不能替代 WBS。",
+          "未读取到可解析的 WBS。请先用 `/agent project-manager` 生成含「编号 | 工作摘要 | 执行 Agent」表格的 WBS 文档。",
           { duration: 7200 },
         );
       }
       return { ok: false, error };
-    }
-    if (wbsDiscoverSource === "content-scan" && !opts?.quietPickToast) {
-      toast.info(`未找到 docs/wbs*.md，已从 ${pickedPath} 识别 WBS 表格并生成任务链。`, {
-        duration: 5200,
-      });
-    }
-    if (opts?.preferredPath && !opts?.quietPickToast) {
-      toast.info(`已按退出点优先匹配：${pickedPath}`);
     }
     const parsed = parseActiveChainFromBubbleText(pickedText);
     if (!parsed.ok) {
       const error = `WBS 解析失败：${parsed.error}`;
       if (!opts?.recordUserLine) {
         toast.error(error, { duration: 5000 });
-        toast.info(`已尝试文件：${pickedPath}。建议先将 WBS 导出为 Markdown 表格（含“编号/工作摘要/执行 Agent”）。`, {
-          duration: 5500,
-        });
       }
       return { ok: false, error };
     }
@@ -3480,7 +3557,6 @@ function ChatPage() {
       (st?.steps?.length ?? 0) > 0 &&
       (st?.currentIndex ?? 0) >= (st?.steps?.length ?? 0);
     if (hasCompleted) {
-      toast.info("当前任务链已完成。若要从第 0 步重跑，请点击「按WBS开工」。", { duration: 4200 });
       return;
     }
     const sess = sessions.find((s) => s.id === activeId);
@@ -3527,6 +3603,47 @@ function ChatPage() {
     await runWorkflowFromWbs({ preferredPath: picked.relPath, wbsOnly: true });
   };
 
+  // ---- inlineComposer 行内回调提取（避免 useMemo 每次重建时创建新引用） ----
+  const inlineOnRemoveImage = useCallback(
+    (id: string) =>
+      setEditComposer((prev) =>
+        prev ? { ...prev, pendingImages: prev.pendingImages.filter((x) => x.id !== id) } : prev,
+      ),
+    [],
+  );
+  const inlineOnRemoveFile = useCallback(
+    (id: string) =>
+      setEditComposer((prev) =>
+        prev ? { ...prev, pendingFiles: prev.pendingFiles.filter((x) => x.id !== id) } : prev,
+      ),
+    [],
+  );
+  const inlineOnRemoveTerminalSnippet = useCallback(
+    (id: string) =>
+      setEditComposer((prev) =>
+        prev
+          ? {
+              ...prev,
+              pendingTerminalSnippets: prev.pendingTerminalSnippets.filter((x) => x.id !== id),
+            }
+          : prev,
+      ),
+    [],
+  );
+  const inlineOnDropFiles = useCallback(
+    (files: File[], cursor: number) => void handleInlineComposerDropFiles(files, cursor),
+    [handleInlineComposerDropFiles],
+  );
+  const inlineOnPickFiles = useCallback(
+    (opts?: { onlyImages?: boolean }) => void pickLocalFiles(opts),
+    [pickLocalFiles],
+  );
+  const inlineOnAgentChange = useCallback((b: string) => void handleAgentChange(b), [handleAgentChange]);
+  const inlineOnModelPick = useCallback(
+    (pick: { mode: OrchMode; model: string }) => void handleModelPick(pick),
+    [handleModelPick],
+  );
+
   const inlineComposer = useMemo((): ChatComposerShellProps | null => {
     if (editHistoryIndex == null || !editComposer) return null;
     return {
@@ -3536,7 +3653,7 @@ function ChatPage() {
       onSend: () => void sendChat(),
       onStop: () => stopChat(),
       onPaste: handleInlineComposerPaste,
-      onDropFiles: (files, cursor) => void handleInlineComposerDropFiles(files, cursor),
+      onDropFiles: inlineOnDropFiles,
       placeholder: composerPlaceholder,
       disabled: workflowBusy,
       workflowBusy,
@@ -3548,34 +3665,20 @@ function ChatPage() {
           editComposer.pendingTerminalSnippets.length,
       ),
       pendingImages: editComposer.pendingImages,
-      onRemoveImage: (id) =>
-        setEditComposer((prev) =>
-          prev ? { ...prev, pendingImages: prev.pendingImages.filter((x) => x.id !== id) } : prev,
-        ),
+      onRemoveImage: inlineOnRemoveImage,
       pendingFiles: editComposer.pendingFiles,
-      onRemoveFile: (id) =>
-        setEditComposer((prev) =>
-          prev ? { ...prev, pendingFiles: prev.pendingFiles.filter((x) => x.id !== id) } : prev,
-        ),
+      onRemoveFile: inlineOnRemoveFile,
       pendingTerminalSnippets: editComposer.pendingTerminalSnippets,
-      onRemoveTerminalSnippet: (id) =>
-        setEditComposer((prev) =>
-          prev
-            ? {
-                ...prev,
-                pendingTerminalSnippets: prev.pendingTerminalSnippets.filter((x) => x.id !== id),
-              }
-            : prev,
-        ),
-      onPickFiles: (opts) => void pickLocalFiles(opts),
+      onRemoveTerminalSnippet: inlineOnRemoveTerminalSnippet,
+      onPickFiles: inlineOnPickFiles,
       orchMode,
       localAgentBasename,
-      onAgentChange: (b) => void handleAgentChange(b),
+      onAgentChange: inlineOnAgentChange,
       cloudModels: orchestratorModels,
       localModels: localOllamaTags,
       modelValue: activeSession?.modelId || globalModel || primaryModelFallback || "",
       modelFallback: primaryModelFallback,
-      onModelPick: (pick) => void handleModelPick(pick),
+      onModelPick: inlineOnModelPick,
       onCancelEdit: cancelEditUserMessage,
     };
   }, [
@@ -3590,13 +3693,11 @@ function ChatPage() {
     activeSession?.modelId,
     globalModel,
     primaryModelFallback,
-    handleInlineComposerPaste,
-    appendEditComposerImageFiles,
-    handleInlineComposerDropFiles,
+    inlineOnDropFiles,
+    inlineOnPickFiles,
+    inlineOnAgentChange,
+    inlineOnModelPick,
     cancelEditUserMessage,
-    pickLocalFiles,
-    handleAgentChange,
-    handleModelPick,
     stopChat,
   ]);
 
@@ -3725,6 +3826,8 @@ function ChatPage() {
             onModelPick={(pick) => void handleModelPick(pick)}
             chainStatusLabel={chainStatusBadge.label}
             chainStatusTone={chainStatusBadge.tone}
+            onAddTask={handleAddTask}
+            chainOptions={chainOptions}
             onCancelEdit={cancelEditUserMessage}
           />
         </div>,
@@ -3754,312 +3857,5 @@ function ChatPage() {
         }}
       />
     </AppShell>
-  );
-}
-
-function SkillChip({ label, icon: Icon, onRemove }: { label: string; icon: typeof Zap; onRemove: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary-soft px-2.5 py-1 text-[11.5px] font-medium text-primary">
-      <Icon className="h-3 w-3" />
-      {label}
-      <button onClick={onRemove} className="ml-0.5 rounded-full p-0.5 text-primary/60 transition hover:bg-primary/10 hover:text-primary">
-        <X className="h-2.5 w-2.5" />
-      </button>
-    </span>
-  );
-}
-
-function SpeedChip({ open, setOpen, speed, setSpeed }: { open: boolean; setOpen: (v: boolean) => void; speed: string; setSpeed: (v: string) => void }) {
-  const opts = [
-    { label: "快速", desc: "适用于大部分情况", icon: Zap, color: "text-amber-500" },
-    { label: "思考", desc: "擅长解决更难的问题", icon: Circle, color: "text-foreground" },
-    { label: "专家", desc: "研究级智能模型", icon: Diamond, color: "text-muted-foreground", badge: "新" },
-  ];
-  return (
-    <div className="relative">
-      <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition hover:text-foreground">
-        <Zap className="h-3 w-3 text-amber-500" /> {speed} <ChevronDown className="h-2.5 w-2.5" />
-      </button>
-      {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-64 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          {opts.map((o, i) => {
-            const Icon = o.icon;
-            const sel = o.label === speed;
-            return (
-              <button key={i} onClick={() => { setSpeed(o.label); setOpen(false); }} className={cn("flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition", sel ? "bg-primary-soft/50" : "hover:bg-secondary")}>
-                <Icon className={cn("mt-0.5 h-4 w-4", o.color)} />
-                <div className="flex-1">
-                  <div className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-                    {o.label}
-                    {o.badge && <span className="rounded bg-primary-soft px-1 py-px text-[10px] font-medium text-primary">{o.badge}</span>}
-                  </div>
-                  <div className="text-[11.5px] text-muted-foreground">{o.desc}</div>
-                </div>
-                {sel && <Check className="h-3.5 w-3.5 text-primary" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function UploadChip({ onClick, label, hasArrow }: { onClick: () => void; label: string; hasArrow?: boolean }) {
-  return (
-    <button onClick={onClick} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition hover:text-foreground">
-      <Paperclip className="h-3.5 w-3.5" /> {label} {hasArrow && <ChevronDown className="h-2.5 w-2.5" />}
-    </button>
-  );
-}
-
-function ModelChip({
-  label,
-  open,
-  setOpen,
-  options,
-  onSelect,
-  disabled,
-}: {
-  label: string;
-  open: boolean;
-  setOpen: (v: boolean) => void;
-  options: string[];
-  onSelect: (v: string) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => !disabled && setOpen(!open)}
-        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <Sparkles className="h-3.5 w-3.5 text-primary" /> {label}{" "}
-        <ChevronDown className="h-2.5 w-2.5" />
-      </button>
-      {open && !disabled && options.length > 0 && (
-        <div className="absolute bottom-full left-1/2 z-30 mb-2 max-h-64 w-56 -translate-x-1/2 overflow-y-auto rounded-2xl border border-border bg-surface p-1.5 shadow-lg scrollbar-thin">
-          {options.map((o) => {
-            const sel = o === label;
-            return (
-              <button
-                key={o}
-                type="button"
-                onClick={() => {
-                  onSelect(o);
-                  setOpen(false);
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left font-mono text-[12px] transition",
-                  sel ? "bg-primary-soft/50 font-semibold text-foreground" : "text-muted-foreground hover:bg-secondary",
-                )}
-              >
-                <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" /> {o}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const STYLE_OPTIONS = [
-  "人像摄影", "电影写真", "中国风", "动漫", "3D 渲染", "赛博朋克",
-  "平面插画", "风景", "像素风格", "水墨画", "油画", "水彩画",
-];
-
-function StylePopover({ open, setOpen, value, setValue }: { open: boolean; setOpen: (v: boolean) => void; value: string; setValue: (v: string) => void }) {
-  return (
-    <div className="relative">
-      <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground transition hover:text-foreground">
-        <Disc className="h-3.5 w-3.5" /> {value || "风格"} <ChevronDown className="h-3 w-3" />
-      </button>
-      {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-72 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground">风格</div>
-          <div className="max-h-72 space-y-0.5 overflow-y-auto scrollbar-thin pr-1">
-            {STYLE_OPTIONS.map((s) => {
-              const sel = s === value;
-              return (
-                <button key={s} onClick={() => { setValue(s); setOpen(false); }} className={cn("flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition", sel ? "bg-secondary" : "hover:bg-secondary/60")}>
-                  <span className="h-10 w-10 shrink-0 rounded-xl border border-border bg-gradient-to-br from-secondary to-muted" />
-                  <span className="text-[13px] text-foreground">{s}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const TEMPLATE_OPTIONS = ["社交媒体海报", "产品详情页", "故事板三栏", "简洁封面", "对比两栏", "时间线"];
-
-function TemplatePopover({ open, setOpen, value, setValue }: { open: boolean; setOpen: (v: boolean) => void; value: string | null; setValue: (v: string | null) => void }) {
-  return (
-    <div className="relative">
-      <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground transition hover:text-foreground">
-        <Square className="h-3.5 w-3.5" /> {value || "模板"}
-      </button>
-      {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-52 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground">模板</div>
-          {TEMPLATE_OPTIONS.map((t) => {
-            const sel = t === value;
-            return (
-              <button key={t} onClick={() => { setValue(sel ? null : t); setOpen(false); }} className={cn("flex w-full items-center rounded-xl px-3 py-2 text-left text-[13px] transition", sel ? "bg-primary-soft/50 font-semibold text-foreground" : "text-foreground hover:bg-secondary")}>
-                {t}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function GithubDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  if (!open) return null;
-  const repos = [
-    { name: "EPLB", desc: "EP 间并行动态负载均衡" },
-    { name: "deepseek", desc: "面向 MoE 与 EP 的通信相关参考" },
-    { name: "lighthouse", desc: "网络应用质量与性能" },
-    { name: "blog", desc: "数据结构与算法笔记" },
-    { name: "notekit", desc: "支持手绘的 Markdown 笔记" },
-  ];
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start justify-between">
-          <div>
-            <h3 className="text-[16px] font-semibold text-foreground">引入开源仓库</h3>
-            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-              目前仅支持在终端手动克隆公开仓库；此处可记录常用 GitHub 链接便于复制。
-            </p>
-          </div>
-          <button onClick={onClose} className="rounded-full p-1 text-muted-foreground transition hover:bg-secondary hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <input
-          type="text"
-          placeholder="输入 GitHub 链接"
-          className="mt-4 w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-        />
-        <div className="mt-5 text-[12px] font-semibold text-foreground">热门仓库</div>
-        <div className="mt-2 divide-y divide-border">
-          {repos.map((r) => (
-            <div key={r.name} className="flex items-baseline gap-2 py-2.5 text-[13px]">
-              <span className="font-semibold text-foreground">{r.name}</span>
-              <span className="text-muted-foreground">：{r.desc}</span>
-            </div>
-          ))}
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-border bg-surface px-4 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary">
-            取消
-          </button>
-          <button className="rounded-lg px-4 py-1.5 text-[12.5px] font-semibold text-primary-foreground shadow-sm transition hover:opacity-95" style={{ backgroundImage: "var(--gradient-primary)" }}>
-            复制链接
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SegmentToggle({
-  options,
-  value,
-  onChange,
-}: {
-  options: string[];
-  value: string;
-  onChange: (next: string) => void;
-}) {
-  return (
-    <div className="inline-flex rounded-full bg-secondary p-0.5">
-      {options.map((o) => (
-        <button
-          key={o}
-          type="button"
-          onClick={() => onChange(o)}
-          className={cn(
-            "rounded-full px-3 py-0.5 text-[11.5px] font-medium transition",
-            value === o ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground",
-          )}
-        >
-          {o}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function RatioChip({ open, setOpen, ratio, setRatio }: { open: boolean; setOpen: (v: boolean) => void; ratio: string; setRatio: (v: string) => void }) {
-  const opts = [
-    { v: "1:1", desc: "正方形，头像" },
-    { v: "2:3", desc: "社交媒体，自拍" },
-    { v: "3:4", desc: "经典比例，拍照" },
-    { v: "4:3", desc: "文章配图，插画" },
-    { v: "9:16", desc: "手机壁纸，人像" },
-    { v: "16:9", desc: "桌面壁纸，风景" },
-  ];
-  return (
-    <div className="relative">
-      <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition hover:text-foreground">
-        <Square className="h-3.5 w-3.5" /> 比例 · {ratio} <ChevronDown className="h-2.5 w-2.5" />
-      </button>
-      {open && (
-        <div className="absolute bottom-full right-0 z-30 mb-2 w-72 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground">比例</div>
-          {opts.map((o) => {
-            const sel = o.v === ratio;
-            return (
-              <button key={o.v} onClick={() => { setRatio(o.v); setOpen(false); }} className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition", sel ? "bg-primary-soft/40" : "hover:bg-secondary")}>
-                <Square className={cn("h-3.5 w-3.5", sel ? "fill-primary/30 text-primary" : "text-muted-foreground")} />
-                <span className="text-[13px] font-semibold text-foreground">{o.v}</span>
-                <span className="text-[12px] text-muted-foreground">{o.desc}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LengthChip({ open, setOpen, length, setLength }: { open: boolean; setOpen: (v: boolean) => void; length: string; setLength: (v: string) => void }) {
-  const opts = [
-    { v: "智能推荐", icon: Sparkles },
-    { v: "精简", icon: Menu },
-    { v: "适中", icon: AlignJustify },
-    { v: "详细", icon: AlignLeft },
-  ];
-  return (
-    <div className="relative">
-      <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition hover:text-foreground">
-        <AlignJustify className="h-3.5 w-3.5" /> 篇幅 <ChevronDown className="h-2.5 w-2.5" />
-      </button>
-      {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-44 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground">篇幅</div>
-          {opts.map((o) => {
-            const Icon = o.icon;
-            const sel = o.v === length;
-            return (
-              <button key={o.v} onClick={() => { setLength(o.v); setOpen(false); }} className={cn("flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[13px] transition", sel ? "bg-primary-soft/40 font-semibold text-foreground" : "hover:bg-secondary")}>
-                <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                {o.v}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
   );
 }

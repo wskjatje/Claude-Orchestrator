@@ -129,8 +129,8 @@ function resolveClaudeCliModel(model, env) {
   if (sonnet && m === sonnet) return 'sonnet'
   if (haiku && m === haiku) return 'haiku'
   if (opus && m === opus) return 'opus'
-  if (/^gemini-/i.test(m) || /^claude-/i.test(m)) return 'sonnet'
-  if (isThirdPartyAnthropicBase(env.ANTHROPIC_BASE_URL)) return 'sonnet'
+  if (/^gemini-/i.test(m) || /^claude-/i.test(m)) return m
+  if (isThirdPartyAnthropicBase(env.ANTHROPIC_BASE_URL)) return m
   return m
 }
 
@@ -735,7 +735,7 @@ export async function runClaudeCodePrint({
     return {
       ok: false,
       error:
-        `${who} 的模型「${String(model || '').trim() || '默认'}」不支持图片输入（与 Cursor 相同：非视觉模型不可带图）。` +
+        `${who} 的模型「${String(model || '').trim() || '默认'}」不支持图片输入（非视觉模型不可带图）。` +
         ' 请切换到 Claude Sonnet / Gemini 等视觉模型，或改用「本地 MCP」+ Ollama 视觉模型。',
       content: '',
       aborted: false,

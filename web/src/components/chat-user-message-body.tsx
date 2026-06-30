@@ -29,7 +29,7 @@ function TerminalChip({
   );
 }
 
-/** Cursor 式用户气泡：chip + 正文 + 附图；点击正文编辑，箭头重新发起。 */
+/** 用户气泡：chip + 正文 + 附图；点击正文编辑，箭头重新发起。 */
 export function ChatUserMessageBody({
   content,
   attachments,

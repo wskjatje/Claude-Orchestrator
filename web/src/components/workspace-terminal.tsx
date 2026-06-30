@@ -166,7 +166,7 @@ export type WorkspaceTerminalHandle = {
   dispose: () => void;
   focus: () => void;
   clear: () => void;
-  /** 向 Shell 发送一行命令（类 Cursor Agent 运行） */
+  /** 向 Shell 发送一行命令 */
   runCommand: (command: string) => boolean;
   isReady: () => boolean;
 };

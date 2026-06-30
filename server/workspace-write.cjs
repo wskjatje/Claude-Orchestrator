@@ -8,7 +8,7 @@ const {
   defaultArtifactPathForAgent,
   buildAgentArtifactPathHint,
 } = require('./agent-artifact-paths.cjs')
-const { agentRequiresManualConfirmWrite, agentAutoWritesToProject } = require('./write-policy.cjs')
+const { agentAutoWritesToProject } = require('./write-policy.cjs')
 
 function expandUserPath(p) {
   let s = String(p || '').trim()
@@ -397,10 +397,6 @@ function extractJsonPathContentWrites(text) {
 function collectWritableItemsFromText(body, meta) {
   const m = meta && typeof meta === 'object' ? meta : {}
   const agentName = typeof m.agentName === 'string' ? m.agentName.trim() : ''
-  const manualOnly =
-    typeof m.manualConfirmOnly === 'boolean'
-      ? m.manualConfirmOnly
-      : agentRequiresManualConfirmWrite(agentName)
   const autoWriteProject =
     typeof m.autoWriteProject === 'boolean'
       ? m.autoWriteProject
@@ -413,7 +409,7 @@ function collectWritableItemsFromText(body, meta) {
   )
   if (fenceItems.length > 0) return fenceItems
 
-  if (!autoWriteProject || manualOnly || !body.trim()) return []
+  if (!autoWriteProject || !body.trim()) return []
 
   const merged = new Map()
   for (const it of [
@@ -544,10 +540,6 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
   const taskId = typeof m.taskId === 'string' ? m.taskId.trim() : ''
   const ensureChainArtifact = Boolean(m.ensureChainArtifact)
   const ensureAgentArtifact = Boolean(m.ensureAgentArtifact)
-  const manualOnly =
-    typeof m.manualConfirmOnly === 'boolean'
-      ? m.manualConfirmOnly
-      : agentRequiresManualConfirmWrite(agentName)
   const autoWriteProject =
     typeof m.autoWriteProject === 'boolean'
       ? m.autoWriteProject
@@ -572,7 +564,7 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
     }
   }
 
-  if (autoWriteProject && !manualOnly && body.trim()) {
+  if (autoWriteProject && body.trim()) {
     const fromAdjacent = extractCodeFenceWrites(body)
     const fromOrdered = extractOrderedPathCodeWrites(body)
     const fromJson = extractJsonPathContentWrites(body)
@@ -607,9 +599,7 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
     const header = [
       `# 任务链步骤产物 · ${taskId || '—'} · ${agentName || '—'}`,
       '',
-      manualOnly
-        ? '> 本步为产品/项目分工类产出；请核对后在聊天页点击「确认写入」落盘到正式文档路径。'
-        : '> 本步未解析到 workspace-write 围栏或代码块；系统已将执行摘要自动落盘。',
+      '> 本步未解析到 workspace-write 围栏或代码块；系统已将执行摘要自动落盘。',
       '',
       '---',
       '',
@@ -621,7 +611,7 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
     }
   }
 
-  if (ensureAgentArtifact && agentName && body.trim() && !manualOnly) {
+  if (ensureAgentArtifact && agentName && body.trim()) {
     const rel = defaultArtifactPathForAgent(agentName)
     const header = [
       `# Agent 产物 · ${agentName}`,
@@ -638,7 +628,7 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
     }
   }
 
-  if (!manualOnly && autoWriteProject) {
+  if (autoWriteProject) {
     const missingNote = buildMissingWriteNotice(claimedPaths, [])
     if (missingNote) {
       return { ok: false, error: '未找到可落盘的 workspace-write 或代码块', written: [], displayText: `${body}\n\n${missingNote}` }

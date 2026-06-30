@@ -16,7 +16,7 @@ type Props = {
   onRequestResendUserMessage?: (historyIndex: number) => void;
 };
 
-/** 顶部固定用户提问栏：点击后展开 Cursor 式内联 Composer */
+/** 顶部固定用户提问栏：点击后展开内联 Composer */
 export function ChatStickyUserHeader({
   message,
   isEditing = false,

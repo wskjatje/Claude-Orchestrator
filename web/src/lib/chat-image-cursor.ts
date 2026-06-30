@@ -1,9 +1,9 @@
 import type { PriorTurn, UserImageAttachment } from "@/lib/ollama-messages";
 
-/** 与 Claude Code / Cursor 一致：粘贴大图最长边缩至 2000px */
+/** 粘贴大图最长边缩至 2000px */
 export const CHAT_IMAGE_MAX_EDGE_PX = 2000;
 
-/** Claude Code 单轮 inline 附图上限（与 Cursor/Claude Code 文档量级一致） */
+/** Claude Code 单轮 inline 附图上限 */
 export const CHAT_INLINE_IMAGE_MAX = 32;
 
 const VISION_MODEL_RE =
@@ -38,7 +38,7 @@ export function collectImageFilesFromDataTransfer(dt: DataTransfer | null): File
   return out;
 }
 
-/** 历史 user 轮附图（Cursor：同会话追问仍保留 vision 上下文） */
+/** 历史 user 轮附图（同会话追问仍保留 vision 上下文） */
 export function collectPriorUserAttachments(prior: PriorTurn[]): UserImageAttachment[] {
   const out: UserImageAttachment[] = [];
   for (const m of prior) {
@@ -81,7 +81,7 @@ export async function normalizePendingImageFiles(
   return out;
 }
 
-/** 批量插入 [Image #N] token（旧版兼容，Cursor 已不再插入文本标记） */
+/** 批量插入 [Image #N] token（旧版兼容，已不再插入文本标记） */
 export function insertImageChipTokens(text: string, startIndex: number, count: number, cursor: number): string {
   let next = text;
   let pos = cursor;
@@ -114,7 +114,7 @@ export function visionRequiredError(modelLabel: string): string {
   return `当前模型「${modelLabel}」不支持图片。请切换到支持视觉的模型（如 Claude Sonnet、Gemini），或改用「本地 MCP」并安装 Ollama 视觉模型。`;
 }
 
-/** 读取 dataUrl 尺寸并按 Cursor/Claude Code 规则缩小 */
+/** 读取 dataUrl 尺寸并按 Claude Code 规则缩小 */
 export async function downscaleDataUrlForChat(
   dataUrl: string,
   maxEdge = CHAT_IMAGE_MAX_EDGE_PX,
@@ -165,7 +165,7 @@ export async function normalizePendingImage(
   };
 }
 
-/** Cursor 式：在输入框插入 [Image #N] 占位，便于 positional 引用 */
+/** 在输入框插入 [Image #N] 占位，便于 positional 引用 */
 export function insertImageChipToken(text: string, imageIndex: number, cursor: number): string {
   const token = `[Image #${imageIndex}] `;
   const before = text.slice(0, cursor);

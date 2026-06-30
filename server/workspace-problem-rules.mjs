@@ -1,7 +1,7 @@
 /**
- * Workbench Problems 过滤规则 — 对齐 Cursor / VS Code 默认体验：
+ * Workbench Problems 过滤规则 — 对标常见 IDE 默认体验：
  * - 格式问题由 Prettier 在保存时处理，不常驻 Problems
- * - react-refresh 等 HMR 提示属于开发工具规则，Cursor 通常不在 Problems 展示
+ * - react-refresh 等 HMR 提示属于开发工具规则，通常不在 Problems 展示
  * - TypeScript 语义/语法错误优先于 @typescript-eslint 重复报告
  */
 
@@ -14,7 +14,7 @@ export function isFormatOnlyRule(rule) {
   return false
 }
 
-/** Cursor 默认不在 Problems / 编辑器中强调的 ESLint 规则（可用 eslint.rules.customizations 关闭） */
+/** 默认不在 Problems / 编辑器中强调的 ESLint 规则（可用 eslint.rules.customizations 关闭） */
 const ESLINT_RULES_SUPPRESSED = [
   /^react-refresh\//,
   /^@typescript-eslint\/no-unused-vars$/,

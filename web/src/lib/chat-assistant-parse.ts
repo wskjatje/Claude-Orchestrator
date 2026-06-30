@@ -1,4 +1,4 @@
-/** 将助手 Markdown 拆成 Cursor 式块：思考、工具、终端、正文。 */
+/** 将助手 Markdown 拆成块：思考、工具、终端、正文。 */
 
 export type AssistantBlock =
   | { kind: "thought"; title: string; body: string }
@@ -14,7 +14,7 @@ const THOUGHT_HEAD =
 
 const THOUGHT_INLINE = /^>\s*(?:\*\*)?(?:Thought|Thinking|思考)(?:\*\*)?\s*$/i;
 
-/** 单行工具活动（Cursor CLI 常见输出） */
+/** 单行工具活动 */
 function tryToolLine(line: string): AssistantBlock | null {
   const t = line.trim();
   const m = t.match(TOOL_LINE);

@@ -173,7 +173,7 @@ function parseWrittenPathSummary(text: string, seq: { n: number }): ChatFileEdit
   return edits;
 }
 
-/** 从助手正文提取 Cursor 式文件改动卡片，并返回去掉围栏后的 Markdown。 */
+/** 从助手正文提取文件改动卡片，并返回去掉围栏后的 Markdown。 */
 export function parseChatFileEdits(text: string): { edits: ChatFileEdit[]; stripped: string } {
   if (!text?.trim()) return { edits: [], stripped: text };
 
@@ -254,7 +254,7 @@ export function parseChatFileEdits(text: string): { edits: ChatFileEdit[]; strip
   return { edits, stripped };
 }
 
-/** 按路径取下一个未使用的改动（用于 Cursor 式 inline 穿插） */
+/** 按路径取下一个未使用的改动（用于 inline 穿插） */
 export function takeEditForPath(
   path: string,
   pool: Map<string, ChatFileEdit[]>,

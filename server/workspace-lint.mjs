@@ -23,7 +23,7 @@ const REPO_WEB = path.resolve(SERVER_DIR, '../web')
 /**
  * @param {string[]} relPaths 工作区相对路径
  * @param {{ mode?: 'open' | 'full' }} [opts]
- *   - open：仅 TypeScript（对齐 Cursor 打开文件时 tsserver 行为，不跑 ESLint CLI）
+ *   - open：仅 TypeScript（仅打开文件时触发 tsserver，不跑 ESLint CLI）
  *   - full：TS + ESLint（保存 / 手动刷新）
  * @returns {{ ok: boolean, problems: Array<{ relPath: string, line: number, column: number, endLine?: number, endColumn?: number, severity: 'error' | 'warning', message: string, rule?: string | null }>, error?: string }}
  */

@@ -17,7 +17,7 @@ type Props = {
   onConfirm: () => void;
 };
 
-/** Cursor checkpoint confirmation when editing or resending a prior user message. */
+/** Checkpoint confirmation when editing or resending a prior user message. */
 export function ChatResendConfirmDialog({ open, onOpenChange, onConfirm }: Props) {
   const [dontAskAgain, setDontAskAgain] = useState(false);
 

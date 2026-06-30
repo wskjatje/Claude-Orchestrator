@@ -55,7 +55,7 @@ function EditStats({ edit }: { edit: ChatFileEdit }) {
   return null;
 }
 
-/** Cursor 式：默认收起 diff，头部/底部 chevron 展开 */
+/** 默认收起 diff，头部/底部 chevron 展开 */
 function CursorFileEditCard({ edit }: { edit: ChatFileEdit }) {
   const badge = fileBadgeFromPath(edit.path);
   const fileName = edit.path.split("/").pop() ?? edit.path;

@@ -5,16 +5,13 @@ import { Save, Download, Upload, RefreshCw, GitBranch, Settings, X, FolderInput 
 import { toast } from "sonner";
 import { InfoHint } from "@/components/info-hint";
 import { RequiredMark } from "@/components/required-mark";
-import { chatSettingsPreservePayload } from "@/lib/model-catalog";
 import { ModelsConnectionsPanel } from "@/components/models-connections-panel";
 import { DeployDialog } from "@/components/deploy-dialog";
 import { PageRoot, SettingsLayout, SettingsNavItem } from "@/components/page-layout";
-import { useDesktopReady, useHasDesktop } from "@/hooks/use-desktop-ready";
-import { getDesktop, isWebBridge } from "@/lib/desktop-api";
+import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { getDesktop } from "@/lib/desktop-api";
 import { cn } from "@/lib/utils";
 import {
-  CONFIRM_WRITE_FOOTER,
-  CONFIRM_WRITE_SECTION_HINT,
   GIT_PUSH_HINT,
   GIT_PUSH_HINT_DETAIL,
   GIT_DEPLOY_HINT,
@@ -22,9 +19,6 @@ import {
   GIT_PUSH_REASON_PLACEHOLDER,
   GIT_PUSH_REASON_REQUIRED,
   PAGE_DESC,
-  SETTINGS_SAVED_PROJECT,
-  SETTINGS_TAB_HINT,
-  WORKSPACE_API_MISSING,
 } from "@/lib/ui-copy";
 import { formatGitErrorMessage } from "@/lib/git-error-message";
 
@@ -59,59 +53,47 @@ function SettingsOverview({
   workspacePath,
   orchestrationMode,
   modelLabel,
-  activeTab,
 }: {
   workspacePath: string;
   orchestrationMode: "claude-code" | "local-mcp";
   modelLabel: string;
-  activeTab: "general" | "models" | "advanced";
 }) {
   const wsShort =
     workspacePath.length > 48 ? `…${workspacePath.slice(-44)}` : workspacePath;
-  const tabHint = SETTINGS_TAB_HINT;
 
   return (
-    <div className="space-y-2.5">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <div className="rounded-xl border border-border bg-surface-elevated px-3 py-2.5 shadow-xs">
-          <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">工作区</div>
-          <div className="mt-0.5 truncate font-mono text-[11.5px] text-foreground" title={workspacePath}>
-            {wsShort}
-          </div>
-          <div className="mt-1 text-[10.5px] text-muted-foreground">侧栏 · 工作目录</div>
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="rounded-xl border border-border bg-surface-elevated px-3 py-2.5 shadow-xs">
+        <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">工作区</div>
+        <div className="mt-0.5 truncate font-mono text-[11.5px] text-foreground" title={workspacePath}>
+          {wsShort}
         </div>
-        <div className="rounded-xl border border-border bg-surface-elevated px-3 py-2.5 shadow-xs">
-          <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">编排</div>
-          <div className="mt-0.5 text-[13px] font-semibold text-foreground">
-            {orchestrationMode === "local-mcp" ? "本地 Ollama + MCP" : "Claude Code"}
-          </div>
-          <div className="mt-1 text-[10.5px] text-muted-foreground">聊天页切换</div>
-        </div>
-        <div className="rounded-xl border border-border bg-surface-elevated px-3 py-2.5 shadow-xs">
-          <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">默认模型</div>
-          <div className="mt-0.5 truncate font-mono text-[12px] font-semibold text-foreground">{modelLabel}</div>
-          <div className="mt-1 text-[10.5px] text-muted-foreground">模型配置</div>
-        </div>
+        <div className="mt-1 text-[10.5px] text-muted-foreground">侧栏 · 工作目录</div>
       </div>
-      <p className="text-[11.5px] leading-relaxed text-muted-foreground">{tabHint[activeTab]}</p>
+      <div className="rounded-xl border border-border bg-surface-elevated px-3 py-2.5 shadow-xs">
+        <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">编排</div>
+        <div className="mt-0.5 text-[13px] font-semibold text-foreground">
+          {orchestrationMode === "local-mcp" ? "本地 Ollama + MCP" : "Claude Code"}
+        </div>
+        <div className="mt-1 text-[10.5px] text-muted-foreground">聊天页切换</div>
+      </div>
+      <div className="rounded-xl border border-border bg-surface-elevated px-3 py-2.5 shadow-xs">
+        <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">默认模型</div>
+        <div className="mt-0.5 truncate font-mono text-[12px] font-semibold text-foreground">{modelLabel}</div>
+        <div className="mt-1 text-[10.5px] text-muted-foreground">模型配置</div>
+      </div>
     </div>
   );
 }
 
 function SettingsPage() {
-  const desktopReady = useDesktopReady();
   const desktop = useHasDesktop();
   const [workspacePath, setWorkspacePath] = useState("(未载入)");
   const [modelSelect, setModelSelect] = useState("");
   const [orchestrationModeSelect, setOrchestrationModeSelect] = useState<"claude-code" | "local-mcp">(
     "claude-code",
   );
-  const [hint, setHint] = useState("");
-  /** 一键「确认写入」时，无可用 workspace-write 块则写入此相对路径 */
-  const [defaultConfirmWritePathInput, setDefaultConfirmWritePathInput] = useState("");
-  /** 本地 MCP：mcpServers JSON 绝对路径；空则 ~/.claude/config.json → mcp.json */
-  const [mcpConfigAbsolutePathInput, setMcpConfigAbsolutePathInput] = useState("");
-  const [settingsTab, setSettingsTab] = useState<"general" | "models" | "advanced">("general");
+  const [settingsTab, setSettingsTab] = useState<"basic" | "advanced">("basic");
 
   const refreshWorkspace = useCallback(async () => {
     const api = getDesktop();
@@ -126,7 +108,6 @@ function SettingsPage() {
     const s = await api.getChatSettings();
     setModelSelect(s.model || "");
     setOrchestrationModeSelect(s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code");
-    setMcpConfigAbsolutePathInput(s.mcpConfigAbsolutePath?.trim() ?? "");
   }, []);
 
   useEffect(() => {
@@ -136,10 +117,7 @@ function SettingsPage() {
       if (!api) return;
       const s = await api.getChatSettings();
       setOrchestrationModeSelect(s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code");
-      setDefaultConfirmWritePathInput(s.defaultConfirmWritePath?.trim() || "");
       setModelSelect(s.model || "");
-      setMcpConfigAbsolutePathInput(s.mcpConfigAbsolutePath?.trim() ?? "");
-      setHint("");
     })();
   }, [refreshWorkspace]);
 
@@ -154,38 +132,22 @@ function SettingsPage() {
     return api.onWorkspaceChanged(() => void refreshWorkspace());
   }, [refreshWorkspace]);
 
-  const saveGeneralSettings = async () => {
-    const api = getDesktop();
-    if (!api) return;
-    const s = await api.getChatSettings();
-    await api.saveChatSettings({
-      ...chatSettingsPreservePayload(s),
-      defaultConfirmWritePath: defaultConfirmWritePathInput.trim(),
-    });
-    setHint("已保存：一键确认写入默认路径。");
-  };
-
   return (
     <AppShell>
       <PageRoot>
         <PageHeader
           title="应用设置"
           description={
-            settingsTab === "general"
-              ? PAGE_DESC.settings.general
-              : settingsTab === "models"
-                ? PAGE_DESC.settings.models
-                : PAGE_DESC.settings.advanced
+            settingsTab === "basic"
+              ? PAGE_DESC.settings.basic
+              : PAGE_DESC.settings.advanced
           }
         />
         <SettingsLayout
           nav={
             <>
-              <SettingsNavItem active={settingsTab === "general"} onClick={() => setSettingsTab("general")}>
-                通用
-              </SettingsNavItem>
-              <SettingsNavItem active={settingsTab === "models"} onClick={() => setSettingsTab("models")}>
-                模型配置
+              <SettingsNavItem active={settingsTab === "basic"} onClick={() => setSettingsTab("basic")}>
+                基础设置
               </SettingsNavItem>
               <SettingsNavItem active={settingsTab === "advanced"} onClick={() => setSettingsTab("advanced")}>
                 高级
@@ -193,62 +155,15 @@ function SettingsPage() {
             </>
           }
         >
-          {settingsTab === "general" ? (
-            <SettingsOverview
-              workspacePath={workspacePath}
-              orchestrationMode={orchestrationModeSelect}
-              modelLabel={modelSelect || "—"}
-              activeTab={settingsTab}
-            />
-          ) : null}
-
-          {desktopReady && !desktop && (
-            <p className="rounded-lg border border-border bg-warning/10 px-3 py-2 text-[12.5px] text-warning">
-              {WORKSPACE_API_MISSING}
-            </p>
-          )}
-          {hint ? (
-            <p className="rounded-lg border border-border bg-primary-soft/30 px-3 py-2 text-[12.5px] text-foreground">
-              {hint}
-            </p>
-          ) : null}
-
-          {settingsTab === "general" ? (
-            <div className="max-w-2xl space-y-5">
-              <Section title="一键确认写入" hint={CONFIRM_WRITE_SECTION_HINT}>
-                <label className="block text-[12px] text-muted-foreground" htmlFor="default-confirm-write-path">
-                  默认相对路径
-                </label>
-                <input
-                  id="default-confirm-write-path"
-                  type="text"
-                  value={defaultConfirmWritePathInput}
-                  onChange={(e) => setDefaultConfirmWritePathInput(e.target.value)}
-                  disabled={!desktop}
-                  placeholder="docs/prd.md"
-                  className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] text-foreground placeholder:text-muted-foreground disabled:opacity-50"
-                />
-                <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{CONFIRM_WRITE_FOOTER}</p>
-                <button
-                  type="button"
-                  onClick={() => void saveGeneralSettings()}
-                  disabled={!desktop}
-                  className="btn-gradient-primary mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
-                >
-                  <Save className="h-3.5 w-3.5" /> 保存
-                </button>
-              </Section>
-
-              {desktopReady && desktop && isWebBridge() && (
-                <div className="rounded-lg border border-border/70 bg-secondary/30 px-3 py-2.5 text-[11.5px] leading-relaxed text-muted-foreground">
-                  {SETTINGS_SAVED_PROJECT}
-                </div>
-              )}
+          {settingsTab === "basic" ? (
+            <div className="space-y-5">
+              <SettingsOverview
+                workspacePath={workspacePath}
+                orchestrationMode={orchestrationModeSelect}
+                modelLabel={modelSelect || "—"}
+              />
+              <ModelsConnectionsPanel onSettingsUpdated={() => void refreshSettingsSummary()} />
             </div>
-          ) : null}
-
-          {settingsTab === "models" ? (
-            <ModelsConnectionsPanel onSettingsUpdated={() => void refreshSettingsSummary()} />
           ) : null}
 
           {settingsTab === "advanced" ? <SettingsAdvancedTab desktop={desktop} /> : null}
@@ -791,6 +706,17 @@ function GitHubConfigDrawer({
               onChange={(e) => onPersonalGithubRepoChange(e.target.value)}
               disabled={!desktop}
               placeholder="https://github.com/你的用户名/repo.git"
+              spellCheck={false}
+              className="h-9 w-full rounded-lg border border-border bg-surface px-3 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">上游仓库 URL（官方同步源）</span>
+            <input
+              value={upstreamGithubRepo}
+              onChange={(e) => onUpstreamGithubRepoChange(e.target.value)}
+              disabled={!desktop}
+              placeholder="https://github.com/anthropics/claude-code.git"
               spellCheck={false}
               className="h-9 w-full rounded-lg border border-border bg-surface px-3 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
             />

@@ -20,7 +20,7 @@ type Props = {
   onClose: () => void;
 };
 
-/** Cursor / VS Code 风格编辑器右键菜单（无全局 capture 监听，避免卡死） */
+/** 编辑器右键菜单（无全局 capture 监听，避免卡死） */
 export function CodemirrorEditorContextMenu({ state, getView, onClose }: Props) {
   useEffect(() => {
     if (!state) return;

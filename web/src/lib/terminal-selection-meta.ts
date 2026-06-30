@@ -7,7 +7,7 @@ export type TerminalSelectionPayload = {
   endLine?: number;
 };
 
-/** xterm 选区在缓冲区中的行号（1-based，贴近 Cursor 展示） */
+/** xterm 选区在缓冲区中的行号（1-based） */
 export function getTerminalSelectionLineRange(
   term: Terminal,
 ): { startLine: number; endLine: number } | undefined {
@@ -23,7 +23,7 @@ export function getTerminalSelectionLineRange(
   }
 }
 
-/** 根据选区内容推断 Cursor 式来源标签（node / python / zsh …） */
+/** 根据选区内容推断来源标签（node / python / zsh …） */
 export function inferTerminalSourceLabel(shellLabel: string, selectionText: string): string {
   const t = selectionText.toLowerCase();
   if (/\[vite\]|npm run|node:|node\.js|\bnode\b/.test(t)) return "node";

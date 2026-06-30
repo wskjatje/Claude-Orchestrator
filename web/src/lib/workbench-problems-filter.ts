@@ -1,6 +1,6 @@
 import type { WorkbenchProblem } from "@/types/workbench-problems";
 
-/** 简易 glob（支持 ** 与 *），对齐 VS Code/Cursor Problems 筛选 */
+/** 简易 glob（支持 ** 与 *），用于 Problems 筛选 */
 function globMatch(path: string, pattern: string): boolean {
   const norm = path.replace(/\\/g, "/");
   const pat = pattern.replace(/\\/g, "/");
@@ -33,7 +33,7 @@ function tokenMatches(problem: WorkbenchProblem, token: string): boolean {
   return hay.includes(t.toLowerCase());
 }
 
-/** Cursor/VS Code 风格：空格分隔多条件，支持 glob 与 !排除 */
+/** 简易 glob（支持 ** 与 *），用于 Problems 筛选 */
 export function matchProblemFilter(problem: WorkbenchProblem, filter: string): boolean {
   const tokens = filter.trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return true;

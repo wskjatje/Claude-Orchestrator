@@ -118,7 +118,7 @@ export function ChatSessionTabs({
               onClick={() => onSessionChange(s.id)}
               title={s.title}
             >
-              {/* Cursor 式思考指示器：均衡条动画 */}
+              {/* 思考指示器：均衡条动画 */}
               {sending ? (
                 <span className="thinking-dots shrink-0" aria-hidden>
                   <span className="thinking-dot" />
@@ -136,7 +136,7 @@ export function ChatSessionTabs({
               >
                 {s.title}
               </span>
-              {/* Cursor 式底部思考进度条 */}
+              {/* 底部思考进度条 */}
               {sending && active && <span className="chat-tab-progress" aria-hidden />}
               {sessions.length > 1 ? (
                 <button

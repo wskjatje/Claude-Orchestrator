@@ -102,8 +102,8 @@ export function broadcast(channel, detail) {
   for (const fn of subs) {
     try {
       fn(detail)
-    } catch {
-      /* ignore */
+    } catch (e) {
+      console.error('[handlers] broadcast subscriber 异常', e?.message)
     }
   }
 }

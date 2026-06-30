@@ -13,6 +13,7 @@ import {
   orchestrationChainPath,
 } from './paths.mjs'
 import { createRequire } from 'node:module'
+import crypto from 'node:crypto'
 
 const require = createRequire(import.meta.url)
 const projectDb = require('./project-db.cjs')
@@ -118,7 +119,7 @@ function normalizeChatSessionsPayload(raw) {
   const activeId =
     typeof raw?.activeId === 'string' && raw.activeId.trim()
       ? raw.activeId.trim()
-      : sessions[0]?.id || `s-${Date.now()}`
+      : sessions[0]?.id || genSessionId()
   const activeByWorkspace =
     raw?.activeByWorkspace && typeof raw.activeByWorkspace === 'object'
       ? raw.activeByWorkspace
@@ -167,7 +168,7 @@ function ensureWorkbenchDataMigrated(conn) {
         const entry = normalizeWorkspaceHistoryEntry({ path: resolved, openedAt: Date.now() })
         if (entry) seeded.push(entry)
       } catch {
-        /* ignore */
+        /* 无种子路径，跳过 */
       }
     }
     const curWs = loadWorkspace()
@@ -211,6 +212,10 @@ function defaultChatSettings() {
     chatEnabledCloudProviders: [],
     /** 已在聊天区启用的本地模型 ID */
     chatEnabledLocalModels: [],
+    /** MCP Ollama 聊天工具名（空=默认 ollama_chat） */
+    mcpChatToolName: '',
+    /** MCP 模型列举工具名（空=默认 ollama_list_models） */
+    mcpListModelsToolName: '',
     tokenPricing: {},
     /** 个人 fork：push 与个人 pull 共用（origin） */
     personalGithubRepo: '',
@@ -238,8 +243,12 @@ function defaultUiPrefs() {
   }
 }
 
+function genSessionId() {
+  return `s-${crypto.randomUUID()}`
+}
+
 function defaultChatSessions() {
-  const id = `s-${Date.now()}`
+  const id = genSessionId()
   return {
     activeId: id,
     sessions: [
@@ -444,7 +453,8 @@ export function loadChatSettings() {
       projectDb.saveKv(db(), KV.chatSettings, migrated.data)
     }
     return migrated.data
-  } catch {
+  } catch (e) {
+    console.error('[store] loadChatSettings 异常', e?.message)
     return defaults
   }
 }
@@ -664,7 +674,8 @@ export function loadChatSessions() {
       })),
       composerDrafts,
     }
-  } catch {
+  } catch (e) {
+    console.error('[store] loadChatSessions 异常', e?.message)
     return { ...defaults, composerDrafts: {} }
   }
 }
@@ -770,7 +781,8 @@ export function loadUiPrefs() {
       skipCheckpointConfirm: data.skipCheckpointConfirm === true,
       defaultTerminalShell,
     }
-  } catch {
+  } catch (e) {
+    console.error('[store] loadUiPrefs 异常', e?.message)
     return defaults
   }
 }

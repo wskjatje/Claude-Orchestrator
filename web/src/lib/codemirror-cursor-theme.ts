@@ -1,5 +1,5 @@
 /**
- * Cursor / VS Code 语法配色
+ * 语法配色
  * - 代码文件：标准 token
  * - Markdown：分层展示（标记弱化、标题/代码/正文分层）
  */
@@ -37,7 +37,7 @@ const codeDark = [
 ];
 
 /**
- * Markdown 源码（对齐 Cursor 图二）
+ * Markdown 源码
  * - processingInstruction：# - ` ** 等标记 → 弱化灰，不抢正文
  * - heading：标题文字 → 蓝/深红
  * - monospace：行内代码 → 橙褐

@@ -10,7 +10,7 @@ export type PendingTerminalSnippet = TerminalSelectionPayload & {
   id: string;
 };
 
-/** Cursor 式终端选区 chip：紧凑 pill，悬停显示全文、可删除 */
+/** 终端选区 chip：紧凑 pill，悬停显示全文、可删除 */
 export function ComposerTerminalAttachments({
   snippets,
   onRemove,

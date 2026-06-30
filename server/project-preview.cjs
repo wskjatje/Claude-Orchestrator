@@ -146,7 +146,7 @@ function detectNpmScript(cwd) {
 }
 
 /**
- * 收集项目上下文（Cursor 风格：名称/框架/脚本/依赖/版本等）
+ * 收集项目上下文（名称/框架/脚本/依赖/版本等）
  * @param {string} workspaceDir
  * @param {{ kind: string, script?: string, entryRel?: string, cwd?: string }} plan
  * @returns {{ name?: string, description?: string, framework?: string, frameworkVersion?: string, scripts?: Record<string,string>, deps?: Record<string,string>, pythonVersion?: string, venv?: string }}
@@ -632,7 +632,7 @@ function enrichRunPlan(plan, workspaceDir) {
     const rel = path.relative(workspaceDir, plan.cwd).replace(/\\/g, '/')
     plan.cwdRel = !rel || rel === '.' ? '' : rel
   }
-  // 注入项目上下文（Cursor 风格）— 必须在 terminalCommand 之前，以便获取 venv 等信息
+  // 注入项目上下文 — 必须在 terminalCommand 之前，以便获取 venv 等信息
   const ctx = gatherProjectContext(workspaceDir, plan)
   if (ctx) plan.ctx = ctx
 
@@ -669,7 +669,7 @@ function detectProjectRunPlan(workspaceDir, opts) {
     return { ok: false, error: '未选择工作区或工作区不存在', kind: 'none' }
   }
 
-  // ── 先收集所有信号，再做决策（Cursor 风格：综合判断而非贪心匹配） ──
+  // ── 先收集所有信号，再做决策（综合判断而非贪心匹配） ──
 
   const pyEntry = findPythonServerEntry(workspaceDir)
   const authModules = listAuthPythonModules(workspaceDir)

@@ -39,7 +39,7 @@ function highlightWithRules(text: string, rules: { re: RegExp; cls: string }[]):
   return out.length ? out : [text];
 }
 
-/** 轻量语法着色（Cursor 式 diff 行内高亮） */
+/** 轻量语法着色（diff 行内高亮） */
 export function highlightDiffLine(text: string, language: string): ReactNode {
   const lang = language.toLowerCase();
   if (lang === "markdown") {

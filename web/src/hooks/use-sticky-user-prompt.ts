@@ -20,14 +20,14 @@ function findActiveTurnIndex(root: HTMLElement, turnElements: (HTMLElement | nul
   return active;
 }
 
-/** 用户提问气泡已滚出可视区顶部 → 顶部固定栏承接展示（Cursor 同款） */
+/** 用户提问气泡已滚出可视区顶部 → 顶部固定栏承接展示 */
 function isUserBubbleScrolledAway(root: HTMLElement, userEl: HTMLElement | null): boolean {
   if (!userEl) return false;
   const rootTop = root.getBoundingClientRect().top + SCROLL_ANCHOR_OFFSET;
   return userEl.getBoundingClientRect().bottom < rootTop + 2;
 }
 
-/** Cursor 式：列表内按时间展示完整轮次；仅当提问滚出视口时顶部固定栏显示该轮提问 */
+/** 列表内按时间展示完整轮次；仅当提问滚出视口时顶部固定栏显示该轮提问 */
 export function useStickyUserPrompt(
   scrollAreaRef: RefObject<HTMLDivElement | null>,
   messages: ChatBubbleMessage[],

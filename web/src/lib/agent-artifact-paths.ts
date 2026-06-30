@@ -43,6 +43,7 @@ export const AGENT_ARTIFACT_PATHS: Record<string, string> = {
   "design-persona-walkthrough": "docs/persona-walkthrough-report.md",
   "design-inclusive-visuals-specialist": "docs/inclusive-visuals-notes.md",
   "design-image-prompt-engineer": "docs/image-prompt-library.md",
+  "__general__": "docs/note.md",
 
   // —— 测试（QA 流水线）——
   "testing-api-tester": "docs/testing/api-test-report.md",
@@ -100,6 +101,9 @@ const CATEGORY_PREFIX_DIRS: readonly [string, string][] = [
   ["medical", "docs/medical"],
 ].sort((a, b) => b[0].length - a[0].length);
 
+/** 链步日志存放的相对目录 */
+export const CHAIN_STEP_DIR = "docs/chain-steps";
+
 /** 执行某 Agent 前建议自动注入的上游产物（便于有据可查） */
 const UPSTREAM_ARTIFACTS: Record<string, string[]> = {
   "project-manager": ["docs/prd.md", "docs/sprint-backlog.md"],
@@ -150,7 +154,7 @@ function resolveCanonicalStem(stem: string, depth = 0): string {
 /** 该 Agent 的默认落盘相对路径 */
 export function defaultArtifactPathForAgent(agentName: string): string {
   const stem = normalizeAgentStem(agentName);
-  if (!stem) return "docs/note.md";
+  if (!stem || stem === "__general__") return "docs/note.md";
 
   const canonical = resolveCanonicalStem(stem);
   if (AGENT_ARTIFACT_PATHS[canonical]) return AGENT_ARTIFACT_PATHS[canonical];
@@ -182,17 +186,5 @@ export function buildAgentArtifactPathHint(stemRaw: string): string {
   const stem = normalizeAgentStem(stemRaw);
   if (!stem) return "";
   const path = defaultArtifactPathForAgent(stem);
-  const examples = [
-    "product-manager→docs/prd.md",
-    "project-manager→docs/wbs.md",
-    "product-sprint-prioritizer→docs/sprint-backlog.md",
-    "frontend-engineer→docs/frontend-implementation.md",
-    "qa-engineer→docs/qa-report.md",
-  ].join("、");
-  return (
-    `【落盘路径·强制】你是 global://${stem}。写入工作区时 \`\`\`workspace-write\`\`\` 的 path **默认必须是** \`${path}\`；` +
-    `同一 Agent 多次交付仍用此路径（追加或覆盖须在正文说明）；` +
-    `禁止写入其它 Agent 专属文件（如 ${examples}），除非用户明确要求合并到指定路径。` +
-    `未在映射表中的角色默认 \`docs/agents/{stem}.md\` 或 \`docs/{类别}/{角色名}.md\`。`
-  );
+  return `【PATH】\`${path}\``;
 }

@@ -1,5 +1,4 @@
 import { isAutoAgentBasename, agentStemFromBasename } from "@/lib/agent-basename";
-import { inferAgentStemFromText } from "@/lib/infer-agent-from-text";
 import { parseAgentCommand } from "@/lib/parse-agent-command";
 
 export type AgentRouteSource = "slash" | "selected" | "inferred";
@@ -30,8 +29,9 @@ export function resolveAgentForTurn(
       source: "selected",
     };
   }
+  // Auto：直接使用通用 Agent，不做关键词推断
   return {
-    stem: inferAgentStemFromText(displayLine),
+    stem: "__general__",
     body: displayLine,
     source: "inferred",
   };
