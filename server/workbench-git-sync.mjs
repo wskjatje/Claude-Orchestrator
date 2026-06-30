@@ -452,7 +452,7 @@ export async function getWorkbenchGitStatus() {
     remotes: remotes.ok ? remotes.remotes : [],
     pullMode: 'path-scoped',
     syncScopeNote:
-      '个人仓库：推送以本地为准覆盖远程；拉取仅用于从 GitHub 取回并部署到本机',
+      '个人仓库：推送以本地为准覆盖远程；拉取以远程为准强制覆盖本地（不处理冲突）',
     workspacePath,
     defaultPushReason,
     // 个人工作目录额外状态
@@ -635,24 +635,23 @@ export async function pullFromPersonalGithub(opts = {}) {
     }
   }
 
-  const merge = await runGit(['merge', '--no-edit', originRef], { cwd: personalRoot })
-  if (!merge.ok) {
-    const conflict = /CONFLICT|Automatic merge failed/i.test(merge.combined || '')
+  const reset = await runGit(['reset', '--hard', originRef], { cwd: personalRoot })
+  if (!reset.ok) {
     return {
       ok: false,
-      error: merge.combined || merge.error || '合并个人仓库失败',
-      combined: merge.combined,
-      conflict,
-      dirty: true,
+      error: reset.combined || reset.error || '重置本地分支失败',
+      combined: reset.combined,
     }
   }
 
+  const clean = await runGit(['clean', '-fd'], { cwd: personalRoot })
   const head = await runGit(['log', '-1', '--oneline'], { cwd: personalRoot })
   const deployed = importPersonalGithubArtifacts({ personalRoot })
   const lines = [
-    `已从个人仓库 ${originRef} 拉取并合并全部内容（完整同步）：`,
+    `已从个人仓库 ${originRef} 拉取并强制覆盖本地（直接覆盖，忽略本地变更）：`,
     history.unshallowed ? history.combined : '',
-    merge.combined?.trim() || 'Merge successful',
+    reset.combined?.trim() || 'Reset successful',
+    clean.combined?.trim() || '',
     deployed.ok
       ? `已部署到本地：${deployed.summary}`
       : `部署到本地失败：${deployed.error || '未知错误'}`,
