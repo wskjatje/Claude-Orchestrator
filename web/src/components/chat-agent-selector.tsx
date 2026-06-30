@@ -123,7 +123,7 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
         <button
           type="button"
           disabled={disabled}
-          title={`Agent · ${subtitle}`}
+          title={subtitle}
           aria-label="选择 Agent"
           className={cn(
             "composer-agent-pill inline-flex max-w-[9rem] items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-medium transition",
@@ -172,9 +172,9 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
               onClick={() => pickAgent(AUTO_AGENT_VALUE)}
             >
               <div className="min-w-0 flex-1">
-                <div className="font-medium">{GENERAL_AGENT_DISPLAY_NAME}</div>
+                <div className="font-medium">Auto</div>
                 <div className="text-[10.5px] text-muted-foreground">
-                  通用模式 · 不设角色限制
+                  Auto 模式 · 不设角色限制
                 </div>
               </div>
               {isAuto ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={2.25} /> : null}

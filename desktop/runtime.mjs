@@ -49,9 +49,32 @@ function spawnBackendNode(scriptAbs, envExtra = {}) {
   const { userData, projectRoot } = ensureUserProjectRoot()
   const nodePath = [paths.nodeModules, paths.vendorCad].filter((p) => fs.existsSync(p)).join(path.delimiter)
 
+  // Electron GUI 应用的 PATH 可能不含 /opt/homebrew/bin、~/.local/bin 等
+  const safePath = (() => {
+    const sep = process.platform === 'win32' ? ';' : ':'
+    const cur = (process.env.PATH || '').split(sep).map((s) => s.trim()).filter(Boolean)
+    const seen = new Set(cur)
+    const extra = process.platform === 'win32'
+      ? [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs')]
+      : [
+          '/opt/homebrew/bin',
+          '/usr/local/bin',
+          path.join(process.env.HOME || '', '.local', 'bin'),
+          path.join(process.env.HOME || '', '.cargo', 'bin'),
+        ]
+    for (const dir of extra) {
+      if (dir && fs.existsSync(dir) && !seen.has(dir)) {
+        cur.unshift(dir)
+        seen.add(dir)
+      }
+    }
+    return cur.join(sep)
+  })()
+
   const child = spawn(process.execPath, [scriptAbs], {
     env: {
       ...process.env,
+      PATH: safePath,
       ELECTRON_RUN_AS_NODE: '1',
       NODE_PATH: nodePath,
       CLAUDE_ORCHESTRATOR_USER_DATA: userData,

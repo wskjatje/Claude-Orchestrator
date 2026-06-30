@@ -277,8 +277,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       defaultModel: models[0] || "",
       extraModels: models.slice(1).join(", "),
       setAsCurrent: p.isCurrent,
-      inputPrice: p.inputPrice ? String(p.inputPrice) : (match?.defaultInputPrice ? String(match.defaultInputPrice) : ""),
-      outputPrice: p.outputPrice ? String(p.outputPrice) : (match?.defaultOutputPrice ? String(match.defaultOutputPrice) : ""),
+      inputPrice: p.inputPrice ? String(p.inputPrice) : "",
+      outputPrice: p.outputPrice ? String(p.outputPrice) : "",
     });
     setDrawer("cloud-edit");
   };
@@ -488,8 +488,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         ...f,
         defaultModel: first,
         extraModels: rest.join(", "),
-        inputPrice: f.inputPrice || (r.defaultInputPrice ? String(r.defaultInputPrice) : ""),
-        outputPrice: f.outputPrice || (r.defaultOutputPrice ? String(r.defaultOutputPrice) : ""),
+        inputPrice: f.inputPrice || "",
+        outputPrice: f.outputPrice || "",
       }));
       toast.success(`已获取 ${r.models.length} 个模型`);
     } catch (e) {
@@ -1202,14 +1202,12 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                             setProviderCustomOpen(true);
                           } else {
                             const match = providerOptions.find((p) => p.name === v);
-                            const inputP = match?.defaultInputPrice ? String(match.defaultInputPrice) : "";
-                            const outputP = match?.defaultOutputPrice ? String(match.defaultOutputPrice) : "";
                             setCloudForm((f) => ({ ...f, name: v }));
                             setProviderCustomOpen(false);
                             if (match?.defaultEndpoint) {
-                              setCloudForm((f) => ({ ...f, name: v, endpoint: match.defaultEndpoint!, inputPrice: inputP, outputPrice: outputP }));
+                              setCloudForm((f) => ({ ...f, name: v, endpoint: match.defaultEndpoint!, inputPrice: "", outputPrice: "" }));
                             } else {
-                              setCloudForm((f) => ({ ...f, name: v, endpoint: "", inputPrice: inputP, outputPrice: outputP }));
+                              setCloudForm((f) => ({ ...f, name: v, endpoint: "", inputPrice: "", outputPrice: "" }));
                             }
                           }
                         }}

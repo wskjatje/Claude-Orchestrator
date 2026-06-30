@@ -4,7 +4,7 @@
  */
 
 /** 通用 Agent（__general__）在 UI 中的展示名 */
-export const GENERAL_AGENT_DISPLAY_NAME = "通用";
+export const GENERAL_AGENT_DISPLAY_NAME = "Agent";
 
 export function isAutoAgentBasename(basename: string | undefined | null): boolean {
   const raw = typeof basename === "string" ? basename.trim().toLowerCase() : "";

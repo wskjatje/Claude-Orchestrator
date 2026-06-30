@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
 import path from 'node:path'
+import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expandHome, readMcpConfigFile } from './claude-mcp-config.mjs'
 
@@ -11,6 +12,47 @@ const sdkClientDir = path.join(
 )
 const { Client } = require(path.join(sdkClientDir, 'index.js'))
 const { StdioClientTransport } = require(path.join(sdkClientDir, 'stdio.js'))
+
+/**
+ * 将常见 node 目录 prepend 到 PATH（目录存在才加入）。
+ * 与 local-mcp-orchestrator.js 中 augmentSearchPath 保持一致。
+ * @param {Record<string, string>} env
+ */
+function augmentSearchPath(env) {
+  const sep = process.platform === 'win32' ? ';' : ':'
+  const extraDirs =
+    process.platform === 'win32'
+      ? [
+          path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs'),
+        ].filter(Boolean)
+      : [
+          '/opt/homebrew/bin',
+          '/usr/local/bin',
+          '/usr/bin',
+          '/bin',
+          '/sbin',
+          path.join(process.env.HOME || '', '.local', 'bin'),
+          path.join(process.env.HOME || '', '.cargo', 'bin'),
+        ]
+  const cur = env.PATH || env.Path || ''
+  const parts = String(cur)
+    .split(sep)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const seen = new Set(parts)
+  for (const dir of extraDirs) {
+    try {
+      if (dir && fs.existsSync(dir) && !seen.has(dir)) {
+        parts.unshift(dir)
+        seen.add(dir)
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  env.PATH = parts.join(sep)
+  if (process.platform === 'win32') env.Path = env.PATH
+}
 
 function stdioProbeTimeoutMs(command, args) {
   const joined = [command, ...(Array.isArray(args) ? args : [])].join(' ').toLowerCase()
@@ -54,10 +96,12 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
 
   try {
     client = new Client({ name: 'claudecode-mcp-health', version: '1.0.0' })
+    const env = { ...process.env, ...envExtra }
+    augmentSearchPath(env)
     transport = new StdioClientTransport({
       command,
       args,
-      env: { ...process.env, ...envExtra },
+      env,
     })
 
     await Promise.race([
@@ -91,7 +135,9 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
       hint =
         '（npm 上无 @modelcontextprotocol/server-fetch；官方 fetch 为 Python 包，请改用 uvx mcp-server-fetch，并安装 uv）'
     } else if (/uvx|mcp-server-fetch/i.test(cmdLine) && /ENOENT|not found|spawn uvx/i.test(msg)) {
-      hint = '（请先安装 uv：curl -LsSf https://astral.sh/uv/install.sh | sh，然后重试健康检查）'
+      hint = '（请先安装 uv：curl -LsSf https://astral.sh/uv/install.sh | sh，或确认 uvx 在 PATH 中（常见路径：~/.local/bin/uvx、~/.cargo/bin/uvx），安装后重试健康检查）'
+    } else if (/\bnpx\b/.test(cmdLine) && /ENOENT|not found|spawn npx/i.test(msg)) {
+      hint = '（npx 未在 PATH 中，请确认 Node.js 已安装；使用桌面打包版请确保应用有 /opt/homebrew/bin 等系统 PATH 访问权限）'
     } else if (/Connection closed|ERR_MODULE_NOT_FOUND|Cannot find module/i.test(msg)) {
       hint =
         '（npx 缓存可能损坏：可删除 ~/.npm/_npx 后重试；filesystem/memory 建议使用固定版本号）'

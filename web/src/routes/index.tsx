@@ -317,7 +317,8 @@ function assistantBubbleName(
   m: Pick<DiskMsg, "agentStem" | "agentLabel" | "modelId">,
   modelLabel: string,
 ): string {
-  const displayModel = m.modelId?.trim() || modelLabel;
+  const rawModel = m.modelId?.trim();
+  const displayModel = (rawModel && rawModel !== "auto") ? rawModel : modelLabel;
   if (m.agentStem) {
     const label = m.agentLabel?.trim() || m.agentStem;
     const displayName = m.agentStem === "__general__" ? GENERAL_AGENT_DISPLAY_NAME : label;
@@ -548,6 +549,7 @@ function ChatPage() {
     editCutoff: number;
   } | null>(null);
   const newSessionInFlightRef = useRef(false);
+  const closingSessionTargetRef = useRef<string | null>(null);
   const streamContextRef = useRef<{ sessionId: string; requestId: string } | null>(null);
   const activeStreamRequestIdRef = useRef<string | null>(null);
   const [activeStreamRequestId, setActiveStreamRequestId] = useState<string | null>(null);
@@ -1908,6 +1910,12 @@ function ChatPage() {
     if (!api) return;
     void syncExecutionState();
     void api.loadChatSessions().then((disk) => {
+      // 关闭会话后刚切换了目标会话，旧闭包的 loadChatSessions 应跳过，
+      // 防止 ctxHasBetter 因陈旧 chatCtx.activeId 失效而走到 syncMessagesFromSession 覆盖正确消息
+      if (closingSessionTargetRef.current && closingSessionTargetRef.current === activeIdRef.current) {
+        closingSessionTargetRef.current = null;
+        return;
+      }
       // 如果 context 有该活动会话的更新数据（流进行中、或已有 assistant 回复），跳过磁盘覆盖
       const ctxHasBetter = activeIdRef.current && chatCtx.activeId === activeIdRef.current &&
         chatCtx.messages.length > 0 && (
@@ -2081,7 +2089,9 @@ function ChatPage() {
           id: newLocalId(),
           name: f.name,
         }));
-        setPendingFiles((p) => [...p, ...entries]);
+        setEditComposer((prev) =>
+          prev ? { ...prev, pendingFiles: [...prev.pendingFiles, ...entries] } : prev,
+        );
       }
     },
     [appendEditComposerImageFiles],
@@ -2426,13 +2436,28 @@ function ChatPage() {
       preserveIds3,
     );
     if (id === activeIdRef.current && aid) {
+      closingSessionTargetRef.current = aid;
       switchActiveSession(aid);
       loadComposerDraft(aid);
-      syncMessagesFromSession(pruned.find((s) => s.id === aid));
+      const targetSess = pruned.find((s) => s.id === aid);
+      if (targetSess) {
+        const ml = targetSess.modelId?.trim() || globalModel || "模型";
+        const displayMsgs = diskToDisplay(targetSess.history, ml);
+        const welcomeMsg: Msg = { role: "assistant", content: EMPTY_SESSION_WELCOME };
+        const finalMsgs =
+          displayMsgs.length > 0
+            ? displayMsgs
+            : [welcomeMsg];
+        chatCtx.syncMessages(finalMsgs);
+        setMessages(finalMsgs);
+      } else {
+        setMessages([]);
+      }
     }
     setSessions(pruned);
     sessionsRef.current = pruned;
     if (api) await persist(pruned, aid || activeIdRef.current);
+    closingSessionTargetRef.current = null;
   };
 
   const stopChat = useCallback(() => {
