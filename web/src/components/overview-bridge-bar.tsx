@@ -6,7 +6,11 @@ import { getDesktop, hasDesktop, isWebBridge } from "@/lib/desktop-api";
 import { loadUiPrefsFromProjectDb, saveUiPrefsToProjectDb } from "@/lib/ui-prefs";
 import { pingWebBridgeHealth } from "@/lib/install-desktop-bridge";
 import { toast } from "sonner";
-import { MSG_BRIDGE_OFFLINE, OPENCLAW_TOKEN_PLACEHOLDER, OPENCLAW_TOKEN_UNAVAILABLE } from "@/lib/ui-copy";
+import {
+  MSG_BRIDGE_OFFLINE,
+  OPENCLAW_TOKEN_PLACEHOLDER,
+  OPENCLAW_TOKEN_UNAVAILABLE,
+} from "@/lib/ui-copy";
 
 const DEFAULT_BRIDGE_URL = "ws://127.0.0.1:18789";
 
@@ -23,6 +27,16 @@ export function OverviewBridgeBar() {
   const [doctorRunning, setDoctorRunning] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [doctorOutput, setDoctorOutput] = useState("");
+  const [heartbeatText, setHeartbeatText] = useState("10 秒");
+  const [desktopReady, setDesktopReady] = useState(false);
+
+  useEffect(() => {
+    setDesktopReady(hasDesktop());
+  }, []);
+
+  useEffect(() => {
+    setHeartbeatText(isWebBridge() ? "4 秒" : "10 秒");
+  }, []);
 
   useEffect(() => {
     if (!hasDesktop()) return;
@@ -83,17 +97,23 @@ export function OverviewBridgeBar() {
     await persistOverviewPrefs();
     if (isWebBridge()) {
       const ok = await pingWebBridgeHealth();
-      toast[ok ? "success" : "error"](
-        ok ? "本机服务已连接" : MSG_BRIDGE_OFFLINE,
-        { id: "overview-bridge" },
-      );
+      toast[ok ? "success" : "error"](ok ? "本机服务已连接" : MSG_BRIDGE_OFFLINE, {
+        id: "overview-bridge",
+      });
       return;
     }
     const latest = await loadGatewayToken();
     const finalToken = (latest || bridgeToken).trim();
     bridge.setUrl(buildBridgeUrlWithToken(bridgeUrl, finalToken));
-      toast.success("已保存连接地址", { id: "overview-bridge" });
-  }, [bridge, bridgeToken, bridgeUrl, buildBridgeUrlWithToken, loadGatewayToken, persistOverviewPrefs]);
+    toast.success("已保存连接地址", { id: "overview-bridge" });
+  }, [
+    bridge,
+    bridgeToken,
+    bridgeUrl,
+    buildBridgeUrlWithToken,
+    loadGatewayToken,
+    persistOverviewPrefs,
+  ]);
 
   const runDoctor = useCallback(async () => {
     const api = getDesktop();
@@ -119,8 +139,16 @@ export function OverviewBridgeBar() {
   }, []);
 
   const status = bridge.online ? "在线" : bridge.connecting ? "连接中" : "离线";
-  const statusColor = bridge.online ? "bg-success" : bridge.connecting ? "bg-warning" : "bg-muted-foreground/40";
-  const statusText = bridge.online ? "text-success" : bridge.connecting ? "text-warning" : "text-muted-foreground";
+  const statusColor = bridge.online
+    ? "bg-success"
+    : bridge.connecting
+      ? "bg-warning"
+      : "bg-muted-foreground/40";
+  const statusText = bridge.online
+    ? "text-success"
+    : bridge.connecting
+      ? "text-warning"
+      : "text-muted-foreground";
 
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-xs">
@@ -143,7 +171,7 @@ export function OverviewBridgeBar() {
           {bridgeUrl}
         </code>
         <span className="hidden text-[11.5px] text-muted-foreground lg:inline">
-          {bridge.version ?? "未知"} · 心跳 {isWebBridge() ? "4" : "10"} 秒
+          {bridge.version ?? "未知"} · 心跳 {heartbeatText}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <button
@@ -155,7 +183,7 @@ export function OverviewBridgeBar() {
           </button>
           <button
             type="button"
-            disabled={!hasDesktop() || doctorRunning}
+            disabled={!desktopReady || doctorRunning}
             onClick={() => void runDoctor()}
             className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
           >
@@ -167,7 +195,8 @@ export function OverviewBridgeBar() {
             onClick={() => setBridgeOpen((v) => !v)}
             className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition hover:text-foreground"
           >
-            高级 {bridgeOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            高级{" "}
+            {bridgeOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
         </div>
       </div>
@@ -205,7 +234,9 @@ export function OverviewBridgeBar() {
               onToggle={() => setShowToken(!showToken)}
               value={bridgeToken}
               onChange={setBridgeToken}
-              placeholder={isWebBridge() ? OPENCLAW_TOKEN_PLACEHOLDER : "自动读取 ~/.openclaw/openclaw.json"}
+              placeholder={
+                isWebBridge() ? OPENCLAW_TOKEN_PLACEHOLDER : "自动读取 ~/.openclaw/openclaw.json"
+              }
             />
             <div className="mt-1 flex items-center justify-between gap-2">
               <span className="truncate text-[11px] text-muted-foreground">
@@ -250,7 +281,9 @@ export function OverviewBridgeBar() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</label>
+      <label className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </label>
       {children}
     </div>
   );

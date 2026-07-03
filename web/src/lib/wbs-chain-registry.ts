@@ -8,7 +8,17 @@ export const DEFAULT_WBS_REL_PATH = "docs/wbs.md";
 export const WBS_GENERATE_PM_PROMPT = `/agent project-manager 请为当前工作区项目输出完整 WBS，并确保可解析为任务链：
 1. 使用 Markdown 表格，列含：任务编号、工作摘要、执行 Agent、依赖任务、交付标准
 2. 任务编号格式 WBS-01、WBS-02…
-3. 执行 Agent 使用可识别角色（如 前端工程师、后端工程师、测试工程师 或 frontend-engineer 等）
+3. 「依赖任务」列填写此任务依赖的前置任务编号，无依赖则留空（系统将据此自动并行执行无依赖的步骤）
+4. 执行 Agent 必须使用系统可识别的英文名，常见映射对照如下：
+   - 产品经理 → product-manager
+   - 项目经理 → project-manager
+   - 软件架构师 → software-architect
+   - 前端工程师 → frontend-engineer
+   - 后端工程师 → backend-engineer
+   - 测试工程师 → qa-engineer
+   - DevOps 工程师 → devops-engineer
+   - 代码审查员 → code-reviewer
+   - UI/UX 设计师 → design-ui-designer 或 ui-ux-designer
 4. 在回复中给出完整表格（系统将自动写入 ${DEFAULT_WBS_REL_PATH} 并注册到「任务链」列表）`;
 
 export function wbsChainNameFromPath(relPath: string): string {

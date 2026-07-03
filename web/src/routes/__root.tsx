@@ -11,6 +11,10 @@ import { SchedulerNotifications } from "@/components/scheduler-notifications";
 import { ChatStateProvider } from "@/contexts/chat-state-context";
 import { GlobalChatPanel } from "@/components/global-chat-panel";
 
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
+gsap.registerPlugin(useGSAP);
+
 const themeBootstrap = `
 (function(){try{var dark=window.matchMedia('(prefers-color-scheme: dark)').matches;var r=document.documentElement;r.classList.toggle('dark',dark);r.style.colorScheme=dark?'dark':'light';}catch(e){}})();
 `;

@@ -220,14 +220,14 @@ function combineOutput(stdout, stderr) {
 async function runGit(args, opts = {}) {
   const cwd = opts.cwd || PROJECT_ROOT
   const timeout = opts.timeout ?? 180_000
-  // 网络操作：移除 HTTP_PROXY 避免本地代理干扰 SSL，启用 GIT_SSL_NO_VERIFY 防止证书问题
+  // 网络操作：移除 HTTP_PROXY 避免本地代理干扰
   const isNetOp = args.some((a) => /^(fetch|push|pull|clone|ls-remote)$/i.test(a))
   const env = { ...process.env }
   if (isNetOp) {
     delete env.HTTP_PROXY; delete env.HTTPS_PROXY
     delete env.http_proxy; delete env.https_proxy
     delete env.ALL_PROXY; delete env.all_proxy
-    env.GIT_SSL_NO_VERIFY = '1'
+    // 不设置 GIT_SSL_NO_VERIFY — 保持系统 SSL 验证
   }
 
   const exec = (gitArgs) =>
@@ -240,11 +240,6 @@ async function runGit(args, opts = {}) {
       : args)
   } catch (e) {
     const msg = String(e.stderr || e.message || '')
-    if (isNetOp && /(SSL_ERROR_SYSCALL|SSL_ERROR_SSL|SSL_connect|certificate verify|Couldn.t connect|Operation timed out)/i.test(msg)) {
-      try {
-        return await exec(['-c', 'http.sslVerify=false', '-c', 'https.sslVerify=false', ...args])
-      } catch { /* ignore */ }
-    }
     return {
       ok: false,
       stdout: String(e.stdout || ''),

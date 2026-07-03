@@ -6,6 +6,8 @@ export type ChainStep = {
   agentName: string;
   taskId?: string;
   instruction: string;
+  /** 依赖的任务 taskId 列表，用于依赖图并行调度 */
+  depends_on?: string[];
 };
 
 export type ActiveChainState = {
@@ -13,6 +15,38 @@ export type ActiveChainState = {
   currentIndex: number;
   steps: ChainStep[];
 };
+
+/**
+ * 显式状态机 — 合法状态转换矩阵
+ * 参考 mco-org/mco TaskStateMachine 设计
+ */
+export const CHAIN_STATE_TRANSITIONS: Record<string, Set<string>> = {
+  idle: new Set(["running", "cancelled"]),
+  running: new Set(["retrying", "aggregating", "completed", "failed", "cancelled"]),
+  retrying: new Set(["running", "failed", "cancelled"]),
+  aggregating: new Set(["completed", "partial_success", "failed", "cancelled"]),
+  completed: new Set([]),
+  partial_success: new Set([]),
+  failed: new Set([]),
+  cancelled: new Set([]),
+  paused: new Set(["running", "cancelled"]),
+};
+
+/**
+ * 验证状态转换是否合法
+ * @returns 合法返回 null，否则返回错误说明
+ */
+export function validateChainStateTransition(from: string, to: string): string | null {
+  const allowed = CHAIN_STATE_TRANSITIONS[from];
+  if (!allowed) return `未知源状态: ${from}`;
+  if (allowed.has(to)) return null;
+  return `非法转换: ${from} → ${to}`;
+}
+
+/** 状态是否表示链已终止 */
+export function isChainTerminal(status: string): boolean {
+  return ["completed", "failed", "cancelled", "partial_success"].includes(status);
+}
 
 export type ActiveChainParseSource = "json" | "markdown";
 
@@ -33,6 +67,7 @@ function maybeSortWbsSteps(steps: ChainStep[]): ChainStep[] {
 }
 
 import { inferAgentStemFromText } from "@/lib/infer-agent-from-text";
+import { CHINESE_TO_AGENT_STEM } from "@/lib/agent-artifact-paths";
 
 function inferAgentName(text: string): string {
   return inferAgentStemFromText(text);
@@ -96,7 +131,9 @@ function parseMarkdownBacklog(text: string): ActiveChainState | null {
   while (i < lines.length) {
     const line = lines[i].trim();
     const taskMatch =
-      line.match(/^\s*(?:[-*]|\d+\.)?\s*\*\*?\s*任务\s*\[([^\]]+)\]\s*[：:]\s*(.+?)\s*\*{0,2}\s*$/i) ||
+      line.match(
+        /^\s*(?:[-*]|\d+\.)?\s*\*\*?\s*任务\s*\[([^\]]+)\]\s*[：:]\s*(.+?)\s*\*{0,2}\s*$/i,
+      ) ||
       line.match(/^\s*(?:[-*]|\d+\.)?\s*任务\s*\[([^\]]+)\]\s*[：:]\s*(.+)\s*$/i) ||
       line.match(/^\s*(?:[-*]|\d+\.)?\s*\[([A-Za-z]{2,}-\d+)\]\s*(.+)\s*$/);
 
@@ -160,28 +197,13 @@ function splitMdRow(line: string): string[] {
   return raw.split("|").map((s) => s.trim());
 }
 
-/** 表格「执行 Agent」列常见中文称谓 → ~/.claude/agents/<stem>.md（静态映射，非运行时 Matcher） */
-const CHINESE_AGENT_STEM: Record<string, string> = {
-  项目经理: "project-manager",
-  产品经理: "product-manager",
-  软件架构师: "software-architect",
-  架构师: "software-architect",
-  前端工程师: "frontend-engineer",
-  前端: "frontend-engineer",
-  后端工程师: "backend-engineer",
-  后端: "backend-engineer",
-  测试工程师: "qa-engineer",
-  测试: "qa-engineer",
-  代码评审: "code-reviewer",
-  评审: "code-reviewer",
-  运维工程师: "devops-engineer",
-  运维: "devops-engineer",
-};
-
+/** 表格「执行 Agent」列常见中文称谓 → ~/.claude/agents/<stem>.md */
 function normalizeAgentStem(raw: string | undefined | null): string {
-  const rawTrim = String(raw ?? "").replace(/[`*]/g, "").trim();
+  const rawTrim = String(raw ?? "")
+    .replace(/[`*]/g, "")
+    .trim();
   if (!rawTrim) return "";
-  const zh = CHINESE_AGENT_STEM[rawTrim];
+  const zh = CHINESE_TO_AGENT_STEM[rawTrim];
   if (zh) return zh;
   const t = rawTrim.toLowerCase();
   if (t === "project-manager" || t === "project manager") return "project-manager";
@@ -209,11 +231,7 @@ function parseWbsMarkdownTable(text: string): ActiveChainState | null {
     const cols = splitMdRow(tableRows[i]);
     if (!cols.length) continue;
     const join = cols.join(" ").toLowerCase();
-    if (
-      /工作摘要|任务编号|task\s*summary|执行\s*agent|执行人|角色|交付标准|agent/.test(
-        join,
-      )
-    ) {
+    if (/工作摘要|任务编号|task\s*summary|执行\s*agent|执行人|角色|交付标准|agent/.test(join)) {
       header = cols;
       headerIdx = i;
       break;
@@ -242,13 +260,17 @@ function parseWbsMarkdownTable(text: string): ActiveChainState | null {
     /^agent$/,
     /指派/,
   ]);
-  const depCol = findHeaderColumnIndex(headerNorm, [/依赖任务/, /依赖/, /前置/, /depend/]);
-  const dodCol = findHeaderColumnIndex(headerNorm, [
-    /交付标准/,
-    /dod/,
-    /验收/,
-    /完成定义/,
+  const depCol = findHeaderColumnIndex(headerNorm, [
+    /依赖任务/,
+    /依赖/,
+    /前置任务/,
+    /前置条件/,
+    /先决条件/,
+    /依赖关系/,
+    /depends/,
+    /depend/,
   ]);
+  const dodCol = findHeaderColumnIndex(headerNorm, [/交付标准/, /dod/, /验收/, /完成定义/]);
 
   const steps: ChainStep[] = [];
   for (let i = headerIdx + 1; i < tableRows.length; i++) {
@@ -261,20 +283,41 @@ function parseWbsMarkdownTable(text: string): ActiveChainState | null {
       idCol >= 0 && cols[idCol] != null && String(cols[idCol]).trim() !== ""
         ? String(cols[idCol]).replace(/[`*]/g, "").trim()
         : `WBS-${steps.length + 1}`;
-    const summary = String(summaryCol >= 0 ? cols[summaryCol] ?? "" : cols[0] ?? "")
+    const summary = String(summaryCol >= 0 ? (cols[summaryCol] ?? "") : (cols[0] ?? ""))
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/[`*]/g, "")
       .trim();
     if (!summary) continue;
-    const agentRaw = agentCol >= 0 ? cols[agentCol] ?? "" : "";
+    const agentRaw = agentCol >= 0 ? (cols[agentCol] ?? "") : "";
     const agent = normalizeAgentStem(agentRaw) || inferAgentName(`${summary}\n${agentRaw}`);
     const dep =
-      depCol >= 0 ? String(cols[depCol] ?? "").replace(/[`*]/g, "").trim() : "";
+      depCol >= 0
+        ? String(cols[depCol] ?? "")
+            .replace(/[`*]/g, "")
+            .trim()
+        : "";
     const dod =
-      dodCol >= 0 ? String(cols[dodCol] ?? "").replace(/[`*]/g, "").trim() : "";
-    const details = [dep ? `依赖：${dep}` : "", dod ? `DoD：${dod}` : ""].filter(Boolean).join("\n");
+      dodCol >= 0
+        ? String(cols[dodCol] ?? "")
+            .replace(/[`*]/g, "")
+            .trim()
+        : "";
+    const details = [dep ? `依赖：${dep}` : "", dod ? `DoD：${dod}` : ""]
+      .filter(Boolean)
+      .join("\n");
     const instruction = `请执行任务 ${taskId}：${summary}${details ? `\n${details}` : ""}`;
-    steps.push({ taskId, agentName: agent, instruction });
+    const dependsOn = dep
+      ? dep
+          .split(/[,，、\s]+/)
+          .filter((x) => /^[A-Za-z]{2,}-\d+$/i.test(x.trim()))
+          .map((x) => x.trim())
+      : undefined;
+    steps.push({
+      taskId,
+      agentName: agentName,
+      instruction,
+      ...(dependsOn && dependsOn.length ? { depends_on: dependsOn } : {}),
+    });
   }
 
   if (!steps.length) return null;
@@ -302,7 +345,10 @@ function parseWbsLooseRows(text: string): ActiveChainState | null {
     const cols = splitMdRow(line);
     const summaryCandidate =
       cols.length >= 2
-        ? (cols[1] || cols[0] || "").replace(/[`*]/g, "").replace(/<br\s*\/?>/gi, " ").trim()
+        ? (cols[1] || cols[0] || "")
+            .replace(/[`*]/g, "")
+            .replace(/<br\s*\/?>/gi, " ")
+            .trim()
         : line.replace(/[`*]/g, "");
     const summary = summaryCandidate
       .replace(/\bWBS[-_ ]?\d{1,3}\b/gi, "")
@@ -337,7 +383,8 @@ function parseAgentDelegationMarkdown(text: string): ActiveChainState | null {
       }
       if (Array.isArray(obj)) {
         const block = obj.find(
-          (x) => x && typeof x === "object" && typeof (x as { content?: string }).content === "string",
+          (x) =>
+            x && typeof x === "object" && typeof (x as { content?: string }).content === "string",
         ) as { content?: string } | undefined;
         if (block?.content?.trim()) {
           body = block.content.trim();
@@ -363,12 +410,8 @@ function parseAgentDelegationMarkdown(text: string): ActiveChainState | null {
     if (!agentName) continue;
 
     const titleFromBold = line.match(/(?:^\d+\.\s*)?\*\*([^*]+)\*\*/);
-    const titleFromColon = line.match(
-      /(?:^\d+\.\s*)?(?:\*\*)?([^*:：]+?)(?:\*\*)?\s*[：:]\s*/,
-    );
-    const title = (titleFromBold?.[1] || titleFromColon?.[1] || "")
-      .replace(/^\d+\.\s*/, "")
-      .trim();
+    const titleFromColon = line.match(/(?:^\d+\.\s*)?(?:\*\*)?([^*:：]+?)(?:\*\*)?\s*[：:]\s*/);
+    const title = (titleFromBold?.[1] || titleFromColon?.[1] || "").replace(/^\d+\.\s*/, "").trim();
     const taskId = `WBS-${steps.length + 1}`;
     const detail = line
       .replace(/^\d+\.\s*/, "")
@@ -403,9 +446,9 @@ export function buildChainBoardRows(
 
 export function formatChainStepsPreview(steps: ChainStep[], maxLines = 6): string {
   if (!steps.length) return "（无步骤）";
-  const lines = steps.slice(0, maxLines).map(
-    (s, i) => `${i + 1}. ${(s.taskId || "—").trim()} · ${s.agentName}`,
-  );
+  const lines = steps
+    .slice(0, maxLines)
+    .map((s, i) => `${i + 1}. ${(s.taskId || "—").trim()} · ${s.agentName}`);
   if (steps.length > maxLines) {
     lines.push(`…共 ${steps.length} 步（active-chain 将按 currentIndex 顺序执行）`);
   }
@@ -414,7 +457,9 @@ export function formatChainStepsPreview(steps: ChainStep[], maxLines = 6): strin
 
 export function parseActiveChainFromBubbleText(
   raw: string,
-): { ok: true; state: ActiveChainState; source: ActiveChainParseSource } | { ok: false; error: string } {
+):
+  | { ok: true; state: ActiveChainState; source: ActiveChainParseSource }
+  | { ok: false; error: string } {
   const text = raw?.trim() ?? "";
   if (!text) {
     return { ok: false, error: "气泡内容为空" };

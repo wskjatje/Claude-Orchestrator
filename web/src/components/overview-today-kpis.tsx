@@ -1,17 +1,6 @@
-import {
-  Activity,
-  MessageSquare,
-  Sparkles,
-  Clock,
-  BarChart3,
-} from "lucide-react";
+import { Activity, MessageSquare, Sparkles, Clock, BarChart3 } from "lucide-react";
 import { TODAY_KPIS_DESC } from "@/lib/ui-copy";
-import { hasDesktop } from "@/lib/desktop-api";
-import {
-  OverviewKpiCard,
-  OverviewSection,
-  OverviewStatLine,
-} from "@/components/overview-ui";
+import { OverviewKpiCard, OverviewSection, OverviewStatLine } from "@/components/overview-ui";
 
 export type TodayKpiItem = {
   label: string;
@@ -27,10 +16,7 @@ type OverviewTodayKpisProps = {
 
 export function OverviewTodayKpis({ kpis }: OverviewTodayKpisProps) {
   return (
-    <OverviewSection
-      title="运行概况"
-      description={TODAY_KPIS_DESC}
-    >
+    <OverviewSection title="运行概况" description={TODAY_KPIS_DESC}>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {kpis.map((k) => (
           <OverviewKpiCard
@@ -54,8 +40,20 @@ export function OverviewTodayKpis({ kpis }: OverviewTodayKpisProps) {
 export function offlineTodayKpis(): TodayKpiItem[] {
   return [
     { label: "今日费用", value: "$0.00", caption: "未连接本机", icon: Activity, tint: "text-info" },
-    { label: "活跃会话", value: "—", caption: "连接后同步", icon: MessageSquare, tint: "text-primary" },
-    { label: "技能就绪", value: "—", caption: "本机 Skill 目录", icon: Sparkles, tint: "text-warning" },
+    {
+      label: "活跃会话",
+      value: "—",
+      caption: "连接后同步",
+      icon: MessageSquare,
+      tint: "text-primary",
+    },
+    {
+      label: "技能就绪",
+      value: "—",
+      caption: "本机 Skill 目录",
+      icon: Sparkles,
+      tint: "text-warning",
+    },
     { label: "定时任务", value: "—", caption: "连接后查看", icon: Clock, tint: "text-success" },
   ];
 }
@@ -74,10 +72,14 @@ export function buildDesktopTodayKpis(input: {
   todayTokenHint: string;
   modelId: string;
   modelCaption: string;
+  modelPricing: string;
+  modelUsage: string;
   taskEnabled: number;
   taskTotal: number;
 }): TodayKpiItem[] {
-  if (!hasDesktop()) return offlineTodayKpis();
+  const modelCaptionLine = [input.modelCaption, input.modelPricing, input.modelUsage]
+    .filter(Boolean)
+    .join(" · ");
   return [
     {
       label: "聊天消息",
@@ -98,7 +100,7 @@ export function buildDesktopTodayKpis(input: {
       value: input.modelId
         ? input.modelId.slice(0, 18) + (input.modelId.length > 18 ? "…" : "")
         : "—",
-      caption: input.modelCaption,
+      caption: modelCaptionLine,
       icon: todayKpiIcons.model,
       tint: "text-warning",
     },

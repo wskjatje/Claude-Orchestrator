@@ -207,6 +207,11 @@ const desktop = {
   onChatSettingsChanged: (fn) => onEvent('chat-settings:changed', fn),
   onOrchestrationChainStatus: (fn) => onEvent('orchestration:chain-status', fn),
   getOpenclawGatewayToken: () => Promise.resolve({ ok: false, error: '未配置', token: undefined }),
+  fileStat: (relPath) => rpc('workspace:fileStat', relPath),
+  buildGraph: () => rpc('workspace:buildGraph'),
+  buildStatusViz: () => rpc('workspace:buildStatusViz'),
+  nodeStatus: () => rpc('workspace:nodeStatus'),
+  graphDecomposeAndExecute: (payload) => rpc('graph:decomposeAndExecute', payload),
   logout: () => rpc('reset:logout'),
 
   envDeployCheck: () => rpc('env:deployCheck'),

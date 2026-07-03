@@ -1,12 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import {
-  CheckCircle2,
-  Circle,
-  Loader2,
-  PauseCircle,
-  FileText,
-  AlertCircle,
-} from "lucide-react";
+import { CheckCircle2, Circle, Loader2, PauseCircle, FileText, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChainExecutionView } from "@/lib/chain-execution-view";
 
@@ -26,13 +19,17 @@ export function ChainStatusPanel({
   const toneClass =
     view.phase === "running"
       ? "border-success/35 bg-success/5 text-success"
-      : view.phase === "completed"
-        ? "border-primary/30 bg-primary/5 text-primary"
-        : view.phase === "draft"
-          ? "border-warning/35 bg-warning/5 text-warning"
-          : view.phase === "paused"
-            ? "border-muted-foreground/30 bg-secondary/50 text-muted-foreground"
-            : "border-border bg-surface-elevated/40 text-foreground";
+      : view.phase === "retrying"
+        ? "border-warning/35 bg-warning/5 text-warning"
+        : view.phase === "completed"
+          ? "border-primary/30 bg-primary/5 text-primary"
+          : view.phase === "draft"
+            ? "border-warning/35 bg-warning/5 text-warning"
+            : view.phase === "paused"
+              ? "border-muted-foreground/30 bg-secondary/50 text-muted-foreground"
+              : view.phase === "partial_success"
+                ? "border-amber-400/35 bg-amber-500/5 text-amber-600 dark:text-amber-400"
+                : "border-border bg-surface-elevated/40 text-foreground";
 
   return (
     <div className="space-y-3 rounded-xl border border-border/80 bg-surface-elevated/30 p-3">
@@ -69,7 +66,15 @@ export function ChainStatusPanel({
             <div
               className={cn(
                 "h-full rounded-full transition-all",
-                view.phase === "completed" ? "bg-primary" : chainRunning ? "bg-success" : "bg-primary/70",
+                view.phase === "completed"
+                  ? "bg-primary"
+                  : view.phase === "partial_success"
+                    ? "bg-amber-500"
+                    : view.phase === "retrying"
+                      ? "bg-warning"
+                      : chainRunning
+                        ? "bg-success"
+                        : "bg-primary/70",
               )}
               style={{ width: `${view.progressPct}%` }}
             />
@@ -102,7 +107,13 @@ export function ChainStatusPanel({
                 {row.index + 1}. {row.taskId} · {row.agentName || "—"}
               </span>
               <span className="shrink-0 text-[10px] text-muted-foreground">
-                {row.done ? "已完成" : row.current ? (chainRunning ? "执行中" : "下一待执行") : "待执行"}
+                {row.done
+                  ? "已完成"
+                  : row.current
+                    ? chainRunning
+                      ? "执行中"
+                      : "下一待执行"
+                    : "待执行"}
               </span>
             </li>
           ))}

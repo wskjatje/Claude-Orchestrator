@@ -60,6 +60,10 @@ export function shouldTryImplicitPrdFiles(
       displayLine,
     );
   }
+  /** 其他已匹配的 Agent 且用户要求做具体任务时，注入工作区现状避免模型凭空猜测 */
+  if (cmd.matched) {
+    return /(?:做|写|创建|开发|设计|实现|添加|增加|新增|修改|调整|删除|重构|迁移|构建|部署|搭建)/i.test(bodyOrLine);
+  }
   return false;
 }
 
@@ -213,7 +217,15 @@ async function buildWorkspaceContextAppendix(desktop: DesktopApi): Promise<{
   // 共享函数：注入实际 docs/ 文件列表
   const docsFileList = await buildDocsFileListHint(desktop);
 
-  if (!parts.length) return { appendix: "", injectedPaths: [] };
+  if (!parts.length && !docsFileList) {
+    return {
+      appendix:
+        "\n\n---\n【工作区注入】\n\n" +
+        antiTemplate +
+        "\n工作区当前无现有项目文件。请基于用户描述从零开展工作，勿虚构不存在的文件或路径。",
+      injectedPaths: [],
+    };
+  }
   parts.push(antiTemplate);
   if (docsFileList) parts.push(docsFileList.trim());
   const joined =
@@ -301,6 +313,7 @@ export async function expandUserLineWithWorkspaceFiles(
 ): Promise<{ expanded: string; injectedPaths: string[] }> {
   const { settings, cmd, displayLine, chainRunning } = opts;
   const injected: { path: string; text: string }[] = [];
+  const missingPaths: string[] = [];
   const seen = new Set<string>();
 
   const read = desktop.readWorkspaceTextFile;
@@ -323,7 +336,6 @@ export async function expandUserLineWithWorkspaceFiles(
       // 方案 G：链中只读根文档 + 上一步产出（前 2 个），非链模式保持全量读取
       const candidates = opts.chainRunning ? upstreamPaths.slice(0, 2) : upstreamPaths;
       const foundPaths: string[] = [];
-      const missingPaths: string[] = [];
       for (const rel of candidates) {
         if (seen.has(rel)) continue;
         const r = await read(rel);
@@ -335,7 +347,7 @@ export async function expandUserLineWithWorkspaceFiles(
           missingPaths.push(rel);
         }
       }
-      // 不再注入缺失文件声明
+      // 收集缺失文件（在下方统一注入提示，避免模型猜测不存在的路径）
     }
 
     if (tryImplicit) {
@@ -359,6 +371,10 @@ export async function expandUserLineWithWorkspaceFiles(
       }
     }
   }
+
+  const missingAppendix = missingPaths.length
+    ? `\n\n---\n【提示】以下文件在项目中不存在，请勿尝试读取或引用：${missingPaths.join("、")}`
+    : "";
 
   const workspaceAppendix = injected.length
     ? injected
@@ -392,12 +408,12 @@ export async function expandUserLineWithWorkspaceFiles(
     contextInjected.push(...ctx.injectedPaths);
   }
 
-  if (!workspaceAppendix && !agentsAppendix && !contextAppendix) {
+  if (!workspaceAppendix && !agentsAppendix && !contextAppendix && !missingAppendix) {
     return { expanded: baseUserLine, injectedPaths: [] };
   }
 
   return {
-    expanded: baseUserLine + workspaceAppendix + contextAppendix + agentsAppendix,
+    expanded: baseUserLine + workspaceAppendix + missingAppendix + contextAppendix + agentsAppendix,
     injectedPaths: [...injected.map((x) => x.path), ...contextInjected, ...agentsInjected],
   };
 }
@@ -485,7 +501,12 @@ export async function preReadInstructedWorkspaceFiles(
     }
   }
 
-  if (!found.length) return "";
+  if (!found.length) {
+    if (missing.length) {
+      return `\n\n---\n【提示】以下路径在工作区中不存在，请勿尝试读取或引用：${missing.join("、")}\n`;
+    }
+    return "";
+  }
 
   const lines: string[] = ["\n\n---\n【工作区文件】"];
 

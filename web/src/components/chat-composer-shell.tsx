@@ -1,11 +1,14 @@
-import { ArrowUp, Paperclip, Square, X } from "lucide-react";
-import { useState, type ClipboardEvent, type DragEvent, type RefObject } from "react";
+import { AlertTriangle, ArrowUp, Paperclip, Square, X } from "lucide-react";
+import { useState, useMemo, type ClipboardEvent, type DragEvent, type RefObject } from "react";
 import { ChatAgentSelector } from "@/components/chat-agent-selector";
 import { ChatModelSelector, type ModelPick } from "@/components/chat-model-selector";
+import { GraphifyChip } from "@/components/chat/composer-chips";
 import { ComposerFileAttachments, type PendingFileEntry } from "@/components/composer-file-attachments";
 import { ComposerTerminalAttachments } from "@/components/composer-terminal-attachments";
 import { ImageLightbox } from "@/components/image-lightbox";
+import { useGraphifyHealth } from "@/lib/use-graphify-status";
 import { cn } from "@/lib/utils";
+import { modelSupportsChatVision } from "@/lib/chat-image-cursor";
 import type { PendingTerminalSnippet } from "@/lib/chat-terminal-paste";
 import type { UserImageAttachment } from "@/lib/ollama-messages";
 
@@ -80,6 +83,7 @@ export function ChatComposerShell({
   const inline = variant === "inline";
   const [dragOver, setDragOver] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const { health: graphHealth, buildGraph, openGraphHtml } = useGraphifyHealth();
 
   const handleDragOver = (e: DragEvent) => {
     if (!onDropFiles || disabled || workflowBusy) return;
@@ -104,7 +108,12 @@ export function ChatComposerShell({
     onDropFiles(files, cursor);
   };
 
-  const hasAttachments = pendingImages.length > 0 || pendingFiles.length > 0;
+  const visionUnsupported = useMemo(() => {
+    if (!pendingImages.length) return false;
+    const v = modelValue || modelFallback || "";
+    if (!v || v.toLowerCase() === "auto") return false;
+    return !modelSupportsChatVision({ orchMode, modelId: v });
+  }, [pendingImages.length, orchMode, modelValue, modelFallback]);
 
   return (
     <div
@@ -130,6 +139,14 @@ export function ChatComposerShell({
         </div>
       )}
 
+      {/* 模型不支持视觉时的提示 */}
+      {visionUnsupported ? (
+        <div className="flex items-start gap-1.5 border-b border-amber-400/20 bg-amber-500/6 px-3 py-1.5 text-[11.5px] text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+          <span>当前模型不支持图片。可切换支持视觉的模型（如 Claude Sonnet、Gemini），或移除图片后发送。</span>
+        </div>
+      ) : null}
+
       {editHistoryActive ? (
         <div className="chat-composer-edit-banner flex items-center justify-between gap-2 border-b border-border/60 bg-muted/20 px-3 py-1.5 text-[11.5px] text-foreground">
           <span>{inline ? "编辑此提问 · 发送后将从此处重新对话" : "正在编辑历史消息 · 发送后将从此处重新对话"}</span>
@@ -144,7 +161,7 @@ export function ChatComposerShell({
         </div>
       ) : null}
 
-      <div className={cn("chat-composer-body px-3", hasAttachments ? "pt-2.5" : "pt-3")}>
+      <div className="chat-composer-body px-3 pt-2.5">
         {/* 图片缩略图 — 56×56，无文件名，X 在图片上方 */}
         {pendingImages.length > 0 ? (
           <div className="mb-2 flex flex-wrap gap-1.5">
@@ -205,7 +222,7 @@ export function ChatComposerShell({
         />
       </div>
 
-      <div className="composer-cursor-footer flex min-w-0 items-center gap-1 px-2 pb-2 pt-0.5">
+      <div className="composer-cursor-footer flex min-w-0 items-center gap-1 px-2 pb-2 pt-0">
         <div className="composer-cursor-controls flex min-w-0 flex-1 items-center gap-0.5 overflow-visible">
           <ChatAgentSelector
             agentBasename={localAgentBasename}
@@ -220,6 +237,13 @@ export function ChatComposerShell({
             onModelPick={onModelPick}
             modelFallback={modelFallback}
             disabled={!hasDesktopApi || workflowBusy}
+          />
+          <GraphifyChip
+            graphJson={graphHealth.graphJson}
+            graphHtml={graphHealth.graphHtml}
+            building={graphHealth.building}
+            onOpen={openGraphHtml}
+            onBuild={buildGraph}
           />
         </div>
 

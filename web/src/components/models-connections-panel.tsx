@@ -1,11 +1,23 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Check, Circle, Cloud, Cpu, Pencil, Plus, RefreshCw, Trash2, X, Zap } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Circle, Cloud, Cpu, Pencil, Plus, RefreshCw, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { getDesktop } from "@/lib/desktop-api";
-import { AUTO_MODEL_ID, chatSettingsPreservePayload, isAutoModelSelection, resolveCloudProviderCatalog } from "@/lib/model-catalog";
+import {
+  AUTO_MODEL_ID,
+  chatSettingsPreservePayload,
+  isAutoModelSelection,
+  resolveCloudProviderCatalog,
+} from "@/lib/model-catalog";
 import { BRIDGE_OFFLINE_TOAST } from "@/lib/ui-copy";
+import { PricingManagerDrawer } from "./models-connections-pricing-drawer";
+import {
+  CloudProviderDrawer,
+  LocalModelDrawer,
+  type CloudForm,
+  type LocalTestState,
+} from "./models-connections-drawers";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,22 +41,10 @@ export type CcSwitchProvider = {
   notes?: string;
   inputPrice?: number;
   outputPrice?: number;
+  currency?: string;
 };
 
 type DrawerMode = "closed" | "cloud-create" | "cloud-edit" | "local";
-
-type CloudForm = {
-  name: string;
-  providerId: string;
-  endpoint: string;
-  apiKey: string;
-  homepage: string;
-  defaultModel: string;
-  extraModels: string;
-  setAsCurrent: boolean;
-  inputPrice: string;
-  outputPrice: string;
-};
 
 const EMPTY_CLOUD_FORM: CloudForm = {
   name: "",
@@ -57,6 +57,7 @@ const EMPTY_CLOUD_FORM: CloudForm = {
   setAsCurrent: true,
   inputPrice: "",
   outputPrice: "",
+  currency: "USD",
 };
 
 type Props = {
@@ -79,14 +80,30 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   const [cloudForm, setCloudForm] = useState<CloudForm>(EMPTY_CLOUD_FORM);
   const [prevApiKeyPreview, setPrevApiKeyPreview] = useState<string>("");
   const [providerCustomOpen, setProviderCustomOpen] = useState(false);
-  const [providerOptions, setProviderOptions] = useState<{ name: string; needsCcr: boolean; defaultEndpoint?: string; defaultInputPrice?: number; defaultOutputPrice?: number; canFetchModels?: boolean }[]>([]);
+  const [providerOptions, setProviderOptions] = useState<
+    {
+      name: string;
+      needsCcr: boolean;
+      defaultEndpoint?: string;
+      defaultInputPrice?: number;
+      defaultOutputPrice?: number;
+      defaultCurrency?: string;
+      canFetchModels?: boolean;
+    }[]
+  >([]);
 
   const [showPricingManager, setShowPricingManager] = useState(false);
-  const [pricingEntries, setPricingEntries] = useState<Record<string, { input: string; output: string }>>({});
+  const [pricingEntries, setPricingEntries] = useState<
+    Record<string, { input: string; output: string; currency?: string }>
+  >({});
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelsError, setFetchModelsError] = useState("");
-
+  const defaultPricingRef = useRef<Record<
+    string,
+    { inputPer1M: number; outputPer1M: number }
+  > | null>(null);
   const [ollamaBase, setOllamaBase] = useState("http://127.0.0.1:11434");
+
   const [localModelCatalog, setLocalModelCatalog] = useState<string[]>([]);
   const [currentModelId, setCurrentModelId] = useState("");
   const [chatEnabledCloudProviders, setChatEnabledCloudProviders] = useState<string[]>([]);
@@ -153,10 +170,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       const s = await api.getChatSettings();
       const resolved = resolveCloudProviderCatalog(s.cloudProviderCatalog, allProviders);
       const stored = s.cloudProviderCatalog ?? [];
-      if (
-        resolved.length !== stored.length ||
-        resolved.some((id, i) => id !== stored[i])
-      ) {
+      if (resolved.length !== stored.length || resolved.some((id, i) => id !== stored[i])) {
         const latest = await api.getChatSettings();
         await api.saveChatSettings({
           ...chatSettingsPreservePayload(latest),
@@ -187,19 +201,33 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     const api = getDesktop();
     if (!api?.ccSwitchListKnownProviders) return;
     let cancelled = false;
-    api.ccSwitchListKnownProviders().then((r) => {
-      if (cancelled || !r.ok) return;
-      setProviderOptions(r.providers);
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    api
+      .ccSwitchListKnownProviders()
+      .then((r) => {
+        if (cancelled || !r.ok) return;
+        setProviderOptions(r.providers);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [drawer, editingProviderId]);
 
   const localCatalogSet = useMemo(() => new Set(localModelCatalog), [localModelCatalog]);
-  const cloudChatEnabledSet = useMemo(() => new Set(chatEnabledCloudProviders), [chatEnabledCloudProviders]);
-  const localChatEnabledSet = useMemo(() => new Set(chatEnabledLocalModels), [chatEnabledLocalModels]);
+  const cloudChatEnabledSet = useMemo(
+    () => new Set(chatEnabledCloudProviders),
+    [chatEnabledCloudProviders],
+  );
+  const localChatEnabledSet = useMemo(
+    () => new Set(chatEnabledLocalModels),
+    [chatEnabledLocalModels],
+  );
 
   const allRowKeys = useMemo(
-    () => [...providers.map((p) => rowKeyCloud(p.id)), ...localModelCatalog.map((m) => rowKeyLocal(m))],
+    () => [
+      ...providers.map((p) => rowKeyCloud(p.id)),
+      ...localModelCatalog.map((m) => rowKeyLocal(m)),
+    ],
     [localModelCatalog, providers],
   );
 
@@ -265,9 +293,10 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     // 根据供应商名称取默认 API 端点，覆盖旧的 ccr 代理地址
     const match = providerOptions.find((o) => o.name === p.name);
     const storedUrl = p.baseUrl || "";
-    const endpoint = (match?.defaultEndpoint && /127\.0\.0\.1:3456/.test(storedUrl))
-      ? match.defaultEndpoint
-      : storedUrl;
+    const endpoint =
+      match?.defaultEndpoint && /127\.0\.0\.1:3456/.test(storedUrl)
+        ? match.defaultEndpoint
+        : storedUrl;
     setCloudForm({
       name: p.name,
       providerId: p.id,
@@ -279,6 +308,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       setAsCurrent: p.isCurrent,
       inputPrice: p.inputPrice ? String(p.inputPrice) : "",
       outputPrice: p.outputPrice ? String(p.outputPrice) : "",
+      currency: p.currency || "USD",
     });
     setDrawer("cloud-edit");
   };
@@ -312,8 +342,18 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
-    const { name, providerId, endpoint, apiKey, homepage, defaultModel: dm, extraModels, setAsCurrent, inputPrice, outputPrice } =
-      cloudForm;
+    const {
+      name,
+      providerId,
+      endpoint,
+      apiKey,
+      homepage,
+      defaultModel: dm,
+      extraModels,
+      setAsCurrent,
+      inputPrice,
+      outputPrice,
+    } = cloudForm;
     if (!name.trim() || !endpoint.trim() || !dm.trim()) {
       toast.error("请填写名称、API 端点与默认模型");
       return;
@@ -321,9 +361,10 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     const trimmedId = providerId.trim();
     const targetId = editingProviderId || trimmedId;
     // 编辑时若未改动预览 Key，发送空串让后端保留原 Key
-    const actualApiKey = editingProviderId && prevApiKeyPreview && apiKey.trim() === prevApiKeyPreview
-      ? ""
-      : apiKey.trim();
+    const actualApiKey =
+      editingProviderId && prevApiKeyPreview && apiKey.trim() === prevApiKeyPreview
+        ? ""
+        : apiKey.trim();
     if (!editingProviderId && !actualApiKey) {
       toast.error("新建须填写 API Key");
       return;
@@ -347,6 +388,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         setCurrent: setAsCurrent,
         inputPrice: Number(inputPrice) || undefined,
         outputPrice: Number(outputPrice) || undefined,
+        currency: cloudForm.currency || undefined,
         syncWorkbench: true,
       });
       if (!r.ok) {
@@ -355,7 +397,9 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       }
       if (setAsCurrent) {
         const latest = await api.getChatSettings();
-        const nextCloud = [...new Set([...(latest.chatEnabledCloudProviders ?? []), r.providerId || targetId])];
+        const nextCloud = [
+          ...new Set([...(latest.chatEnabledCloudProviders ?? []), r.providerId || targetId]),
+        ];
         await api.saveChatSettings({
           ...chatSettingsPreservePayload(latest),
           chatEnabledCloudProviders: nextCloud,
@@ -383,22 +427,56 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   const openPricingManager = useCallback(async () => {
     const api = getDesktop();
     if (!api) return;
-    const s = await api.getChatSettings();
+    const [s, defaultPricing] = await Promise.all([
+      api.getChatSettings(),
+      api.getDefaultModelPricing?.() ?? Promise.resolve(undefined),
+    ]);
+    if (defaultPricing) defaultPricingRef.current = defaultPricing;
     const tokenPricing = s.tokenPricing || {};
-    // 合并所有供应商的模型并保留现有定价
-    const entries: Record<string, { input: string; output: string }> = {};
+    const defMap = defaultPricing || {};
+    const entries: Record<string, { input: string; output: string; currency?: string }> = {};
     for (const p of providers) {
+      const providerCurrency = String(p.currency || "USD")
+        .trim()
+        .toUpperCase();
       for (const m of p.models ?? []) {
         if (!m) continue;
         const existing = tokenPricing[m];
+        const def = defMap[m];
+        const entryCurrency = existing?.currency || providerCurrency;
         entries[m] = {
-          input: existing?.inputPer1M != null ? String(existing.inputPer1M) : "",
-          output: existing?.outputPer1M != null ? String(existing.outputPer1M) : "",
+          input:
+            existing?.inputPer1M != null
+              ? String(existing.inputPer1M)
+              : def?.inputPer1M != null
+                ? String(def.inputPer1M)
+                : p.inputPrice != null
+                  ? String(p.inputPrice)
+                  : "",
+          output:
+            existing?.outputPer1M != null
+              ? String(existing.outputPer1M)
+              : def?.outputPer1M != null
+                ? String(def.outputPer1M)
+                : p.outputPrice != null
+                  ? String(p.outputPrice)
+                  : "",
+          currency: entryCurrency === "USD" ? undefined : entryCurrency,
         };
       }
     }
-    // 补充只有 tokenPricing 中有但 providers 中不存在的模型
+    // 补充只有 tokenPricing / defaultPricing 中有但 providers 中不存在的模型
     for (const [m, v] of Object.entries(tokenPricing)) {
+      if (!entries[m] && m) {
+        const cur = v?.currency && v.currency !== "USD" ? v.currency : undefined;
+        entries[m] = {
+          input: v?.inputPer1M != null ? String(v.inputPer1M) : "",
+          output: v?.outputPer1M != null ? String(v.outputPer1M) : "",
+          currency: cur,
+        };
+      }
+    }
+    for (const [m, v] of Object.entries(defMap)) {
       if (!entries[m] && m) {
         entries[m] = {
           input: v?.inputPer1M != null ? String(v.inputPer1M) : "",
@@ -416,12 +494,20 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     setBusy("save");
     try {
       const s = await api.getChatSettings();
-      const tokenPricing: Record<string, { inputPer1M: number; outputPer1M: number }> = {};
+      const tokenPricing: Record<
+        string,
+        { inputPer1M: number; outputPer1M: number; currency?: string }
+      > = {};
       for (const [model, v] of Object.entries(pricingEntries)) {
         const input = Number(v.input);
         const output = Number(v.output);
         if (input > 0 || output > 0) {
-          tokenPricing[model] = { inputPer1M: input, outputPer1M: output };
+          const entry: { inputPer1M: number; outputPer1M: number; currency?: string } = {
+            inputPer1M: input,
+            outputPer1M: output,
+          };
+          if (v.currency && v.currency !== "USD") entry.currency = v.currency;
+          tokenPricing[model] = entry;
         }
       }
       await api.saveChatSettings({
@@ -437,6 +523,97 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     }
   }, [pricingEntries]);
 
+  const fillDefaultPricing = useCallback(async () => {
+    const api = getDesktop();
+    if (!api?.getDefaultModelPricing) {
+      toast.info("无法获取默认单价数据");
+      return;
+    }
+    const [defaultPricing, s] = await Promise.all([
+      api.getDefaultModelPricing(),
+      api.getChatSettings(),
+    ]);
+    if (defaultPricing) defaultPricingRef.current = defaultPricing;
+    const def = defaultPricing || {};
+    const tokenPricing = s.tokenPricing || {};
+
+    // 构建模型→供应商单价映射（含币种）
+    const providerPriceMap: Record<string, { input: number; output: number; currency?: string }> =
+      {};
+    for (const p of providers) {
+      if (p.inputPrice != null) {
+        const providerCurrency = String(p.currency || "USD")
+          .trim()
+          .toUpperCase();
+        for (const m of p.models ?? []) {
+          if (m && !providerPriceMap[m]) {
+            providerPriceMap[m] = {
+              input: p.inputPrice,
+              output: p.outputPrice ?? p.inputPrice,
+              currency: providerCurrency === "USD" ? undefined : providerCurrency,
+            };
+          }
+        }
+      }
+    }
+
+    let filled = 0;
+    setPricingEntries((prev) => {
+      const next: Record<string, { input: string; output: string; currency?: string }> = {};
+
+      // 重新获取：最新供应商数据 > 内置默认价 > 已保存的单价备份
+      for (const [model, v] of Object.entries(prev)) {
+        const provPrice = providerPriceMap[model];
+        const defPrice = def[model];
+        const existing = tokenPricing[model];
+
+        const input = provPrice
+          ? String(provPrice.input)
+          : defPrice?.inputPer1M != null
+            ? String(defPrice.inputPer1M)
+            : existing?.inputPer1M != null
+              ? String(existing.inputPer1M)
+              : v.input;
+        const output = provPrice
+          ? String(provPrice.output)
+          : defPrice?.outputPer1M != null
+            ? String(defPrice.outputPer1M)
+            : existing?.outputPer1M != null
+              ? String(existing.outputPer1M)
+              : v.output;
+        const currency =
+          provPrice?.currency ||
+          (existing?.currency && existing.currency !== "USD" ? existing.currency : undefined);
+
+        if (input || output) filled++;
+        next[model] = { input, output, currency };
+      }
+      // 再补充 tokenPricing/默认中有但列表中没有的新模型
+      for (const [model, v] of Object.entries(tokenPricing)) {
+        if (!next[model] && model) {
+          next[model] = {
+            input: v?.inputPer1M != null ? String(v.inputPer1M) : "",
+            output: v?.outputPer1M != null ? String(v.outputPer1M) : "",
+            currency: v?.currency && v.currency !== "USD" ? v.currency : undefined,
+          };
+          if (v?.inputPer1M || v?.outputPer1M) filled++;
+        }
+      }
+      for (const [model, v] of Object.entries(def)) {
+        if (!next[model] && model) {
+          next[model] = {
+            input: v?.inputPer1M != null ? String(v.inputPer1M) : "",
+            output: v?.outputPer1M != null ? String(v.outputPer1M) : "",
+          };
+          if (v?.inputPer1M || v?.outputPer1M) filled++;
+        }
+      }
+      return next;
+    });
+    if (filled > 0) toast.success(`已获取并填充 ${filled} 个模型单价`);
+    else toast.message("所有模型已有单价");
+  }, [providers]);
+
   const handleFetchModels = useCallback(async () => {
     const api = getDesktop();
     if (!api?.ccSwitchFetchProviderModels) {
@@ -444,10 +621,15 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       return;
     }
     const { name, endpoint, apiKey } = cloudForm;
-    if (!name.trim()) { toast.error("请先填写供应商名称"); return; }
+    if (!name.trim()) {
+      toast.error("请先填写供应商名称");
+      return;
+    }
     // 编辑时 key 未改动则发空串，后端自动查找已存储的 key
-    const actualKey = editingProviderId && prevApiKeyPreview && apiKey.trim() === prevApiKeyPreview
-      ? "" : apiKey.trim();
+    const actualKey =
+      editingProviderId && prevApiKeyPreview && apiKey.trim() === prevApiKeyPreview
+        ? ""
+        : apiKey.trim();
     // 捕获调用时正在编辑的供应商 ID，用于异步完成后校验一致性
     const callEditingId = editingProviderId;
     setFetchingModels(true);
@@ -468,19 +650,20 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       const suggestDefault = (models: string[]): string => {
         const chatCandidates = models.filter((id) => {
           const l = id.toLowerCase();
-          if (l.includes('embedding') || l.includes('embed')) return false;
-          if (l.includes('moderation')) return false;
-          if (l.includes('tts') || l === 'whisper-1') return false;
-          if (l.includes('dall-e') || l.includes('dall·e')) return false;
+          if (l.includes("embedding") || l.includes("embed")) return false;
+          if (l.includes("moderation")) return false;
+          if (l.includes("tts") || l === "whisper-1") return false;
+          if (l.includes("dall-e") || l.includes("dall·e")) return false;
           // 跳过 OpenAI 遗留非聊天基础模型（babbage/davinci/curie/ada），除非有 instruct/gpt 后缀
           if (/^(babbage|davinci|curie|ada)\b/i.test(l) && !/instruct|gpt/i.test(l)) return false;
           return true;
         });
-        if (chatCandidates.length === 0) return models[0] || '';
+        if (chatCandidates.length === 0) return models[0] || "";
         // 进一步优选：含常见聊天模型关键词的排前面
-        const chatKeywords = /gpt|chat|claude|gemini|sonnet|opus|haiku|turbo|4o|4\.5|o1|o3|reasoner|flash|mini|pro|instruct/i;
+        const chatKeywords =
+          /gpt|chat|claude|gemini|sonnet|opus|haiku|turbo|4o|4\.5|o1|o3|reasoner|flash|mini|pro|instruct/i;
         const preferred = chatCandidates.filter((id) => chatKeywords.test(id));
-        return (preferred.length > 0 ? preferred[0] : chatCandidates[0]) || models[0] || '';
+        return (preferred.length > 0 ? preferred[0] : chatCandidates[0]) || models[0] || "";
       };
       const first = suggestDefault(r.models);
       const rest = r.models.filter((m) => m !== first);
@@ -488,8 +671,12 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         ...f,
         defaultModel: first,
         extraModels: rest.join(", "),
-        inputPrice: f.inputPrice || "",
-        outputPrice: f.outputPrice || "",
+        inputPrice:
+          f.inputPrice ||
+          (typeof r.defaultInputPrice === "number" ? String(r.defaultInputPrice) : ""),
+        outputPrice:
+          f.outputPrice ||
+          (typeof r.defaultOutputPrice === "number" ? String(r.defaultOutputPrice) : ""),
       }));
       toast.success(`已获取 ${r.models.length} 个模型`);
     } catch (e) {
@@ -607,9 +794,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       const s = await api.getChatSettings();
       const catalog = (s.localModelCatalog ?? []).filter((m) => m !== id);
       const nextLocalEnabled = (s.chatEnabledLocalModels ?? []).filter((m) => m !== id);
-      const nextModel = s.model === id ? catalog[0] ?? AUTO_MODEL_ID : s.model ?? "";
-      const nextMcp =
-        s.localOllamaModel === id ? catalog[0] ?? "" : s.localOllamaModel ?? "";
+      const nextModel = s.model === id ? (catalog[0] ?? AUTO_MODEL_ID) : (s.model ?? "");
+      const nextMcp = s.localOllamaModel === id ? (catalog[0] ?? "") : (s.localOllamaModel ?? "");
       await api.saveChatSettings({
         ...chatSettingsPreservePayload(s),
         localModelCatalog: catalog,
@@ -619,7 +805,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       });
       setLocalModelCatalog(catalog);
       setChatEnabledLocalModels(nextLocalEnabled);
-      toast.success(`已删除「${model}」`);
+      toast.success(`已删除「${id}」`);
       onSettingsUpdated?.();
     } finally {
       setBusy(null);
@@ -695,7 +881,9 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       }
 
       const s = await api.getChatSettings();
-      const nextCloud = [...new Set([...chatEnabledCloudProviders, ...toEnableCloud.map((p) => p.id)])];
+      const nextCloud = [
+        ...new Set([...chatEnabledCloudProviders, ...toEnableCloud.map((p) => p.id)]),
+      ];
       const nextLocal = [...new Set([...chatEnabledLocalModels, ...toEnableLocal])];
 
       let nextModel = s.model?.trim() || currentModelId;
@@ -845,12 +1033,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
 
   if (!desktop) return null;
 
-  const drawerOpen = drawer !== "closed";
-  const cloudDrawer = drawer === "cloud-create" || drawer === "cloud-edit";
-
   return (
     <div className="w-full space-y-4">
-
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -990,10 +1174,17 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                   </div>
                 </td>
                 <td className="col-endpoint px-3 py-2.5 align-top font-mono text-[10px] text-muted-foreground">
-                  <div className="cell-overflow break-all" title={p.baseUrl || "—"}>{p.baseUrl || "—"}</div>
+                  <div className="cell-overflow break-all" title={p.baseUrl || "—"}>
+                    {p.baseUrl || "—"}
+                  </div>
                 </td>
                 <td className="col-model px-3 py-2.5 align-top font-mono text-[10px] text-foreground">
-                  <div className="cell-overflow" title={p.models.length ? p.models.join(", ") : "—"}>{p.models.length ? p.models.join(", ") : "—"}</div>
+                  <div
+                    className="cell-overflow"
+                    title={p.models.length ? p.models.join(", ") : "—"}
+                  >
+                    {p.models.length ? p.models.join(", ") : "—"}
+                  </div>
                 </td>
                 <td className="col-key px-3 py-2.5 align-top text-muted-foreground">
                   <div className="cell-1line">{p.hasApiKey ? p.apiKeyPreview : "未配置"}</div>
@@ -1045,10 +1236,16 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                   <span className="font-mono text-[11px] text-foreground">{model}</span>
                 </td>
                 <td className="col-endpoint px-3 py-2.5 align-top font-mono text-[10px] text-muted-foreground">
-                  <div className="cell-overflow break-all" title={ollamaBase}>{ollamaBase}</div>
+                  <div className="cell-overflow break-all" title={ollamaBase}>
+                    {ollamaBase}
+                  </div>
                 </td>
-                <td className="col-model px-3 py-2.5 align-top text-[10px] text-muted-foreground">Ollama</td>
-                <td className="col-key px-3 py-2.5 align-top text-[10px] text-muted-foreground">—</td>
+                <td className="col-model px-3 py-2.5 align-top text-[10px] text-muted-foreground">
+                  Ollama
+                </td>
+                <td className="col-key px-3 py-2.5 align-top text-[10px] text-muted-foreground">
+                  —
+                </td>
                 <td className="col-status px-2 py-2.5 align-middle text-center">
                   <ChatEnableStatus enabled={localChatEnabledSet.has(model)} />
                 </td>
@@ -1071,428 +1268,97 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         </table>
       </div>
 
-      {showPricingManager ? (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={() => setShowPricingManager(false)} />
-          <div className="flex w-full max-w-xl flex-col border-l border-border bg-surface-elevated shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <div>
-                <div className="text-[14px] font-semibold">模型单价管理</div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  设置每个模型的 $/1M tokens 单价。修改后仅影响新增的用量统计，历史费用不变。
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowPricingManager(false)}
-                className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4">
-              {Object.keys(pricingEntries).length === 0 ? (
-                <div className="py-8 text-center text-[13px] text-muted-foreground">
-                  暂无模型数据。请先添加云模型供应商。
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {Object.entries(pricingEntries).map(([model, v]) => (
-                    <div key={model} className="flex items-center gap-3 rounded-lg border border-border/60 bg-surface/50 px-3 py-2.5">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-mono text-[12px]">{model}</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div>
-                          <div className="mb-0.5 text-[10px] text-muted-foreground">输入</div>
-                          <input
-                            value={v.input}
-                            onChange={(e) =>
-                              setPricingEntries((prev) => ({
-                                ...prev,
-                                [model]: { ...prev[model], input: e.target.value },
-                              }))
-                            }
-                            placeholder="默认"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            className="h-8 w-20 rounded-md border border-border bg-surface px-2 text-[12px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                          />
-                        </div>
-                        <div>
-                          <div className="mb-0.5 text-[10px] text-muted-foreground">输出</div>
-                          <input
-                            value={v.output}
-                            onChange={(e) =>
-                              setPricingEntries((prev) => ({
-                                ...prev,
-                                [model]: { ...prev[model], output: e.target.value },
-                              }))
-                            }
-                            placeholder="默认"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            className="h-8 w-20 rounded-md border border-border bg-surface px-2 text-[12px] font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-              <button
-                type="button"
-                onClick={() => setShowPricingManager(false)}
-                className="btn-ghost rounded-lg px-3 py-1.5 text-[12.5px] font-medium"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={busy !== null || Object.keys(pricingEntries).length === 0}
-                onClick={() => void savePricingEntries()}
-                className="btn-gradient-primary rounded-lg px-4 py-1.5 text-[12.5px] font-semibold disabled:opacity-40"
-              >
-                {busy === "save" ? "保存中…" : "保存单价"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <PricingManagerDrawer
+        open={showPricingManager}
+        pricingEntries={pricingEntries}
+        busy={busy}
+        onClose={() => setShowPricingManager(false)}
+        onEntriesChange={(updater) => setPricingEntries(updater)}
+        onSave={() => void savePricingEntries()}
+        onFillDefault={() => void fillDefaultPricing()}
+      />
 
-      {drawerOpen ? (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-foreground/30 backdrop-blur-xs" onClick={closeDrawer} />
-          <div className="flex w-full max-w-lg flex-col border-l border-border bg-surface-elevated shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <div>
-                <div className="text-[13px] font-semibold text-foreground">
-                  {cloudDrawer
-                    ? drawer === "cloud-create"
-                      ? "添加云模型"
-                      : `编辑 · ${cloudForm.name || editingProviderId}`
-                    : "配置本地模型"}
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  {cloudDrawer
-                    ? "保存到项目并合并到聊天页云模型列表"
-                    : "测试 Ollama 连接后，勾选模型并点击完成添加到列表"}
-                </div>
-              </div>
-              <button type="button" onClick={closeDrawer} className="rounded p-1.5 text-muted-foreground hover:bg-secondary">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
+      <CloudProviderDrawer
+        drawer={drawer}
+        cloudForm={cloudForm}
+        editingProviderId={editingProviderId}
+        prevApiKeyPreview={prevApiKeyPreview}
+        fetchingModels={fetchingModels}
+        fetchModelsError={fetchModelsError}
+        busy={busy}
+        providerOptions={providerOptions}
+        providerCustomOpen={providerCustomOpen}
+        onClose={closeDrawer}
+        onFormChange={(patch) => setCloudForm((f) => ({ ...f, ...patch }))}
+        onFetchModels={() => void handleFetchModels()}
+        onSave={() => void saveCloudProvider()}
+        onToggleCustom={(open) => setProviderCustomOpen(open)}
+        onSelectPreset={(name) => {
+          const match = providerOptions.find((p) => p.name === name);
+          setCloudForm((f) => ({ ...f, name }));
+          setProviderCustomOpen(false);
+          const defaultCur = match?.defaultCurrency || "USD";
+          if (match?.defaultEndpoint) {
+            setCloudForm((f) => ({
+              ...f,
+              name,
+              endpoint: match.defaultEndpoint!,
+              inputPrice:
+                typeof match.defaultInputPrice === "number" ? String(match.defaultInputPrice) : "",
+              outputPrice:
+                typeof match.defaultOutputPrice === "number"
+                  ? String(match.defaultOutputPrice)
+                  : "",
+              currency: defaultCur,
+            }));
+          } else {
+            setCloudForm((f) => ({
+              ...f,
+              name,
+              endpoint: "",
+              inputPrice:
+                typeof match?.defaultInputPrice === "number" ? String(match.defaultInputPrice) : "",
+              outputPrice:
+                typeof match?.defaultOutputPrice === "number"
+                  ? String(match.defaultOutputPrice)
+                  : "",
+              currency: defaultCur,
+            }));
+          }
+        }}
+      />
+      <LocalModelDrawer
+        drawer={drawer}
+        ollamaBase={ollamaBase}
+        localTest={localTest}
+        localPick={localPick}
+        localModelCatalog={localModelCatalog}
+        localCatalogSet={localCatalogSet}
+        busy={busy}
+        onClose={closeDrawer}
+        onOllamaBaseChange={(val) => {
+          setOllamaBase(val);
+          setLocalTest({ status: "idle", message: "", discovered: [] });
+        }}
+        onTestConnection={() => void testLocalConnection()}
+        onTogglePick={(model) => toggleLocalPick(model)}
+        onSelectAllPick={() => selectAllLocalPick()}
+        onClearPick={() => setLocalPick(new Set())}
+        onFinish={() => void finishLocalDrawer()}
+      />
 
-            <div className="flex-1 space-y-3 overflow-y-auto p-5">
-              {cloudDrawer ? (
-                <>
-                  <CloudFormField label="供应商名称">
-                    {!providerCustomOpen || editingProviderId ? (
-                      <select
-                        value={cloudForm.name}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === "__custom__") {
-                            setCloudForm((f) => ({ ...f, name: "", endpoint: "https://" }));
-                            setProviderCustomOpen(true);
-                          } else {
-                            const match = providerOptions.find((p) => p.name === v);
-                            setCloudForm((f) => ({ ...f, name: v }));
-                            setProviderCustomOpen(false);
-                            if (match?.defaultEndpoint) {
-                              setCloudForm((f) => ({ ...f, name: v, endpoint: match.defaultEndpoint!, inputPrice: "", outputPrice: "" }));
-                            } else {
-                              setCloudForm((f) => ({ ...f, name: v, endpoint: "", inputPrice: "", outputPrice: "" }));
-                            }
-                          }
-                        }}
-                        disabled={Boolean(editingProviderId)}
-                        className={cn(inputClass, editingProviderId && "cursor-not-allowed bg-muted/40")}
-                      >
-                        {editingProviderId && !providerOptions.some((p) => p.name === cloudForm.name) ? (
-                          <option value={cloudForm.name}>
-                            {cloudForm.name}
-                          </option>
-                        ) : (
-                          <option value="" disabled>
-                            {providerOptions.length ? "选择供应商…" : "加载中…"}
-                          </option>
-                        )}
-                        {providerOptions.map((p) => (
-                          <option key={p.name} value={p.name}>
-                            {p.name}
-                          </option>
-                        ))}
-                        {!editingProviderId ? (
-                          <option value="__custom__">其他（自定义）</option>
-                        ) : null}
-                      </select>
-                    ) : null}
-                    {providerCustomOpen && !editingProviderId ? (
-                      <input
-                        value={cloudForm.name}
-                        onChange={(e) => setCloudForm((f) => ({ ...f, name: e.target.value }))}
-                        placeholder="输入自定义供应商名称"
-                        className={cn(inputClass, providerCustomOpen && "mt-2")}
-                        autoFocus={providerCustomOpen}
-                        onFocus={() => setProviderCustomOpen(false)}
-                      />
-                    ) : null}
-                  </CloudFormField>
-                  <CloudFormField label="供应商 ID（可选）">
-                    <input
-                      value={cloudForm.providerId}
-                      onChange={(e) => setCloudForm((f) => ({ ...f, providerId: e.target.value }))}
-                      placeholder="yunmeng-claude"
-                      readOnly={Boolean(editingProviderId)}
-                      className={cn(inputClass, editingProviderId && "cursor-not-allowed bg-muted/40")}
-                    />
-                  </CloudFormField>
-                  <CloudFormField label="API 端点">
-                    <div className="relative">
-                      <input
-                        value={cloudForm.endpoint}
-                        onChange={(e) => setCloudForm((f) => ({ ...f, endpoint: e.target.value }))}
-                        placeholder="https://api.example.com"
-                        className={cn(
-                          inputClass,
-                          "font-mono text-[12px]",
-                        )}
-                      />
-                    </div>
-                  </CloudFormField>
-                  <CloudFormField label="API Key">
-                    <input
-                      type="password"
-                      value={cloudForm.apiKey}
-                      onChange={(e) => setCloudForm((f) => ({ ...f, apiKey: e.target.value }))}
-                      onFocus={() => {
-                        if (editingProviderId && prevApiKeyPreview && cloudForm.apiKey === prevApiKeyPreview) {
-                          setCloudForm((f) => ({ ...f, apiKey: "" }));
-                        }
-                      }}
-                      onBlur={() => {
-                        if (editingProviderId && prevApiKeyPreview && !cloudForm.apiKey.trim()) {
-                          setCloudForm((f) => ({ ...f, apiKey: prevApiKeyPreview }));
-                        }
-                      }}
-                      placeholder={editingProviderId ? "留空保留原 Key" : "sk-…"}
-                      autoComplete="off"
-                      className={cn(inputClass, "font-mono text-[12px]")}
-                    />
-                    {editingProviderId && prevApiKeyPreview && (
-                      <span className="text-[11px] text-muted-foreground">已配置 Key，留空保留原 Key</span>
-                    )}
-                  </CloudFormField>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={fetchingModels || busy !== null}
-                      onClick={() => void handleFetchModels()}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] font-medium transition hover:bg-secondary disabled:opacity-40"
-                    >
-                      <RefreshCw className={cn("h-3.5 w-3.5", fetchingModels && "animate-spin")} />
-                      {fetchingModels ? "获取中…" : "自动获取模型列表"}
-                    </button>
-                    {fetchModelsError ? (
-                      <span className="text-[11px] text-destructive">{fetchModelsError}</span>
-                    ) : null}
-                  </div>
-                  <CloudFormField label="默认模型 ID">
-                    <input
-                      value={cloudForm.defaultModel}
-                      onChange={(e) => setCloudForm((f) => ({ ...f, defaultModel: e.target.value }))}
-                      placeholder="deepseek-chat"
-                      className={cn(inputClass, "font-mono text-[12px]")}
-                    />
-                  </CloudFormField>
-                  <CloudFormField label="额外模型 ID（逗号分隔）">
-                    <input
-                      value={cloudForm.extraModels}
-                      onChange={(e) => setCloudForm((f) => ({ ...f, extraModels: e.target.value }))}
-                      placeholder="model-a, model-b"
-                      className={cn(inputClass, "font-mono text-[12px]")}
-                    />
-                  </CloudFormField>
-                  <CloudFormField label="输入单价 $/1M tokens（留空使用供应商默认）">
-                    <input
-                      value={cloudForm.inputPrice}
-                      onChange={(e) => setCloudForm((f) => ({ ...f, inputPrice: e.target.value }))}
-                      placeholder="留空自动"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className={cn(inputClass, "font-mono text-[12px]")}
-                    />
-                  </CloudFormField>
-                  <CloudFormField label="输出单价 $/1M tokens（留空使用供应商默认）">
-                    <input
-                      value={cloudForm.outputPrice}
-                      onChange={(e) => setCloudForm((f) => ({ ...f, outputPrice: e.target.value }))}
-                      placeholder="留空自动"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className={cn(inputClass, "font-mono text-[12px]")}
-                    />
-                  </CloudFormField>
-                  <label className="flex cursor-pointer items-center gap-2 text-[12px]">
-                    <input
-                      type="checkbox"
-                      checked={cloudForm.setAsCurrent}
-                      onChange={(e) => setCloudForm((f) => ({ ...f, setAsCurrent: e.target.checked }))}
-                      className="h-4 w-4 rounded border-border"
-                    />
-                    保存后立即设为当前 Claude Code 供应商
-                  </label>
-                </>
-              ) : (
-                <>
-                  <CloudFormField label="Ollama 服务地址">
-                    <input
-                      value={ollamaBase}
-                      onChange={(e) => {
-                        setOllamaBase(e.target.value);
-                        setLocalTest({ status: "idle", message: "", discovered: [] });
-                      }}
-                      className={cn(inputClass, "font-mono text-[12px]")}
-                    />
-                  </CloudFormField>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={busy !== null}
-                      onClick={() => void testLocalConnection()}
-                      className="btn-gradient-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
-                    >
-                      <RefreshCw className={cn("h-3.5 w-3.5", localTest.status === "testing" && "animate-spin")} />
-                      测试连接
-                    </button>
-                  </div>
-                  {localTest.status !== "idle" ? (
-                    <div
-                      className={cn(
-                        "rounded-lg border px-3 py-2 text-[12px]",
-                        localTest.status === "ok" && "border-success/30 bg-success/10 text-success",
-                        localTest.status === "fail" && "border-destructive/30 bg-destructive/10 text-destructive",
-                        localTest.status === "testing" && "border-border bg-secondary/40 text-muted-foreground",
-                      )}
-                    >
-                      {localTest.message}
-                    </div>
-                  ) : null}
-                  {localTest.discovered.length > 0 ? (
-                    <div>
-                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-[12px] font-medium text-foreground">
-                          本机可用模型（勾选后点击完成添加）
-                          {localPick.size > 0 ? (
-                            <span className="ml-1.5 font-normal text-muted-foreground">
-                              已选 {localPick.size} 个
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="flex gap-2 text-[11px]">
-                          <button
-                            type="button"
-                            disabled={busy !== null}
-                            onClick={selectAllLocalPick}
-                            className="text-primary hover:underline disabled:opacity-40"
-                          >
-                            全选未添加
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy !== null || localPick.size === 0}
-                            onClick={() => setLocalPick(new Set())}
-                            className="text-muted-foreground hover:underline disabled:opacity-40"
-                          >
-                            清空选择
-                          </button>
-                        </div>
-                      </div>
-                      <div className="max-h-64 space-y-0.5 overflow-y-auto rounded-lg border border-border p-1">
-                        {localTest.discovered.map((model) => {
-                          const added = localCatalogSet.has(model);
-                          const checked = added || localPick.has(model);
-                          return (
-                            <label
-                              key={model}
-                              className={cn(
-                                "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 font-mono text-[11.5px] transition",
-                                added ? "cursor-default bg-success/10 text-success" : "hover:bg-secondary",
-                              )}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={busy !== null || added}
-                                onChange={() => toggleLocalPick(model)}
-                                className="h-4 w-4 shrink-0 rounded border-border"
-                              />
-                              <span className="min-w-0 flex-1 truncate">{model}</span>
-                              {added ? (
-                                <span className="inline-flex shrink-0 items-center gap-1 text-[10px]">
-                                  <Check className="h-3 w-3" /> 已添加
-                                </span>
-                              ) : null}
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-                  {localModelCatalog.length > 0 ? (
-                    <div>
-                      <div className="mb-2 text-[12px] font-medium text-muted-foreground">已加入模型列表</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {localModelCatalog.map((m) => (
-                          <span
-                            key={m}
-                            className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-0.5 font-mono text-[10.5px]"
-                          >
-                            {m}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
-              <button
-                type="button"
-                onClick={closeDrawer}
-                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] hover:bg-secondary"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={() => void (cloudDrawer ? saveCloudProvider() : finishLocalDrawer())}
-                className="btn-gradient-primary rounded-lg px-4 py-1.5 text-[12.5px] font-semibold disabled:opacity-40"
-              >
-                {busy === "save" || busy === "local" ? "保存中…" : cloudDrawer ? "保存" : "完成"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <AlertDialog open={confirmDelete !== null} onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}>
+      <AlertDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
             <AlertDialogDescription>
-              确定删除{confirmDelete?.type === "cloud" ? "云模型" : "本地模型"}「{confirmDelete?.name}」？此操作不可撤销。
+              确定删除{confirmDelete?.type === "cloud" ? "云模型" : "本地模型"}「
+              {confirmDelete?.name}」？此操作不可撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1515,18 +1381,6 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   );
 }
 
-const inputClass =
-  "h-9 w-full rounded-lg border border-border bg-surface px-3 text-[12.5px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20";
-
-function CloudFormField({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <label className="mb-1 block text-[12px] font-medium text-muted-foreground">{label}</label>
-      {children}
-    </div>
-  );
-}
-
 function ChatEnableStatus({ enabled }: { enabled: boolean }) {
   const label = enabled ? "已启用（聊天可选）" : "未启用（聊天不可选）";
   if (!enabled) {
@@ -1541,7 +1395,11 @@ function ChatEnableStatus({ enabled }: { enabled: boolean }) {
     );
   }
   return (
-    <span title={label} aria-label={label} className="inline-flex h-6 w-6 items-center justify-center">
+    <span
+      title={label}
+      aria-label={label}
+      className="inline-flex h-6 w-6 items-center justify-center"
+    >
       <span className="h-2.5 w-2.5 rounded-full bg-success ring-2 ring-success/25" />
     </span>
   );

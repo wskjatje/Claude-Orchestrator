@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import fs from 'node:fs'
+import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { expandHome, readMcpConfigFile } from './claude-mcp-config.mjs'
 
@@ -111,7 +112,7 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
           reject(
             new Error(
               slowNpx
-                ? '检查超时（首次 npx 拉包可能需 60s+，请稍后点「健康检查」重试）'
+                ? 'npx/uvx 首次启动需拉取依赖，当前超时时间已到。若网络较慢可稍后点「健康检查」重试；国内用户可配置 npm/pypi 镜像加速。'
                 : '检查超时',
             ),
           )
@@ -136,8 +137,12 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
         '（npm 上无 @modelcontextprotocol/server-fetch；官方 fetch 为 Python 包，请改用 uvx mcp-server-fetch，并安装 uv）'
     } else if (/uvx|mcp-server-fetch/i.test(cmdLine) && /ENOENT|not found|spawn uvx/i.test(msg)) {
       hint = '（请先安装 uv：curl -LsSf https://astral.sh/uv/install.sh | sh，或确认 uvx 在 PATH 中（常见路径：~/.local/bin/uvx、~/.cargo/bin/uvx），安装后重试健康检查）'
+    } else if (/uvx|mcp-server-fetch/i.test(cmdLine) && /timed? ?out|Failed to fetch|resolve.*dependency/i.test(msg)) {
+      hint = '（uvx 解析依赖超时，无法连接 PyPI。国内用户可尝试：① 配置 PyPI 镜像 `pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple`；② 检查代理 HTTP_PROXY/HTTPS_PROXY 是否正确；③ 稍后重试）'
     } else if (/\bnpx\b/.test(cmdLine) && /ENOENT|not found|spawn npx/i.test(msg)) {
       hint = '（npx 未在 PATH 中，请确认 Node.js 已安装；使用桌面打包版请确保应用有 /opt/homebrew/bin 等系统 PATH 访问权限）'
+    } else if (/\bnpx\b/.test(cmdLine) && /timed? ?out|Failed to fetch|resolve.*dependency/i.test(msg)) {
+      hint = '（npx 拉包超时，无法连接 npm 源。国内用户可尝试：① 配置 npm 镜像 `npm config set registry https://registry.npmmirror.com`；② 检查代理；③ 稍后重试）'
     } else if (/Connection closed|ERR_MODULE_NOT_FOUND|Cannot find module/i.test(msg)) {
       hint =
         '（npx 缓存可能损坏：可删除 ~/.npm/_npx 后重试；filesystem/memory 建议使用固定版本号）'
@@ -199,6 +204,30 @@ export async function checkMcpServerEntry(name, cfg) {
   if (c.env && typeof c.env === 'object') {
     for (const [k, v] of Object.entries(c.env)) envExtra[k] = expandHome(String(v))
   }
+
+  // 提前检查 Puppeteer 依赖的浏览器环境
+  const cmdLine = [command, ...args].join(' ').toLowerCase()
+  if (/\b(?:server-puppeteer|puppeteer)\b/.test(cmdLine) && !/puppeteer-browsers/.test(cmdLine)) {
+    const browserHint = detectPuppeteerBrowser()
+    if (browserHint) {
+      const r = await probeStdioWithSdk(command, args, envExtra, stdioProbeTimeoutMs(command, args))
+      return {
+        name,
+        status: r.ok ? 'ok' : 'error',
+        transport: 'stdio',
+        error: r.error || null,
+        last_health_at: checkedAt,
+      }
+    }
+    return {
+      name,
+      status: 'error',
+      transport: 'stdio',
+      error: '系统未检测到 Chrome/Chromium 浏览器。Puppeteer MCP 需浏览器环境才能运行。安装方法：① macOS 安装 Chrome；② 或执行 `npx puppeteer browsers install chrome` 下载无头浏览器。',
+      last_health_at: checkedAt,
+    }
+  }
+
   const r = await probeStdioWithSdk(command, args, envExtra, stdioProbeTimeoutMs(command, args))
   return {
     name,
@@ -209,14 +238,76 @@ export async function checkMcpServerEntry(name, cfg) {
   }
 }
 
-export async function checkAllMcpServers(configPath) {
+/** 检测系统是否可用 Chrome/Chromium（Puppeteer MCP 所需） */
+function detectPuppeteerBrowser() {
+  try {
+    if (process.platform === 'darwin') {
+      const chromePaths = [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        path.join(os.homedir(), 'Applications', 'Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome'),
+      ]
+      for (const p of chromePaths) {
+        if (fs.existsSync(p)) return p
+      }
+    } else if (process.platform === 'linux') {
+      const linuxPaths = ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/snap/bin/chromium']
+      for (const p of linuxPaths) {
+        if (fs.existsSync(p)) return p
+      }
+    } else if (process.platform === 'win32') {
+      const programFiles = process.env.ProgramFiles || 'C:\\Program Files'
+      const localAppData = process.env.LOCALAPPDATA || ''
+      const winPaths = [
+        path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        path.join(programFiles, 'Chromium', 'Application', 'chrome.exe'),
+      ]
+      for (const p of winPaths) {
+        if (fs.existsSync(p)) return p
+      }
+    }
+  } catch { /* ignore */ }
+  return ''
+}
+
+/**
+ * 用有限并发执行所有 MCP 健康检查，避免一个超时服务阻塞全部。
+ * @param {string} configPath
+ * @param {{ concurrency?: number }} [opts]
+ */
+export async function checkAllMcpServers(configPath, opts = {}) {
   const parsed = readMcpServers(configPath)
   if (!parsed.ok) return { ok: false, error: parsed.error, servers: [] }
   if (parsed.missing) return { ok: true, missing: true, servers: [] }
+  const concurrency = Math.max(1, Math.min(6, opts.concurrency ?? 4))
+
+  const entries = parsed.servers.slice()
   const servers = []
-  for (const { name, cfg } of parsed.servers) {
-    servers.push(await checkMcpServerEntry(name, cfg))
+  let idx = 0
+
+  /** @param {number} _workerId */
+  const worker = async (_workerId) => {
+    while (idx < entries.length) {
+      const item = entries[idx++]
+      if (!item) continue
+      try {
+        const r = await checkMcpServerEntry(item.name, item.cfg)
+        servers.push(r)
+      } catch (e) {
+        servers.push({
+          name: item.name,
+          status: 'error',
+          transport: 'stdio',
+          error: `健康检查异常：${e?.message || String(e)}`,
+          last_health_at: new Date().toISOString(),
+        })
+      }
+    }
   }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, entries.length) }, (_, i) => worker(i)))
+
   const okCount = servers.filter((s) => s.status === 'ok').length
   return { ok: true, servers, okCount, total: servers.length }
 }

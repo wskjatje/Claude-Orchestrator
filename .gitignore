@@ -28,3 +28,25 @@ web/.tanstack/
 desktop/node_modules/
 desktop/release/
 desktop/out/
+
+# graphify — knowledge graph cache and transient artifacts
+graphify-out/cache/
+graphify-out/cost.json
+graphify-out/*.html
+graphify-out/*.svg
+graphify-out/obsidian/
+graphify-out/snapshots/
+graphify-out/branches/
+graphify-out/node-status.json
+graphify-out/.chain_writes.log
+# .graphify_root 包含本地绝对路径
+graphify-out/.graphify_root
+# 临时提取脚本
+graphify-out/.tmp_*.py
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# 根目录环境文件
+.env
+.env.local

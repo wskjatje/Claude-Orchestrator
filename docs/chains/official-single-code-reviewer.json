@@ -8,7 +8,7 @@
   "official": true,
   "userModified": false,
   "createdAt": "2026-06-14T03:15:16.998Z",
-  "updatedAt": "2026-06-30T09:28:07.184Z",
+  "updatedAt": "2026-07-03T06:31:13.030Z",
   "state": {
     "status": "idle",
     "currentIndex": 0,
@@ -16,7 +16,7 @@
       {
         "agentName": "code-reviewer",
         "taskId": "REVIEW-1",
-        "instruction": "【Agent】global://code-reviewer（~/.claude/agents/code-reviewer.md）\n【任务】评审工作区 src/ 与 server/ 近期改动\n\n【输出】问题分级 + 文件行号引用；阻塞项须可执行修复建议\n\n【READ】Read upstream artifacts first (pre-injected): `docs/frontend-implementation.md`, `docs/api-summary.md`.\n\n【PATH】`docs/code-review-report.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://code-reviewer（~/.claude/agents/code-reviewer.md）\n【任务】评审工作区 src/ 与 server/ 近期改动\n\n【输出】问题分级 + 文件行号引用；阻塞项须可执行修复建议\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/frontend-implementation.md`, `docs/api-summary.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/code-review-report.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "security-review",
           "correctness-review",

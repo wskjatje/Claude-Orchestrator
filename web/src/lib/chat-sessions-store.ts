@@ -25,6 +25,8 @@ export type ChatSessionsCache = {
   >;
   /** 用户主动「新对话」创建的空会话 id，恢复时不自动跳回旧历史 */
   explicitEmptySessionId: string | null;
+  /** 当前选中的 Agent 文件名（跨路由切换保留） */
+  localAgentBasename?: string;
 };
 
 const STORAGE_KEY = "claudecode.chatSessionsCache.v1";

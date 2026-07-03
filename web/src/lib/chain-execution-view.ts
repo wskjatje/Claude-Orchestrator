@@ -7,7 +7,9 @@ export type ChainExecutionPhase =
   | "draft"
   | "idle"
   | "running"
+  | "retrying"
   | "paused"
+  | "partial_success"
   | "completed";
 
 export type ChainStepRow = {
@@ -52,6 +54,10 @@ export function deriveChainExecutionView(opts: {
     phase = "empty";
   } else if (dirty) {
     phase = "draft";
+  } else if (diskStatus === "retrying" && chainRunning) {
+    phase = "retrying";
+  } else if (diskStatus === "partial_success" && idx > 0) {
+    phase = "partial_success";
   } else if (idx >= total && total > 0) {
     phase = "completed";
   } else if (chainRunning) {
@@ -67,7 +73,9 @@ export function deriveChainExecutionView(opts: {
     draft: "未保存草稿",
     idle: "待执行",
     running: "执行中",
+    retrying: "重试中",
     paused: "已暂停",
+    partial_success: "部分完成",
     completed: "已完成",
   };
 
@@ -87,8 +95,12 @@ export function deriveChainExecutionView(opts: {
   let statusText = chainStatusBadge.label.replace(/^链：/, "");
   if (phase === "draft") statusText = "编辑中，保存后才会写入磁盘并允许执行";
   else if (phase === "empty") statusText = "可从下方模板套用，或手动添加步骤";
+  else if (phase === "retrying")
+    statusText = `重试中 • 第 ${completedCount + 1} 步遇到临时错误，正在自动重试`;
+  else if (phase === "partial_success")
+    statusText = `已完成 ${completedCount}/${total} 步，部分步骤失败，可查看具体错误后继续`;
   else if (phase === "completed") statusText = `全部 ${total} 步已完成 · 磁盘 status=${diskStatus}`;
-  else if (phase === "running") statusText = `正在执行第 ${idx + 1}/${total} 步`;
+  else if (phase === "running") statusText = `正在执行第 ${Math.min(idx + 1, total)}/${total} 步`;
   else if (phase === "paused") statusText = `已完成 ${completedCount}/${total} 步，可继续执行`;
   else statusText = `共 ${total} 步，尚未开始`;
 

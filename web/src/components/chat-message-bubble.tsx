@@ -45,15 +45,15 @@ function WaitingReply({ modelName }: { modelName: string }) {
   return (
     <div className="chat-waiting flex flex-col gap-1.5 py-1 text-muted-foreground">
       <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1" aria-hidden>
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.2s]" />
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.1s]" />
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/70" />
+        <span className="thinking-dots" aria-hidden>
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
+          <span className="thinking-dot" />
         </span>
-        <span className="text-[12px]">思考中 · {modelName}</span>
+        <span className="text-[12px]">{modelName} 正在思考…</span>
       </div>
-      <p className="text-[11.5px] leading-relaxed text-muted-foreground/85">
-        Claude Code 正在执行：工具调用、思考与回复将在此实时显示。
+      <p className="text-[11.5px] leading-relaxed text-muted-foreground/80">
+        工具调用与回复将在此实时显示。
       </p>
     </div>
   );
@@ -119,7 +119,7 @@ function MessageBubbleInner({
     <div ref={rowRef} className="chat-message-row chat-message-row--assistant">
       <div className="group/bubble chat-message-col chat-message-col--wide">
         <div className="chat-message-meta">
-          <span className="font-mono font-medium text-foreground">{m.name ?? "assistant"}</span>
+          <span className="assistant-name font-mono">{m.name ?? "assistant"}</span>
           {m.time ? <span className="chat-message-time">{m.time}</span> : null}
           {m.content !== "__WAITING__" ? (
             <CopyTextButton
@@ -127,7 +127,7 @@ function MessageBubbleInner({
               label="复制"
               copiedLabel="已复制"
               size="xs"
-              className="opacity-0 transition group-hover/bubble:opacity-100"
+              className="copy-text-btn"
             />
           ) : null}
         </div>

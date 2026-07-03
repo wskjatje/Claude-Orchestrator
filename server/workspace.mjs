@@ -198,8 +198,10 @@ export function readTextFile(relPathRaw) {
   if (!workspaceDir) return { ok: false, error: '未选择工作区' }
   const rel = String(relPathRaw || '').replace(/^[/\\]+/, '')
   if (!rel || rel.includes('..')) return { ok: false, error: '无效路径' }
-  const abs = path.resolve(workspaceDir, rel)
-  if (!abs.startsWith(path.resolve(workspaceDir))) {
+  let root
+  try { root = path.resolve(fs.realpathSync(workspaceDir)) } catch { return { ok: false, error: '工作区路径无效' } }
+  const abs = path.resolve(root, rel)
+  if (!abs.startsWith(root + path.sep) && abs !== root) {
     return { ok: false, error: '路径越界' }
   }
   try {

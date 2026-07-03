@@ -31,6 +31,7 @@ import {
   BRIDGE_OFFLINE_BANNER,
   BRIDGE_OFFLINE_LEGACY,
 } from "@/lib/ui-copy";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavGroup = { label: string; items: NavItem[] };
@@ -273,7 +274,9 @@ export function AppShell({
               fillHeight ? "flex h-full flex-col overflow-hidden" : "overflow-y-auto scrollbar-thin",
             )}
           >
-            {children}
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
           </div>
         </main>
       </div>

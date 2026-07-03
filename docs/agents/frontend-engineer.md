@@ -3,7 +3,7 @@ description: 前端实现：UI、路由、状态、性能与 a11y 基线；与 U
 category: 通用
 model: inherit
 tools: read, edit
-skills: frontend-implementation, ui-interaction-optimization, accessibility-baseline, frontend-design, react-best-practices, web-design-guidelines
+skills: frontend-implementation, ui-interaction-optimization, accessibility-baseline, frontend-design, react-best-practices, web-design-guidelines, gsap-core, gsap-react, gsap-timeline, gsap-scrolltrigger, gsap-performance
 ---
 # 前端开发工程师
 

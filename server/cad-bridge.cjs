@@ -40,11 +40,38 @@ const {
   buildAgentRoutedInstruction,
 } = require(path.join(CAD, 'multi-agent-runtime.js'))
 
+const {
+  classifyChainError,
+  retryDelayMs,
+  shouldRetry,
+  isMaxRetries,
+  retryHint,
+} = require('./chain-error-classify.js')
+
 /** @type {Record<string, unknown>} */
 let deps = {}
 
 /** @type {Map<string, { cancelled: boolean }>} */
 const activeLocalOrchestrationRequests = new Map()
+
+/** 显式状态机 — 合法状态转换矩阵（与服务端同步） */
+const VALID_CHAIN_STATE_TRANSITIONS = {
+  idle: new Set(['running', 'cancelled']),
+  running: new Set(['retrying', 'completed', 'failed', 'cancelled', 'partial_success']),
+  retrying: new Set(['running', 'failed', 'cancelled', 'completed']),
+  completed: new Set([]),
+  partial_success: new Set([]),
+  failed: new Set([]),
+  cancelled: new Set([]),
+  paused: new Set(['running', 'cancelled']),
+}
+
+function validateStateTransition(from, to) {
+  const allowed = VALID_CHAIN_STATE_TRANSITIONS[from]
+  if (!allowed) return `未知源状态: ${from}`
+  if (allowed.has(to)) return null
+  return `非法状态转换: ${from} → ${to}`
+}
 
 /** 服务端任务链执行状态（与浏览器路由/HMR 解耦） */
 const chainRunState = {
@@ -157,6 +184,13 @@ function advanceOrchestrationState() {
     if (!primary || !fs.existsSync(primary)) return { ok: false, error: '无活跃任务链', state: null }
     const state = JSON.parse(fs.readFileSync(primary, 'utf8'))
     if (!Array.isArray(state.steps)) return { ok: false, error: '链格式无效', state: null }
+    const fromStatus = (state.status || 'idle').trim()
+    const isLastStep = (state.currentIndex ?? 0) + 1 >= state.steps.length
+    const toStatus = isLastStep ? 'completed' : 'running'
+    const invalid = validateStateTransition(fromStatus, toStatus)
+    if (invalid) {
+      return { ok: false, error: invalid, state: null }
+    }
     state.currentIndex = (state.currentIndex ?? 0) + 1
     if (state.currentIndex >= state.steps.length) state.status = 'completed'
     orchestrationChains.syncOrchestrationChainState(state)
@@ -249,246 +283,420 @@ async function orchestrationChainLoop() {
 
       const state = loaded.state
       const steps = state.steps ?? []
-      const idx = state.currentIndex ?? 0
 
-      if (idx >= steps.length) {
-        appendAppLog('[chain-run] 任务链已全部执行完毕')
-        break
+      // ---- 依赖图并行调度 ----
+      function stepDone(s) {
+        return s && (s._completed === true || s.skipped === true)
       }
-
-      const step = steps[idx] || {}
-      const agentName = String(step.agentName ?? '').trim()
-      const taskId = String(step.taskId ?? '').trim()
-      const instruction = String(step.instruction ?? '').trim()
-
-      if (!agentName || !instruction) {
-        chainRunState.lastError = `链中第 ${idx + 1} 步缺少 agentName 或 instruction`
-        appendAppLog(`[chain-run] ${chainRunState.lastError}`)
-        break
-      }
-
-      const rawModelId =
-        sess.modelId?.trim() || settings.model?.trim() || settings.localOllamaModel?.trim() || ''
-      const resolvedModel = await resolveChainStepModel({
-        settings,
-        sessionModelId: rawModelId,
-        agentName,
-        pools: modelPools,
-      })
-      if (!resolvedModel.ok) {
-        chainRunState.lastError = resolvedModel.error || '无法解析执行模型'
-        appendAppLog(`[chain-run] ${chainRunState.lastError}`)
-        hist = [
-          ...hist,
-          {
-            role: 'assistant',
-            content:
-              `任务链在第 ${idx + 1}/${steps.length} 步无法启动（流程未完成，已暂停）：${chainRunState.lastError}\n` +
-              `请在「设置 → 模型与连接」添加模型，或将会话模型从 Auto 改为具体模型后点击「继续执行」。`,
-            ts: Date.now(),
-            requestError: true,
-          },
-        ]
-        const nextSessions = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
-        saveChatSessionsDisk(pinnedId, nextSessions)
-        break
-      }
-      const execModelId = resolvedModel.modelId
-
-      const workspaceDir = loadWorkspace()
-      let instructionWithMeta = appendStepChainMetaToInstruction(instruction, step)
-      if (workspaceDir) {
-        instructionWithMeta = expandChainStepInstructionWithWorkspaceReads(
-          instructionWithMeta,
-          agentName,
-          workspaceDir,
-          { taskId },
-        )
-      }
-      const execInstruction = buildTaskChainExecutableInstruction(agentName, taskId, instructionWithMeta)
-      const routedExecInstruction = buildAgentRoutedInstruction(agentName, execInstruction, mode)
-      const stepMarker = `【任务链】第 ${idx + 1}/${steps.length} 步 · ${agentName}`
-      const lastMsg = hist.length ? hist[hist.length - 1] : null
-      const alreadyAnnounced =
-        lastMsg?.role === 'user' && String(lastMsg.content || '').includes(stepMarker)
-
-      if (!alreadyAnnounced) {
-        const stepOneLine = instruction.replace(/\s+/g, ' ').trim().slice(0, 160)
-        hist = [
-          ...hist,
-          {
-            role: 'user',
-            content: `${stepMarker} · ${taskId || '—'}${
-              stepOneLine
-                ? `\n${stepOneLine}${instruction.trim().length > 160 ? '…' : ''}`
-                : ''
-            }`,
-            ts: Date.now(),
-          },
-        ]
-        const nextSessions = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
-        saveChatSessionsDisk(pinnedId, nextSessions)
-      }
-
-      if (chainRunState.stopRequested) break
-
-      const agentStem = agentStemFromName(agentName)
-      appendMemoryEventRow({
-        type: 'agent_exec',
-        agent: agentStem,
-        phase: 'start',
-        source: 'chain_step',
-        taskId,
-        instruction_preview: instruction.slice(0, 240),
-      })
-
-      const chainStarted = Date.now()
-      let res
-
-      if (mode === 'claude-code') {
-        const reqId = newRequestId()
-        chainRunState.activeRequestId = reqId
-        res = await runClaudeChainStep(agentName, taskId, routedExecInstruction, execModelId, reqId)
-        chainRunState.activeRequestId = null
-      } else {
-        const reqId = newRequestId()
-        chainRunState.activeRequestId = reqId
-        const priorForApi = hist.map((m) => ({
-          role: m.role === 'assistant' ? 'assistant' : 'user',
-          content: String(m.content || ''),
-        }))
-        res = await runLocalChainStep({
-          priorMessages: priorForApi,
-          userLine: routedExecInstruction,
-          modelId: execModelId,
-          requestId: reqId,
-          agentName,
-          allowedMcpServers: Array.isArray(step.mcps)
-            ? step.mcps.map((x) => String(x ?? '').trim()).filter(Boolean)
-            : undefined,
-        })
-        chainRunState.activeRequestId = null
-      }
-
-      if (chainRunState.stopRequested || res?.aborted) {
-        appendMemoryEventRow({
-          type: 'agent_exec',
-          agent: agentStem,
-          phase: 'end',
-          source: 'chain_step',
-          taskId,
-          aborted: true,
-        })
-        break
-      }
-
-      if (!res?.ok) {
-        const failedStep = `${idx + 1}/${steps.length}`
-        hist = [
-          ...hist,
-          {
-            role: 'assistant',
-            content:
-              `任务链在第 ${failedStep} 步执行失败（流程未完成，已暂停）：${res.error || '未知错误'}\n` +
-              `可修复后点击「继续执行」，将从当前退出点继续。`,
-            ts: Date.now(),
-            requestError: true,
-          },
-        ]
-        const nextSessions = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
-        saveChatSessionsDisk(pinnedId, nextSessions)
-        chainRunState.lastError = res.error || '步骤执行失败'
-        appendAppLog(`[chain-run] step ${failedStep} failed: ${chainRunState.lastError}`)
-        appendMemoryEventRow({
-          type: 'agent_exec',
-          agent: agentStem,
-          phase: 'end',
-          source: 'chain_step',
-          taskId,
-          error: chainRunState.lastError,
-        })
-        break
-      }
-
-      let reply =
-        mode === 'claude-code'
-          ? String(res.output || '')
-          : String(res.content || '')
-
-      if (workspaceDir) {
-        const wr = ingestTextAndApplyWorkspaceWrite(reply, workspaceDir, {
-          agentName,
-          taskId,
-          ensureChainArtifact: true,
-        })
-        const mergedWritten = [
-          ...new Set([
-            ...(Array.isArray(res.toolWrittenPaths) ? res.toolWrittenPaths : []),
-            ...(Array.isArray(wr.written) ? wr.written : []),
-          ]),
-        ]
-        if (mergedWritten.length) {
-          appendAppLog(`[chain-run] wrote ${mergedWritten.join(', ')}`)
+      function depsMet(s) {
+        const deps = Array.isArray(s.depends_on) ? s.depends_on : []
+        if (!deps.length) return true
+        for (const depId of deps) {
+          const dep = steps.find((st) => st.taskId === depId)
+          if (!dep || !stepDone(dep)) return false
         }
-        if (wr.displayText) {
-          reply = wr.displayText
-        } else if (mergedWritten.length) {
-          reply = collapseWrittenSummary(reply, mergedWritten, {
-            claimedPaths: extractInvolvedSectionPaths(reply),
+        return true
+      }
+      const readySteps = steps.filter((s) => !stepDone(s) && depsMet(s))
+      if (!readySteps.length) {
+        const allDone = steps.every((s) => stepDone(s))
+        if (allDone) {
+          appendAppLog('[chain-run] 任务链已全部执行完毕')
+          if (state.status !== 'completed') {
+            const invalid = validateStateTransition(state.status, 'completed')
+            if (!invalid) {
+              state.status = 'completed'
+              orchestrationChains.syncOrchestrationChainState(state)
+            }
+          }
+          break
+        }
+        chainRunState.lastError = '存在未就绪步骤（可能死锁：相互依赖或缺少步骤）'
+        appendAppLog(`[chain-run] ${chainRunState.lastError}`)
+        break
+      }
+
+      // 批量执行就绪步骤
+      let batchFailed = false
+      for (const step of readySteps) {
+        const agentName = String(step.agentName ?? '').trim()
+        const taskId = String(step.taskId ?? '').trim()
+        const instruction = String(step.instruction ?? '').trim()
+
+        if (!agentName || !instruction) {
+          chainRunState.lastError = `步骤 ${taskId || '?'} 缺少 agentName 或 instruction`
+          appendAppLog(`[chain-run] ${chainRunState.lastError}`)
+          batchFailed = true
+          break
+        }
+
+        const rawModelId =
+          sess.modelId?.trim() || settings.model?.trim() || settings.localOllamaModel?.trim() || ''
+        const resolvedModel = await resolveChainStepModel({
+          settings,
+          sessionModelId: rawModelId,
+          agentName,
+          pools: modelPools,
+        })
+        if (!resolvedModel.ok) {
+          chainRunState.lastError = resolvedModel.error || '无法解析执行模型'
+          appendAppLog(`[chain-run] ${chainRunState.lastError}`)
+          hist = [
+            ...hist,
+            {
+              role: 'assistant',
+              content:
+                `任务链步骤 ${taskId || '?'} 无法启动（流程未完成，已暂停）：${chainRunState.lastError}\n` +
+                `请在「设置 → 模型与连接」添加模型，或将会话模型从 Auto 改为具体模型后点击「继续执行」。`,
+              ts: Date.now(),
+              requestError: true,
+            },
+          ]
+          const nextSessions = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
+          saveChatSessionsDisk(pinnedId, nextSessions)
+          batchFailed = true
+          break
+        }
+        const execModelId = resolvedModel.modelId
+
+        const workspaceDir = loadWorkspace()
+        let instructionWithMeta = appendStepChainMetaToInstruction(instruction, step)
+        if (workspaceDir) {
+          instructionWithMeta = expandChainStepInstructionWithWorkspaceReads(
+            instructionWithMeta,
+            agentName,
+            workspaceDir,
+            { taskId },
+          )
+        }
+        const execInstruction = buildTaskChainExecutableInstruction(agentName, taskId, instructionWithMeta)
+        const routedExecInstruction = buildAgentRoutedInstruction(agentName, execInstruction, mode)
+        const stepIdx = steps.indexOf(step)
+        const stepMarker = `【任务链】第 ${stepIdx + 1}/${steps.length} 步 · ${agentName}`
+        const lastMsg = hist.length ? hist[hist.length - 1] : null
+        const alreadyAnnounced =
+          lastMsg?.role === 'user' && String(lastMsg.content || '').includes(stepMarker)
+
+        if (!alreadyAnnounced) {
+          const stepOneLine = instruction.replace(/\s+/g, ' ').trim().slice(0, 160)
+          hist = [
+            ...hist,
+            {
+              role: 'user',
+              content: `${stepMarker} · ${taskId || '—'}${
+                stepOneLine
+                  ? `\n${stepOneLine}${instruction.trim().length > 160 ? '…' : ''}`
+                  : ''
+              }`,
+              ts: Date.now(),
+            },
+          ]
+          const nextSessions = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
+          saveChatSessionsDisk(pinnedId, nextSessions)
+        }
+
+        if (chainRunState.stopRequested) break
+
+        const agentStem = agentStemFromName(agentName)
+        appendMemoryEventRow({
+          type: 'agent_exec',
+          agent: agentStem,
+          phase: 'start',
+          source: 'chain_step',
+          taskId,
+          instruction_preview: instruction.slice(0, 240),
+        })
+
+        const chainStarted = Date.now()
+        let res
+
+        if (mode === 'claude-code') {
+          const reqId = newRequestId()
+          chainRunState.activeRequestId = reqId
+          res = await runClaudeChainStep(agentName, taskId, routedExecInstruction, execModelId, reqId)
+          chainRunState.activeRequestId = null
+        } else {
+          const reqId = newRequestId()
+          chainRunState.activeRequestId = reqId
+          const priorForApi = hist.map((m) => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: String(m.content || ''),
+          }))
+          res = await runLocalChainStep({
+            priorMessages: priorForApi,
+            userLine: routedExecInstruction,
+            modelId: execModelId,
+            requestId: reqId,
+            agentName,
+            allowedMcpServers: Array.isArray(step.mcps)
+              ? step.mcps.map((x) => String(x ?? '').trim()).filter(Boolean)
+              : undefined,
           })
+          chainRunState.activeRequestId = null
+        }
+
+        if (chainRunState.stopRequested || res?.aborted) {
+          appendMemoryEventRow({
+            type: 'agent_exec',
+            agent: agentStem,
+            phase: 'end',
+            source: 'chain_step',
+            taskId,
+            aborted: true,
+          })
+          break
+        }
+
+        // 错误处理 + 自动重试
+        if (!res?.ok) {
+          const errorMsg = res.error || '未知错误'
+          const errorKind = classifyChainError(errorMsg)
+          const stepKey = `${agentName}:${taskId}`
+          if (!chainRunState.retryCounts) chainRunState.retryCounts = {}
+          const attempts = (chainRunState.retryCounts[stepKey] || 0) + 1
+          chainRunState.retryCounts[stepKey] = attempts
+          chainRunState.lastError = `${errorMsg}（${retryHint(errorKind, attempts)}）`
+
+          if (shouldRetry(errorKind) && attempts <= 3) {
+            const delay = retryDelayMs(attempts)
+            appendAppLog(`[chain-run] step ${taskId} ${retryHint(errorKind, attempts)}，等待 ${delay}ms 后重试`)
+            hist = [
+              ...hist,
+              {
+                role: 'assistant',
+                content: `【${stepMarker} · ${taskId || '—'}】执行${errorKind === 'timeout' ? '超时' : '异常'}（${retryHint(errorKind, attempts)}），等待 ${Math.round(delay / 1000)}s 后自动重试…`,
+                ts: Date.now(),
+                requestError: true,
+              },
+            ]
+            const nextSessions = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
+            saveChatSessionsDisk(pinnedId, nextSessions)
+            await new Promise((r) => setTimeout(r, delay))
+            // 重试当前步骤（不标记完成）
+            step._completed = false
+            // 更新状态机状态
+            const invalidRetry = validateStateTransition(state.status, 'retrying')
+            if (!invalidRetry) {
+              state.status = 'retrying'
+              orchestrationChains.syncOrchestrationChainState(state)
+            }
+            continue
+          }
+
+          hist = [
+            ...hist,
+            {
+              role: 'assistant',
+              content:
+                `任务链步骤 ${taskId || '?'} 执行失败（流程未完成，已暂停）：${errorMsg}\n` +
+                `错误类型：${retryHint(errorKind, attempts)}\n` +
+                `可修复后点击「继续执行」，将从当前退出点继续。`,
+              ts: Date.now(),
+              requestError: true,
+            },
+          ]
+          const nextSessions = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
+          saveChatSessionsDisk(pinnedId, nextSessions)
+          chainRunState.lastError = `${errorMsg}（${retryHint(errorKind, attempts)}）`
+          appendAppLog(`[chain-run] step ${taskId} failed: ${chainRunState.lastError}`)
+          appendMemoryEventRow({
+            type: 'agent_exec',
+            agent: agentStem,
+            phase: 'end',
+            source: 'chain_step',
+            taskId,
+            error: chainRunState.lastError,
+          })
+          batchFailed = true
+          break
+        }
+
+        let reply =
+          mode === 'claude-code'
+            ? String(res.output || '')
+            : String(res.content || '')
+
+        if (workspaceDir) {
+          const wr = ingestTextAndApplyWorkspaceWrite(reply, workspaceDir, {
+            agentName,
+            taskId,
+            ensureChainArtifact: true,
+          })
+          const mergedWritten = [
+            ...new Set([
+              ...(Array.isArray(res.toolWrittenPaths) ? res.toolWrittenPaths : []),
+              ...(Array.isArray(wr.written) ? wr.written : []),
+            ]),
+          ]
+          if (mergedWritten.length) {
+            appendAppLog(`[chain-run] wrote ${mergedWritten.join(', ')}`)
+          }
+          // 追踪改过的文件节点状态
+          try {
+            const { updateNodesStatus, STATUS_COMPLETED } = require(path.join(CAD, 'node-status-tracker.js'))
+            const refPath = agentName && taskId ? `docs/chain-steps/${String(taskId).replace(/[^\w.-]+/g, '_')}-${String(agentName).replace(/\.md$/i, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48)}.md` : null
+            updateNodesStatus(workspaceDir, mergedWritten, STATUS_COMPLETED, {
+              agentName, taskId, chainStepRef: refPath,
+            })
+          } catch (_st) {
+            appendAppLog(`[chain-run] 状态追踪失败：${_st?.message || ''}`)
+          }
+          if (wr.displayText) {
+            reply = wr.displayText
+          } else if (mergedWritten.length) {
+            reply = collapseWrittenSummary(reply, mergedWritten, {
+              claimedPaths: extractInvolvedSectionPaths(reply),
+            })
+          } else {
+            reply = support.stripLargeAssistantArtifactsMain(reply)
+          }
         } else {
           reply = support.stripLargeAssistantArtifactsMain(reply)
         }
-      } else {
-        reply = support.stripLargeAssistantArtifactsMain(reply)
-      }
-      hist = [
-        ...hist,
-        {
-          role: 'assistant',
-          content: reply,
-          ts: Date.now(),
-          latencyMs: Math.max(0, Date.now() - chainStarted),
-        },
-      ]
-      const nextSessions2 = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
-      saveChatSessionsDisk(pinnedId, nextSessions2)
-
-      appendMemoryEventRow({
-        type: 'agent_exec',
-        agent: agentStem,
-        phase: 'end',
-        source: 'chain_step',
-        taskId,
-        latencyMs: Math.max(0, Date.now() - chainStarted),
-      })
-
-      if (chainRunState.stopRequested) break
-
-      const adv = advanceOrchestrationState()
-      if (!adv.ok) {
         hist = [
           ...hist,
           {
             role: 'assistant',
-            content:
-              `任务链推进失败（流程未完成，已暂停）：${adv.error || '无法推进任务链'}\n` +
-              `可修复后点击「继续执行」，将从当前退出点继续。`,
+            content: reply,
             ts: Date.now(),
-            requestError: true,
+            latencyMs: Math.max(0, Date.now() - chainStarted),
           },
         ]
-        const nextSessions3 = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
-        saveChatSessionsDisk(pinnedId, nextSessions3)
-        chainRunState.lastError = adv.error || '推进失败'
+        const nextSessions2 = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
+        saveChatSessionsDisk(pinnedId, nextSessions2)
+
+        appendMemoryEventRow({
+          type: 'agent_exec',
+          agent: agentStem,
+          phase: 'end',
+          source: 'chain_step',
+          taskId,
+          latencyMs: Math.max(0, Date.now() - chainStarted),
+        })
+
+        if (chainRunState.stopRequested) break
+        step._completed = true
+      }
+
+      if (chainRunState.stopRequested) break
+      if (batchFailed) {
+        // 部分完成 → partial_success 或 failed
+        const anyCompleted = steps.some((s) => s._completed)
+        const endStatus = anyCompleted ? 'partial_success' : 'failed'
+        const invalidEnd = validateStateTransition(state.status, endStatus)
+        if (!invalidEnd) {
+          state.status = endStatus
+        }
+        state.currentIndex = steps.filter((s) => s._completed).length
+        orchestrationChains.syncOrchestrationChainState(state)
         break
       }
 
-      const st = adv.state
-      const chainDone =
-        st && Array.isArray(st.steps) && (st.currentIndex ?? 0) >= (st.steps?.length ?? 0)
+      // 更新 chain 状态：修正 completed 和 currentIndex
+      state.currentIndex = steps.filter((s) => s._completed).length
+      if (state.currentIndex >= steps.length) {
+        const invalidDone = validateStateTransition(state.status, 'completed')
+        if (!invalidDone) {
+          state.status = 'completed'
+        }
+      }
+      orchestrationChains.syncOrchestrationChainState(state)
+
+      const chainDone = state.currentIndex >= steps.length
       if (chainDone) {
         appendAppLog('[chain-run] completed')
+        const pinnedId = chainRunState.pinnedSessionId
+        const disk = loadChatSessionsDisk()
+        const sessions = Array.isArray(disk.sessions) ? [...disk.sessions] : []
+        const sess = sessions.find((s) => s.id === pinnedId)
+        if (sess) {
+          // 构建 Agent 参与概要
+          const agentCounts = {}
+          for (const s of steps) {
+            const a = String(s.agentName || '').trim()
+            if (a) agentCounts[a] = (agentCounts[a] || 0) + 1
+          }
+          const agentSummary = Object.entries(agentCounts)
+            .sort((a, b) => b[1] - a[1])
+            .map(([name, count]) => `${name}（${count} 步）`)
+            .join('、')
+          const statusText = state.status === 'partial_success'
+            ? '部分步骤完成，部分步骤失败，请查看具体错误。'
+            : '产物可查看对应路径或切换到「任务链」页查看详情。'
+          const summary = [
+            `【任务链执行完毕】共 ${steps.length} 步${state.status === 'partial_success' ? '（部分完成）' : '全部完成'}。`,
+            '',
+            `参与 Agent：${agentSummary}`,
+            '',
+            statusText,
+          ].join('\n')
+          hist = [
+            ...(Array.isArray(sess.history) ? sess.history : []),
+            { role: 'assistant', content: summary, ts: Date.now() },
+          ]
+          const nextSessions = sessions.map((s) => (s.id === pinnedId ? { ...s, history: hist } : s))
+          saveChatSessionsDisk(pinnedId, nextSessions)
+        }
+        // 链全部完成 → 后台更新知识图谱（AST-only，无 API 成本）
+        if (state.status === 'completed') {
+          const gWorkspace = loadWorkspace()
+          if (gWorkspace) {
+            // 1. 快照旧图谱（update 之前）
+            try {
+              const oldGraph = path.join(gWorkspace, 'graphify-out', 'graph.json')
+              if (fs.existsSync(oldGraph)) {
+                const branchName = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+                  cwd: gWorkspace, encoding: 'utf8', timeout: 5000,
+                }).trim()
+                const commitHash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+                  cwd: gWorkspace, encoding: 'utf8', timeout: 5000,
+                }).trim()
+                const snapDir = path.join(gWorkspace, 'graphify-out', 'snapshots')
+                const now = new Date().toISOString().replace(/[:.]/g, '-')
+                const snapFile = path.join(snapDir, `${commitHash}_${branchName.replace(/\//g, '_')}_${now}.graph.json`)
+                fs.mkdirSync(snapDir, { recursive: true })
+                fs.copyFileSync(oldGraph, snapFile)
+                appendAppLog(`[chain-run] 图谱快照已保存：${path.basename(snapFile)}`)
+              }
+            } catch (_s) {
+              appendAppLog(`[chain-run] 快照失败：${_s?.message || ''}`)
+            }
+
+            // 2. 后台更新知识图谱
+            execFile('graphify', ['update', gWorkspace, '--no-cluster'], {
+              timeout: 30_000,
+              windowsHide: true,
+              stdio: 'ignore',
+            }).then(() => {
+              appendAppLog('[chain-run] 知识图谱已更新')
+              // 3. 分支存档（基于新图）
+              try {
+                const branchName = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+                  cwd: gWorkspace, encoding: 'utf8', timeout: 5000,
+                }).trim()
+                if (branchName) {
+                  const safeBranch = branchName.replace(/\//g, '_')
+                  const branchDir = path.join(gWorkspace, 'graphify-out', 'branches')
+                  fs.mkdirSync(branchDir, { recursive: true })
+                  const src = path.join(gWorkspace, 'graphify-out', 'graph.json')
+                  const dst = path.join(branchDir, `${safeBranch}.graph.json`)
+                  fs.copyFileSync(src, dst)
+                  appendAppLog(`[chain-run] 图谱已存档：${branchName}`)
+                }
+              } catch (_b) {
+                appendAppLog(`[chain-run] 分支存档失败：${_b?.message || ''}`)
+              }
+              // 4. 生成状态着色 HTML
+              try {
+                const { buildStatusHtml } = require(path.join(CAD, 'build-status-viz.js'))
+                const r = buildStatusHtml(gWorkspace)
+                if (r.ok) appendAppLog('[chain-run] 状态着色图已生成')
+              } catch (_v) { /* 状态图生成失败不阻断 */ }
+            }).catch((gErr) => {
+              appendAppLog(`[chain-run] 知识图谱更新跳过：${gErr?.message || ''}`)
+            })
+          }
+        }
         break
       }
     }
@@ -1104,11 +1312,26 @@ function createHandlers() {
             timeoutMs: 0,
           })
           const out = (r.content || '').trim()
+          let displayOutput = out
+          if (r.ok) {
+            const workspaceDir = loadWorkspace()
+            if (workspaceDir) {
+              const wr = ingestTextAndApplyWorkspaceWrite(out, workspaceDir, {
+                agentName: step.agentName,
+                taskId: step.taskId,
+                ensureChainArtifact: true,
+              })
+              if (wr.displayText) displayOutput = wr.displayText
+              else displayOutput = support.stripLargeAssistantArtifactsMain(out)
+            } else {
+              displayOutput = support.stripLargeAssistantArtifactsMain(out)
+            }
+          }
           stepResults.push({
             agentName: step.agentName,
             taskId: step.taskId,
             ok: Boolean(r.ok),
-            output: r.ok ? support.stripLargeAssistantArtifactsMain(out) : out,
+            output: displayOutput,
             error: r.ok ? null : r.error || out || 'Claude Code CLI 失败',
           })
           if (!r.ok) {
@@ -1118,14 +1341,6 @@ function createHandlers() {
               stepResults,
               synthesis: null,
             }
-          }
-          const workspaceDir = loadWorkspace()
-          if (workspaceDir && r.ok) {
-            ingestTextAndApplyWorkspaceWrite(stepResults[i].output, workspaceDir, {
-              agentName: step.agentName,
-              taskId: step.taskId,
-              ensureChainArtifact: true,
-            })
           }
         } else {
           const agentBasenameForRead = `${step.agentName}.md`
@@ -1150,11 +1365,23 @@ function createHandlers() {
               applyWorkspaceWriteItems: applyWritesInWorkspace,
             })
             const out = String(r.content || '').trim()
+            let displayOutput = out
+            if (r.ok) {
+              const workspaceDir = loadWorkspace()
+              if (workspaceDir) {
+                const wr = ingestTextAndApplyWorkspaceWrite(out, workspaceDir, {
+                  agentName: step.agentName,
+                  taskId: step.taskId,
+                  ensureChainArtifact: true,
+                })
+                if (wr.displayText) displayOutput = wr.displayText
+              }
+            }
             stepResults.push({
               agentName: step.agentName,
               taskId: step.taskId,
               ok: Boolean(r.ok),
-              output: out,
+              output: displayOutput,
               error: r.ok ? null : r.error || null,
             })
             if (!r.ok) {
@@ -1165,14 +1392,6 @@ function createHandlers() {
                 synthesis: null,
               }
             }
-            const workspaceDir = loadWorkspace()
-            if (workspaceDir) {
-              ingestTextAndApplyWorkspaceWrite(out, workspaceDir, {
-                agentName: step.agentName,
-                taskId: step.taskId,
-                ensureChainArtifact: true,
-              })
-            }
           } finally {
             activeLocalOrchestrationRequests.delete(requestId)
           }
@@ -1181,13 +1400,17 @@ function createHandlers() {
 
       let synthesis = null
       if (normalized.synthesize && stepResults.length) {
+        const { buildConsensusReport } = require(path.join(CAD, 'dedup-agent-outputs.js'))
         const agg = stepResults
           .map(
             (r) =>
               `### ${r.agentName}（${r.taskId}）${r.ok ? '' : ' [失败]'}\n${r.ok ? r.output : r.error || ''}`,
           )
           .join('\n\n')
-        const synBody = `【委派执行结果汇总】\n\n${agg}\n\n【汇总指令】\n${normalized.synthesizeInstruction}`
+        const consensusReport = buildConsensusReport(
+          stepResults.filter((r) => r.ok).map((r) => ({ agentName: r.agentName, output: r.output })),
+        )
+        const synBody = `【委派执行结果汇总】\n\n${consensusReport}\n\n### 各 Agent 详细输出\n${agg}\n\n【汇总指令】\n${normalized.synthesizeInstruction}`
         const synRouted = buildAgentRoutedInstruction(normalized.synthesizeStem, synBody, mode)
 
         if (mode === 'claude-code') {
@@ -1240,6 +1463,137 @@ function createHandlers() {
       }
 
       return { ok: true, stepResults, synthesis, error: null }
+    },
+
+    'multi-agent:executeParallel': async (args) => {
+      const { executeParallelFanout } = require(path.join(CAD, 'parallel-runtime.js'))
+      const payload = args?.[0] || {}
+      const settings = loadChatSettings()
+      const rawModel =
+        typeof payload?.modelId === 'string' && payload.modelId.trim()
+          ? payload.modelId.trim()
+          : settings.model?.trim() || ''
+      const agents = Array.isArray(payload?.agents) ? payload.agents.filter(Boolean) : []
+      const task = String(payload?.task || '').trim()
+      if (!agents.length || !task) {
+        return { ok: false, error: '缺少 agents 或 task', outputs: [], synthesis: null }
+      }
+      try {
+        const mode = settings.orchestrationMode === 'local-mcp' ? 'local-mcp' : 'claude-code'
+        const localMcpConfig = loadWorkspace()
+          ? {
+              bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
+              ollamaBase: settings.ollamaBase || '',
+              mcpConfigAbsolutePath: settings.mcpConfigAbsolutePath || '',
+              defaultOllamaModelHint: settings.localOllamaModel || '',
+              crossAgentContext: buildCrossAgentContextMarkdown(),
+            }
+          : undefined
+        const result = await executeParallelFanout({
+          agents,
+          task,
+          mode,
+          localMcpConfig,
+          workspaceDir: loadWorkspace(),
+          modelId: rawModel,
+          deps: {
+            runClaudeCodePrint: deps.runClaudeCodePrint,
+            runLocalMcpOrchestration: deps.runLocalMcpOrchestration,
+          },
+          needSynthesis: payload?.needSynthesis !== false,
+          synthesisStem: String(payload?.synthesisStem || 'project-manager').trim(),
+        })
+        return { ok: result.ok, outputs: result.outputs, synthesis: result.synthesis, totalElapsed: result.totalElapsed }
+      } catch (e) {
+        return { ok: false, error: e?.message || String(e), outputs: [], synthesis: null }
+      }
+    },
+
+    /** 图谱驱动并行执行：自动分解社区 → 按 Agent 分配不同指令 → 并行执行 → 汇总 */
+    'graph:decomposeAndExecute': async (args) => {
+      const { decomposeGraphForParallelTask } = require(path.join(CAD, 'graph-task-decomposer.js'))
+      const { executeParallelFanout } = require(path.join(CAD, 'parallel-runtime.js'))
+      const payload = args?.[0] || {}
+      const userTask = String(payload?.task || '').trim()
+      const workspaceDir = loadWorkspace()
+      if (!userTask) return { ok: false, error: '缺少 task' }
+      if (!workspaceDir) return { ok: false, error: '未选择工作区' }
+
+      // Step 1: 分解图谱
+      const decomposed = decomposeGraphForParallelTask(workspaceDir, userTask)
+      if (!decomposed.ok) {
+        return { ok: false, error: decomposed.error || '图谱分解失败', subtasks: [], outputs: [], synthesis: null }
+      }
+
+      const settings = loadChatSettings()
+      const rawModel =
+        typeof payload?.modelId === 'string' && payload.modelId.trim()
+          ? payload.modelId.trim()
+          : settings.model?.trim() || ''
+      const mode = settings.orchestrationMode === 'local-mcp' ? 'local-mcp' : 'claude-code'
+
+      // Step 2: 构建 per-agent instructions
+      /** @type {Record<string, string>} */
+      const perAgentTasks = {}
+      const agentNames = []
+      for (const at of decomposed.agentTasks) {
+        agentNames.push(at.agent)
+        perAgentTasks[at.agent] = at.instruction
+      }
+
+      if (!agentNames.length) {
+        return { ok: false, error: '无可执行的 Agent 社区', subtasks: decomposed.subtasks, outputs: [], synthesis: null }
+      }
+
+      const localMcpConfig = workspaceDir
+        ? {
+            bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
+            ollamaBase: settings.ollamaBase || '',
+            mcpConfigAbsolutePath: settings.mcpConfigAbsolutePath || '',
+            defaultOllamaModelHint: settings.localOllamaModel || '',
+            crossAgentContext: buildCrossAgentContextMarkdown(),
+          }
+        : undefined
+
+      // Step 3: 并行执行（每个 Agent 拿到不同的社区指令）
+      try {
+        const result = await executeParallelFanout({
+          agents: agentNames,
+          task: userTask, // fallback
+          agentTasks: perAgentTasks, // per-agent custom instructions
+          mode,
+          localMcpConfig,
+          workspaceDir,
+          modelId: rawModel,
+          deps: {
+            runClaudeCodePrint: deps.runClaudeCodePrint,
+            runLocalMcpOrchestration: deps.runLocalMcpOrchestration,
+          },
+          needSynthesis: payload?.needSynthesis !== false,
+          synthesisStem: String(payload?.synthesisStem || 'project-manager').trim(),
+        })
+
+        return {
+          ok: result.ok,
+          subtasks: decomposed.subtasks,
+          agentTasks: decomposed.agentTasks,
+          levels: decomposed.levels,
+          hasCycle: decomposed.hasCycle,
+          metadata: decomposed.metadata,
+          outputs: result.outputs,
+          synthesis: result.synthesis,
+          totalElapsed: result.totalElapsed,
+        }
+      } catch (e) {
+        return {
+          ok: false,
+          error: e?.message || String(e),
+          subtasks: decomposed.subtasks,
+          outputs: [],
+          synthesis: null,
+          metadata: decomposed.metadata,
+        }
+      }
     },
 
     'claudeAgents:listMarkdown': async () => {

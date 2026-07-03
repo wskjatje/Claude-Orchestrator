@@ -3,15 +3,20 @@
 @import "tw-animate-css";
 @import "./fonts.css";
 
+/* ============================================================
+   全局 · 主题变量 · CSS 自定义属性
+   ============================================================ */
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --font-sans:
-    "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+    "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", system-ui,
+    sans-serif;
   --font-mono:
-    "JetBrains Mono", "SF Mono", ui-monospace, "Cascadia Mono", Menlo, Monaco, Consolas, "Liberation Mono",
-    "Courier New", monospace;
+    "JetBrains Mono", "SF Mono", ui-monospace, "Cascadia Mono", Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
   --font-size-ui: 13px;
   --font-size-sm: 12px;
   --font-size-xs: 11px;
@@ -202,6 +207,9 @@
   --explorer-label-fg: var(--sidebar-foreground);
 }
 
+/* ============================================================
+   暗色模式覆盖
+   ============================================================ */
 .dark {
   /* 夜间：背景 / 侧栏 / 编辑器 / 聊天 / 面板 分层 */
   --background: oklch(0.128 0.006 285);
@@ -311,6 +319,9 @@
   --explorer-label-fg: #cccccc;
 }
 
+/* ============================================================
+   @layer base — 全局默认样式
+   ============================================================ */
 @layer base {
   * {
     border-color: var(--color-border);
@@ -344,7 +355,9 @@
   samp,
   pre {
     font-family: var(--font-mono);
-    font-feature-settings: "calt" 1, "liga" 1;
+    font-feature-settings:
+      "calt" 1,
+      "liga" 1;
   }
 
   ::selection {
@@ -534,12 +547,17 @@
 
   .page-section {
     @apply rounded-xl border border-border bg-surface-elevated p-4 shadow-xs;
-    transition: box-shadow var(--transition-base), border-color var(--transition-base);
+    transition:
+      box-shadow var(--transition-base),
+      border-color var(--transition-base);
   }
 
   .page-section--interactive {
     cursor: pointer;
-    transition: box-shadow var(--transition-smooth), border-color var(--transition-base), transform var(--transition-smooth);
+    transition:
+      box-shadow var(--transition-smooth),
+      border-color var(--transition-base),
+      transform var(--transition-smooth);
   }
   .page-section--interactive:hover {
     box-shadow: var(--shadow-md);
@@ -570,7 +588,9 @@
   }
 
   .input-enhanced {
-    transition: border-color var(--transition-base), box-shadow var(--transition-base);
+    transition:
+      border-color var(--transition-base),
+      box-shadow var(--transition-base);
   }
   .input-enhanced:focus {
     border-color: color-mix(in oklab, var(--ring) 60%, var(--border));
@@ -651,7 +671,10 @@
     background-color: var(--primary);
     background-image: var(--gradient-primary);
     color: var(--primary-foreground);
-    transition: box-shadow var(--transition-base), background-image var(--transition-base), opacity var(--transition-base);
+    transition:
+      box-shadow var(--transition-base),
+      background-image var(--transition-base),
+      opacity var(--transition-base);
   }
   .btn-gradient-primary:hover {
     background-image: var(--gradient-primary-hover);
@@ -664,7 +687,10 @@
 
   .btn-row {
     @apply inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium disabled:opacity-40;
-    transition: background-color var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
+    transition:
+      background-color var(--transition-base),
+      border-color var(--transition-base),
+      box-shadow var(--transition-base);
   }
   .btn-row:hover {
     background-color: var(--secondary);
@@ -683,13 +709,17 @@
     font-family: var(--font-mono);
     font-size: var(--font-size-code);
     line-height: var(--line-height-code);
-    font-feature-settings: "calt" 1, "liga" 1;
+    font-feature-settings:
+      "calt" 1,
+      "liga" 1;
   }
 
   .workbench-xterm .xterm,
   .workbench-xterm .xterm-rows {
     font-family: var(--font-mono) !important;
-    font-feature-settings: "calt" 1, "liga" 1;
+    font-feature-settings:
+      "calt" 1,
+      "liga" 1;
   }
 
   /* 仅保留一个 xterm 实例，避免叠层 */
@@ -750,7 +780,9 @@
     font-family: var(--font-mono);
     font-size: var(--font-size-code);
     line-height: var(--line-height-code);
-    font-feature-settings: "calt" 1, "liga" 1;
+    font-feature-settings:
+      "calt" 1,
+      "liga" 1;
     tab-size: 2;
   }
 
@@ -1054,9 +1086,16 @@
   .chat-turn-section {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     width: 100%;
     min-width: 0;
+    position: relative;
+  }
+
+  /** 轮次间分隔 */
+  .chat-turn-section + .chat-turn-section {
+    padding-top: 14px;
+    border-top: 1px solid color-mix(in oklab, var(--border) 30%, transparent);
   }
 
   /** 顶部固定栏承载用户提问（原列表内气泡移入此处） */
@@ -1129,28 +1168,20 @@
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
-    overflow-anchor: none;
     scroll-padding-bottom: 12px;
     -webkit-overflow-scrolling: touch;
-    transform: translateZ(0);
-    will-change: scroll-position;
-  }
-
-  .chat-pane-messages-scroll[data-layout-frozen] {
-    overflow-anchor: none;
-    pointer-events: auto;
   }
 
   .chat-messages-inner {
     box-sizing: border-box;
     width: 100%;
     max-width: 100%;
-    padding: 8px var(--chat-inline-padding, 10px) 8px;
+    padding: 6px var(--chat-inline-padding, 10px) 6px;
   }
 
   @media (min-width: 640px) {
     .chat-messages-inner {
-      padding: 10px var(--chat-inline-padding, 12px) 8px;
+      padding: 8px var(--chat-inline-padding, 12px) 6px;
     }
   }
 
@@ -1183,12 +1214,17 @@
 
   .chat-session-tab {
     user-select: none;
+    gap: 6px;
+  }
+
+  .dark .chat-session-tab {
+    gap: 6px;
   }
 
   .chat-messages-list {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 14px;
     justify-content: flex-start;
   }
 
@@ -1234,11 +1270,16 @@
   .chat-message-row {
     display: flex;
     width: 100%;
-    margin-bottom: 16px;
   }
 
   .chat-message-row--user {
-    justify-content: flex-start;
+    justify-content: flex-end;
+  }
+
+  /** 用户气泡宽度限定 + 右对齐 */
+  .chat-message-row--user .chat-message-col {
+    width: auto;
+    max-width: 75%;
   }
 
   .chat-message-row--assistant {
@@ -1248,16 +1289,11 @@
   .chat-message-col {
     min-width: 0;
     width: 100%;
-    max-width: min(100%, var(--chat-assistant-max, 52rem));
-  }
-
-  .chat-message-row--user .chat-message-col {
-    width: 100%;
-    max-width: var(--chat-user-bubble-max, 100%);
+    max-width: min(100%, 60rem);
   }
 
   .chat-message-col--wide {
-    max-width: min(100%, var(--chat-assistant-max, 52rem));
+    max-width: min(100%, 60rem);
   }
 
   .chat-message-meta {
@@ -1267,13 +1303,27 @@
     gap: 8px;
     font-size: 11px;
     color: var(--muted-foreground);
-    opacity: 0;
-    pointer-events: none;
     transition: opacity 0.15s ease;
   }
 
-  .chat-message-row:hover .chat-message-meta,
-  .chat-message-row:focus-within .chat-message-meta {
+  .chat-message-meta .assistant-name {
+    font-weight: 500;
+    color: var(--foreground);
+  }
+
+  .chat-message-meta .chat-message-time {
+    opacity: 0.5;
+  }
+
+  /** 复制按钮仅在消息行悬停时显示 */
+  .chat-message-row .copy-text-btn {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+  }
+
+  .chat-message-row:hover .copy-text-btn,
+  .chat-message-row:focus-within .copy-text-btn {
     opacity: 1;
     pointer-events: auto;
   }
@@ -1286,24 +1336,32 @@
     box-sizing: border-box;
     width: 100%;
     max-width: 100%;
-    border-radius: 10px;
-    border: 1px solid var(--chat-user-border);
-    background-color: var(--chat-user-bg);
-    padding: 10px 12px;
+    border-radius: 14px;
+    padding: 10px 13px;
     color: var(--chat-user-fg);
-    transition: border-color 0.15s ease, background-color 0.15s ease;
+    transition: background-color 0.15s ease;
+    background-color: oklch(0.92 0.015 255 / 0.65);
+    box-shadow: 0 1px 2px 0 oklch(0 0 0 / 0.04);
   }
 
-  .chat-bubble-user:has(.chat-user-body[role="button"]:hover),
-  .chat-bubble-user:has(.chat-user-body[role="button"]:focus-visible) {
-    border-color: color-mix(in oklab, var(--primary) 28%, var(--chat-user-border));
+  .chat-message-row--user .chat-bubble-user {
+    border-bottom-right-radius: 4px;
   }
 
   .dark .chat-bubble-user {
-    padding: 12px 15px;
+    padding: 11px 14px;
     font-size: var(--font-size-ui);
-    background-color: var(--chat-user-bg);
-    border-color: var(--chat-user-border);
+    background-color: oklch(0.35 0.035 265 / 0.55);
+    box-shadow: 0 1px 2px 0 oklch(0 0 0 / 0.08);
+    border-bottom-right-radius: 4px;
+  }
+
+  .chat-bubble-user:has(.chat-user-body[role="button"]:hover) {
+    background-color: oklch(0.9 0.015 255 / 0.8);
+  }
+
+  .dark .chat-bubble-user:has(.chat-user-body[role="button"]:hover) {
+    background-color: oklch(0.37 0.035 265 / 0.65);
   }
 
   .chat-user-body {
@@ -1419,7 +1477,9 @@
     height: 12px;
     flex-shrink: 0;
     color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
-    transition: transform 0.15s ease, color 0.15s ease;
+    transition:
+      transform 0.15s ease,
+      color 0.15s ease;
   }
 
   .dark .chat-file-edit-card-head--clickable:hover .chat-file-edit-card-head-chevron {
@@ -1492,7 +1552,12 @@
     max-height: calc(var(--chat-collapsed-lines) * 1.5 * 12px + 6px);
     overflow: hidden;
     padding-bottom: 16px;
-    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 18px), transparent 100%);
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 calc(100% - 18px),
+      transparent 100%
+    );
     mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 18px), transparent 100%);
   }
 
@@ -1561,7 +1626,10 @@
     transform: rotate(180deg);
   }
 
-  .dark .chat-file-edit-card--collapsed .chat-cursor-collapsible--collapsed .chat-cursor-collapsible-toggle {
+  .dark
+    .chat-file-edit-card--collapsed
+    .chat-cursor-collapsible--collapsed
+    .chat-cursor-collapsible-toggle {
     background: linear-gradient(
       to bottom,
       color-mix(in oklab, var(--code-bg) 0%, transparent),
@@ -1621,10 +1689,36 @@
     box-sizing: border-box;
     width: 100%;
     max-width: 100%;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+    box-shadow:
+      0 1px 3px 0 color-mix(in oklab, var(--foreground) 6%, transparent),
+      0 1px 2px -1px color-mix(in oklab, var(--foreground) 4%, transparent);
+  }
+
+  .chat-composer-cursor button:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+
+  .composer-cursor-footer button[title="发送 (Enter)"]:not(:disabled) {
+    transition:
+      opacity 0.15s ease,
+      transform 0.12s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .composer-cursor-footer button[title="发送 (Enter)"]:hover:not(:disabled) {
+    box-shadow: 0 2px 10px -2px color-mix(in oklab, var(--primary) 45%, transparent);
+    opacity: 0.92;
+  }
+
+  .composer-cursor-footer button[title="发送 (Enter)"]:active:not(:disabled) {
+    transform: scale(0.9);
   }
 
   .composer-cursor-footer {
-    min-height: 32px;
+    min-height: 28px;
   }
 
   .composer-file-changes-bar {
@@ -1692,15 +1786,11 @@
   }
 
   .chat-bubble-assistant {
-    padding: 2px 2px 4px;
     width: 100%;
     color: var(--foreground);
   }
 
   .dark .chat-bubble-assistant {
-    padding: 0;
-    border: 0;
-    border-radius: 0;
     background: transparent;
   }
 
@@ -1896,7 +1986,7 @@
     min-width: 0;
     flex-shrink: 0;
     overflow: visible;
-    padding: 8px var(--chat-inline-padding, 10px) 10px;
+    padding: 6px var(--chat-inline-padding, 10px) 8px;
   }
 
   /** 输入框底栏左下角 Agent / Model（选择后仍固定展示） */
@@ -2264,7 +2354,7 @@
   }
 
   .dark .chat-pane-composer {
-    padding: 10px var(--chat-inline-padding, 14px) 12px;
+    padding: 8px var(--chat-inline-padding, 14px) 10px;
     border-top: 1px solid var(--border);
     background-color: color-mix(in oklab, var(--chat-panel) 92%, var(--surface-elevated));
   }
@@ -2273,6 +2363,7 @@
   .dark .composer-model-pill,
   .dark .chat-composer-cursor {
     font-size: var(--font-size-sm);
+    border-color: color-mix(in oklab, var(--border) 85%, transparent);
   }
 
   .dark .chat-sticky-user-header {
@@ -2342,7 +2433,8 @@
 }
 
 @keyframes thinking-bounce {
-  0%, 100% {
+  0%,
+  100% {
     transform: scaleY(0.5);
     opacity: 0.5;
   }
@@ -2368,12 +2460,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--primary) 50%,
-    transparent 100%
-  );
+  background: linear-gradient(90deg, transparent 0%, var(--primary) 50%, transparent 100%);
   animation: tab-progress-slide 1.6s ease-in-out infinite;
 }
 

@@ -97,7 +97,9 @@ export async function runStartupMcpHealthCheck() {
     saveMcpHealthSnapshot(read.path, [])
     return { ok: true, missing: true, okCount: 0, total: 0, configPath: read.path }
   }
-  const result = await checkAllMcpServers(customPath || undefined)
+  const result = await checkAllMcpServers(customPath || undefined, { concurrency: 4 })
+  const okCount = result.ok ? result.okCount ?? 0 : 0
+  const total = result.ok ? result.total ?? 0 : 0
   if (!result.ok) {
     return { ok: false, error: result.error || '健康检查失败' }
   }
@@ -105,8 +107,8 @@ export async function runStartupMcpHealthCheck() {
   return {
     ok: true,
     configPath: read.path,
-    okCount: result.okCount ?? 0,
-    total: result.total ?? 0,
+    okCount,
+    total,
     checkedAt: new Date().toISOString(),
   }
 }
@@ -118,7 +120,7 @@ export async function checkAllMcpServersAndPersist(customPath) {
     saveMcpHealthSnapshot(read.path, [])
     return { ok: true, missing: true, servers: [], okCount: 0, total: 0, path: read.path }
   }
-  const result = await checkAllMcpServers(customPath || undefined)
+  const result = await checkAllMcpServers(customPath || undefined, { concurrency: 4 })
   if (!result.ok) return result
   saveMcpHealthSnapshot(read.path, result.servers || [])
   return { ...result, path: read.path }

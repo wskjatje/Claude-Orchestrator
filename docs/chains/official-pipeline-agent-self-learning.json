@@ -8,7 +8,7 @@
   "official": true,
   "userModified": false,
   "createdAt": "2026-06-14T03:15:16.998Z",
-  "updatedAt": "2026-06-30T09:28:07.184Z",
+  "updatedAt": "2026-07-03T06:31:13.030Z",
   "state": {
     "status": "idle",
     "currentIndex": 0,
@@ -16,7 +16,7 @@
       {
         "agentName": "product-manager",
         "taskId": "LEARN-01",
-        "instruction": "【Agent】global://product-manager（~/.claude/agents/product-manager.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/product-manager.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】No fixed upstream md. Pre-injected workspace state available.\n\n【PATH】`docs/prd.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://product-manager（~/.claude/agents/product-manager.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/product-manager.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】No fixed upstream md. Pre-injected workspace state available.\n\n【PATH】`docs/prd.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "product-req-clarify",
           "product-acceptance-criteria",
@@ -29,7 +29,7 @@
       {
         "agentName": "product-sprint-prioritizer",
         "taskId": "LEARN-02",
-        "instruction": "【Agent】global://product-sprint-prioritizer（~/.claude/agents/product-sprint-prioritizer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/product-sprint-prioritizer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`.\n\n【PATH】`docs/sprint-backlog.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://product-sprint-prioritizer（~/.claude/agents/product-sprint-prioritizer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/product-sprint-prioritizer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/sprint-backlog.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "sprint-prioritization",
           "rice-moscow-prioritization",
@@ -43,7 +43,7 @@
       {
         "agentName": "project-manager",
         "taskId": "LEARN-03",
-        "instruction": "【Agent】global://project-manager（~/.claude/agents/project-manager.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/project-manager.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/sprint-backlog.md`.\n\n【PATH】`docs/wbs.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://project-manager（~/.claude/agents/project-manager.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/project-manager.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`, `docs/sprint-backlog.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/wbs.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "wbs-decompose",
           "dependency-orchestration",
@@ -57,7 +57,7 @@
       {
         "agentName": "software-architect",
         "taskId": "LEARN-04",
-        "instruction": "【Agent】global://software-architect（~/.claude/agents/software-architect.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/software-architect.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/wbs.md`, `docs/sprint-backlog.md`.\n\n【PATH】`docs/architecture-note.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://software-architect（~/.claude/agents/software-architect.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/software-architect.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`, `docs/wbs.md`, `docs/sprint-backlog.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/architecture-note.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "arch-boundary-definition",
           "api-contract-design",
@@ -70,7 +70,7 @@
       {
         "agentName": "ui-ux-designer",
         "taskId": "LEARN-05",
-        "instruction": "【Agent】global://ui-ux-designer（~/.claude/agents/ui-ux-designer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/ui-ux-designer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/ux-architecture.md`.\n\n【PATH】`docs/ui-ux-spec.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://ui-ux-designer（~/.claude/agents/ui-ux-designer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/ui-ux-designer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`, `docs/ux-architecture.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/ui-ux-spec.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "interaction-flow",
           "visual-spec",
@@ -86,7 +86,7 @@
       {
         "agentName": "frontend-engineer",
         "taskId": "LEARN-06",
-        "instruction": "【Agent】global://frontend-engineer（~/.claude/agents/frontend-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/frontend-engineer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/architecture-note.md`, `docs/ui-spec.md`, `docs/ux-architecture.md`.\n\n【PATH】`docs/frontend-implementation.md`\n【CODE WRITE】Code→src/ via ```workspace-write```. Your doc reply is auto-saved.",
+        "instruction": "【Agent】global://frontend-engineer（~/.claude/agents/frontend-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/frontend-engineer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`, `docs/architecture-note.md`, `docs/ui-spec.md`, `docs/ux-architecture.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/frontend-implementation.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "frontend-implementation",
           "ui-interaction-optimization",
@@ -102,7 +102,7 @@
       {
         "agentName": "backend-engineer",
         "taskId": "LEARN-07",
-        "instruction": "【Agent】global://backend-engineer（~/.claude/agents/backend-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/backend-engineer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/architecture-note.md`, `docs/wbs.md`.\n\n【PATH】`docs/api-summary.md`\n【CODE WRITE】Code→src/ via ```workspace-write```. Your doc reply is auto-saved.",
+        "instruction": "【Agent】global://backend-engineer（~/.claude/agents/backend-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/backend-engineer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`, `docs/architecture-note.md`, `docs/wbs.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/api-summary.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "backend-implementation",
           "data-layer-design",
@@ -115,7 +115,7 @@
       {
         "agentName": "code-reviewer",
         "taskId": "LEARN-08",
-        "instruction": "【Agent】global://code-reviewer（~/.claude/agents/code-reviewer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/code-reviewer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected): `docs/frontend-implementation.md`, `docs/api-summary.md`.\n\n【PATH】`docs/code-review-report.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://code-reviewer（~/.claude/agents/code-reviewer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/code-reviewer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/frontend-implementation.md`, `docs/api-summary.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/code-review-report.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "security-review",
           "correctness-review",
@@ -129,7 +129,7 @@
       {
         "agentName": "qa-engineer",
         "taskId": "LEARN-09",
-        "instruction": "【Agent】global://qa-engineer（~/.claude/agents/qa-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/qa-engineer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/frontend-implementation.md`, `docs/api-summary.md`.\n\n【PATH】`docs/qa-report.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://qa-engineer（~/.claude/agents/qa-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/qa-engineer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`, `docs/frontend-implementation.md`, `docs/api-summary.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/qa-report.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "test-strategy",
           "automated-test-cases",
@@ -143,7 +143,7 @@
       {
         "agentName": "devops-engineer",
         "taskId": "LEARN-10",
-        "instruction": "【Agent】global://devops-engineer（~/.claude/agents/devops-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/devops-engineer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected): `docs/architecture-note.md`, `docs/release-plan.md`.\n\n【PATH】`docs/release-plan.md`\n【CODE WRITE】Code→src/ via ```workspace-write```. Your doc reply is auto-saved.",
+        "instruction": "【Agent】global://devops-engineer（~/.claude/agents/devops-engineer.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【任务】对照 ~/.claude/agents/devops-engineer.md 与你在最近任务链/本轮对话中的实际表现，输出：\n1. 是否越权、漏项或应转交未转交\n2. 建议追加到该 Agent 规则文件的 1～3 条 Markdown 要点（可粘贴草案）\n\n【禁止】不写业务实现代码、不代替其他角色执行\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/architecture-note.md`, `docs/release-plan.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/release-plan.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "cicd-workflow",
           "release-rollback",
@@ -157,7 +157,7 @@
       {
         "agentName": "project-manager",
         "taskId": "LEARN-汇总",
-        "instruction": "【Agent】global://project-manager（~/.claude/agents/project-manager.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【Skill】须完整遵循 ~/.claude/skills/self_learning.md\n\n【输入】读取 ~/.claude/orchestration/active-chain.json（若存在）及本链前序各 Agent 自检结论\n\n【任务】\n1. 按 steps 顺序逐 Agent 复盘产出与边界\n2. 对比预期与实际，提炼 ≥1 条可迁移经验\n3. 给出 Agent 规则补全与任务链顺序优化草案\n4. 追加写入 ~/.claude/memory/经验库.txt\n\n【禁止】不修改仓库内 Agent 文件，仅输出建议草案\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/sprint-backlog.md`.\n\n【PATH】`docs/wbs.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://project-manager（~/.claude/agents/project-manager.md）\n【三省六部·执行顺序】须遵守 MCP → Skills → Agent；底层工具（local-time 等）可随时调用。\n【Skill】须完整遵循 ~/.claude/skills/self_learning.md\n\n【输入】读取 ~/.claude/orchestration/active-chain.json（若存在）及本链前序各 Agent 自检结论\n\n【任务】\n1. 按 steps 顺序逐 Agent 复盘产出与边界\n2. 对比预期与实际，提炼 ≥1 条可迁移经验\n3. 给出 Agent 规则补全与任务链顺序优化草案\n4. 追加写入 ~/.claude/memory/经验库.txt\n\n【禁止】不修改仓库内 Agent 文件，仅输出建议草案\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`, `docs/sprint-backlog.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/wbs.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "self_learning"
         ],

@@ -8,7 +8,7 @@
   "official": true,
   "userModified": false,
   "createdAt": "2026-06-14T03:15:16.998Z",
-  "updatedAt": "2026-06-30T09:28:07.184Z",
+  "updatedAt": "2026-07-03T06:31:13.030Z",
   "state": {
     "status": "idle",
     "currentIndex": 0,
@@ -16,7 +16,7 @@
       {
         "agentName": "frontend-engineer",
         "taskId": "FE-1",
-        "instruction": "【Agent】global://frontend-engineer（~/.claude/agents/frontend-engineer.md）\n【输入】`docs/prd.md`、`docs/architecture-note.md`、`docs/ui-spec.md`（若有）\n【交付】按对话中已确认的范围、验收标准与工作区相关文档执行。\n\n【任务】实现可运行页面；说明写入默认 md，代码写入 src/\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/architecture-note.md`, `docs/ui-spec.md`, `docs/ux-architecture.md`.\n\n【PATH】`docs/frontend-implementation.md`\n【CODE WRITE】Code→src/ via ```workspace-write```. Your doc reply is auto-saved.",
+        "instruction": "【Agent】global://frontend-engineer（~/.claude/agents/frontend-engineer.md）\n【输入】`docs/prd.md`、`docs/architecture-note.md`、`docs/ui-spec.md`（若有）\n【交付】按对话中已确认的范围、验收标准与工作区相关文档执行。\n\n【任务】实现可运行页面；说明写入默认 md，代码写入 src/\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`, `docs/architecture-note.md`, `docs/ui-spec.md`, `docs/ux-architecture.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/frontend-implementation.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "frontend-implementation",
           "ui-interaction-optimization",

@@ -5,6 +5,7 @@ import { MessageBubble, type ChatBubbleMessage } from "@/components/chat-message
 import { ChatStickyUserHeader } from "@/components/chat-sticky-user-header";
 import type { ChatComposerShellProps } from "@/components/chat-composer-shell";
 import { useStickyUserPrompt } from "@/hooks/use-sticky-user-prompt";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 export type ChatMessagesPaneProps = {
   messages: ChatBubbleMessage[];
@@ -111,20 +112,22 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
         ref={scrollAreaRef}
         className="chat-pane-messages-scroll overscroll-contain scrollbar-thin"
       >
-        <div className="chat-messages-inner">
-          <div className="chat-messages-list">
-            {leadingOrphans.map((i) => renderAssistant(i))}
-            {turns.map((turn, turnIndex) => (
-              <div
-                key={`turn:${turn.userIndex}`}
-                ref={setTurnRef(turnIndex)}
-                className="chat-turn-section"
-              >
-                {renderUser(turn.user, turnIndex)}
-                {turn.replyIndices.map((i) => renderAssistant(i))}
+          <div className="chat-messages-inner">
+            <ErrorBoundary>
+              <div className="chat-messages-list">
+                {leadingOrphans.map((i) => renderAssistant(i))}
+                {turns.map((turn, turnIndex) => (
+                  <div
+                    key={`turn:${turn.userIndex}`}
+                    ref={setTurnRef(turnIndex)}
+                    className="chat-turn-section"
+                  >
+                    {renderUser(turn.user, turnIndex)}
+                    {turn.replyIndices.map((i) => renderAssistant(i))}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </ErrorBoundary>
           <div ref={messagesEndRef} className="chat-messages-anchor" aria-hidden />
         </div>
       </div>

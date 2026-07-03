@@ -7,8 +7,12 @@ import {
   Circle,
   Diamond,
   Disc,
+  GitBranch,
+  Loader,
   Menu,
   Paperclip,
+  Plus,
+  RefreshCw,
   Sparkles,
   Square,
   X,
@@ -259,5 +263,95 @@ export function LengthChip({ open, setOpen, length, setLength }: { open: boolean
         </div>
       )}
     </div>
+  );
+}
+
+export function GraphifyChip({
+  graphJson,
+  graphHtml,
+  building,
+  onOpen,
+  onBuild,
+}: {
+  graphJson: boolean | null;
+  graphHtml: boolean | null;
+  building?: boolean;
+  onOpen?: () => void;
+  onBuild?: () => void;
+}) {
+  // 检测中
+  if (graphJson === null && graphHtml === null) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground">
+        <GitBranch className="h-3 w-3" />
+        图谱
+        <span className="ml-0.5 h-3 w-3 animate-pulse rounded-full bg-muted-foreground/20" />
+      </span>
+    );
+  }
+
+  // 构建中
+  if (building) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary-soft/30 px-2.5 py-1 text-[11.5px] font-medium text-primary">
+        <Loader className="h-3 w-3 animate-spin" />
+        构建中…
+      </span>
+    );
+  }
+
+  // 构建失败
+  if (graphJson === false && onBuild) {
+    return (
+      <button
+        type="button"
+        onClick={onBuild}
+        title="知识图谱未生成，点击开始构建"
+        className="inline-flex items-center gap-1 rounded-full border border-dashed border-muted-foreground/30 bg-surface px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition hover:border-primary/30 hover:text-primary"
+      >
+        <Plus className="h-3 w-3" />
+        生成图谱
+      </button>
+    );
+  }
+
+  // 有 graph.json 但无 graph.html → 可打开报告但不可交互查看
+  if (graphJson === true && !graphHtml) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary-soft/30 px-2.5 py-1 text-[11.5px] font-medium text-primary">
+        <GitBranch className="h-3 w-3" />
+        图谱
+        {onBuild && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onBuild(); }}
+            className="ml-0.5 rounded-full p-0.5 text-primary/60 transition hover:bg-primary/10 hover:text-primary"
+            title="生成交互式图谱页面"
+          >
+            <RefreshCw className="h-2.5 w-2.5" />
+          </button>
+        )}
+      </span>
+    );
+  }
+
+  // 有 graph.html → 可点击查看
+  const viewerReady = graphHtml === true && !!onOpen;
+  return (
+    <button
+      type={viewerReady ? "button" : "button"}
+      disabled={!viewerReady}
+      onClick={viewerReady ? onOpen : undefined}
+      title={viewerReady ? "查看知识图谱" : undefined}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition",
+        viewerReady
+          ? "border-primary/20 bg-primary-soft/30 text-primary hover:bg-primary-soft/50 cursor-pointer"
+          : "border-border bg-surface text-muted-foreground cursor-default",
+      )}
+    >
+      <GitBranch className="h-3 w-3" />
+      图谱
+    </button>
   );
 }

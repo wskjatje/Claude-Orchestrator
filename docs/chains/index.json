@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "exportedAt": "2026-06-30T09:28:23.110Z",
+  "exportedAt": "2026-07-03T06:32:31.007Z",
   "activeChainId": null,
   "chains": [
     {
@@ -154,6 +154,14 @@
       "category": "pipeline",
       "enabled": true,
       "stepCount": 11
+    },
+    {
+      "id": "chain-mr1hql7f-bz7u8",
+      "name": "WBS · docs/wbs.md",
+      "description": "WBS 来源：docs/wbs.md · 3 步",
+      "category": "custom",
+      "enabled": true,
+      "stepCount": 3
     }
   ]
 }

@@ -1,5 +1,5 @@
-import fs from 'node:fs'
-import path from 'node:path'
+import fs from "node:fs";
+import path from "node:path";
 import {
   DEFAULT_CLAUDE_CLI,
   DEFAULT_WORKSPACE,
@@ -11,119 +11,148 @@ import {
   ensureProjectDataDir,
   globalDefaultModel,
   orchestrationChainPath,
-} from './paths.mjs'
-import { createRequire } from 'node:module'
-import crypto from 'node:crypto'
+} from "./paths.mjs";
+import { createRequire } from "node:module";
+import crypto from "node:crypto";
 
-const require = createRequire(import.meta.url)
-const projectDb = require('./project-db.cjs')
-const usageStats = require('./usage-stats.cjs')
-const { normalizeCloudModelId } = require('./cloud-providers.cjs')
+const require = createRequire(import.meta.url);
+const projectDb = require("./project-db.cjs");
+const usageStats = require("./usage-stats.cjs");
+const { normalizeCloudModelId } = require("./cloud-providers.cjs");
 
 const KV = {
-  workspace: 'workspace',
-  workspaceHistory: 'workspace_history',
-  chatSettings: 'chat_settings',
-  chatSessions: 'chat_sessions',
-  scheduledTasks: 'scheduled_tasks',
-  uiPrefs: 'ui_prefs',
-}
+  workspace: "workspace",
+  workspaceHistory: "workspace_history",
+  chatSettings: "chat_settings",
+  chatSessions: "chat_sessions",
+  scheduledTasks: "scheduled_tasks",
+  uiPrefs: "ui_prefs",
+};
 
-const MAX_WORKSPACE_HISTORY = 30
+const MAX_WORKSPACE_HISTORY = 30;
 
-let migrationDone = false
+let migrationDone = false;
 
 function readJsonFileIfExists(filePath) {
-  return projectDb.readJsonFileIfExists(filePath)
+  return projectDb.readJsonFileIfExists(filePath);
 }
 
 function countSessionMessages(sessions) {
-  if (!Array.isArray(sessions)) return 0
+  if (!Array.isArray(sessions)) return 0;
   return sessions.reduce(
     (n, s) => n + (Array.isArray(s?.history) ? s.history.length : 0),
     0,
-  )
+  );
 }
 
 function countUserMessages(hist) {
-  return (Array.isArray(hist) ? hist : []).filter((m) => m?.role === 'user').length
+  return (Array.isArray(hist) ? hist : []).filter((m) => m?.role === "user")
+    .length;
 }
 
 function lastUserMessageTs(hist) {
-  const h = Array.isArray(hist) ? hist : []
+  const h = Array.isArray(hist) ? hist : [];
   for (let i = h.length - 1; i >= 0; i--) {
-    if (h[i]?.role === 'user') return h[i].ts ?? 0
+    if (h[i]?.role === "user") return h[i].ts ?? 0;
   }
-  return 0
+  return 0;
 }
 
 /** 落盘前合并，避免空数组或未 hydrate 的 UI 覆盖已有聊天记录 */
 function mergeSessionsOnSave(incoming, existing) {
-  const localById = new Map((Array.isArray(incoming) ? incoming : []).map((s) => [s.id, s]))
-  const merged = []
+  const localById = new Map(
+    (Array.isArray(incoming) ? incoming : []).map((s) => [s.id, s]),
+  );
+  const merged = [];
   for (const d of Array.isArray(existing) ? existing : []) {
-    const l = localById.get(d.id)
+    const l = localById.get(d.id);
     if (!l) {
-      merged.push(d)
-      continue
+      merged.push(d);
+      continue;
     }
-    const lHist = Array.isArray(l.history) ? l.history : []
-    const dHist = Array.isArray(d.history) ? d.history : []
+    const lHist = Array.isArray(l.history) ? l.history : [];
+    const dHist = Array.isArray(d.history) ? d.history : [];
     const keepLocal =
       lHist.length > dHist.length ||
       countUserMessages(lHist) > countUserMessages(dHist) ||
-      (lHist.length === dHist.length && lastUserMessageTs(lHist) >= lastUserMessageTs(dHist))
+      (lHist.length === dHist.length &&
+        lastUserMessageTs(lHist) >= lastUserMessageTs(dHist));
     merged.push(
       keepLocal
         ? { ...d, ...l, title: l.title || d.title, history: lHist }
-        : { ...l, ...d, title: d.title || l.title, modelId: l.modelId || d.modelId, history: dHist },
-    )
-    localById.delete(d.id)
+        : {
+            ...l,
+            ...d,
+            title: d.title || l.title,
+            modelId: l.modelId || d.modelId,
+            history: dHist,
+          },
+    );
+    localById.delete(d.id);
   }
-  for (const l of localById.values()) merged.push(l)
-  return merged
+  for (const l of localById.values()) merged.push(l);
+  return merged;
 }
 
 function normalizeComposerDrafts(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-  const out = {}
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
   for (const [sessionId, draft] of Object.entries(raw)) {
-    if (typeof sessionId !== 'string' || !sessionId.trim() || !draft || typeof draft !== 'object') continue
-    const input = typeof draft.input === 'string' ? draft.input.slice(0, 50_000) : ''
+    if (
+      typeof sessionId !== "string" ||
+      !sessionId.trim() ||
+      !draft ||
+      typeof draft !== "object"
+    )
+      continue;
+    const input =
+      typeof draft.input === "string" ? draft.input.slice(0, 50_000) : "";
     const pendingImages = Array.isArray(draft.pendingImages)
       ? draft.pendingImages.slice(0, 12).map((img) => ({
-          kind: img?.kind === 'image' ? 'image' : 'image',
-          name: typeof img?.name === 'string' ? img.name.slice(0, 500) : '',
-          mime: typeof img?.mime === 'string' ? img.mime.slice(0, 120) : '',
-          dataUrl: typeof img?.dataUrl === 'string' ? img.dataUrl.slice(0, 2_000_000) : '',
-          id: typeof img?.id === 'string' ? img.id.slice(0, 80) : '',
+          kind: img?.kind === "image" ? "image" : "image",
+          name: typeof img?.name === "string" ? img.name.slice(0, 500) : "",
+          mime: typeof img?.mime === "string" ? img.mime.slice(0, 120) : "",
+          dataUrl:
+            typeof img?.dataUrl === "string"
+              ? img.dataUrl.slice(0, 2_000_000)
+              : "",
+          id: typeof img?.id === "string" ? img.id.slice(0, 80) : "",
         }))
-      : []
+      : [];
     const pendingTerminalSnippets = Array.isArray(draft.pendingTerminalSnippets)
       ? draft.pendingTerminalSnippets.slice(0, 20).map((sn) => ({
-          id: typeof sn?.id === 'string' ? sn.id.slice(0, 80) : '',
-          text: typeof sn?.text === 'string' ? sn.text.slice(0, 20_000) : '',
-          sourceLabel: typeof sn?.sourceLabel === 'string' ? sn.sourceLabel.slice(0, 200) : '',
-          startLine: typeof sn?.startLine === 'number' ? sn.startLine : undefined,
-          endLine: typeof sn?.endLine === 'number' ? sn.endLine : undefined,
+          id: typeof sn?.id === "string" ? sn.id.slice(0, 80) : "",
+          text: typeof sn?.text === "string" ? sn.text.slice(0, 20_000) : "",
+          sourceLabel:
+            typeof sn?.sourceLabel === "string"
+              ? sn.sourceLabel.slice(0, 200)
+              : "",
+          startLine:
+            typeof sn?.startLine === "number" ? sn.startLine : undefined,
+          endLine: typeof sn?.endLine === "number" ? sn.endLine : undefined,
         }))
-      : []
-    if (!input && !pendingImages.length && !pendingTerminalSnippets.length) continue
-    out[sessionId.trim().slice(0, 120)] = { input, pendingImages, pendingTerminalSnippets }
+      : [];
+    if (!input && !pendingImages.length && !pendingTerminalSnippets.length)
+      continue;
+    out[sessionId.trim().slice(0, 120)] = {
+      input,
+      pendingImages,
+      pendingTerminalSnippets,
+    };
   }
-  return out
+  return out;
 }
 
 function normalizeChatSessionsPayload(raw) {
-  const sessions = Array.isArray(raw?.sessions) ? raw.sessions : []
+  const sessions = Array.isArray(raw?.sessions) ? raw.sessions : [];
   const activeId =
-    typeof raw?.activeId === 'string' && raw.activeId.trim()
+    typeof raw?.activeId === "string" && raw.activeId.trim()
       ? raw.activeId.trim()
-      : sessions[0]?.id || genSessionId()
+      : sessions[0]?.id || genSessionId();
   const activeByWorkspace =
-    raw?.activeByWorkspace && typeof raw.activeByWorkspace === 'object'
+    raw?.activeByWorkspace && typeof raw.activeByWorkspace === "object"
       ? raw.activeByWorkspace
-      : { '': activeId }
+      : { "": activeId };
   return {
     version: 2,
     activeId,
@@ -133,77 +162,99 @@ function normalizeChatSessionsPayload(raw) {
       workspacePath: s?.workspacePath ?? null,
     })),
     composerDrafts: normalizeComposerDrafts(raw?.composerDrafts),
-  }
+  };
 }
 
 /** 将 ~/.claude-workbench 旧 JSON 与会话工作区路径补进 SQLite（一次性/增量） */
 function ensureWorkbenchDataMigrated(conn) {
-  const legacySessionsPath = path.join(LEGACY_DATA_DIR, 'chat-sessions.json')
-  const legacyRaw = readJsonFileIfExists(legacySessionsPath)
-  const currentRaw = projectDb.loadKv(conn, KV.chatSessions, null)
+  const legacySessionsPath = path.join(LEGACY_DATA_DIR, "chat-sessions.json");
+  const legacyRaw = readJsonFileIfExists(legacySessionsPath);
+  const currentRaw = projectDb.loadKv(conn, KV.chatSessions, null);
 
-  let sessionsPayload = currentRaw
-  if (legacyRaw && Array.isArray(legacyRaw.sessions) && legacyRaw.sessions.length) {
-    const legacyCount = countSessionMessages(legacyRaw.sessions)
-    const currentCount = countSessionMessages(currentRaw?.sessions)
-    const currentEmpty = !currentRaw || !Array.isArray(currentRaw.sessions) || !currentRaw.sessions.length
+  let sessionsPayload = currentRaw;
+  if (
+    legacyRaw &&
+    Array.isArray(legacyRaw.sessions) &&
+    legacyRaw.sessions.length
+  ) {
+    const legacyCount = countSessionMessages(legacyRaw.sessions);
+    const currentCount = countSessionMessages(currentRaw?.sessions);
+    const currentEmpty =
+      !currentRaw ||
+      !Array.isArray(currentRaw.sessions) ||
+      !currentRaw.sessions.length;
     if (currentEmpty || legacyCount > currentCount) {
-      sessionsPayload = normalizeChatSessionsPayload(legacyRaw)
-      projectDb.saveKv(conn, KV.chatSessions, sessionsPayload)
+      sessionsPayload = normalizeChatSessionsPayload(legacyRaw);
+      projectDb.saveKv(conn, KV.chatSessions, sessionsPayload);
     }
   }
 
-  const historyEntries = readWorkspaceHistoryRaw()
+  const historyEntries = readWorkspaceHistoryRaw();
   if (!historyEntries.length) {
-    const sessions = Array.isArray(sessionsPayload?.sessions) ? sessionsPayload.sessions : []
-    const seen = new Set()
-    const seeded = []
+    const sessions = Array.isArray(sessionsPayload?.sessions)
+      ? sessionsPayload.sessions
+      : [];
+    const seen = new Set();
+    const seeded = [];
     for (const s of sessions) {
-      const wp = typeof s?.workspacePath === 'string' ? s.workspacePath.trim() : ''
-      if (!wp) continue
+      const wp =
+        typeof s?.workspacePath === "string" ? s.workspacePath.trim() : "";
+      if (!wp) continue;
       try {
-        const resolved = path.resolve(wp)
-        if (seen.has(resolved) || !fs.existsSync(resolved)) continue
-        seen.add(resolved)
-        const entry = normalizeWorkspaceHistoryEntry({ path: resolved, openedAt: Date.now() })
-        if (entry) seeded.push(entry)
-      } catch {
-        /* 无种子路径，跳过 */
+        const resolved = path.resolve(wp);
+        if (seen.has(resolved) || !fs.existsSync(resolved)) continue;
+        seen.add(resolved);
+        const entry = normalizeWorkspaceHistoryEntry({
+          path: resolved,
+          openedAt: Date.now(),
+        });
+        if (entry) seeded.push(entry);
+      } catch (e) {
+        console.warn("[store] 无种子路径，跳过", e?.message || e);
       }
     }
-    const curWs = loadWorkspace()
+    const curWs = loadWorkspace();
     if (curWs) {
-      const entry = normalizeWorkspaceHistoryEntry({ path: curWs, openedAt: Date.now() })
-      if (entry && !seen.has(entry.path)) seeded.unshift(entry)
+      const entry = normalizeWorkspaceHistoryEntry({
+        path: curWs,
+        openedAt: Date.now(),
+      });
+      if (entry && !seen.has(entry.path)) seeded.unshift(entry);
     }
-    if (seeded.length) saveWorkspaceHistoryEntries(seeded)
+    if (seeded.length) saveWorkspaceHistoryEntries(seeded);
   }
 }
 
 function db() {
-  ensureProjectDataDir()
+  ensureProjectDataDir();
   if (!migrationDone) {
-    const conn = projectDb.getDb(PROJECT_DB_PATH, PROJECT_DATA_DIR)
-    const orch = orchestrationChainPath()
-    projectDb.ensureMigrated(conn, PROJECT_DB_PATH, PROJECT_DATA_DIR, LEGACY_DATA_DIR, orch.primary)
-    migrationDone = true
-    ensureWorkbenchDataMigrated(conn)
+    const conn = projectDb.getDb(PROJECT_DB_PATH, PROJECT_DATA_DIR);
+    const orch = orchestrationChainPath();
+    projectDb.ensureMigrated(
+      conn,
+      PROJECT_DB_PATH,
+      PROJECT_DATA_DIR,
+      LEGACY_DATA_DIR,
+      orch.primary,
+    );
+    migrationDone = true;
+    ensureWorkbenchDataMigrated(conn);
   }
-  return projectDb.getDb(PROJECT_DB_PATH, PROJECT_DATA_DIR)
+  return projectDb.getDb(PROJECT_DB_PATH, PROJECT_DATA_DIR);
 }
 
-const CLAUDE_CODE_MODEL_ALIASES = ['sonnet', 'opus', 'haiku']
+const CLAUDE_CODE_MODEL_ALIASES = ["sonnet", "opus", "haiku"];
 
 function defaultChatSettings() {
   return {
-    ollamaBase: 'http://127.0.0.1:11434',
-    model: 'auto',
-    localOllamaModel: '',
+    ollamaBase: "http://127.0.0.1:11434",
+    model: "auto",
+    localOllamaModel: "",
     claudeCliPath: DEFAULT_CLAUDE_CLI,
-    orchestrationMode: 'claude-code',
-    localAgentBasename: '',
-    defaultConfirmWritePath: '',
-    mcpConfigAbsolutePath: '',
+    orchestrationMode: "claude-code",
+    localAgentBasename: "",
+    defaultConfirmWritePath: "",
+    mcpConfigAbsolutePath: "",
     devMcpOrchDebug: false,
     cloudModelCatalog: [],
     localModelCatalog: [],
@@ -213,114 +264,120 @@ function defaultChatSettings() {
     /** 已在聊天区启用的本地模型 ID */
     chatEnabledLocalModels: [],
     /** MCP Ollama 聊天工具名（空=默认 ollama_chat） */
-    mcpChatToolName: '',
+    mcpChatToolName: "",
     /** MCP 模型列举工具名（空=默认 ollama_list_models） */
-    mcpListModelsToolName: '',
+    mcpListModelsToolName: "",
     tokenPricing: {},
     /** 个人 fork：push 与个人 pull 共用（origin） */
-    personalGithubRepo: '',
+    personalGithubRepo: "",
     /** Git 提交身份：push / 个人 pull 共用 */
-    gitUserName: '',
-    gitUserEmail: '',
+    gitUserName: "",
+    gitUserEmail: "",
     /** 官方 upstream，仅官方 path-scoped pull */
-    upstreamGithubRepo: 'https://github.com/anthropics/claude-code.git',
+    upstreamGithubRepo: "https://github.com/anthropics/claude-code.git",
     /** 上次 path-scoped 同步时的 upstream commit（用于检测官方更新） */
-    lastUpstreamSyncSha: '',
-  }
+    lastUpstreamSyncSha: "",
+  };
 }
 
 function defaultUiPrefs() {
   return {
-    themeMode: 'system',
-    bridgeUrl: '',
+    themeMode: "system",
+    bridgeUrl: "",
     /** 仅保存在项目 SQLite，不上传 */
-    localSecret: '',
-    defaultSessionTag: 'claude:main',
+    localSecret: "",
+    defaultSessionTag: "claude:main",
     /** react-resizable-panels 布局 JSON，key → value */
     layoutStorage: {},
     skipCheckpointConfirm: false,
-    defaultTerminalShell: 'zsh',
-  }
+    defaultTerminalShell: "zsh",
+  };
 }
 
 function genSessionId() {
-  return `s-${crypto.randomUUID()}`
+  return `s-${crypto.randomUUID()}`;
 }
 
 function defaultChatSessions() {
-  const id = genSessionId()
+  const id = genSessionId();
   return {
     activeId: id,
     sessions: [
       {
         id,
-        title: '新对话',
+        title: "新对话",
         modelId: globalDefaultModel(),
         history: [],
       },
     ],
-  }
+  };
 }
 
 export function loadWorkspace() {
   try {
-    const raw = projectDb.loadKv(db(), KV.workspace, null)
-    if (!raw || typeof raw.workspace !== 'string') return null
-    return raw.workspace.trim() || null
+    const raw = projectDb.loadKv(db(), KV.workspace, null);
+    if (!raw || typeof raw.workspace !== "string") return null;
+    return raw.workspace.trim() || null;
   } catch {
-    return null
+    return null;
   }
 }
 
 export function saveWorkspace(dir) {
-  projectDb.saveKv(db(), KV.workspace, { workspace: dir ? String(dir) : null })
+  projectDb.saveKv(db(), KV.workspace, { workspace: dir ? String(dir) : null });
 }
 
 function defaultWorkspaceHistory() {
-  return { version: 1, entries: [] }
+  return { version: 1, entries: [] };
 }
 
 function normalizeWorkspaceHistoryEntry(raw) {
-  if (!raw || typeof raw !== 'object') return null
-  const p = typeof raw.path === 'string' ? raw.path.trim() : ''
-  if (!p) return null
+  if (!raw || typeof raw !== "object") return null;
+  const p = typeof raw.path === "string" ? raw.path.trim() : "";
+  if (!p) return null;
   try {
-    const resolved = path.resolve(p)
-    if (!fs.existsSync(resolved)) return null
+    const resolved = path.resolve(p);
+    if (!fs.existsSync(resolved)) return null;
     return {
       path: resolved,
-      openedAt: typeof raw.openedAt === 'number' && raw.openedAt > 0 ? raw.openedAt : Date.now(),
-    }
+      openedAt:
+        typeof raw.openedAt === "number" && raw.openedAt > 0
+          ? raw.openedAt
+          : Date.now(),
+    };
   } catch {
-    return null
+    return null;
   }
 }
 
 function readWorkspaceHistoryRaw() {
   try {
-    const data = projectDb.loadKv(db(), KV.workspaceHistory, null)
-    if (!data || !Array.isArray(data.entries)) return []
-    return data.entries.map(normalizeWorkspaceHistoryEntry).filter(Boolean)
+    const data = projectDb.loadKv(db(), KV.workspaceHistory, null);
+    if (!data || !Array.isArray(data.entries)) return [];
+    return data.entries.map(normalizeWorkspaceHistoryEntry).filter(Boolean);
   } catch {
-    return []
+    return [];
   }
 }
 
 /** 最近打开的工作区列表（SQLite kv，跨项目全局） */
 export function loadWorkspaceHistory() {
   try {
-    let entries = readWorkspaceHistoryRaw()
+    let entries = readWorkspaceHistoryRaw();
     if (!entries.length) {
-      const current = loadWorkspace()
-      const seeded = normalizeWorkspaceHistoryEntry({ path: current, openedAt: Date.now() })
+      const current = loadWorkspace();
+      const seeded = normalizeWorkspaceHistoryEntry({
+        path: current,
+        openedAt: Date.now(),
+      });
       if (seeded) {
-        entries = [seeded]
-        saveWorkspaceHistoryEntries(entries)
+        entries = [seeded];
+        saveWorkspaceHistoryEntries(entries);
       }
     }
-    return { version: 1, entries }
+    return { version: 1, entries };
   } catch {
-    return defaultWorkspaceHistory()
+    return defaultWorkspaceHistory();
   }
 }
 
@@ -328,175 +385,227 @@ function saveWorkspaceHistoryEntries(entries) {
   const next = {
     version: 1,
     entries: entries.slice(0, MAX_WORKSPACE_HISTORY),
-  }
-  projectDb.saveKv(db(), KV.workspaceHistory, next)
-  return next
+  };
+  projectDb.saveKv(db(), KV.workspaceHistory, next);
+  return next;
 }
 
 /** 当前工作区若尚未在列表中则追加（不每次 get 都置顶） */
 export function ensureWorkspaceInHistory(dir) {
-  const entry = normalizeWorkspaceHistoryEntry({ path: dir, openedAt: Date.now() })
-  if (!entry) return loadWorkspaceHistory()
-  const entries = readWorkspaceHistoryRaw()
+  const entry = normalizeWorkspaceHistoryEntry({
+    path: dir,
+    openedAt: Date.now(),
+  });
+  if (!entry) return loadWorkspaceHistory();
+  const entries = readWorkspaceHistoryRaw();
   if (entries.some((e) => e.path === entry.path)) {
-    return { version: 1, entries }
+    return { version: 1, entries };
   }
-  return saveWorkspaceHistoryEntries([entry, ...entries])
+  return saveWorkspaceHistoryEntries([entry, ...entries]);
 }
 
 /** 记录一次打开（去重后置顶） */
 export function recordWorkspaceOpen(dir) {
-  const entry = normalizeWorkspaceHistoryEntry({ path: dir, openedAt: Date.now() })
-  if (!entry) return loadWorkspaceHistory()
-  const filtered = readWorkspaceHistoryRaw().filter((e) => e.path !== entry.path)
-  return saveWorkspaceHistoryEntries([entry, ...filtered])
+  const entry = normalizeWorkspaceHistoryEntry({
+    path: dir,
+    openedAt: Date.now(),
+  });
+  if (!entry) return loadWorkspaceHistory();
+  const filtered = readWorkspaceHistoryRaw().filter(
+    (e) => e.path !== entry.path,
+  );
+  return saveWorkspaceHistoryEntries([entry, ...filtered]);
 }
 
 export function removeWorkspaceHistoryEntry(dir) {
-  let resolved = ''
+  let resolved = "";
   try {
-    resolved = path.resolve(String(dir || '').trim())
+    resolved = path.resolve(String(dir || "").trim());
   } catch {
-    return loadWorkspaceHistory()
+    return loadWorkspaceHistory();
   }
-  if (!resolved) return loadWorkspaceHistory()
+  if (!resolved) return loadWorkspaceHistory();
   return saveWorkspaceHistoryEntries(
     readWorkspaceHistoryRaw().filter((e) => e.path !== resolved),
-  )
+  );
 }
 
 export function clearWorkspaceHistory() {
-  return saveWorkspaceHistoryEntries([])
+  return saveWorkspaceHistoryEntries([]);
 }
 
 function normalizeStringList(raw) {
-  if (!Array.isArray(raw)) return []
-  return [...new Set(raw.map((v) => String(v || '').trim()).filter(Boolean))]
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.map((v) => String(v || "").trim()).filter(Boolean))];
 }
 
 function migrateChatEnabledFields(merged) {
-  let chatEnabledCloudProviders = normalizeStringList(merged.chatEnabledCloudProviders)
-  let chatEnabledLocalModels = normalizeStringList(merged.chatEnabledLocalModels)
+  let chatEnabledCloudProviders = normalizeStringList(
+    merged.chatEnabledCloudProviders,
+  );
+  let chatEnabledLocalModels = normalizeStringList(
+    merged.chatEnabledLocalModels,
+  );
 
   if (!chatEnabledCloudProviders.length && !chatEnabledLocalModels.length) {
-    if (merged.orchestrationMode === 'local-mcp') {
+    if (merged.orchestrationMode === "local-mcp") {
       const pick =
-        String(merged.model || '').trim() ||
-        String(merged.localOllamaModel || '').trim() ||
-        String(merged.localModelCatalog?.[0] || '').trim()
-      if (pick) chatEnabledLocalModels = [pick]
+        String(merged.model || "").trim() ||
+        String(merged.localOllamaModel || "").trim() ||
+        String(merged.localModelCatalog?.[0] || "").trim();
+      if (pick) chatEnabledLocalModels = [pick];
     } else {
-      const providerIds = normalizeStringList(merged.cloudProviderCatalog)
-      if (providerIds.length) chatEnabledCloudProviders = [providerIds[0]]
+      const providerIds = normalizeStringList(merged.cloudProviderCatalog);
+      if (providerIds.length) chatEnabledCloudProviders = [providerIds[0]];
     }
   }
 
-  return { chatEnabledCloudProviders, chatEnabledLocalModels }
+  return { chatEnabledCloudProviders, chatEnabledLocalModels };
 }
 
 function migrateDeprecatedModelFields(data) {
-  if (!data || typeof data !== 'object') return { data, changed: false }
-  let changed = false
-  const next = { ...data }
+  if (!data || typeof data !== "object") return { data, changed: false };
+  let changed = false;
+  const next = { ...data };
 
-  const model = String(next.model || '').trim()
-  const migratedModel = normalizeCloudModelId(model)
+  const model = String(next.model || "").trim();
+  const migratedModel = normalizeCloudModelId(model);
   if (model && migratedModel !== model) {
-    next.model = migratedModel
-    changed = true
+    next.model = migratedModel;
+    changed = true;
   }
 
   if (Array.isArray(next.cloudModelCatalog)) {
-    const catalog = next.cloudModelCatalog.map((m) => normalizeCloudModelId(String(m || '').trim())).filter(Boolean)
-    const deduped = [...new Set(catalog)]
+    const catalog = next.cloudModelCatalog
+      .map((m) => normalizeCloudModelId(String(m || "").trim()))
+      .filter(Boolean);
+    const deduped = [...new Set(catalog)];
     if (JSON.stringify(deduped) !== JSON.stringify(next.cloudModelCatalog)) {
-      next.cloudModelCatalog = deduped
-      changed = true
+      next.cloudModelCatalog = deduped;
+      changed = true;
     }
   }
 
-  return { data: next, changed }
+  return { data: next, changed };
 }
 
 export function loadChatSettings() {
-  const defaults = defaultChatSettings()
+  const defaults = defaultChatSettings();
   try {
-    const data = projectDb.loadKv(db(), KV.chatSettings, null)
-    if (!data || typeof data !== 'object') return defaults
-    const merged = { ...defaults, ...data }
-    const legacyAgent = String(merged.localAgentBasename || '')
+    const data = projectDb.loadKv(db(), KV.chatSettings, null);
+    if (!data || typeof data !== "object") return defaults;
+    const merged = { ...defaults, ...data };
+    const legacyAgent = String(merged.localAgentBasename || "")
       .trim()
-      .toLowerCase()
-    if (legacyAgent === 'product-manager.md' || legacyAgent === 'product-manager') {
-      merged.localAgentBasename = ''
+      .toLowerCase();
+    if (
+      legacyAgent === "product-manager.md" ||
+      legacyAgent === "product-manager"
+    ) {
+      merged.localAgentBasename = "";
       if (legacyAgent) {
-        projectDb.saveKv(db(), KV.chatSettings, { ...data, localAgentBasename: '' })
+        projectDb.saveKv(db(), KV.chatSettings, {
+          ...data,
+          localAgentBasename: "",
+        });
       }
     }
     // 若 cloud_providers KV 有供应商但 cloudProviderCatalog 为空，自动回填
     try {
-      const cp = projectDb.loadKv(db(), 'cloud_providers', null)
-      const cpIds = Object.keys(cp?.providers || {})
+      const cp = projectDb.loadKv(db(), "cloud_providers", null);
+      const cpIds = Object.keys(cp?.providers || {});
       if (cpIds.length && !(merged.cloudProviderCatalog || []).length) {
-        merged.cloudProviderCatalog = cpIds
+        merged.cloudProviderCatalog = cpIds;
       }
-    } catch { /* ignore */ }
-    const enabled = migrateChatEnabledFields(merged)
-    const migrated = migrateDeprecatedModelFields({ ...merged, ...enabled })
-    const storedEnabled = normalizeStringList(merged.chatEnabledCloudProviders)
-    const storedLocalEnabled = normalizeStringList(merged.chatEnabledLocalModels)
+    } catch (e) {
+      console.warn("[store] 加载云供应商失败", e?.message || e);
+    }
+    const enabled = migrateChatEnabledFields(merged);
+    const migrated = migrateDeprecatedModelFields({ ...merged, ...enabled });
+    const storedEnabled = normalizeStringList(merged.chatEnabledCloudProviders);
+    const storedLocalEnabled = normalizeStringList(
+      merged.chatEnabledLocalModels,
+    );
     if (
       migrated.changed ||
-      storedEnabled.join(',') !== (enabled.chatEnabledCloudProviders || []).join(',') ||
-      storedLocalEnabled.join(',') !== (enabled.chatEnabledLocalModels || []).join(',')
+      storedEnabled.join(",") !==
+        (enabled.chatEnabledCloudProviders || []).join(",") ||
+      storedLocalEnabled.join(",") !==
+        (enabled.chatEnabledLocalModels || []).join(",")
     ) {
-      projectDb.saveKv(db(), KV.chatSettings, migrated.data)
+      projectDb.saveKv(db(), KV.chatSettings, migrated.data);
     }
-    return migrated.data
+    return migrated.data;
   } catch (e) {
-    console.error('[store] loadChatSettings 异常', e?.message)
-    return defaults
+    console.error("[store] loadChatSettings 异常", e?.message);
+    return defaults;
   }
 }
 
 export function saveChatSettings(body) {
-  const cur = loadChatSettings()
+  const cur = loadChatSettings();
   const next = {
     ollamaBase:
-      typeof body?.ollamaBase === 'string' && body.ollamaBase.trim()
-        ? body.ollamaBase.trim().replace(/\/$/, '')
+      typeof body?.ollamaBase === "string" && body.ollamaBase.trim()
+        ? body.ollamaBase.trim().replace(/\/$/, "")
         : cur.ollamaBase,
     model:
-      typeof body?.model === 'string' && body.model.trim() ? body.model.trim() : cur.model,
+      typeof body?.model === "string" && body.model.trim()
+        ? body.model.trim()
+        : cur.model,
     localOllamaModel:
-      typeof body?.localOllamaModel === 'string'
+      typeof body?.localOllamaModel === "string"
         ? body.localOllamaModel.trim().slice(0, 200)
         : cur.localOllamaModel,
     claudeCliPath:
-      typeof body?.claudeCliPath === 'string' ? body.claudeCliPath.trim() : cur.claudeCliPath,
+      typeof body?.claudeCliPath === "string"
+        ? body.claudeCliPath.trim()
+        : cur.claudeCliPath,
     orchestrationMode:
-      body?.orchestrationMode === 'local-mcp' ? 'local-mcp' : 'claude-code',
+      body?.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code",
     localAgentBasename:
-      typeof body?.localAgentBasename === 'string'
+      typeof body?.localAgentBasename === "string"
         ? body.localAgentBasename.trim().slice(0, 200)
         : cur.localAgentBasename,
     defaultConfirmWritePath:
-      typeof body?.defaultConfirmWritePath === 'string' && body.defaultConfirmWritePath.trim()
-        ? body.defaultConfirmWritePath.trim().replace(/^[/\\]+/, '').slice(0, 400)
+      typeof body?.defaultConfirmWritePath === "string" &&
+      body.defaultConfirmWritePath.trim()
+        ? body.defaultConfirmWritePath
+            .trim()
+            .replace(/^[/\\]+/, "")
+            .slice(0, 400)
         : cur.defaultConfirmWritePath,
     mcpConfigAbsolutePath:
-      typeof body?.mcpConfigAbsolutePath === 'string'
+      typeof body?.mcpConfigAbsolutePath === "string"
         ? body.mcpConfigAbsolutePath.trim().slice(0, 2000)
         : cur.mcpConfigAbsolutePath,
     devMcpOrchDebug: body?.devMcpOrchDebug === true,
     cloudModelCatalog: Array.isArray(body?.cloudModelCatalog)
-      ? [...new Set(body.cloudModelCatalog.map((m) => String(m || '').trim()).filter(Boolean))]
+      ? [
+          ...new Set(
+            body.cloudModelCatalog
+              .map((m) => String(m || "").trim())
+              .filter(Boolean),
+          ),
+        ]
       : cur.cloudModelCatalog || [],
     localModelCatalog: Array.isArray(body?.localModelCatalog)
-      ? [...new Set(body.localModelCatalog.map((m) => String(m || '').trim()).filter(Boolean))]
+      ? [
+          ...new Set(
+            body.localModelCatalog
+              .map((m) => String(m || "").trim())
+              .filter(Boolean),
+          ),
+        ]
       : cur.localModelCatalog || [],
     cloudProviderCatalog: Array.isArray(body?.cloudProviderCatalog)
-      ? [...new Set(body.cloudProviderCatalog.map((id) => String(id || '').trim()).filter(Boolean))]
+      ? [
+          ...new Set(
+            body.cloudProviderCatalog
+              .map((id) => String(id || "").trim())
+              .filter(Boolean),
+          ),
+        ]
       : cur.cloudProviderCatalog || [],
     chatEnabledCloudProviders: Array.isArray(body?.chatEnabledCloudProviders)
       ? normalizeStringList(body.chatEnabledCloudProviders)
@@ -505,51 +614,56 @@ export function saveChatSettings(body) {
       ? normalizeStringList(body.chatEnabledLocalModels)
       : cur.chatEnabledLocalModels || [],
     personalGithubRepo:
-      typeof body?.personalGithubRepo === 'string'
+      typeof body?.personalGithubRepo === "string"
         ? body.personalGithubRepo.trim().slice(0, 500)
-        : cur.personalGithubRepo || '',
+        : cur.personalGithubRepo || "",
     gitUserName:
-      typeof body?.gitUserName === 'string'
+      typeof body?.gitUserName === "string"
         ? body.gitUserName.trim().slice(0, 200)
-        : cur.gitUserName || '',
+        : cur.gitUserName || "",
     gitUserEmail:
-      typeof body?.gitUserEmail === 'string'
+      typeof body?.gitUserEmail === "string"
         ? body.gitUserEmail.trim().slice(0, 320)
-        : cur.gitUserEmail || '',
+        : cur.gitUserEmail || "",
     upstreamGithubRepo:
-      typeof body?.upstreamGithubRepo === 'string' && body.upstreamGithubRepo.trim()
+      typeof body?.upstreamGithubRepo === "string" &&
+      body.upstreamGithubRepo.trim()
         ? body.upstreamGithubRepo.trim().slice(0, 500)
         : cur.upstreamGithubRepo || defaultChatSettings().upstreamGithubRepo,
     lastUpstreamSyncSha:
-      typeof body?.lastUpstreamSyncSha === 'string'
+      typeof body?.lastUpstreamSyncSha === "string"
         ? body.lastUpstreamSyncSha.trim().slice(0, 64)
-        : cur.lastUpstreamSyncSha || '',
-  }
-  projectDb.saveKv(db(), KV.chatSettings, next)
-  return next
+        : cur.lastUpstreamSyncSha || "",
+    tokenPricing:
+      body?.tokenPricing != null && typeof body.tokenPricing === "object"
+        ? body.tokenPricing
+        : cur.tokenPricing || {},
+  };
+  projectDb.saveKv(db(), KV.chatSettings, next);
+  return next;
 }
 
 /** 退出登录 / 重置本地工作台数据（推送 GitHub 不会调用） */
 export function resetPersonalWorkbenchData() {
-  const cur = loadChatSettings()
-  const defaults = defaultChatSettings()
-  const curUi = loadUiPrefs()
-  const uiDefaults = defaultUiPrefs()
+  const cur = loadChatSettings();
+  const defaults = defaultChatSettings();
+  const curUi = loadUiPrefs();
+  const uiDefaults = defaultUiPrefs();
 
   saveChatSettings({
     ...defaults,
     claudeCliPath: cur.claudeCliPath,
     orchestrationMode: cur.orchestrationMode,
-    personalGithubRepo: cur.personalGithubRepo || '',
-    gitUserName: cur.gitUserName || '',
-    gitUserEmail: cur.gitUserEmail || '',
+    personalGithubRepo: cur.personalGithubRepo || "",
+    gitUserName: cur.gitUserName || "",
+    gitUserEmail: cur.gitUserEmail || "",
     upstreamGithubRepo: cur.upstreamGithubRepo || defaults.upstreamGithubRepo,
-    lastUpstreamSyncSha: cur.lastUpstreamSyncSha || '',
+    lastUpstreamSyncSha: cur.lastUpstreamSyncSha || "",
     devMcpOrchDebug: false,
-  })
-  saveChatSessions(defaultChatSessions())
-  saveWorkspace(null)
-  clearWorkspaceHistory()
+  });
+  saveChatSessions(defaultChatSessions());
+  saveWorkspace(null);
+  clearWorkspaceHistory();
   saveUiPrefs({
     themeMode: curUi.themeMode,
     bridgeUrl: uiDefaults.bridgeUrl,
@@ -558,59 +672,67 @@ export function resetPersonalWorkbenchData() {
     layoutStorage: curUi.layoutStorage,
     skipCheckpointConfirm: uiDefaults.skipCheckpointConfirm,
     defaultTerminalShell: curUi.defaultTerminalShell,
-  })
-  saveScheduledTasks([])
+  });
+  saveScheduledTasks([]);
   try {
-    const conn = db()
-    conn.prepare('DELETE FROM log_entries').run()
-  } catch {
-    /* ignore */
+    const conn = db();
+    conn.prepare("DELETE FROM log_entries").run();
+  } catch (e) {
+    console.warn("[reset] 清理日志失败", e?.message || e);
   }
   try {
-    projectDb.saveKv(db(), 'cloud_providers', { version: 1, currentProviderId: '', providers: {} })
-  } catch {
-    /* ignore */
-  }
-  try {
-    projectDb.saveKv(db(), 'usage_stats_registry', { version: 1, days: {}, lastBuiltAt: null })
-  } catch {
-    /* ignore */
-  }
-  try {
-    projectDb.saveKv(db(), 'mcp_health_snapshot', {
+    projectDb.saveKv(db(), "cloud_providers", {
       version: 1,
-      configPath: '',
+      currentProviderId: "",
+      providers: {},
+    });
+  } catch (e) {
+    console.warn("[reset] 清理云提供商失败", e?.message || e);
+  }
+  try {
+    projectDb.saveKv(db(), "usage_stats_registry", {
+      version: 1,
+      days: {},
+      lastBuiltAt: null,
+    });
+  } catch (e) {
+    console.warn("[reset] 清理用量统计失败", e?.message || e);
+  }
+  try {
+    projectDb.saveKv(db(), "mcp_health_snapshot", {
+      version: 1,
+      configPath: "",
       checkedAt: null,
       servers: {},
-    })
-  } catch {
-    /* ignore */
+    });
+  } catch (e) {
+    console.warn("[reset] 清理 MCP 健康快照失败", e?.message || e);
   }
   try {
-    projectDb.saveKv(db(), 'agent_exec_registry', { version: 1, days: {} })
-  } catch {
-    /* ignore */
+    projectDb.saveKv(db(), "agent_exec_registry", { version: 1, days: {} });
+  } catch (e) {
+    console.warn("[reset] 清理 Agent 执行注册失败", e?.message || e);
   }
   try {
-    const reportsDir = dailyReportsDir()
+    const reportsDir = dailyReportsDir();
     if (fs.existsSync(reportsDir)) {
-      fs.rmSync(reportsDir, { recursive: true, force: true })
+      fs.rmSync(reportsDir, { recursive: true, force: true });
     }
-  } catch {
-    /* ignore */
+  } catch (e) {
+    console.warn("[reset] 清理日报目录失败", e?.message || e);
   }
   try {
-    const { primary } = orchestrationChainPath()
+    const { primary } = orchestrationChainPath();
     if (fs.existsSync(primary)) {
-      fs.unlinkSync(primary)
+      fs.unlinkSync(primary);
     }
   } catch {
     /* ignore */
   }
   try {
-    const logPath = appLogFilePath()
+    const logPath = appLogFilePath();
     if (fs.existsSync(logPath)) {
-      fs.writeFileSync(logPath, '', 'utf8')
+      fs.writeFileSync(logPath, "", "utf8");
     }
   } catch {
     /* ignore */
@@ -619,243 +741,279 @@ export function resetPersonalWorkbenchData() {
   return {
     ok: true,
     cleared: [
-      '云/本地模型与供应商（含 SQLite cloud_providers）',
-      '全部聊天会话与草稿',
-      '当前工作区路径与打开记录',
-      'Bridge 令牌与本机密钥',
-      '定时任务',
-      'Agent 执行统计与智能体执行日报',
-      '应用日志与用量统计',
-      'MCP 健康检查快照',
-      '任务链运行进度（任务链定义保留，供导出后推送）',
+      "云/本地模型与供应商（含 SQLite cloud_providers）",
+      "全部聊天会话与草稿",
+      "当前工作区路径与打开记录",
+      "Bridge 令牌与本机密钥",
+      "定时任务",
+      "Agent 执行统计与智能体执行日报",
+      "应用日志与用量统计",
+      "MCP 健康检查快照",
+      "任务链运行进度（任务链定义保留，供导出后推送）",
     ],
-  }
+  };
 }
 
 export function loadChatSessions() {
-  const defaults = defaultChatSessions()
+  const defaults = defaultChatSessions();
   try {
-    const data = projectDb.loadKv(db(), KV.chatSessions, null)
+    const data = projectDb.loadKv(db(), KV.chatSessions, null);
     if (!data || !Array.isArray(data.sessions) || !data.sessions.length) {
-      return { ...defaults, composerDrafts: {} }
+      return { ...defaults, composerDrafts: {} };
     }
-    const composerDrafts = normalizeComposerDrafts(data.composerDrafts)
-    let sessions = data.sessions
-    let sessionsChanged = false
+    const composerDrafts = normalizeComposerDrafts(data.composerDrafts);
+    let sessions = data.sessions;
+    let sessionsChanged = false;
     sessions = sessions.map((s) => {
-      const raw = String(s?.modelId || '').trim()
-      const migrated = normalizeCloudModelId(raw)
+      const raw = String(s?.modelId || "").trim();
+      const migrated = normalizeCloudModelId(raw);
       if (raw && migrated !== raw) {
-        sessionsChanged = true
-        return { ...s, modelId: migrated }
+        sessionsChanged = true;
+        return { ...s, modelId: migrated };
       }
-      return s
-    })
+      return s;
+    });
     if (sessionsChanged) {
-      projectDb.saveKv(db(), KV.chatSessions, { ...data, sessions })
+      projectDb.saveKv(db(), KV.chatSessions, { ...data, sessions });
     }
-    if (data.version >= 2 && data.activeByWorkspace && typeof data.activeByWorkspace === 'object') {
+    if (
+      data.version >= 2 &&
+      data.activeByWorkspace &&
+      typeof data.activeByWorkspace === "object"
+    ) {
       return {
         version: 2,
         activeId: data.activeId || sessions[0].id,
         activeByWorkspace: data.activeByWorkspace,
         sessions,
         composerDrafts,
-      }
+      };
     }
-    const activeId = data.activeId || sessions[0].id
+    const activeId = data.activeId || sessions[0].id;
     return {
       version: 2,
       activeId,
-      activeByWorkspace: { '': activeId },
+      activeByWorkspace: { "": activeId },
       sessions: sessions.map((s) => ({
         ...s,
         workspacePath: s?.workspacePath ?? null,
       })),
       composerDrafts,
-    }
+    };
   } catch (e) {
-    console.error('[store] loadChatSessions 异常', e?.message)
-    return { ...defaults, composerDrafts: {} }
+    console.error("[store] loadChatSessions 异常", e?.message);
+    return { ...defaults, composerDrafts: {} };
   }
 }
 
 export function saveChatSessions(payload) {
   try {
-    const cur = loadChatSessions()
-    const incoming = Array.isArray(payload?.sessions) ? payload.sessions : null
-    let sessions = incoming ?? cur.sessions
+    const cur = loadChatSessions();
+    const incoming = Array.isArray(payload?.sessions) ? payload.sessions : null;
+    let sessions = incoming ?? cur.sessions;
     if (incoming) {
-      const curHasHistory = countSessionMessages(cur.sessions) > 0
-      const incomingHasHistory = countSessionMessages(incoming) > 0
+      const curHasHistory = countSessionMessages(cur.sessions) > 0;
+      const incomingHasHistory = countSessionMessages(incoming) > 0;
       if (!incoming.length && curHasHistory) {
-        sessions = cur.sessions
+        sessions = cur.sessions;
       } else if (incoming.length && cur.sessions?.length) {
-        sessions = mergeSessionsOnSave(incoming, cur.sessions)
+        sessions = mergeSessionsOnSave(incoming, cur.sessions);
       }
-      if (!incomingHasHistory && curHasHistory && countSessionMessages(sessions) === 0) {
-        sessions = cur.sessions
+      if (
+        !incomingHasHistory &&
+        curHasHistory &&
+        countSessionMessages(sessions) === 0
+      ) {
+        sessions = cur.sessions;
       }
     }
     const activeId =
-      typeof payload?.activeId === 'string' && payload.activeId.trim()
+      typeof payload?.activeId === "string" && payload.activeId.trim()
         ? payload.activeId.trim()
-        : cur.activeId || sessions[0]?.id
+        : cur.activeId || sessions[0]?.id;
     const activeByWorkspace =
-      payload?.activeByWorkspace && typeof payload.activeByWorkspace === 'object'
+      payload?.activeByWorkspace &&
+      typeof payload.activeByWorkspace === "object"
         ? payload.activeByWorkspace
-        : cur.activeByWorkspace || { '': activeId }
+        : cur.activeByWorkspace || { "": activeId };
     const composerDrafts =
-      payload?.composerDrafts && typeof payload.composerDrafts === 'object'
+      payload?.composerDrafts && typeof payload.composerDrafts === "object"
         ? normalizeComposerDrafts(payload.composerDrafts)
-        : cur.composerDrafts || {}
+        : cur.composerDrafts || {};
     projectDb.saveKv(db(), KV.chatSessions, {
       version: 2,
       activeId,
       activeByWorkspace,
       sessions,
       composerDrafts,
-    })
+    });
     try {
-      const settings = loadChatSettings()
+      const settings = loadChatSettings();
       usageStats.rebuildFromSessions(sessions, {
         tokenPricing: settings.tokenPricing || {},
         cloudModelCatalog: settings.cloudModelCatalog || [],
-      })
-    } catch {
+      });
+    } catch (e) {
+      console.warn("[store] 用量统计重建失败", e?.message || e);
       /* 用量统计失败不阻断会话保存 */
     }
-    return { ok: true }
+    return { ok: true };
   } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
+    return { ok: false, error: err?.message || String(err) };
   }
 }
 
 export function loadScheduledTasks() {
   try {
-    const data = projectDb.loadKv(db(), KV.scheduledTasks, { version: 1, tasks: [] })
-    const list = Array.isArray(data?.tasks) ? data.tasks : []
-    return list
+    const data = projectDb.loadKv(db(), KV.scheduledTasks, {
+      version: 1,
+      tasks: [],
+    });
+    const list = Array.isArray(data?.tasks) ? data.tasks : [];
+    return list;
   } catch {
-    return []
+    return [];
   }
 }
 
 export function saveScheduledTasks(tasks) {
-  const list = Array.isArray(tasks) ? tasks : []
-  projectDb.saveKv(db(), KV.scheduledTasks, { version: 1, tasks: list })
-  return { ok: true, tasks: list }
+  const list = Array.isArray(tasks) ? tasks : [];
+  projectDb.saveKv(db(), KV.scheduledTasks, { version: 1, tasks: list });
+  return { ok: true, tasks: list };
 }
 
 export function loadUiPrefs() {
-  const defaults = defaultUiPrefs()
+  const defaults = defaultUiPrefs();
   try {
-    const data = projectDb.loadKv(db(), KV.uiPrefs, null)
-    if (!data || typeof data !== 'object') return defaults
+    const data = projectDb.loadKv(db(), KV.uiPrefs, null);
+    if (!data || typeof data !== "object") return defaults;
     const themeMode =
-      data.themeMode === 'light' || data.themeMode === 'dark' || data.themeMode === 'system'
+      data.themeMode === "light" ||
+      data.themeMode === "dark" ||
+      data.themeMode === "system"
         ? data.themeMode
-        : defaults.themeMode
+        : defaults.themeMode;
     const layoutStorage =
-      data.layoutStorage && typeof data.layoutStorage === 'object' && !Array.isArray(data.layoutStorage)
+      data.layoutStorage &&
+      typeof data.layoutStorage === "object" &&
+      !Array.isArray(data.layoutStorage)
         ? Object.fromEntries(
             Object.entries(data.layoutStorage)
-              .filter(([k, v]) => typeof k === 'string' && typeof v === 'string')
+              .filter(
+                ([k, v]) => typeof k === "string" && typeof v === "string",
+              )
               .map(([k, v]) => [k.slice(0, 200), v.slice(0, 20_000)]),
           )
-        : defaults.layoutStorage
+        : defaults.layoutStorage;
     const defaultTerminalShell =
-      data.defaultTerminalShell === 'bash' || data.defaultTerminalShell === 'zsh'
+      data.defaultTerminalShell === "bash" ||
+      data.defaultTerminalShell === "zsh"
         ? data.defaultTerminalShell
-        : defaults.defaultTerminalShell
+        : defaults.defaultTerminalShell;
     return {
       themeMode,
-      bridgeUrl: typeof data.bridgeUrl === 'string' ? data.bridgeUrl.trim() : defaults.bridgeUrl,
+      bridgeUrl:
+        typeof data.bridgeUrl === "string"
+          ? data.bridgeUrl.trim()
+          : defaults.bridgeUrl,
       localSecret:
-        typeof data.localSecret === 'string' ? data.localSecret.slice(0, 500) : defaults.localSecret,
+        typeof data.localSecret === "string"
+          ? data.localSecret.slice(0, 500)
+          : defaults.localSecret,
       defaultSessionTag:
-        typeof data.defaultSessionTag === 'string' && data.defaultSessionTag.trim()
+        typeof data.defaultSessionTag === "string" &&
+        data.defaultSessionTag.trim()
           ? data.defaultSessionTag.trim().slice(0, 120)
           : defaults.defaultSessionTag,
       layoutStorage,
       skipCheckpointConfirm: data.skipCheckpointConfirm === true,
       defaultTerminalShell,
-    }
+    };
   } catch (e) {
-    console.error('[store] loadUiPrefs 异常', e?.message)
-    return defaults
+    console.error("[store] loadUiPrefs 异常", e?.message);
+    return defaults;
   }
 }
 
 export function saveUiPrefs(body) {
-  const cur = loadUiPrefs()
+  const cur = loadUiPrefs();
   const themeMode =
-    body?.themeMode === 'light' || body?.themeMode === 'dark' || body?.themeMode === 'system'
+    body?.themeMode === "light" ||
+    body?.themeMode === "dark" ||
+    body?.themeMode === "system"
       ? body.themeMode
-      : cur.themeMode
+      : cur.themeMode;
   const layoutStorage =
-    body?.layoutStorage && typeof body.layoutStorage === 'object' && !Array.isArray(body.layoutStorage)
+    body?.layoutStorage &&
+    typeof body.layoutStorage === "object" &&
+    !Array.isArray(body.layoutStorage)
       ? Object.fromEntries(
           Object.entries(body.layoutStorage)
-            .filter(([k, v]) => typeof k === 'string' && typeof v === 'string')
+            .filter(([k, v]) => typeof k === "string" && typeof v === "string")
             .map(([k, v]) => [k.slice(0, 200), v.slice(0, 20_000)]),
         )
-      : cur.layoutStorage
+      : cur.layoutStorage;
   const defaultTerminalShell =
-    body?.defaultTerminalShell === 'bash' || body?.defaultTerminalShell === 'zsh'
+    body?.defaultTerminalShell === "bash" ||
+    body?.defaultTerminalShell === "zsh"
       ? body.defaultTerminalShell
-      : cur.defaultTerminalShell
+      : cur.defaultTerminalShell;
   const next = {
     themeMode,
     bridgeUrl:
-      typeof body?.bridgeUrl === 'string' ? body.bridgeUrl.trim().slice(0, 500) : cur.bridgeUrl,
+      typeof body?.bridgeUrl === "string"
+        ? body.bridgeUrl.trim().slice(0, 500)
+        : cur.bridgeUrl,
     localSecret:
-      typeof body?.localSecret === 'string' ? body.localSecret.slice(0, 500) : cur.localSecret,
+      typeof body?.localSecret === "string"
+        ? body.localSecret.slice(0, 500)
+        : cur.localSecret,
     defaultSessionTag:
-      typeof body?.defaultSessionTag === 'string' && body.defaultSessionTag.trim()
+      typeof body?.defaultSessionTag === "string" &&
+      body.defaultSessionTag.trim()
         ? body.defaultSessionTag.trim().slice(0, 120)
         : cur.defaultSessionTag,
     layoutStorage,
     skipCheckpointConfirm:
-      typeof body?.skipCheckpointConfirm === 'boolean'
+      typeof body?.skipCheckpointConfirm === "boolean"
         ? body.skipCheckpointConfirm
         : cur.skipCheckpointConfirm,
     defaultTerminalShell,
-  }
-  projectDb.saveKv(db(), KV.uiPrefs, next)
-  return next
+  };
+  projectDb.saveKv(db(), KV.uiPrefs, next);
+  return next;
 }
 
 export function getWorkspaceCwd() {
-  const w = loadWorkspace()
+  const w = loadWorkspace();
   if (w) {
     try {
-      const resolved = path.resolve(w)
-      if (fs.existsSync(resolved)) return resolved
+      const resolved = path.resolve(w);
+      if (fs.existsSync(resolved)) return resolved;
     } catch {
       /* ignore */
     }
   }
-  if (fs.existsSync(DEFAULT_WORKSPACE)) return path.resolve(DEFAULT_WORKSPACE)
-  return process.cwd()
+  if (fs.existsSync(DEFAULT_WORKSPACE)) return path.resolve(DEFAULT_WORKSPACE);
+  return process.cwd();
 }
 
 export function ensureDefaultWorkspace() {
-  let w = loadWorkspace()
+  let w = loadWorkspace();
   if (!w || !fs.existsSync(w)) {
-    w = fs.existsSync(DEFAULT_WORKSPACE) ? DEFAULT_WORKSPACE : process.cwd()
-    saveWorkspace(w)
+    w = fs.existsSync(DEFAULT_WORKSPACE) ? DEFAULT_WORKSPACE : process.cwd();
+    saveWorkspace(w);
   }
-  return w
+  return w;
 }
 
 export function getProjectDbInfo() {
-  ensureProjectDataDir()
+  ensureProjectDataDir();
   return {
     dbPath: PROJECT_DB_PATH,
     dataDir: PROJECT_DATA_DIR,
     legacyDir: LEGACY_DATA_DIR,
-  }
+  };
 }
 
-export { CLAUDE_CODE_MODEL_ALIASES }
+export { CLAUDE_CODE_MODEL_ALIASES };

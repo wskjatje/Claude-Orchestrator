@@ -1,0 +1,117 @@
+{
+  "backend/package.json": {
+    "mtime": 1782886501.9018452,
+    "ast_hash": "8a5da4e19416fb03cd181450dc80bb49",
+    "semantic_hash": ""
+  },
+  "backend/src/index.js": {
+    "mtime": 1782886501.902001,
+    "ast_hash": "6be4216ebdb0870f744c75c4c976093d",
+    "semantic_hash": ""
+  },
+  "backend/src/routes/auth.js": {
+    "mtime": 1782886501.9021137,
+    "ast_hash": "09333aa6b54ea8228887458ece4c54fc",
+    "semantic_hash": ""
+  },
+  "backend/tests/auth.test.js": {
+    "mtime": 1782886501.9022229,
+    "ast_hash": "5bbb1bc63c09a626c4498f892db0f286",
+    "semantic_hash": ""
+  },
+  "frontend/src/components/LoginForm.tsx": {
+    "mtime": 1782887000.2537637,
+    "ast_hash": "72dba647b2d655c7984a0d9223a3b319",
+    "semantic_hash": ""
+  },
+  "server/index.js": {
+    "mtime": 1782886529.5078406,
+    "ast_hash": "26d719bbee7681b4b223c33391a8c531",
+    "semantic_hash": ""
+  },
+  "server/package.json": {
+    "mtime": 1782886529.5080428,
+    "ast_hash": "5f46bab39a33009653bd9f5e1e058ea0",
+    "semantic_hash": ""
+  },
+  "src/__tests__/LoginForm.test.tsx": {
+    "mtime": 1782886476.9762783,
+    "ast_hash": "28af9ec6af6645dc1549fb14d236d4e6",
+    "semantic_hash": ""
+  },
+  "src/__tests__/setup.ts": {
+    "mtime": 1782886476.9766414,
+    "ast_hash": "00e47f7b9836e8f731101981fa2bb2de",
+    "semantic_hash": ""
+  },
+  "src/components/LoginForm.tsx": {
+    "mtime": 1782886428.207175,
+    "ast_hash": "37bd000628d0e99df0cc3914d3fbc25a",
+    "semantic_hash": ""
+  },
+  "docs/agents/__general__.md": {
+    "mtime": 1782886533.3829489,
+    "ast_hash": "dc2552f78ef799619039b537f3afc435",
+    "semantic_hash": ""
+  },
+  "docs/api-login-contract.md": {
+    "mtime": 1782886345.4862244,
+    "ast_hash": "a3577e64f25dfcfc098a94ef9f76c488",
+    "semantic_hash": ""
+  },
+  "docs/api-summary.md": {
+    "mtime": 1782886405.4333863,
+    "ast_hash": "328fcd7779fbaf6d2dc650f171df0c9c",
+    "semantic_hash": ""
+  },
+  "docs/code-review-report.md": {
+    "mtime": 1782886514.596786,
+    "ast_hash": "e816c7aab7aa2f8c5191c7540c9b5fc2",
+    "semantic_hash": ""
+  },
+  "docs/frontend-implementation.md": {
+    "mtime": 1782887000.2546813,
+    "ast_hash": "cb45ee0d346b81466f354695a27792f3",
+    "semantic_hash": ""
+  },
+  "docs/prd.md": {
+    "mtime": 1782886345.4872146,
+    "ast_hash": "eaabc14b09c08f615bec2026f47e5060",
+    "semantic_hash": ""
+  },
+  "docs/qa-report.md": {
+    "mtime": 1782887010.7106879,
+    "ast_hash": "14f621bb1d8790061cd3ed24f20425f5",
+    "semantic_hash": ""
+  },
+  "docs/release-plan.md": {
+    "mtime": 1782886529.5085363,
+    "ast_hash": "16d930d527f720d44ad25b74b9f8028f",
+    "semantic_hash": ""
+  },
+  "docs/sprint-backlog.md": {
+    "mtime": 1782886345.4870415,
+    "ast_hash": "01409b600daa06d2a0fd68af9e048c8b",
+    "semantic_hash": ""
+  },
+  "docs/ui-login-design.md": {
+    "mtime": 1782886370.474264,
+    "ast_hash": "f133fef3316090c301d8d494f75dc33b",
+    "semantic_hash": ""
+  },
+  "docs/ui-ux-spec.md": {
+    "mtime": 1782886972.384773,
+    "ast_hash": "699a7d4d762414c05311eb2de236b5e3",
+    "semantic_hash": ""
+  },
+  "docs/wbs.md": {
+    "mtime": 1782886945.540421,
+    "ast_hash": "3addad4a773e7616c5ee9ed0897448f3",
+    "semantic_hash": ""
+  },
+  "frontend/index.html": {
+    "mtime": 1782887000.2533615,
+    "ast_hash": "ee6b061a25d9514c29d28a8aec3a423d",
+    "semantic_hash": ""
+  }
+}

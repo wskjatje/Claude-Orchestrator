@@ -1,4 +1,5 @@
-import { isValidElement, type ReactNode } from "react";
+import { isValidElement, useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,9 @@ function MarkdownCodeBlock({
   const text = extractPlainText(children).replace(/\n$/, "");
   const isBlock = Boolean(codeClass?.includes("language-"));
   const isDiff = Boolean(codeClass?.includes("language-diff"));
+  const lineCount = text.split("\n").length;
+  const collapsible = isBlock && lineCount > 4;
+  const [expanded, setExpanded] = useState(false);
 
   if (!isBlock) {
     return (
@@ -72,16 +76,46 @@ function MarkdownCodeBlock({
       <div className="absolute right-2 top-2 z-10 opacity-0 transition group-hover/code:opacity-100">
         <CopyTextButton text={text} size="xs" className="bg-background/95" />
       </div>
-      <pre
+      <div
         className={cn(
-          "overflow-x-auto rounded-lg border border-border/60 bg-code-bg px-3 py-2.5 pr-16 font-mono text-[length:var(--font-size-sm)] leading-relaxed text-foreground",
-          isDiff && "chat-diff-block",
+          "overflow-hidden rounded-lg border border-border/60 bg-code-bg",
+          collapsible && !expanded && "max-h-[calc(4*1.45em+20px)]",
         )}
       >
-        <code className={cn("block whitespace-pre", codeClass && !isDiff && codeClass)} {...props}>
-          {isDiff ? diffBody : children}
-        </code>
-      </pre>
+        <pre
+          className={cn(
+            "overflow-x-auto px-3 py-2.5 pr-16 font-mono text-[length:var(--font-size-sm)] leading-relaxed text-foreground",
+            isDiff && "chat-diff-block",
+            collapsible && !expanded && "overflow-hidden",
+          )}
+        >
+          <code className={cn("block whitespace-pre", codeClass && !isDiff && codeClass)} {...props}>
+            {isDiff ? diffBody : children}
+          </code>
+        </pre>
+        {collapsible && !expanded ? (
+          <div className="relative">
+            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-background to-transparent" />
+            <button
+              type="button"
+              className="flex w-full items-center justify-center gap-1 border-0 px-0 pb-1 pt-4 text-[11px] text-muted-foreground hover:text-foreground"
+              onClick={() => setExpanded(true)}
+            >
+              <ChevronDown className="h-3 w-3" />
+              展开全部
+            </button>
+          </div>
+        ) : collapsible && expanded ? (
+          <button
+            type="button"
+            className="flex w-full items-center justify-center gap-1 border-0 px-0 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+            onClick={() => setExpanded(false)}
+          >
+            <ChevronDown className="h-3 w-3 rotate-180" />
+            收起
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

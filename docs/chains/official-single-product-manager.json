@@ -8,7 +8,7 @@
   "official": true,
   "userModified": false,
   "createdAt": "2026-06-14T03:15:16.998Z",
-  "updatedAt": "2026-06-30T09:28:07.184Z",
+  "updatedAt": "2026-07-03T06:31:13.030Z",
   "state": {
     "status": "idle",
     "currentIndex": 0,
@@ -16,7 +16,7 @@
       {
         "agentName": "product-manager",
         "taskId": "PRD-1",
-        "instruction": "【Agent】global://product-manager（~/.claude/agents/product-manager.md）\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】\n1. 目标用户与核心场景\n2. 可测试验收标准\n3. 非目标与待确认项\n\n【禁止】不写 WBS、不写代码/UI 稿\n\n【READ】No fixed upstream md. Pre-injected workspace state available.\n\n【PATH】`docs/prd.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://product-manager（~/.claude/agents/product-manager.md）\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】\n1. 目标用户与核心场景\n2. 可测试验收标准\n3. 非目标与待确认项\n\n【禁止】不写 WBS、不写代码/UI 稿\n\n【READ】No fixed upstream md. Pre-injected workspace state available.\n\n【PATH】`docs/prd.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "product-req-clarify",
           "product-acceptance-criteria",

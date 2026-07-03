@@ -22,7 +22,9 @@ function normalizeWorkspaceWriteItem(item: unknown): { path: string; content: st
       ? o.path
       : typeof o.file === 'string'
         ? o.file
-        : ''
+        : typeof o.filePath === 'string'
+          ? o.filePath
+          : ''
   const p = rel.trim()
   if (!p) return null
   const content = o.content != null ? String(o.content) : ''
@@ -197,6 +199,7 @@ export async function ingestAssistantWorkspaceWrites(
   desktop: DesktopApi,
   assistantText: string,
   onToast?: (msg: string) => void,
+  meta?: { agentStem?: string; autoWriteProject?: boolean },
 ): Promise<{ n: number; paths: string[] }> {
   const fenceBlocks = findWorkspaceWriteBlocks(assistantText)
   const items = parseWorkspaceWriteFences(assistantText)
@@ -205,7 +208,41 @@ export async function ingestAssistantWorkspaceWrites(
       '识别到 workspace-write 围栏，但内部 JSON 解析失败（常见于正文含未转义的引号、或非合法 JSON）。PRD 若在 content 里含 Markdown 代码块，仍须是**合法 JSON 字符串**（换行用 \\n）。可缩短正文或拆成多个文件再写。',
     )
   }
-  if (!items.length) return { n: 0, paths: [] }
+  if (!items.length) {
+    // 无 workspace-write 围栏时，尝试解析其它 JSON 围栏（向后兼容模型输出不规范的情况）
+    const fallback = parseWorkspaceWriteItemsFromBubble(assistantText)
+    if (fallback.length) {
+      try {
+        const res2 = await desktop.workspaceApplyWriteFence(fallback)
+        if (res2?.written?.length) {
+          return { n: res2.written.length, paths: res2.written }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    // 最终兜底：交给服务端 ingestTextAndApplyWorkspaceWrite，它完整支持
+    // extractCodeFenceWrites / extractOrderedPathCodeWrites / extractJsonPathContentWrites，
+    // 能够解析各种语言代码块（tsx/jsx/html/css 等）和含路径标注的代码段。
+    // 所有 Agent 均可通过此路径正常落盘，不受格式限制。
+    if (typeof desktop.workspaceIngestFromAssistantText === 'function') {
+      try {
+        const res3 = await desktop.workspaceIngestFromAssistantText({
+          text: assistantText,
+          agentName: meta?.agentStem,
+          ensureAgentArtifact: false,
+          ensureChainArtifact: false,
+          autoWriteProject: meta?.autoWriteProject,
+        })
+        if (res3?.written?.length) {
+          return { n: res3.written.length, paths: res3.written }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    return { n: 0, paths: [] }
+  }
   try {
     const res = await desktop.workspaceApplyWriteFence(items)
     if (res?.written?.length) {
@@ -222,8 +259,30 @@ export async function ingestAssistantWorkspaceWrites(
   return { n: 0, paths: [] }
 }
 
+/** 去掉无路径标注的长代码块，保留短代码片段（≤4行，如命令示例）；防止刷屏 */
+export function stripRedundantCodeBlocks(text: string, maxLines = 4): string {
+  if (!text) return text
+  let out = text
+  const re = /```\w*\s*\n([\s\S]*?)```/gi
+  const removals: { start: number; end: number; lines: number }[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const inner = m[1] || ''
+    const lineCount = inner.split('\n').length
+    if (lineCount > maxLines) {
+      removals.push({ start: m.index, end: m.index + m[0].length, lines: lineCount })
+    }
+  }
+  for (let i = removals.length - 1; i >= 0; i--) {
+    const { start, end } = removals[i]
+    out = out.slice(0, start) + out.slice(end)
+  }
+  return out.replace(/\n{3,}/g, '\n\n').trim()
+}
+
 /**
  * 已成功写入磁盘后，将助手回复折叠为简短说明，禁止把转义后的巨型 JSON 留在聊天历史。
+ * 同时移除冗余代码块（文件内容已在 workspace-write fence 中写入），避免全量代码块刷屏。
  */
 export function collapseWorkspaceWriteForHistory(
   fullText: string,
@@ -233,6 +292,7 @@ export function collapseWorkspaceWriteForHistory(
   let stripped = fullText.replace(/\n*【工作区已写入】[\s\S]*$/u, '').trim()
   stripped = stripped.replace(/\n*【未落盘】[\s\S]*$/u, '').trim()
   stripped = stripWorkspaceWriteFencesForHistory(stripped)
+  stripped = stripRedundantCodeBlocks(stripped)
   const list = writtenPaths.map((p) => `- \`${p}\``).join('\n')
   const summary = `【工作区已写入】共 ${writtenPaths.length} 个文件：\n${list}`
   if (stripped.length > 0) {
@@ -266,14 +326,14 @@ export async function ingestWorkspaceWritesAndCollapseDisplay(
   // 单聊模式：所有 Agent 仅响应显式 workspace-write fence
   // 自动写默认路径和嗅探"已写入"的兜底不再执行
   // 任务链执行不受影响，走 ingestChainStepWorkspaceWrites
-  const ing = await ingestAssistantWorkspaceWrites(desktop, assistantText, onToast)
+  const ing = await ingestAssistantWorkspaceWrites(desktop, assistantText, onToast, meta)
   if (ing.n > 0 && ing.paths.length > 0) {
     return collapseWorkspaceWriteForHistory(assistantText, ing.paths)
   }
   if (looksLikeFakeWorkspaceWriteClaim(assistantText)) {
     onToast?.('检测到回复中含「已写入」等表述，但本轮无合法 workspace-write 围栏，未执行写盘。')
   }
-  return assistantText
+  return stripRedundantCodeBlocks(assistantText)
 }
 
 /** 任务链/WBS 每步：先解析 workspace-write；若无则客户端直接写 chain artifact，不再 RPC 到服务端 */
@@ -284,7 +344,10 @@ export async function ingestChainStepWorkspaceWrites(
   onToast?: (msg: string) => void,
 ): Promise<{ displayText: string; writtenPaths: string[] }> {
   // Step 1: 解析 workspace-write fence
-  const ing = await ingestAssistantWorkspaceWrites(desktop, assistantText, onToast)
+  const ing = await ingestAssistantWorkspaceWrites(desktop, assistantText, onToast, {
+    autoWriteProject: true,
+    agentStem: meta.agentName,
+  })
   let written = ing.paths
   if (ing.n > 0 && written.length > 0) {
     return {
@@ -293,9 +356,9 @@ export async function ingestChainStepWorkspaceWrites(
     }
   }
 
-  // Step 2: 无 fence → 系统自动落盘到该 Agent 的预设产物路径，不再需要模型操心写格式
+  // Step 2: 无 fence → 不重复写盘（若服务端已返回折叠后的 displayText 则跳过）
   const body = assistantText.trim()
-  if (body && meta.taskId) {
+  if (body && meta.taskId && !assistantText.includes('【工作区已写入】')) {
     const chainPath = defaultArtifactPathForAgent(meta.agentName)
     try {
       const res = await desktop.workspaceApplyWriteFence([
@@ -320,7 +383,7 @@ export async function ingestChainStepWorkspaceWrites(
       '检测到回复中含「工作区已写入」表述，但本轮无合法 workspace-write 围栏，未写盘。',
     )
   }
-  return { displayText: assistantText, writtenPaths: written }
+  return { displayText: stripRedundantCodeBlocks(assistantText), writtenPaths: written }
 }
 
 /**
@@ -329,7 +392,7 @@ export async function ingestChainStepWorkspaceWrites(
  */
 export function stripLargeAssistantArtifacts(text: string, maxInnerLen = 2000): string {
   if (!text || typeof text !== 'string') return text
-  const fenceRe = /```(?:json)?\s*([\s\S]*?)```/gi
+  const fenceRe = /```\w*\s*\n([\s\S]*?)```/gi
   const removals: { start: number; end: number }[] = []
   let m: RegExpExecArray | null
   while ((m = fenceRe.exec(text)) !== null) {

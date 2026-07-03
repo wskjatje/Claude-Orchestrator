@@ -16,7 +16,11 @@ type UsageAnalyticsSectionProps = {
   onRangeChange: (range: UsageRangePreset) => void;
 };
 
-export function UsageAnalyticsSection({ id = "usage", range, onRangeChange }: UsageAnalyticsSectionProps) {
+export function UsageAnalyticsSection({
+  id = "usage",
+  range,
+  onRangeChange,
+}: UsageAnalyticsSectionProps) {
   const { agg, loading, reload } = useUsageStats(range);
 
   const totalMsgs = (agg?.msgUser ?? 0) + (agg?.msgAssistant ?? 0);
@@ -28,11 +32,7 @@ export function UsageAnalyticsSection({ id = "usage", range, onRangeChange }: Us
   );
 
   return (
-    <OverviewSection
-      id={id}
-      title="用量统计"
-      description={USAGE_SECTION_DESC}
-    >
+    <OverviewSection id={id} title="用量统计" description={USAGE_SECTION_DESC}>
       <OverviewToolbar onRefresh={() => void reload(true)} refreshing={loading}>
         <OverviewSegmented
           value={range}
@@ -50,11 +50,7 @@ export function UsageAnalyticsSection({ id = "usage", range, onRangeChange }: Us
   );
 }
 
-function buildUsageKpis(
-  agg: UsageStatsSummary | null,
-  totalMsgs: number,
-  hideMsgKpi: boolean,
-) {
+function buildUsageKpis(agg: UsageStatsSummary | null, totalMsgs: number, hideMsgKpi: boolean) {
   const a = agg;
   const tp = a?.throughputTokPerSec;
   const avg = a?.avgTokPerMsg;
@@ -64,6 +60,22 @@ function buildUsageKpis(
   const cloudCost = a?.cloudCostFormatted ?? "$0.00";
   const cliCost = a?.cliCostUsd ?? 0;
   const sessionCost = a?.sessionCloudCostUsd ?? 0;
+
+  // 按模型分解费用
+  const perModel = a?.perModel || {};
+  const fmtCost = (usd: number, cur?: string) => {
+    if (usd <= 0.0001) return "$0";
+    const s = usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2);
+    return cur && cur !== "USD" ? `$${s} [${cur}]` : `$${s}`;
+  };
+  const perModelParts = Object.entries(perModel)
+    .filter(([, d]) => d.cloudCostUsd > 0.0001 || d.cloudTotalTok > 0)
+    .sort(([, a], [, b]) => b.cloudCostUsd - a.cloudCostUsd)
+    .map(([m, d]) => {
+      const c = fmtCost(d.cloudCostUsd, d.currency);
+      const t = d.cloudTotalTok > 0 ? formatTokenCount(d.cloudTotalTok) : "";
+      return t ? `${m}: ${c}, ${t}` : `${m}: ${c}`;
+    });
 
   const usageCaption =
     (a?.apiTurns ?? 0) > 0 && (a?.totalTok ?? 0) === 0
@@ -77,15 +89,27 @@ function buildUsageKpis(
       label: "云端费用",
       value: cloudCost,
       caption:
-        cliCost > 0 || sessionCost > 0
-          ? `CLI ${cliCost > 0 ? `$${cliCost.toFixed(2)}` : "$0"} + 落库 ${sessionCost > 0 ? `$${sessionCost.toFixed(4)}` : "$0"}`
-          : "基于 ~/.claude/projects 与单价表",
+        perModelParts.length > 0
+          ? perModelParts.join(" · ")
+          : cliCost > 0 || sessionCost > 0
+            ? `CLI ${cliCost > 0 ? `$${cliCost.toFixed(2)}` : "$0"} + 落库 ${sessionCost > 0 ? `$${sessionCost.toFixed(4)}` : "$0"}`
+            : "基于 ~/.claude/projects 与单价表",
       hint: "Claude Code CLI jsonl 与 usage 合并估算。",
     },
     {
       label: "云端 Token",
       value: (a?.cloudTotalTok ?? 0) > 0 ? formatTokenCount(a?.cloudTotalTok ?? 0) : "—",
-      caption: `${a?.cloudTurns ?? 0} 次云端回合`,
+      caption:
+        perModelParts.length > 0
+          ? `${a?.cloudTurns ?? 0} 次云端回合 · ${
+              Object.values(perModel).reduce((s, d) => s + d.cloudTotalTok, 0) > 0
+                ? Object.entries(perModel)
+                    .filter(([, d]) => d.cloudTotalTok > 0)
+                    .map(([m, d]) => `${m}: ${formatTokenCount(d.cloudTotalTok)}`)
+                    .join(" · ")
+                : ""
+            }`
+          : `${a?.cloudTurns ?? 0} 次云端回合`,
       hint: "云端模型 API 调用 token 汇总。",
       soft: (a?.cloudTotalTok ?? 0) === 0,
     },

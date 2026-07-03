@@ -1,0 +1,32 @@
+# 排除通用的文档/图片（需 LLM 提取），但保留 chain-steps（Agent 产出物）
+docs/prd.md
+docs/sprint-backlog.md
+docs/*.mdx
+docs/index.json
+docs/automation/
+docs/claude-code-artifacts/
+*.txt
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.mp4
+*.mov
+
+# 无关目录
+node_modules/
+web/node_modules/
+desktop/node_modules/
+server/vendor/
+web/dist/
+web/dist-electron/
+desktop/release/
+desktop/out/
+.git/
+.claudecode/
+.tmp/
+
+# 输出目录自身
+graphify-out/

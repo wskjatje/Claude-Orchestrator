@@ -43,7 +43,7 @@ export const AGENT_ARTIFACT_PATHS: Record<string, string> = {
   "design-persona-walkthrough": "docs/persona-walkthrough-report.md",
   "design-inclusive-visuals-specialist": "docs/inclusive-visuals-notes.md",
   "design-image-prompt-engineer": "docs/image-prompt-library.md",
-  "__general__": "docs/note.md",
+  __general__: "docs/note.md",
 
   // —— 测试（QA 流水线）——
   "testing-api-tester": "docs/testing/api-test-report.md",
@@ -115,11 +115,7 @@ const UPSTREAM_ARTIFACTS: Record<string, string[]> = {
     "docs/ux-architecture.md",
   ],
   "backend-engineer": ["docs/prd.md", "docs/architecture-note.md", "docs/wbs.md"],
-  "qa-engineer": [
-    "docs/prd.md",
-    "docs/frontend-implementation.md",
-    "docs/api-summary.md",
-  ],
+  "qa-engineer": ["docs/prd.md", "docs/frontend-implementation.md", "docs/api-summary.md"],
   "devops-engineer": ["docs/architecture-note.md", "docs/release-plan.md"],
   "code-reviewer": ["docs/frontend-implementation.md", "docs/api-summary.md"],
   "design-ui-designer": ["docs/prd.md", "docs/ux-architecture.md"],
@@ -129,7 +125,9 @@ const UPSTREAM_ARTIFACTS: Record<string, string[]> = {
 };
 
 export function normalizeAgentStem(raw: string): string {
-  const t = String(raw || "").trim().replace(/\\/g, "/");
+  const t = String(raw || "")
+    .trim()
+    .replace(/\\/g, "/");
   const base = t.includes("/") ? t.slice(t.lastIndexOf("/") + 1) : t;
   const lower = base.toLowerCase();
   return lower.endsWith(".md") ? lower.slice(0, -3) : lower;
@@ -188,3 +186,34 @@ export function buildAgentArtifactPathHint(stemRaw: string): string {
   const path = defaultArtifactPathForAgent(stem);
   return `【PATH】\`${path}\``;
 }
+
+/**
+ * 统一的中文 → Agent stem 映射（单真相源）
+ * 用于 WBS 表格解析、自然语言并行意图识别等场景。
+ * 如需新增映射渠道，在此处追加即可。
+ */
+export const CHINESE_TO_AGENT_STEM: Record<string, string> = {
+  产品经理: "product-manager",
+  产品: "product-manager",
+  项目经理: "project-manager",
+  项目: "project-manager",
+  架构师: "software-architect",
+  软件架构师: "software-architect",
+  前端: "frontend-engineer",
+  前端工程师: "frontend-engineer",
+  后端: "backend-engineer",
+  后端工程师: "backend-engineer",
+  测试: "qa-engineer",
+  测试工程师: "qa-engineer",
+  运维: "devops-engineer",
+  运维工程师: "devops-engineer",
+  代码评审: "code-reviewer",
+  代码审查: "code-reviewer",
+  评审: "code-reviewer",
+  reviewer: "code-reviewer",
+  UI: "design-ui-designer",
+  UI设计师: "design-ui-designer",
+  UX: "design-ux-architect",
+  "UI/UX": "ui-ux-designer",
+  "UI/UX设计师": "ui-ux-designer",
+};

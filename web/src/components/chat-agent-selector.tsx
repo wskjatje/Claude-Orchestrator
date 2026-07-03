@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
 import {
   DropdownMenu,
@@ -6,11 +6,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getDesktop } from "@/lib/desktop-api";
-import { agentStemFromBasename, GENERAL_AGENT_DISPLAY_NAME, isAutoAgentBasename } from "@/lib/agent-basename";
 import {
-  agentMatchesDisplayQuery,
-  resolveAgentDisplayName,
-} from "@/lib/agent-display-name";
+  agentStemFromBasename,
+  GENERAL_AGENT_DISPLAY_NAME,
+  isAutoAgentBasename,
+} from "@/lib/agent-basename";
+import { agentMatchesDisplayQuery, resolveAgentDisplayName } from "@/lib/agent-display-name";
 import { dedupeAgentRowsByStem } from "@/lib/dedupe-agent-rows";
 import { cn } from "@/lib/utils";
 
@@ -35,56 +36,85 @@ type Props = {
 
 export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Props) {
   const [agents, setAgents] = useState<AgentRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const isAuto = isAutoAgentBasename(agentBasename);
   const activeStem = isAuto ? "" : agentStemFromBasename(agentBasename);
 
   const reload = useCallback(async () => {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setIsLoading(true);
+    setAgents([]);
     const api = getDesktop();
-    if (!api?.listClaudeAgentMarkdown) return;
-    const r = await api.listClaudeAgentMarkdown();
-    if (!r.ok || !r.items?.length) return;
-    setAgents(
-      dedupeAgentRowsByStem(
-        r.items.map((row) => {
-          const displayName =
-            row.displayName?.trim() ||
-            resolveAgentDisplayName({
-              stem: row.stem,
+    if (!api?.listClaudeAgentMarkdown) {
+      setIsLoading(false);
+      return;
+    }
+    try {
+      const r = await api.listClaudeAgentMarkdown();
+      if (ctrl.signal.aborted) return;
+      if (!r.ok || !r.items?.length) {
+        setIsLoading(false);
+        return;
+      }
+      setAgents(
+        dedupeAgentRowsByStem(
+          r.items.map((row) => {
+            const displayName =
+              row.displayName?.trim() ||
+              resolveAgentDisplayName({
+                stem: row.stem,
+                basename: row.basename,
+                name: row.name,
+                nameZh: row.nameZh,
+                heading: row.heading,
+                description: row.description,
+              });
+            return {
               basename: row.basename,
+              stem: row.stem,
+              description: row.description ?? "",
+              displayName,
               name: row.name,
               nameZh: row.nameZh,
               heading: row.heading,
-              description: row.description,
-            });
-          return {
-            basename: row.basename,
-            stem: row.stem,
-            description: row.description ?? "",
-            displayName,
-            name: row.name,
-            nameZh: row.nameZh,
-            heading: row.heading,
-            source: row.source,
-          };
-        }),
-      ),
-    );
+              source: row.source,
+            };
+          }),
+        ),
+      );
+      setIsLoading(false);
+    } catch {
+      if (!ctrl.signal.aborted) setIsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
   const activeAgent = agents.find((a) => a.stem === activeStem);
-  const subtitle = isAuto
+  const subtitle = isAuto ? GENERAL_AGENT_DISPLAY_NAME : (activeAgent?.displayName ?? activeStem);
+  const buttonLabel = isAuto
     ? GENERAL_AGENT_DISPLAY_NAME
-    : (activeAgent?.displayName ?? activeStem);
-  const buttonLabel = isAuto ? GENERAL_AGENT_DISPLAY_NAME : ((activeAgent?.displayName ?? activeStem) || GENERAL_AGENT_DISPLAY_NAME);
+    : (activeAgent?.displayName ?? activeStem) || GENERAL_AGENT_DISPLAY_NAME;
 
   const q = query.trim().toLowerCase();
-  const showAuto = !q || q.includes("auto") || q.includes("agent") || q.includes("自动") || q.includes("关键词") || q.includes("通用");
+  const showAuto =
+    !q ||
+    q.includes("auto") ||
+    q.includes("agent") ||
+    q.includes("自动") ||
+    q.includes("关键词") ||
+    q.includes("通用");
 
   const filteredAgents = useMemo(() => {
     if (!q) return agents;
@@ -173,11 +203,11 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
             >
               <div className="min-w-0 flex-1">
                 <div className="font-medium">Auto</div>
-                <div className="text-[10.5px] text-muted-foreground">
-                  Auto 模式 · 不设角色限制
-                </div>
+                <div className="text-[10.5px] text-muted-foreground">Auto 模式 · 不设角色限制</div>
               </div>
-              {isAuto ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={2.25} /> : null}
+              {isAuto ? (
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={2.25} />
+              ) : null}
             </button>
           ) : null}
 
@@ -214,8 +244,14 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
             })
           ) : agents.length ? (
             <p className="px-3 py-4 text-center text-[12px] text-muted-foreground">无匹配 Agent</p>
+          ) : isLoading ? (
+            <p className="flex items-center justify-center gap-2 px-3 py-4 text-center text-[12px] text-muted-foreground">
+              正在加载…
+            </p>
           ) : (
-            <p className="px-3 py-4 text-center text-[12px] text-muted-foreground">未扫描到 Agent 文件</p>
+            <p className="px-3 py-4 text-center text-[12px] text-muted-foreground">
+              未扫描到 Agent 文件
+            </p>
           )}
         </div>
       </DropdownMenuContent>

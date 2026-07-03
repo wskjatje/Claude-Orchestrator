@@ -4,7 +4,11 @@
  */
 
 import { defaultArtifactPathForAgent } from "@/lib/agent-artifact-paths";
-import { buildChainStepReadBlock, buildChainStepWriteBlock } from "@/lib/chain-step-instruction";
+import {
+  buildChainStepReadBlock,
+  buildChainStepWriteBlock,
+  MUST_DO,
+} from "@/lib/chain-step-instruction";
 import { allSkillFilesForAgentStems, skillFileStemsForAgent } from "@/lib/agent-skill-defaults";
 
 export type ChainTemplateVarKey = "projectName" | "featureDesc" | "featureSummary";
@@ -79,7 +83,7 @@ function step(
   return {
     agentName: stem,
     taskId,
-    instruction: `${stepAgentHeader(stem)}\n${body}\n\n${buildChainStepReadBlock(stem)}\n\n${buildChainStepWriteBlock(stem)}`,
+    instruction: `${stepAgentHeader(stem)}\n${body}\n\n${buildChainStepReadBlock(stem)}\n\n${buildChainStepWriteBlock(stem)}\n\n${MUST_DO}`,
     skills: skillsOverride ?? skillFileStemsForAgent(stem),
   };
 }

@@ -22,6 +22,7 @@ function expandUserPath(p) {
 /**
  * 将 workspace-write 的 path 解析为工作区内的绝对路径。
  * 拒绝 ..；绝对路径须落在工作区内。
+ * 使用 fs.realpathSync 解析符号链接防止逃逸。
  * 本地模型常把 `/Users/.../TO1/foo` 写成 `Users/.../TO1/foo`，会在项目下误建 Users/ 目录——此处归一化为相对路径。
  * @param {string} workspaceDir
  * @param {string} relPath
@@ -31,7 +32,9 @@ function resolveSafeWorkspacePath(workspaceDir, relPath) {
   let p = expandUserPath(relPath)
   if (!p || p.includes('..')) return null
 
-  const root = path.resolve(workspaceDir)
+  let root
+  try { root = path.resolve(fs.realpathSync(workspaceDir)) }
+  catch { return null }
   const rootPrefix = root.endsWith(path.sep) ? root : root + path.sep
 
   if (path.isAbsolute(p)) {
@@ -82,7 +85,9 @@ function applyWorkspaceWriteFenceItems(workspaceDir, items) {
         ? item.path
         : typeof item?.file === 'string'
           ? item.file
-          : ''
+          : typeof item?.filePath === 'string'
+            ? item.filePath
+            : ''
     const content = item?.content != null ? String(item.content) : ''
     const abs = resolveSafeWorkspacePath(workspaceDir, rel)
     if (!abs) {
@@ -97,7 +102,18 @@ function applyWorkspaceWriteFenceItems(workspaceDir, items) {
       errors.push(`${rel || '?'}: ${e?.message || String(e)}`)
     }
   }
-  if (written.length > 0) appendWorkspaceArtifactLog(written)
+  if (written.length > 0) {
+    appendWorkspaceArtifactLog(written)
+    // 追加写盘日志供 node-status-tracker 使用
+    try {
+      const logPath = path.join(workspaceDir, 'graphify-out', '.chain_writes.log')
+      fs.mkdirSync(path.dirname(logPath), { recursive: true })
+      const line = `[${new Date().toISOString()}] ${written.join(', ')}\n`
+      fs.appendFileSync(logPath, line, 'utf8')
+    } catch (e) {
+      console.warn("[workspace-write] 写盘日志追加失败", e?.message || e);
+    }
+  }
   return { ok: written.length > 0, written, errors: errors.length ? errors : undefined }
 }
 
@@ -376,11 +392,11 @@ function extractJsonPathContentWrites(text) {
     try {
       const parsed = JSON.parse(jsonStr)
       const pushItem = (it) => {
-        const p = String(it?.path || '').replace(/\\/g, '/')
+        const rawPath = String(it?.path || it?.filePath || it?.file || '').replace(/\\/g, '/')
         const content = it?.content != null ? String(it.content) : ''
-        if (!p || p.includes('..') || !content.trim() || seen.has(p)) return
-        seen.add(p)
-        items.push({ path: p, content: content.endsWith('\n') ? content : `${content}\n` })
+        if (!rawPath || rawPath.includes('..') || !content.trim() || seen.has(rawPath)) return
+        seen.add(rawPath)
+        items.push({ path: rawPath, content: content.endsWith('\n') ? content : `${content}\n` })
       }
       if (Array.isArray(parsed)) {
         for (const it of parsed) pushItem(it)
@@ -411,13 +427,16 @@ function collectWritableItemsFromText(body, meta) {
 
   if (!autoWriteProject || !body.trim()) return []
 
+  /** 统一路径读取：兼顾 path/file/filePath */
+  const getPath = (it) => String(it?.path || it?.filePath || it?.file || '').replace(/\\/g, '/')
+
   const merged = new Map()
   for (const it of [
     ...extractOrderedPathCodeWrites(body),
     ...extractJsonPathContentWrites(body),
     ...extractCodeFenceWrites(body),
   ]) {
-    const p = String(it?.path || '').replace(/\\/g, '/')
+    const p = getPath(it)
     if (!p || p.includes('..') || !String(it?.content ?? '').trim()) continue
     merged.set(p, it)
   }
@@ -577,9 +596,25 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
     const extracted = [...merged.values()]
     if (extracted.length > 0) {
       const r = applyWorkspaceWriteFenceItems(workspaceDir, extracted)
+      // 有代码被提取写入后，额外将 Agent 输出的正文（去除 workspace-write 围栏后的可读内容）
+      // 写入 Agent 的默认产物路径，确保链回路也能保留每步说明性输出
+      let allWritten = r.written || []
+      if (agentName) {
+        const docRel = defaultArtifactPathForAgent(agentName)
+        if (docRel) {
+          const docBody = stripFakeWorkspaceWriteClaims(stripWorkspaceWriteFencesForDisplay(body))
+          if (docBody.trim().length > 80) {
+            const docWr = applyWorkspaceWriteFenceItems(workspaceDir, [{ path: docRel, content: docBody.trim() }])
+            if (docWr.written?.length) {
+              allWritten = [...new Set([...allWritten, ...docWr.written])]
+            }
+          }
+        }
+      }
       return {
         ...r,
-        displayText: collapseWrittenSummary(body, r.written, { claimedPaths }),
+        written: allWritten,
+        displayText: collapseWrittenSummary(body, allWritten, { claimedPaths }),
       }
     }
     if (agentName && body.trim().length > 80) {

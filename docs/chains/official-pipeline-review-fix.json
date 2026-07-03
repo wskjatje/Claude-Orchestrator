@@ -8,7 +8,7 @@
   "official": true,
   "userModified": false,
   "createdAt": "2026-06-14T03:15:16.998Z",
-  "updatedAt": "2026-06-30T09:28:07.184Z",
+  "updatedAt": "2026-07-03T06:31:13.030Z",
   "state": {
     "status": "idle",
     "currentIndex": 0,
@@ -16,7 +16,7 @@
       {
         "agentName": "code-reviewer",
         "taskId": "FIX-0",
-        "instruction": "【Agent】global://code-reviewer（~/.claude/agents/code-reviewer.md）\n【任务】全量评审 src/ 与 server/；输出分级问题清单\n\n【READ】Read upstream artifacts first (pre-injected): `docs/frontend-implementation.md`, `docs/api-summary.md`.\n\n【PATH】`docs/code-review-report.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://code-reviewer（~/.claude/agents/code-reviewer.md）\n【任务】全量评审 src/ 与 server/；输出分级问题清单\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/frontend-implementation.md`, `docs/api-summary.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/code-review-report.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "security-review",
           "correctness-review",
@@ -28,7 +28,7 @@
       {
         "agentName": "frontend-engineer",
         "taskId": "FIX-1",
-        "instruction": "【Agent】global://frontend-engineer（~/.claude/agents/frontend-engineer.md）\n【输入】`docs/code-review-report.md`\n【交付】按对话中已确认的范围、验收标准与工作区相关文档执行。\n\n【任务】修复评审中的阻塞/高优先级前端问题（若无前端问题则说明跳过）\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/architecture-note.md`, `docs/ui-spec.md`, `docs/ux-architecture.md`.\n\n【PATH】`docs/frontend-implementation.md`\n【CODE WRITE】Code→src/ via ```workspace-write```. Your doc reply is auto-saved.",
+        "instruction": "【Agent】global://frontend-engineer（~/.claude/agents/frontend-engineer.md）\n【输入】`docs/code-review-report.md`\n【交付】按对话中已确认的范围、验收标准与工作区相关文档执行。\n\n【任务】修复评审中的阻塞/高优先级前端问题（若无前端问题则说明跳过）\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`, `docs/architecture-note.md`, `docs/ui-spec.md`, `docs/ux-architecture.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/frontend-implementation.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "frontend-implementation",
           "ui-interaction-optimization",
@@ -42,7 +42,7 @@
       {
         "agentName": "qa-engineer",
         "taskId": "FIX-2",
-        "instruction": "【Agent】global://qa-engineer（~/.claude/agents/qa-engineer.md）\n【输入】`docs/code-review-report.md`\n\n【任务】对修复项复验并更新 QA 结论\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`, `docs/frontend-implementation.md`, `docs/api-summary.md`.\n\n【PATH】`docs/qa-report.md` — Produce structured markdown. Your full reply is auto-saved here.",
+        "instruction": "【Agent】global://qa-engineer（~/.claude/agents/qa-engineer.md）\n【输入】`docs/code-review-report.md`\n\n【任务】对修复项复验并更新 QA 结论\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`, `docs/frontend-implementation.md`, `docs/api-summary.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/qa-report.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
         "skills": [
           "test-strategy",
           "automated-test-cases",

@@ -44,7 +44,11 @@ import {
   stripLargeAssistantArtifacts,
 } from "@/lib/assistant-reply";
 import { parseActiveChainFromBubbleText } from "@/lib/parse-active-chain";
-import { autoSaveChainFromReply, notifyAutoSavedChain, saveChainFromBubbleText } from "@/lib/auto-save-chain-from-reply";
+import {
+  autoSaveChainFromReply,
+  notifyAutoSavedChain,
+  saveChainFromBubbleText,
+} from "@/lib/auto-save-chain-from-reply";
 import {
   formatWbsChainSyncAssistantReply,
   parseWbsChainIntent,
@@ -58,6 +62,11 @@ import { syncOfficialGenericChains } from "@/lib/sync-official-chains";
 import { buildAgentChainCatalogMarkdown } from "@/lib/agent-chain-catalog";
 import { parseChainCommand } from "@/lib/parse-chain-command";
 import { resolveAgentForTurn } from "@/lib/resolve-agent-for-turn";
+import { parseParallelIntent } from "@/lib/parse-parallel-intent";
+import {
+  ParallelDispatchDialog,
+  type ParallelDispatchConfig,
+} from "@/components/parallel-dispatch-dialog";
 import { resolveAgentDisplayName } from "@/lib/agent-display-name";
 import { maybeToastMissingWorkspaceWrite } from "@/lib/maybe-toast-workspace-write";
 import { restoreUserMsgToComposer } from "@/lib/restore-user-composer";
@@ -73,15 +82,35 @@ import {
 } from "@/lib/project-preview";
 import { isOpenTerminalMessage } from "@/lib/workspace-terminal-client";
 import { defaultArtifactPathForAgent } from "@/lib/agent-artifact-paths";
-import { expandUserLineWithWorkspaceFiles, preReadInstructedWorkspaceFiles, buildDocsFileListHint } from "@/lib/expand-user-line-workspace-files";
+import {
+  expandUserLineWithWorkspaceFiles,
+  preReadInstructedWorkspaceFiles,
+  buildDocsFileListHint,
+} from "@/lib/expand-user-line-workspace-files";
 import { buildAgentRoutedInstruction } from "@/lib/agent-skill-routing";
 import { buildSubagentUserLine, parseAgentCommand } from "@/lib/parse-agent-command";
 import { toast } from "sonner";
 import {
-  Plus, Zap, PenLine, Code2, Image as ImageIcon, Presentation, Play, MoreHorizontal,
-  Send, X, Check,
-  ArrowLeftRight, Flashlight, Disc, Music, CheckSquare, PieChart, Sparkle,
-  ChevronDown, PanelRightOpen,
+  Plus,
+  Zap,
+  PenLine,
+  Code2,
+  Image as ImageIcon,
+  Presentation,
+  Play,
+  MoreHorizontal,
+  Send,
+  X,
+  Check,
+  ArrowLeftRight,
+  Flashlight,
+  Disc,
+  Music,
+  CheckSquare,
+  PieChart,
+  Sparkle,
+  ChevronDown,
+  PanelRightOpen,
   MessageCircle,
 } from "lucide-react";
 import { ChatComposerCursor } from "@/components/chat-composer-cursor";
@@ -236,8 +265,18 @@ function mergeSessionsPreferLongerHistory(
         lastUserMessageTs(l.history) >= lastUserMessageTs(d.history));
     merged.push(
       keepLocal
-        ? { ...l, title: l.title || d.title, modelId: d.modelId || l.modelId, workspacePath: l.workspacePath || d.workspacePath }
-        : { ...d, title: d.title || l.title, modelId: d.modelId || l.modelId, workspacePath: d.workspacePath || l.workspacePath },
+        ? {
+            ...l,
+            title: l.title || d.title,
+            modelId: d.modelId || l.modelId,
+            workspacePath: l.workspacePath || d.workspacePath,
+          }
+        : {
+            ...d,
+            title: d.title || l.title,
+            modelId: d.modelId || l.modelId,
+            workspacePath: d.workspacePath || l.workspacePath,
+          },
     );
     localById.delete(d.id);
   }
@@ -277,7 +316,12 @@ function shortenLegacyChainUserBubbleForDisplay(raw: string): string {
         .split("\n")
         .find((l) => {
           const s = l.trim();
-          return s.length > 0 && !/^【任务上下文】/.test(s) && !/^【执行约束】/.test(s) && !/^【自动路由】/.test(s);
+          return (
+            s.length > 0 &&
+            !/^【任务上下文】/.test(s) &&
+            !/^【执行约束】/.test(s) &&
+            !/^【自动路由】/.test(s)
+          );
         })
         ?.replace(/\s+/g, " ")
         .trim()
@@ -287,7 +331,11 @@ function shortenLegacyChainUserBubbleForDisplay(raw: string): string {
   }
   const claude = t.match(/【任务链 Agent 路由】global:\/\/(\S+)（任务\s*([^）]+)）/);
   if (claude) {
-    const line = t.split("\n").find((l) => l.trim().startsWith("【任务】"))?.trim().slice(0, 120);
+    const line = t
+      .split("\n")
+      .find((l) => l.trim().startsWith("【任务】"))
+      ?.trim()
+      .slice(0, 120);
     return `【任务链】${claude[1]} · ${claude[2].trim()}${line ? `\n${line}${line.length >= 120 ? "…" : ""}` : ""}`;
   }
   const local = t.match(/^\/agent\s+(\S+)\s*（任务\s*([^）]+)）/);
@@ -299,7 +347,6 @@ function shortenLegacyChainUserBubbleForDisplay(raw: string): string {
   }
   return raw;
 }
-
 
 function lastAgentStemFromHistory(hist: DiskMsg[]): string | undefined {
   for (let i = hist.length - 1; i >= 0; i--) {
@@ -318,7 +365,7 @@ function assistantBubbleName(
   modelLabel: string,
 ): string {
   const rawModel = m.modelId?.trim();
-  const displayModel = (rawModel && rawModel !== "auto") ? rawModel : modelLabel;
+  const displayModel = rawModel && rawModel !== "auto" ? rawModel : modelLabel;
   if (m.agentStem) {
     const label = m.agentLabel?.trim() || m.agentStem;
     const displayName = m.agentStem === "__general__" ? GENERAL_AGENT_DISPLAY_NAME : label;
@@ -354,7 +401,9 @@ function buildPlainChatPrompt(
     preamble.push(`【工作区】${workspaceDir}`);
   }
   preamble.push("【语言】zh_CN（代码/路径除外）。");
-  preamble.push("【注意】你是普通聊天助手，不是 Agent，没有工具可用，不能读取文件、不能调用终端。请直接回答用户问题。不要输出 XML 工具调用标签。");
+  preamble.push(
+    "【注意】你是普通聊天助手，不是 Agent，没有工具可用，不能读取文件、不能调用终端。请直接回答用户问题。不要输出 XML 工具调用标签。",
+  );
   const preambleText = preamble.join("\n");
   const blocks: string[] = [preambleText];
   for (const m of priorHistory) {
@@ -424,16 +473,13 @@ function priorTurnsToOrchestrationMessages(prior: PriorTurn[]): PriorTurn[] {
 }
 
 /** 将 RPC 失败映射为聊天区可见文案（超时/429 须展示具体原因，勿一律「生成已停止」） */
-function formatAssistantFailure(res: {
-  aborted?: boolean;
-  error?: string | null;
-}): string {
+function formatAssistantFailure(res: { aborted?: boolean; error?: string | null }): string {
   const err = String(res.error || "").trim();
   if (res.aborted || res.error === "请求已取消") {
-    if (err && (/超时|429|配额|模型配置|deepseek|API Key|连接失败/i.test(err))) {
+    if (err && /超时|429|配额|模型配置|deepseek|API Key|连接失败/i.test(err)) {
       return `请求失败：${err}`;
     }
-    if (err && (/已取消|已中止|生成已停止/i.test(err))) {
+    if (err && /已取消|已中止|生成已停止/i.test(err)) {
       return "（生成已停止）";
     }
     if (err && err.length > 24) {
@@ -455,8 +501,11 @@ function genSessionId() {
 function ChatPage() {
   const hasDesktopApi = useHasDesktop();
   const navigate = useNavigate();
-  const { session: urlSessionId, new: urlNewSession, claudeResume: urlClaudeResume } =
-    Route.useSearch();
+  const {
+    session: urlSessionId,
+    new: urlNewSession,
+    claudeResume: urlClaudeResume,
+  } = Route.useSearch();
   const urlSessionHandledRef = useRef<string | null>(null);
   const urlNewHandledRef = useRef(false);
   const urlClaudeResumeHandledRef = useRef<string | null>(null);
@@ -474,12 +523,17 @@ function ChatPage() {
   useEffect(() => {
     chatCtx.syncChatPageMounted(true);
     return () => chatCtx.syncChatPageMounted(false);
-  }, [chatCtx]);// eslint-disable-line
+  }, [chatCtx]); // eslint-disable-line
 
   const [input, setInput] = useState("");
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [chatPanelOpen, setChatPanelOpen] = useState(true);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [parallelDialogOpen, setParallelDialogOpen] = useState(false);
+  const [parallelDialogPreset, setParallelDialogPreset] = useState<string[] | undefined>(undefined);
+  const [parallelDialogDefaultTask, setParallelDialogDefaultTask] = useState<string | undefined>(
+    undefined,
+  );
   const [activeSkill, setActiveSkill] = useState<string>("快速");
   /** 「图像生成」内 图像/视频 分段：选「视频」时工具栏与独立「视频生成」技能一致 */
   const [imageVideoSegment, setImageVideoSegment] = useState<"图像" | "视频">("图像");
@@ -510,22 +564,21 @@ function ChatPage() {
   /** 输入框内待发送的图片（粘贴 / 选图） */
   const [pendingImages, setPendingImages] = useState<(UserImageAttachment & { id: string })[]>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingFileEntry[]>([]);
-  const [pendingTerminalSnippets, setPendingTerminalSnippets] = useState<PendingTerminalSnippet[]>([]);
+  const [pendingTerminalSnippets, setPendingTerminalSnippets] = useState<PendingTerminalSnippet[]>(
+    [],
+  );
   const [editHistoryIndex, setEditHistoryIndex] = useState<number | null>(null);
   const editHistoryIndexRef = useRef<number | null>(null);
 
   // ---- settings 缓存：减少 IPC 重复调用 ----
   type ChatSettings = Awaited<ReturnType<DesktopApi["getChatSettings"]>>;
   const settingsCacheRef = useRef<ChatSettings | null>(null);
-  const getCachedSettings = useCallback(
-    async (api: DesktopApi): Promise<ChatSettings> => {
-      if (settingsCacheRef.current) return settingsCacheRef.current;
-      const s = await api.getChatSettings();
-      settingsCacheRef.current = s;
-      return s;
-    },
-    [],
-  );
+  const getCachedSettings = useCallback(async (api: DesktopApi): Promise<ChatSettings> => {
+    if (settingsCacheRef.current) return settingsCacheRef.current;
+    const s = await api.getChatSettings();
+    settingsCacheRef.current = s;
+    return s;
+  }, []);
   useEffect(() => {
     const api = getDesktop();
     if (!api?.onChatSettingsChanged) return;
@@ -637,20 +690,17 @@ function ChatPage() {
     }
   }, []);
 
-  const appendComposerImageFiles = useCallback(
-    async (files: File[], _cursor?: number) => {
-      let startLen = 0;
-      setPendingImages((p) => {
-        startLen = p.length;
-        return p;
-      });
-      const newItems = await normalizePendingImageFiles(files, startLen);
-      if (!newItems.length) return;
-      setPendingImages((p) => [...p, ...newItems]);
-      requestAnimationFrame(() => taRef.current?.focus());
-    },
-    [],
-  );
+  const appendComposerImageFiles = useCallback(async (files: File[], _cursor?: number) => {
+    let startLen = 0;
+    setPendingImages((p) => {
+      startLen = p.length;
+      return p;
+    });
+    const newItems = await normalizePendingImageFiles(files, startLen);
+    if (!newItems.length) return;
+    setPendingImages((p) => [...p, ...newItems]);
+    requestAnimationFrame(() => taRef.current?.focus());
+  }, []);
 
   const onAttachInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -693,24 +743,30 @@ function ChatPage() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const messagesRef = useRef<Msg[]>([]);
   const [sendingSessions, setSendingSessions] = useState<Record<string, boolean>>({});
-  const setSessionSending = useCallback((sessionId: string, value: boolean) => {
-    const prev = sendingSessionsRef.current;
-    const next = !value
-      ? (() => {
-          const { [sessionId]: _removed, ...rest } = prev;
-          return rest;
-        })()
-      : { ...prev, [sessionId]: true };
-    sendingSessionsRef.current = next;
-    setSendingSessions(next);
-    chatCtx.syncSendingSessions(next);
-  }, [chatCtx]);
-  const switchActiveSession = useCallback((id: string) => {
-    activeIdRef.current = id;
-    setActiveId(id);
-    // 直接同步上下文，不依赖 useEffect（可能在组件卸载前未执行）
-    chatCtx.syncActiveId(id);
-  }, [chatCtx]);
+  const setSessionSending = useCallback(
+    (sessionId: string, value: boolean) => {
+      const prev = sendingSessionsRef.current;
+      const next = !value
+        ? (() => {
+            const { [sessionId]: _removed, ...rest } = prev;
+            return rest;
+          })()
+        : { ...prev, [sessionId]: true };
+      sendingSessionsRef.current = next;
+      setSendingSessions(next);
+      chatCtx.syncSendingSessions(next);
+    },
+    [chatCtx],
+  );
+  const switchActiveSession = useCallback(
+    (id: string) => {
+      activeIdRef.current = id;
+      setActiveId(id);
+      // 直接同步上下文，不依赖 useEffect（可能在组件卸载前未执行）
+      chatCtx.syncActiveId(id);
+    },
+    [chatCtx],
+  );
 
   // ---- 同步上下文的流式状态到本地：当上下文确认流已结束时，确保本地状态也清空 ----
   // 解决 ChatPage 跨路由重新挂载时 sendChat 的 finally 块可能尚未清理完成的状态不一致问题。
@@ -727,7 +783,12 @@ function ChatPage() {
       sendingSessionsRef.current = {};
       setSendingSessions({});
     }
-  }, [chatCtx.activeStreamRequestId, chatCtx.sendingSessions, activeStreamRequestId, sendingSessions]);
+  }, [
+    chatCtx.activeStreamRequestId,
+    chatCtx.sendingSessions,
+    activeStreamRequestId,
+    sendingSessions,
+  ]);
 
   // ---- 同步 openTabIds 到上下文，跨路由切换保留 ----
   useEffect(() => {
@@ -811,7 +872,6 @@ function ChatPage() {
     activeId,
     sending: sending || chainRunning,
     streamScrollKey,
-    layoutFreezeDeps: [terminalOpen, leftSidebarOpen, chatPanelOpen],
   });
 
   useChatStream({
@@ -825,8 +885,7 @@ function ChatPage() {
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (!last || last.role !== "assistant") return prev;
-        const nextContent =
-          last.content === "__WAITING__" ? chunk : `${last.content}${chunk}`;
+        const nextContent = last.content === "__WAITING__" ? chunk : `${last.content}${chunk}`;
         const updated = [...prev.slice(0, -1), { ...last, content: nextContent }];
         // 写入 per-session 累积池（切换菜单/对话后 GlobalChatPanel 通过此池恢复）
         chatCtx.syncSessionMessages(activeIdRef.current, updated);
@@ -856,7 +915,13 @@ function ChatPage() {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key !== "`" || (!ev.metaKey && !ev.ctrlKey)) return;
       const t = ev.target;
-      if (t instanceof HTMLElement && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) {
+      if (
+        t instanceof HTMLElement &&
+        (t.isContentEditable ||
+          t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT")
+      ) {
         return;
       }
       ev.preventDefault();
@@ -897,6 +962,7 @@ function ChatPage() {
       workspacePath: workspacePathRef.current,
       composerDrafts: composerDraftsRef.current,
       explicitEmptySessionId: cached?.explicitEmptySessionId ?? null,
+      localAgentBasename: cached?.localAgentBasename,
     });
   }, []);
 
@@ -1063,7 +1129,9 @@ function ChatPage() {
           const asstLine: DiskMsg = { role: "assistant", content: summary, ts: Date.now() };
           const hist = [...sess.history, userLine, asstLine];
           const modelLabel = sess.modelId?.trim() || settings.model || "模型";
-          const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
+          const nextSessions = sessions.map((s) =>
+            s.id === activeId ? { ...s, history: hist } : s,
+          );
           setSessions(nextSessions);
           setMessages(diskToDisplay(hist, modelLabel));
           await persist(nextSessions, activeId);
@@ -1089,57 +1157,63 @@ function ChatPage() {
     [performConfirmWriteForText],
   );
 
-  const handleBubbleGenerateChain = useCallback(async (content: string) => {
-    const api = getDesktop();
-    const r = await saveChainFromBubbleText(api, content);
-    if (!r.ok) {
-      toast.error(r.error, { duration: 5000 });
-      return;
-    }
-    notifyAutoSavedChain(
-      { stepCount: r.stepCount, chainName: r.chainName, wbsPath: r.wbsPath },
-      () => navigate({ to: "/chains", search: { q: "WBS" } }),
-    );
-  }, [navigate]);
-
-  const performBulkWriteProject = useCallback(async (userLineContent: string) => {
-    const api = getDesktop();
-    if (!api) return;
-    const sess = sessions.find((s) => s.id === activeId);
-    if (!sess) return;
-    setStopRequested(false);
-    setSessionSending(activeId, true);
-    try {
-      const res = await performBulkWriteFromHistory(api, sess.history);
-      const userLine: DiskMsg = { role: "user", content: userLineContent, ts: Date.now() };
-      const asstLine: DiskMsg = {
-        role: "assistant",
-        content:
-          res.displayText ||
-          (res.ok
-            ? `【批量落盘】已写入 ${res.written.length} 个文件。`
-            : res.error || "批量落盘未写入任何文件。"),
-        ts: Date.now(),
-        ...(res.ok ? {} : { requestError: true }),
-      };
-      const hist = [...sess.history, userLine, asstLine];
-      const settings = await getCachedSettings(api);
-      const modelLabel = sess.modelId?.trim() || settings.model || "模型";
-      const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
-      setSessions(nextSessions);
-      setMessages(diskToDisplay(hist, modelLabel));
-      await persist(nextSessions, activeId);
-      if (res.ok && res.written.length > 0) {
-        toast.success(`已从 ${res.scanned ?? "?"} 条历史回复写入 ${res.written.length} 个文件`);
-      } else {
-        toast.warning(res.error || "未找到可落盘的代码块");
+  const handleBubbleGenerateChain = useCallback(
+    async (content: string) => {
+      const api = getDesktop();
+      const r = await saveChainFromBubbleText(api, content);
+      if (!r.ok) {
+        toast.error(r.error, { duration: 5000 });
+        return;
       }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSessionSending(activeId, false);
-    }
-  }, [activeId, sessions, persist]);
+      notifyAutoSavedChain(
+        { stepCount: r.stepCount, chainName: r.chainName, wbsPath: r.wbsPath },
+        () => navigate({ to: "/chains", search: { q: "WBS" } }),
+      );
+    },
+    [navigate],
+  );
+
+  const performBulkWriteProject = useCallback(
+    async (userLineContent: string) => {
+      const api = getDesktop();
+      if (!api) return;
+      const sess = sessions.find((s) => s.id === activeId);
+      if (!sess) return;
+      setStopRequested(false);
+      setSessionSending(activeId, true);
+      try {
+        const res = await performBulkWriteFromHistory(api, sess.history);
+        const userLine: DiskMsg = { role: "user", content: userLineContent, ts: Date.now() };
+        const asstLine: DiskMsg = {
+          role: "assistant",
+          content:
+            res.displayText ||
+            (res.ok
+              ? `【批量落盘】已写入 ${res.written.length} 个文件。`
+              : res.error || "批量落盘未写入任何文件。"),
+          ts: Date.now(),
+          ...(res.ok ? {} : { requestError: true }),
+        };
+        const hist = [...sess.history, userLine, asstLine];
+        const settings = await getCachedSettings(api);
+        const modelLabel = sess.modelId?.trim() || settings.model || "模型";
+        const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
+        setSessions(nextSessions);
+        setMessages(diskToDisplay(hist, modelLabel));
+        await persist(nextSessions, activeId);
+        if (res.ok && res.written.length > 0) {
+          toast.success(`已从 ${res.scanned ?? "?"} 条历史回复写入 ${res.written.length} 个文件`);
+        } else {
+          toast.warning(res.error || "未找到可落盘的代码块");
+        }
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSessionSending(activeId, false);
+      }
+    },
+    [activeId, sessions, persist],
+  );
 
   const runProjectPreview = useCallback(
     async (userLineContent: string) => {
@@ -1171,7 +1245,11 @@ function ChatPage() {
         if (res.ranInTerminal) toast.success("已在集成终端执行命令");
         else if (res.ok && res.url) {
           // 在浏览器中打开预览 URL
-          try { window.open(res.url, "_blank"); } catch { /* ignore */ }
+          try {
+            window.open(res.url, "_blank");
+          } catch {
+            /* ignore */
+          }
           toast.success("已在系统浏览器打开预览");
         } else if (!res.ok) toast.warning("服务启动失败，请查看错误信息或手动执行");
       } catch (e) {
@@ -1244,12 +1322,23 @@ function ChatPage() {
       workspacePath: workspacePathRef.current,
       composerDrafts: composerDraftsRef.current,
       explicitEmptySessionId: cachedExplicitId ?? null,
+      localAgentBasename: getChatSessionsCache()?.localAgentBasename,
     });
     // 同步 explicitEmptySessionId 到 context，跨路由切换保留
     if (cachedExplicitId) {
       chatCtx.syncExplicitEmptySessionId(cachedExplicitId);
     }
-  }, [hasDesktopApi, urlNewSession, chatCtx.sessions.length, chatCtx.messages.length]);// eslint-disable-line
+
+    // 跨路由切换后恢复 globalModel（当次会话 handleModelPick 已同步到 context）
+    if (chatCtx.globalModel) {
+      setGlobalModel(chatCtx.globalModel);
+    }
+    // 从 sessionStorage 缓存恢复 localAgentBasename（避免异步加载闪动）
+    const cachedAgent = getChatSessionsCache()?.localAgentBasename;
+    if (cachedAgent) {
+      setLocalAgentBasename(cachedAgent);
+    }
+  }, [hasDesktopApi, urlNewSession, chatCtx.sessions.length, chatCtx.messages.length]); // eslint-disable-line
 
   useEffect(() => {
     if (!hasDesktopApi) return;
@@ -1290,7 +1379,8 @@ function ChatPage() {
           localModelCatalog: [],
         };
       }
-      const mode: OrchMode = settings.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
+      const mode: OrchMode =
+        settings.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
       setOrchMode(mode);
       setLocalAgentBasename(settings.localAgentBasename?.trim() ?? "");
 
@@ -1344,7 +1434,10 @@ function ChatPage() {
         try {
           const disk = await api.loadChatSessions();
           const rawActiveByWorkspace = disk.activeByWorkspace ?? { "": disk.activeId || "s0" };
-          const backfilled = backfillSessionWorkspaceFromActiveMap(disk.sessions, rawActiveByWorkspace);
+          const backfilled = backfillSessionWorkspaceFromActiveMap(
+            disk.sessions,
+            rawActiveByWorkspace,
+          );
           if (backfilled !== disk.sessions) diskSessionsBackfilled = true;
           list = backfilled;
           activeByWorkspace = rawActiveByWorkspace;
@@ -1380,7 +1473,7 @@ function ChatPage() {
         chatSessionsCacheMatchesWorkspace(cached.workspacePath, workspace, cached.sessions);
       const explicitEmptyId = cacheMatchesWorkspace
         ? cached.explicitEmptySessionId
-        : chatCtx.explicitEmptySessionId ?? null;
+        : (chatCtx.explicitEmptySessionId ?? null);
 
       if (cacheMatchesWorkspace && cached.sessions.length) {
         list = mergeSessionsPreferLongerHistory(
@@ -1449,9 +1542,7 @@ function ChatPage() {
             const pinnedSess = list.find((s) => s.id === pinned);
             const cachedActive =
               cacheMatchesWorkspace && cached!.activeId ? cached!.activeId : null;
-            const cachedSess = cachedActive
-              ? list.find((s) => s.id === cachedActive)
-              : undefined;
+            const cachedSess = cachedActive ? list.find((s) => s.id === cachedActive) : undefined;
             if (cachedSess && cachedSess.history.length > 0) {
               aid = cachedActive!;
             } else if (pinnedSess && pinnedSess.history.length > 0) {
@@ -1460,9 +1551,7 @@ function ChatPage() {
               aid = cachedActive;
             } else if ((pinnedSess?.history.length ?? 0) === 0) {
               const withHist = sortSessionsByLatest(
-                filterSessionsForWorkspaceTabs(list, workspace).filter(
-                  (s) => s.history.length > 0,
-                ),
+                filterSessionsForWorkspaceTabs(list, workspace).filter((s) => s.history.length > 0),
               );
               if (withHist[0]) aid = withHist[0].id;
               else aid = pinned;
@@ -1480,7 +1569,10 @@ function ChatPage() {
 
       if (cached?.explicitEmptySessionId === aid) {
         markExplicitEmptyChatSession(aid);
-      } else if (cached?.explicitEmptySessionId && list.some((s) => s.id === cached.explicitEmptySessionId)) {
+      } else if (
+        cached?.explicitEmptySessionId &&
+        list.some((s) => s.id === cached.explicitEmptySessionId)
+      ) {
         // 显式创建的空会话仍存在，保留标记以便跨 reload 保护
         markExplicitEmptyChatSession(cached.explicitEmptySessionId);
       } else {
@@ -1516,7 +1608,9 @@ function ChatPage() {
       // 优先从 context 恢复已打开的标签页（跨路由切换保留）
       const ctxTabIds = chatCtx.openTabIds;
       if (ctxTabIds.length > 0 && ctxTabIds.some((tid) => list.some((s) => s.id === tid))) {
-        const merged = [...new Set([...ctxTabIds, aid])].filter((tid) => list.some((s) => s.id === tid));
+        const merged = [...new Set([...ctxTabIds, aid])].filter((tid) =>
+          list.some((s) => s.id === tid),
+        );
         setOpenTabIds(merged);
       } else {
         setOpenTabIds([aid]);
@@ -1529,8 +1623,8 @@ function ChatPage() {
         activeByWorkspace: activeByWorkspaceRef.current,
         workspacePath: workspacePathRef.current,
         composerDrafts: composerDraftsRef.current,
-        explicitEmptySessionId:
-          getChatSessionsCache()?.explicitEmptySessionId === aid ? aid : null,
+        explicitEmptySessionId: getChatSessionsCache()?.explicitEmptySessionId === aid ? aid : null,
+        localAgentBasename: getChatSessionsCache()?.localAgentBasename,
       });
       const explicitId = getChatSessionsCache()?.explicitEmptySessionId;
       if (explicitId) chatCtx.syncExplicitEmptySessionId(explicitId);
@@ -1574,10 +1668,13 @@ function ChatPage() {
   /** 离开聊天页时写入内存缓存并落盘，避免切换侧栏后丢失会话与草稿 */
   useEffect(() => {
     if (!hasDesktopApi) return;
-      return () => {
+    return () => {
       if (!sessionsHydratedRef.current) return;
       // 如果任何会话有进行中的流请求，skip persist（sendChat 会通过 patchSession 落盘最终数据）
-      if (chatCtx.activeRequestIdsRef.current.size > 0 || Object.keys(sendingSessionsRef.current).length > 0) {
+      if (
+        chatCtx.activeRequestIdsRef.current.size > 0 ||
+        Object.keys(sendingSessionsRef.current).length > 0
+      ) {
         return;
       }
       // 不在清理时清除 activeStreamRequestId/sending，GlobalChatPanel 需要它们继续处理流式更新
@@ -1595,6 +1692,7 @@ function ChatPage() {
         workspacePath: workspacePathRef.current,
         composerDrafts: composerDraftsRef.current,
         explicitEmptySessionId: cached?.explicitEmptySessionId ?? null,
+        localAgentBasename: cached?.localAgentBasename,
       });
       // 同步 openTabIds 到 context，跨路由切换保留标签页状态
       chatCtx.syncOpenTabIds(openTabIds);
@@ -1602,16 +1700,17 @@ function ChatPage() {
     };
   }, [hasDesktopApi, persist]);
 
-
   /** 从设置页返回、供应商同步或 Bridge 恢复后重新拉取模型列表 */
   useEffect(() => {
     if (!hasDesktopApi) return;
     const api = getDesktop();
     if (!api) return;
     const sync = () => {
-      void api.getChatSettings().then((s) =>
-        setOrchMode(s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code"),
-      );
+      void api
+        .getChatSettings()
+        .then((s) =>
+          setOrchMode(s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code"),
+        );
       void loadChatModelPools(api).then((pools) => {
         setOrchestratorModels(pools.cloudModels);
         setLocalOllamaTags(pools.localModels);
@@ -1651,8 +1750,14 @@ function ChatPage() {
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (!popRef.current?.contains(e.target as Node)) {
-        setSpeedOpen(false); setLengthOpen(false); setRatioOpen(false); setMoreOpen(false);
-        setStyleOpen(false); setTplOpen(false); setImgModelOpen(false); setVidModelOpen(false);
+        setSpeedOpen(false);
+        setLengthOpen(false);
+        setRatioOpen(false);
+        setMoreOpen(false);
+        setStyleOpen(false);
+        setTplOpen(false);
+        setImgModelOpen(false);
+        setVidModelOpen(false);
       }
     };
     document.addEventListener("mousedown", onClick);
@@ -1693,8 +1798,7 @@ function ChatPage() {
   const activeSession =
     visibleSessions.find((s) => s.id === activeId) ?? sessions.find((s) => s.id === activeId);
   const projectHistoryItems = useMemo(
-    () =>
-      visibleSessions.filter((s) => s.history.length > 0).map((s) => toChatHistoryListItem(s)),
+    () => visibleSessions.filter((s) => s.history.length > 0).map((s) => toChatHistoryListItem(s)),
     [visibleSessions],
   );
   const allHistoryItems = useMemo(
@@ -1724,6 +1828,11 @@ function ChatPage() {
     setLocalAgentBasename(nextBasename);
     const s = await api.getChatSettings();
     await api.saveChatSettings({ ...fullChatSettingsPayload(s), localAgentBasename: nextBasename });
+    // 同步到 sessionStorage 缓存，确保跨路由切换后立即恢复
+    const cached = getChatSessionsCache();
+    if (cached) {
+      setChatSessionsCache({ ...cached, localAgentBasename: nextBasename });
+    }
   };
 
   const handleModelPick = async (pick: { mode: OrchMode; model: string }) => {
@@ -1761,6 +1870,8 @@ function ChatPage() {
     const next = sessions.map((s) => (s.id === activeId ? { ...s, modelId: nextModel } : s));
     setSessions(next);
     setGlobalModel(nextModel);
+    chatCtx.syncSessions(next);
+    chatCtx.syncGlobalModel(nextModel);
     const s = await api.getChatSettings();
     await api.saveChatSettings({ ...fullChatSettingsPayload(s), model: nextModel });
     await persist(next, activeId);
@@ -1845,7 +1956,9 @@ function ChatPage() {
     // 优先从 context 恢复已打开的标签页（跨路由切换保留），否则回退到仅打开活跃会话
     const ctxTabIds = chatCtx.openTabIds;
     if (ctxTabIds.length > 0 && ctxTabIds.some((tid) => list.some((s) => s.id === tid))) {
-      const merged = [...new Set([...ctxTabIds, cached.activeId])].filter((tid) => list.some((s) => s.id === tid));
+      const merged = [...new Set([...ctxTabIds, cached.activeId])].filter((tid) =>
+        list.some((s) => s.id === tid),
+      );
       setOpenTabIds(merged);
     } else {
       setOpenTabIds([cached.activeId]);
@@ -1861,14 +1974,15 @@ function ChatPage() {
       // 如果 ChatPage 正在恢复流状态，不覆盖消息
       if (streamInProgressRef.current) return;
       let merged: ChatSession[] = [];
-      const _preserve1 = getChatSessionsCache()?.explicitEmptySessionId || chatCtx.explicitEmptySessionId;
+      const _preserve1 =
+        getChatSessionsCache()?.explicitEmptySessionId || chatCtx.explicitEmptySessionId;
       const preserveIds1: string[] | undefined = _preserve1 ? [_preserve1] : undefined;
       setSessions((prev) => {
         merged = mergeSessionsPreferLongerHistory(prev, disk.sessions, sendingSessionsRef.current);
-        merged = backfillSessionWorkspaceFromActiveMap(
-          merged,
-          { ...disk.activeByWorkspace, ...activeByWorkspaceRef.current },
-        );
+        merged = backfillSessionWorkspaceFromActiveMap(merged, {
+          ...disk.activeByWorkspace,
+          ...activeByWorkspaceRef.current,
+        });
         merged = pruneDuplicateEmptySessions(
           merged,
           workspacePathRef.current,
@@ -1892,12 +2006,15 @@ function ChatPage() {
         workspacePath: workspacePathRef.current,
         composerDrafts: composerDraftsRef.current,
         explicitEmptySessionId: cached?.explicitEmptySessionId ?? null,
+        localAgentBasename: cached?.localAgentBasename,
       });
       const viewId = activeIdRef.current;
       if (sendingSessionsRef.current[viewId]) return;
       const sess =
         merged.find((s) => s.id === viewId) ??
-        merged.find((s) => s.history.length > 0 && sessionMatchesWorkspaceTab(s, workspacePathRef.current));
+        merged.find(
+          (s) => s.history.length > 0 && sessionMatchesWorkspaceTab(s, workspacePathRef.current),
+        );
       if (sess) syncMessagesFromSession(sess);
     } catch {
       /* ignore */
@@ -1912,32 +2029,33 @@ function ChatPage() {
     void api.loadChatSessions().then((disk) => {
       // 关闭会话后刚切换了目标会话，旧闭包的 loadChatSessions 应跳过，
       // 防止 ctxHasBetter 因陈旧 chatCtx.activeId 失效而走到 syncMessagesFromSession 覆盖正确消息
-      if (closingSessionTargetRef.current && closingSessionTargetRef.current === activeIdRef.current) {
+      if (
+        closingSessionTargetRef.current &&
+        closingSessionTargetRef.current === activeIdRef.current
+      ) {
         closingSessionTargetRef.current = null;
         return;
       }
       // 如果 context 有该活动会话的更新数据（流进行中、或已有 assistant 回复），跳过磁盘覆盖
-      const ctxHasBetter = activeIdRef.current && chatCtx.activeId === activeIdRef.current &&
-        chatCtx.messages.length > 0 && (
-          chatCtx.activeStreamRequestId !== null ||
-          chatCtx.messages.some((m) => m.role === "assistant" && m.content !== "__WAITING__")
-        );
+      const ctxHasBetter =
+        activeIdRef.current &&
+        chatCtx.activeId === activeIdRef.current &&
+        chatCtx.messages.length > 0 &&
+        (chatCtx.activeStreamRequestId !== null ||
+          chatCtx.messages.some((m) => m.role === "assistant" && m.content !== "__WAITING__"));
       if (ctxHasBetter) {
         return;
       }
       let merged: ChatSession[] = [];
-      const _preserve2 = getChatSessionsCache()?.explicitEmptySessionId || chatCtx.explicitEmptySessionId;
+      const _preserve2 =
+        getChatSessionsCache()?.explicitEmptySessionId || chatCtx.explicitEmptySessionId;
       const preserveIds2: string[] | undefined = _preserve2 ? [_preserve2] : undefined;
       setSessions((prev) => {
-        merged = mergeSessionsPreferLongerHistory(
-          prev,
-          disk.sessions,
-          sendingSessionsRef.current,
-        );
-        merged = backfillSessionWorkspaceFromActiveMap(
-          merged,
-          { ...disk.activeByWorkspace, ...activeByWorkspaceRef.current },
-        );
+        merged = mergeSessionsPreferLongerHistory(prev, disk.sessions, sendingSessionsRef.current);
+        merged = backfillSessionWorkspaceFromActiveMap(merged, {
+          ...disk.activeByWorkspace,
+          ...activeByWorkspaceRef.current,
+        });
         merged = pruneDuplicateEmptySessions(
           merged,
           workspacePathRef.current,
@@ -2036,31 +2154,57 @@ function ChatPage() {
     { icon: MoreHorizontal, label: "更多" },
   ];
 
-  const skillConfig: Record<string, { placeholder: string; chipIcon: typeof Zap; chipColor: string }> = {
-    "快速": { placeholder: "发送消息或输入 '/' 选择技能", chipIcon: Zap, chipColor: "text-amber-500" },
-    "帮我写作": { placeholder: "输入主题和写作要求…", chipIcon: PenLine, chipColor: "text-primary" },
-    "编程": { placeholder: "输入「@」唤起常用语，或粘贴代码快速提问…", chipIcon: Code2, chipColor: "text-primary" },
-    "图像生成": { placeholder: "描述你想要的图片，可附参考图…", chipIcon: ImageIcon, chipColor: "text-primary" },
-    "PPT 生成": { placeholder: "输入主题，添加具体要求和参考…", chipIcon: Presentation, chipColor: "text-primary" },
+  const skillConfig: Record<
+    string,
+    { placeholder: string; chipIcon: typeof Zap; chipColor: string }
+  > = {
+    快速: {
+      placeholder: "发送消息或输入 '/' 选择技能",
+      chipIcon: Zap,
+      chipColor: "text-amber-500",
+    },
+    帮我写作: { placeholder: "输入主题和写作要求…", chipIcon: PenLine, chipColor: "text-primary" },
+    编程: {
+      placeholder: "输入「@」唤起常用语，或粘贴代码快速提问…",
+      chipIcon: Code2,
+      chipColor: "text-primary",
+    },
+    图像生成: {
+      placeholder: "描述你想要的图片，可附参考图…",
+      chipIcon: ImageIcon,
+      chipColor: "text-primary",
+    },
+    "PPT 生成": {
+      placeholder: "输入主题，添加具体要求和参考…",
+      chipIcon: Presentation,
+      chipColor: "text-primary",
+    },
     /** 技能横条中的独立「视频生成」入口（与「图像生成 → 视频」分段不同） */
-    "视频生成": { placeholder: "添加照片，描述你想生成的视频…", chipIcon: Play, chipColor: "text-primary" },
+    视频生成: {
+      placeholder: "添加照片，描述你想生成的视频…",
+      chipIcon: Play,
+      chipColor: "text-primary",
+    },
   };
 
   const composerPlaceholder = COMPOSER_PLACEHOLDER;
 
-  const appendEditComposerImageFiles = useCallback(async (files: File[], _cursor?: number) => {
-    const startLen = editComposer?.pendingImages.length ?? 0;
-    const newItems = await normalizePendingImageFiles(files, startLen);
-    if (!newItems.length) return;
-    setEditComposer((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        pendingImages: [...prev.pendingImages, ...newItems],
-      };
-    });
-    requestAnimationFrame(() => inlineTaRef.current?.focus());
-  }, [editComposer?.pendingImages.length]);
+  const appendEditComposerImageFiles = useCallback(
+    async (files: File[], _cursor?: number) => {
+      const startLen = editComposer?.pendingImages.length ?? 0;
+      const newItems = await normalizePendingImageFiles(files, startLen);
+      if (!newItems.length) return;
+      setEditComposer((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          pendingImages: [...prev.pendingImages, ...newItems],
+        };
+      });
+      requestAnimationFrame(() => inlineTaRef.current?.focus());
+    },
+    [editComposer?.pendingImages.length],
+  );
 
   /** 拖拽统一处理：图片 → 缩略图；非图片 → 文件 chip */
   const handleComposerDropFiles = useCallback(
@@ -2097,21 +2241,24 @@ function ChatPage() {
     [appendEditComposerImageFiles],
   );
 
-  const handleInlineComposerPaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    const imageFiles: File[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (it.kind !== "file") continue;
-      const f = it.getAsFile();
-      if (f?.type.startsWith("image/")) imageFiles.push(f);
-    }
-    if (!imageFiles.length) return;
-    e.preventDefault();
-    const cursor = e.currentTarget.selectionStart ?? editComposer?.input.length ?? 0;
-    void appendEditComposerImageFiles(imageFiles, cursor);
-  }, [appendEditComposerImageFiles, editComposer?.input.length]);
+  const handleInlineComposerPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageFiles: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it.kind !== "file") continue;
+        const f = it.getAsFile();
+        if (f?.type.startsWith("image/")) imageFiles.push(f);
+      }
+      if (!imageFiles.length) return;
+      e.preventDefault();
+      const cursor = e.currentTarget.selectionStart ?? editComposer?.input.length ?? 0;
+      void appendEditComposerImageFiles(imageFiles, cursor);
+    },
+    [appendEditComposerImageFiles, editComposer?.input.length],
+  );
 
   const handleComposerPaste = useCallback(
     (e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -2173,6 +2320,7 @@ function ChatPage() {
       workspacePath: workspacePathRef.current,
       composerDrafts: composerDraftsRef.current,
       explicitEmptySessionId: getChatSessionsCache()?.explicitEmptySessionId ?? null,
+      localAgentBasename: getChatSessionsCache()?.localAgentBasename,
     });
     // 直接同步上下文，不依赖 useLayoutEffect（可能在组件卸载前未执行）
     chatCtx.syncSessions(sessionsRef.current);
@@ -2259,7 +2407,12 @@ function ChatPage() {
         const stamped = stampSessionWorkspaceIfMissing(sess, ws);
         let next = sessionsRef.current.map((s) => (s.id === sessionId ? stamped : s));
         const explicitId = getChatSessionsCache()?.explicitEmptySessionId;
-        next = pruneDuplicateEmptySessions(next, ws, sessionId, explicitId ? [explicitId] : undefined);
+        next = pruneDuplicateEmptySessions(
+          next,
+          ws,
+          sessionId,
+          explicitId ? [explicitId] : undefined,
+        );
         sessionsRef.current = next;
         setSessions(next);
         sess = stamped;
@@ -2294,7 +2447,14 @@ function ChatPage() {
       // 直接同步上下文
       chatCtx.syncSessions(sessionsRef.current);
     },
-    [resetScrollFollow, saveComposerDraft, loadComposerDraft, syncMessagesFromSession, persist, chatCtx],
+    [
+      resetScrollFollow,
+      saveComposerDraft,
+      loadComposerDraft,
+      syncMessagesFromSession,
+      persist,
+      chatCtx,
+    ],
   );
   const handleNewSession = async () => {
     if (newSessionInFlightRef.current) return;
@@ -2310,7 +2470,8 @@ function ChatPage() {
 
       const ws = workspacePathRef.current;
       const settings = await getCachedSettings(api);
-      const mode: OrchMode = settings.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
+      const mode: OrchMode =
+        settings.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
       const id = genSessionId();
       const ns: ChatSession = {
         id,
@@ -2400,11 +2561,22 @@ function ChatPage() {
       });
       switchActiveSession(id);
       setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-      setMessages([{ role: "assistant", content: "已绑定 Claude CLI 会话，继续对话将使用 --resume。" }]);
+      setMessages([
+        { role: "assistant", content: "已绑定 Claude CLI 会话，继续对话将使用 --resume。" },
+      ]);
       await persist(next, id);
       navigate({ to: "/", search: EMPTY_CHAT_SEARCH, replace: true });
     })();
-  }, [urlClaudeResume, sessions, hasDesktopApi, activateHistorySession, globalModel, navigate, persist, switchActiveSession]);
+  }, [
+    urlClaudeResume,
+    sessions,
+    hasDesktopApi,
+    activateHistorySession,
+    globalModel,
+    navigate,
+    persist,
+    switchActiveSession,
+  ]);
 
   const handleCloseSession = async (id: string) => {
     const visible = filterSessionsForWorkspaceTabs(sessionsRef.current, workspacePathRef.current);
@@ -2421,12 +2593,16 @@ function ChatPage() {
 
     // 关闭标签页 ≠ 删除对话：保留 session 在内存中，以便历史下拉仍可访问
     const nextActiveCandidates = sessionsRef.current.filter((s) => s.id !== id);
-    const visibleAfter = filterSessionsForWorkspaceTabs(nextActiveCandidates, workspacePathRef.current);
+    const visibleAfter = filterSessionsForWorkspaceTabs(
+      nextActiveCandidates,
+      workspacePathRef.current,
+    );
     const aid =
       id === activeIdRef.current
         ? (sortSessionsByLatest(visibleAfter)[0]?.id ?? visibleAfter[0]?.id ?? "")
         : activeIdRef.current;
-    const _preserve3 = getChatSessionsCache()?.explicitEmptySessionId || chatCtx.explicitEmptySessionId;
+    const _preserve3 =
+      getChatSessionsCache()?.explicitEmptySessionId || chatCtx.explicitEmptySessionId;
     const preserveIds3: string[] | undefined = _preserve3 ? [_preserve3] : undefined;
     // 仅修剪空会话（无历史的），有内容的会话全部保留
     const pruned = pruneDuplicateEmptySessions(
@@ -2444,10 +2620,7 @@ function ChatPage() {
         const ml = targetSess.modelId?.trim() || globalModel || "模型";
         const displayMsgs = diskToDisplay(targetSess.history, ml);
         const welcomeMsg: Msg = { role: "assistant", content: EMPTY_SESSION_WELCOME };
-        const finalMsgs =
-          displayMsgs.length > 0
-            ? displayMsgs
-            : [welcomeMsg];
+        const finalMsgs = displayMsgs.length > 0 ? displayMsgs : [welcomeMsg];
         chatCtx.syncMessages(finalMsgs);
         setMessages(finalMsgs);
       } else {
@@ -2498,13 +2671,12 @@ function ChatPage() {
       .reverse()
       .find(
         (m) =>
-          m.role === "assistant" &&
-          m.content &&
-          m.content !== "__WAITING__" &&
-          !m.requestError,
+          m.role === "assistant" && m.content && m.content !== "__WAITING__" && !m.requestError,
       );
     if (!lastAssistant?.content?.trim()) {
-      toast.error("未找到可用的上一条助手消息（须含 delegation-v1 或 delegate_to / steps 的 JSON）。");
+      toast.error(
+        "未找到可用的上一条助手消息（须含 delegation-v1 或 delegate_to / steps 的 JSON）。",
+      );
       return;
     }
     if (
@@ -2521,10 +2693,11 @@ function ChatPage() {
         rawText: lastAssistant.content,
         orchestratorModel: modelId,
       });
-      let nextHist = [...hist];
+      const nextHist = [...hist];
       nextHist.push({
         role: "user",
-        content: "【Multi-Agent Runtime】/delegation-run — 解析上一条助手气泡中的 delegation-v1 并顺序执行子 Agent",
+        content:
+          "【Multi-Agent Runtime】/delegation-run — 解析上一条助手气泡中的 delegation-v1 并顺序执行子 Agent",
         ts: Date.now(),
       });
       if (!r.ok) {
@@ -2590,13 +2763,91 @@ function ChatPage() {
     }
   }, [activeId, persist, sessions, localOllamaTags, orchestratorModels]);
 
+  const runParallelDelegation = useCallback(
+    async (config: ParallelDispatchConfig) => {
+      const api = getDesktop();
+      if (!api?.multiAgentExecuteParallel) {
+        toast.error("请完全退出并重启桌面应用以加载并行执行功能。");
+        return;
+      }
+      const sess = sessions.find((s) => s.id === activeId);
+      if (!sess) return;
+      const settings = await getCachedSettings(api);
+      const modelId = sess.modelId?.trim() || settings.model?.trim() || "";
+      const hist = [...(sess.history || [])];
+
+      setSessionSending(activeId, true);
+      try {
+        hist.push({
+          role: "user",
+          content: `【并行执行】以下任务将同时分发给 ${config.agents.length} 个 Agent：${config.agents.join("、")}\n\n${config.task}`,
+          ts: Date.now(),
+        });
+        const nextSessions0 = sessions.map((s) =>
+          s.id === activeId ? { ...s, history: hist } : s,
+        );
+        setSessions(nextSessions0);
+        setMessages(diskToDisplay(hist, modelId));
+        await persist(nextSessions0, activeId);
+
+        const r = await api.multiAgentExecuteParallel({
+          agents: config.agents,
+          task: config.task,
+          modelId,
+          needSynthesis: config.needSynthesis,
+          synthesisStem: config.synthesisStem,
+        });
+
+        let block = `【并行执行结果】${r.totalElapsed ? `（耗时 ${Math.round(r.totalElapsed / 1000)}s）` : ""}\n\n`;
+        for (const output of r.outputs ?? []) {
+          if (output.ok) {
+            const raw = String(output.output ?? "").trim();
+            if (raw) {
+              maybeToastMissingWorkspaceWrite(raw);
+              const chainIngest = await ingestChainStepWorkspaceWrites(
+                api,
+                raw,
+                { agentName: output.agentName, taskId: "parallel" },
+                toastIngestWorkspaceHint,
+              );
+              const collapsed = stripLargeAssistantArtifacts(chainIngest.displayText);
+              block += `### ${output.agentName} ✅\n${collapsed}\n\n`;
+            } else {
+              block += `### ${output.agentName} ✅\n（无正文输出）\n\n`;
+            }
+          } else {
+            block += `### ${output.agentName} ❌\n失败：${output.error ?? ""}\n\n`;
+          }
+        }
+        if (r.synthesis?.output) {
+          const synCollapsed = stripLargeAssistantArtifacts(r.synthesis.output);
+          block += `### 汇总\n${synCollapsed}\n`;
+        }
+        hist.push({
+          role: "assistant",
+          content: stripLargeAssistantArtifacts(block.trim()),
+          ts: Date.now(),
+        });
+        const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
+        setSessions(nextSessions);
+        setMessages(diskToDisplay(hist, modelId));
+        await persist(nextSessions, activeId);
+        toast.success("并行执行完成（见最新消息）。");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSessionSending(activeId, false);
+      }
+    },
+    [activeId, persist, sessions],
+  );
+
   const sendChat = async () => {
     const override = sendPayloadOverrideRef.current;
     if (override) sendPayloadOverrideRef.current = null;
 
     const editDraft = editComposerRef.current;
-    const editingFromInline =
-      !override && editHistoryIndexRef.current != null && editDraft != null;
+    const editingFromInline = !override && editHistoryIndexRef.current != null && editDraft != null;
 
     const text = (override?.text ?? (editingFromInline ? editDraft.input : input)).trim();
     const activePendingImages =
@@ -2611,7 +2862,11 @@ function ChatPage() {
     const hasTerminal = activePendingTerminal.length > 0;
     const hasFiles = activePendingFiles.length > 0;
     const sendSessionId = activeIdRef.current;
-    if ((!text && !activePendingImages.length && !activePendingFiles.length && !hasTerminal) || sendingSessionsRef.current[sendSessionId]) return;
+    if (
+      (!text && !activePendingImages.length && !activePendingFiles.length && !hasTerminal) ||
+      sendingSessionsRef.current[sendSessionId]
+    )
+      return;
     const wsKeySend = workspaceSessionKey(workspacePathRef.current);
     if (wsKeySend) {
       activeByWorkspaceRef.current = {
@@ -2626,6 +2881,7 @@ function ChatPage() {
       workspacePath: workspacePathRef.current,
       composerDrafts: composerDraftsRef.current,
       explicitEmptySessionId: getChatSessionsCache()?.explicitEmptySessionId ?? null,
+      localAgentBasename: getChatSessionsCache()?.localAgentBasename,
     });
     const api = getDesktop();
     if (!api) {
@@ -2645,7 +2901,13 @@ function ChatPage() {
     if (wbsIntent.matched && activePendingImages.length === 0 && !hasTerminal && !hasFiles) {
       setInput("");
       if (wbsIntent.action === "generate-wbs") {
-        sendPayloadOverrideRef.current = { text: WBS_GENERATE_PM_PROMPT, pendingImages: [], pendingFiles: [], pendingTerminalSnippets: [], editCutoff: 0 };
+        sendPayloadOverrideRef.current = {
+          text: WBS_GENERATE_PM_PROMPT,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingTerminalSnippets: [],
+          editCutoff: 0,
+        };
         await sendChat();
         return;
       }
@@ -2655,12 +2917,50 @@ function ChatPage() {
         recordUserLine: text,
       });
       if (syncResult && !syncResult.ok) {
-        await appendLocalChatExchange(sendSessionId, text, `未能生成任务链：${syncResult.error}`);
+        // 未找到现有 WBS 时自动降级为生成流程，保留用户原文作为上下文
+        sendPayloadOverrideRef.current = {
+          text: `${text}\n\n${WBS_GENERATE_PM_PROMPT}`,
+          pendingImages: [],
+          pendingFiles: [],
+          pendingTerminalSnippets: [],
+          editCutoff: 0,
+        };
+        await sendChat();
+        return;
       }
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && parseChainCommand(text).matched) {
+    const parallelIntent = parseParallelIntent(text);
+    if (parallelIntent.matched) {
+      setInput("");
+      if (
+        parallelIntent.targetAgents.length >= 2 &&
+        activePendingImages.length === 0 &&
+        !hasTerminal &&
+        !hasFiles
+      ) {
+        // 有明确的多 Agent 目标 → 直接弹对话框确认后执行
+        setParallelDialogPreset(parallelIntent.targetAgents);
+        setParallelDialogDefaultTask(parallelIntent.rawTask || undefined);
+        setParallelDialogOpen(true);
+      } else if (text.startsWith("/parallel")) {
+        // 空 /parallel → 弹出选人对话框
+        setParallelDialogPreset(undefined);
+        setParallelDialogDefaultTask(undefined);
+        setParallelDialogOpen(true);
+      }
+      // 自然语言但 Agent 不足 2 个 → 忽略并行意图，走正常对话
+      return;
+    }
+
+    if (
+      text &&
+      activePendingImages.length === 0 &&
+      !hasTerminal &&
+      !hasFiles &&
+      parseChainCommand(text).matched
+    ) {
       setInput("");
       const route = resolveAgentForTurn(text, localAgentBasename);
       let chainTitle = sess.title;
@@ -2668,10 +2968,7 @@ function ChatPage() {
         const t = text.trim();
         chainTitle = t.length > 28 ? `${t.slice(0, 28)}…` : t;
       }
-      const hist = [
-        ...sess.history,
-        { role: "user" as const, content: text, ts: Date.now() },
-      ];
+      const hist = [...sess.history, { role: "user" as const, content: text, ts: Date.now() }];
       const settings = await getCachedSettings(api);
       const modelLabel = sess.modelId?.trim() || settings.model || "模型";
       const nextSessions = sessionsRef.current.map((s) =>
@@ -2685,15 +2982,18 @@ function ChatPage() {
       clearExplicitEmptyChatSessionIf(sendSessionId);
       chatCtx.syncExplicitEmptySessionId(null);
       await pruneWorkspaceSessions(sendSessionId);
-      const chainResult = await handleChainChatCommand(
-        text,
-        route.stem,
-        (opts) => runOrchestrationChain({ ...opts, pinnedSessionId: sendSessionId }),
+      const chainResult = await handleChainChatCommand(text, route.stem, (opts) =>
+        runOrchestrationChain({ ...opts, pinnedSessionId: sendSessionId }),
       );
       if (!chainResult.handled) return;
       const histWithReply = [
         ...hist,
-        { role: "assistant" as const, content: chainResult.assistantText, ts: Date.now(), name: "系统" },
+        {
+          role: "assistant" as const,
+          content: chainResult.assistantText,
+          ts: Date.now(),
+          name: "系统",
+        },
       ];
       const finalSessions = sessionsRef.current.map((s) =>
         s.id === sendSessionId ? { ...s, history: histWithReply, title: chainTitle } : s,
@@ -2705,57 +3005,54 @@ function ChatPage() {
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isBulkWriteProjectMessage(text)) {
+    if (
+      text &&
+      activePendingImages.length === 0 &&
+      !hasTerminal &&
+      !hasFiles &&
+      isBulkWriteProjectMessage(text)
+    ) {
       setInput("");
       await performBulkWriteProject(text);
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isStopPreviewMessage(text)) {
+    if (
+      text &&
+      activePendingImages.length === 0 &&
+      !hasTerminal &&
+      !hasFiles &&
+      isStopPreviewMessage(text)
+    ) {
       setInput("");
       const api = getDesktop();
       if (api) {
-        const sess = sessions.find((s) => s.id === activeId);
-        if (sess) {
-          const summary = await performStopPreview(api);
-          const hist = [
-            ...sess.history,
-            { role: "user" as const, content: text, ts: Date.now() },
-            { role: "assistant" as const, content: summary, ts: Date.now() },
-          ];
-          const settings = await getCachedSettings(api);
-          const modelLabel = sess.modelId?.trim() || settings.model || "模型";
-          const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
-          setSessions(nextSessions);
-          setMessages(diskToDisplay(hist, modelLabel));
-          await persist(nextSessions, activeId);
-        }
+        const summary = await performStopPreview(api);
+        await appendLocalChatExchange(activeId, text, summary);
       }
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isOpenTerminalMessage(text)) {
+    if (
+      text &&
+      activePendingImages.length === 0 &&
+      !hasTerminal &&
+      !hasFiles &&
+      isOpenTerminalMessage(text)
+    ) {
       setInput("");
       setTerminalOpen(true);
-      const hist = [
-        ...sess.history,
-        { role: "user" as const, content: text, ts: Date.now() },
-        {
-          role: "assistant" as const,
-          content: "已在底部打开终端面板，工作目录为当前项目根。",
-          ts: Date.now(),
-        },
-      ];
-      const settings = await getCachedSettings(api);
-      const modelLabel = sess.modelId?.trim() || settings.model || "模型";
-      const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
-      setSessions(nextSessions);
-      setMessages(diskToDisplay(hist, modelLabel));
-      await persist(nextSessions, activeId);
+      await appendLocalChatExchange(activeId, text, "已在底部打开终端面板，工作目录为当前项目根。");
       return;
     }
 
-    if (text && activePendingImages.length === 0 && !hasTerminal && !hasFiles && isProjectPreviewMessage(text)) {
+    if (
+      text &&
+      activePendingImages.length === 0 &&
+      !hasTerminal &&
+      !hasFiles &&
+      isProjectPreviewMessage(text)
+    ) {
       setInput("");
       await runProjectPreview(text);
       return;
@@ -2773,14 +3070,14 @@ function ChatPage() {
     const filePrefix = activePendingFiles.length
       ? activePendingFiles.map((f) => `[文件: ${f.name}]`).join("\n") + "\n\n"
       : "";
-    const displayLine = buildComposerUserLine(
-      filePrefix + baseText,
-      activePendingTerminal,
-    );
+    const displayLine = buildComposerUserLine(filePrefix + baseText, activePendingTerminal);
 
     const route = resolveAgentForTurn(displayLine, localAgentBasename);
     // 自动模式（底栏显示「通用」/ 未选择 Agent）：不走 Agent 路由，保持普通聊天
-    const isAgentMode = !isAutoAgentBasename(localAgentBasename) || route.source === "slash" || route.stem === "__general__";
+    const isAgentMode =
+      !isAutoAgentBasename(localAgentBasename) ||
+      route.source === "slash" ||
+      route.stem === "__general__";
     // cmd.stem 在非 Agent 模式下使用无害的标记值 "__auto__"，确保下游代码不报错
     const cmd = isAgentMode
       ? ({ matched: true as const, stem: route.stem, body: route.body } as const)
@@ -2821,8 +3118,7 @@ function ChatPage() {
         : editingFromInline
           ? editHistoryIndexRef.current
           : null;
-    const historyBefore =
-      editCutoff != null ? sess.history.slice(0, editCutoff) : sess.history;
+    const historyBefore = editCutoff != null ? sess.history.slice(0, editCutoff) : sess.history;
     const priorForApi: PriorTurn[] = historyBefore
       .filter((m) => {
         // Auto 模式：过滤掉携带 Agent 标签的旧助手回复（避免跨模式污染）
@@ -2830,18 +3126,18 @@ function ChatPage() {
         return m.role === "user" || !m.agentStem;
       })
       .map((m) => {
-      if (m.role === "user") {
-        const t: PriorTurn = { role: "user", content: m.content };
-        if (m.attachments?.length) t.attachments = m.attachments;
-        return t;
-      }
-      return { role: "assistant", content: m.content };
-    })
-    // __general__ 模式：滤除含 workspace-write fence 的旧助手回复，防止历史污染驱动重复写盘
-    .filter((m): m is PriorTurn => {
-      if (route.stem !== "__general__" || m.role === "user") return true;
-      return !/```workspace-write\b[\s\S]*?```/i.test(m.content);
-    });
+        if (m.role === "user") {
+          const t: PriorTurn = { role: "user", content: m.content };
+          if (m.attachments?.length) t.attachments = m.attachments;
+          return t;
+        }
+        return { role: "assistant", content: m.content };
+      })
+      // __general__ 模式：滤除含 workspace-write fence 的旧助手回复，防止历史污染驱动重复写盘
+      .filter((m): m is PriorTurn => {
+        if (route.stem !== "__general__" || m.role === "user") return true;
+        return !/```workspace-write\b[\s\S]*?```/i.test(m.content);
+      });
 
     let visionEnrichedNote: string | undefined;
     if (
@@ -2909,11 +3205,13 @@ function ChatPage() {
       }
 
       const baseForExpand = route.body;
-      const { expanded: expandedBase, injectedPaths: expandInjectedPaths } = await expandUserLineWithWorkspaceFiles(
-        api,
-        baseForExpand,
-        { settings, cmd, displayLine, chainRunning: chainRunningRef.current },
-      );
+      const { expanded: expandedBase, injectedPaths: expandInjectedPaths } =
+        await expandUserLineWithWorkspaceFiles(api, baseForExpand, {
+          settings,
+          cmd,
+          displayLine,
+          chainRunning: chainRunningRef.current,
+        });
       expandInjectedPathsRef.current = expandInjectedPaths || [];
       const routedBase = buildAgentRoutedInstruction(route.stem, expandedBase, mode, {
         mcpChatToolName: settings.mcpChatToolName || undefined,
@@ -2940,7 +3238,7 @@ function ChatPage() {
           ? `${routedBase}\n\n${chainCatalogSnippet}`
           : routedBase;
       cloudUserLineFinal = buildSubagentUserLine(route.stem, localUserLineFinal);
-      }
+    }
 
     setStopRequested(false);
     setSessionSending(sendSessionId, true);
@@ -2967,7 +3265,7 @@ function ChatPage() {
       title = t.length > 28 ? `${t.slice(0, 28)}…` : t;
       // 立即更新 React 会话状态，让页签立刻显示新标题
       setSessions((prev) => {
-        const next = prev.map((s) => s.id === sendSessionId ? { ...s, title } : s);
+        const next = prev.map((s) => (s.id === sendSessionId ? { ...s, title } : s));
         sessionsRef.current = next;
         return next;
       });
@@ -2978,23 +3276,31 @@ function ChatPage() {
         const _sid = sendSessionId;
         const _model = modelId;
         const _userLine = displayLine;
-        _api.claudeCodePrompt({
-          prompt: `为这个编程对话生成一个简洁的标题（3-8个字）。标题要准确反映用户的请求意图。
+        _api
+          .claudeCodePrompt({
+            prompt: `为这个编程对话生成一个简洁的标题（3-8个字）。标题要准确反映用户的请求意图。
 要求：
 - 使用中文
 - 只返回标题本身，不要任何额外内容、引号或标点
 
 用户的第一条消息：${_userLine.trim().slice(0, 500)}`,
-          model: _model,
-          timeoutMs: 15000,
-        }).then((r) => {
-          if (r.ok && r.content?.trim()) {
-            let nt = r.content.trim().replace(/^["'「」『』\s]|["'「」『』\s]$/g, '').slice(0, 40);
-            if (nt) {
-              void patchSession(_sid, (s) => ({ ...s, title: nt }));
+            model: _model,
+            timeoutMs: 15000,
+          })
+          .then((r) => {
+            if (r.ok && r.content?.trim()) {
+              let nt = r.content
+                .trim()
+                .replace(/^["'「」『』\s]|["'「」『』\s]$/g, "")
+                .slice(0, 40);
+              if (nt) {
+                void patchSession(_sid, (s) => ({ ...s, title: nt }));
+              }
             }
-          }
-        }).catch(() => {/* 保留临时标题 */});
+          })
+          .catch(() => {
+            /* 保留临时标题 */
+          });
       }
     }
     let hist: DiskMsg[] = [...historyBefore, userMsg];
@@ -3113,7 +3419,11 @@ function ChatPage() {
           let finalPrompt = prompt;
           // 非 Agent 模式下不预读文件（避免注入 WBS 等 Agent 产物）
           if (isAgentMode) {
-            const preReadAppendix = await preReadInstructedWorkspaceFiles(api, prompt, expandInjectedPathsRef.current).catch(() => "");
+            const preReadAppendix = await preReadInstructedWorkspaceFiles(
+              api,
+              prompt,
+              expandInjectedPathsRef.current,
+            ).catch(() => "");
             if (preReadAppendix) {
               finalPrompt = `${preReadAppendix}\n\n---\n\n${prompt}`;
             }
@@ -3157,7 +3467,9 @@ function ChatPage() {
         const displayContent =
           stripLargeAssistantArtifacts(
             await ingestWorkspaceWritesAndCollapseDisplay(api, reply, toastIngestWorkspaceHint, {
-              ...(agentStemForIngest ? { agentStem: agentStemForIngest } : {}),
+              ...(agentStemForIngest
+                ? { agentStem: agentStemForIngest, autoWriteProject: true }
+                : { autoWriteProject: true }),
             }),
           ) || "（助手未返回可见正文）";
         const am: DiskMsg = {
@@ -3396,15 +3708,13 @@ function ChatPage() {
   ]);
 
   /** 从工作区 WBS 文档生成项目任务链（可选自动执行） */
-  const runWorkflowFromWbs = async (
-    opts?: {
-      preferredPath?: string;
-      quietPickToast?: boolean;
-      wbsOnly?: boolean;
-      autoRun?: boolean;
-      recordUserLine?: string;
-    },
-  ): Promise<WbsChainSyncResult | null> => {
+  const runWorkflowFromWbs = async (opts?: {
+    preferredPath?: string;
+    quietPickToast?: boolean;
+    wbsOnly?: boolean;
+    autoRun?: boolean;
+    recordUserLine?: string;
+  }): Promise<WbsChainSyncResult | null> => {
     const api = getDesktop();
     if (!api) {
       const error = LOCAL_ONLY_HINT;
@@ -3412,143 +3722,133 @@ function ChatPage() {
       return { ok: false, error };
     }
     try {
-    const runningNow = await syncExecutionState();
-    if (opts?.autoRun && (runningNow || sending)) {
-      stopChainExecution();
-      stopChat();
-      const deadline = Date.now() + 6000;
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 120));
-        const running = await syncExecutionState();
-        if (!running && !sendingRef.current) break;
+      const runningNow = await syncExecutionState();
+      if (opts?.autoRun && (runningNow || sending)) {
+        stopChainExecution();
+        stopChat();
+        const deadline = Date.now() + 6000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 120));
+          const running = await syncExecutionState();
+          if (!running && !sendingRef.current) break;
+        }
+        const stillBusy = await syncExecutionState();
+        if (stillBusy || sendingRef.current) {
+          const error = "旧流程仍在收尾，请稍后再试。";
+          return { ok: false, error };
+        }
       }
-      const stillBusy = await syncExecutionState();
-    if (stillBusy || sendingRef.current) {
-      const error = "旧流程仍在收尾，请稍后再试。";
-      return { ok: false, error };
-    }
-    }
-    if (!api.orchestrationCreateChain || !api.orchestrationActivateChain) {
-      const error = "当前版本未暴露任务链注册接口，请重启到最新桌面应用。";
-      if (!opts?.recordUserLine) toast.error(error);
-      return { ok: false, error };
-    }
-    const settings = await getCachedSettings(api);
-    const readWorkspaceTextFile = api.readWorkspaceTextFile;
-    if (typeof readWorkspaceTextFile !== "function") {
-      const error = "当前版本未暴露工作区读文件接口，请重启到最新桌面应用。";
-      if (!opts?.recordUserLine) toast.error(error);
-      return { ok: false, error };
-    }
-    const listMd =
-      typeof api.listWorkspaceMarkdownFiles === "function"
-        ? async () => {
-            const listed = await api.listWorkspaceMarkdownFiles!();
-            return listed.ok && Array.isArray(listed.files) ? listed.files : [];
-          }
-        : async () => [];
+      if (!api.orchestrationCreateChain || !api.orchestrationActivateChain) {
+        const error = "当前版本未暴露任务链注册接口，请重启到最新桌面应用。";
+        if (!opts?.recordUserLine) toast.error(error);
+        return { ok: false, error };
+      }
+      const settings = await getCachedSettings(api);
+      const readWorkspaceTextFile = api.readWorkspaceTextFile;
+      if (typeof readWorkspaceTextFile !== "function") {
+        const error = "当前版本未暴露工作区读文件接口，请重启到最新桌面应用。";
+        if (!opts?.recordUserLine) toast.error(error);
+        return { ok: false, error };
+      }
+      const listMd =
+        typeof api.listWorkspaceMarkdownFiles === "function"
+          ? async () => {
+              const listed = await api.listWorkspaceMarkdownFiles!();
+              return listed.ok && Array.isArray(listed.files) ? listed.files : [];
+            }
+          : async () => [];
 
-    const discovered = await discoverWbsDocument(
-      listMd,
-      (p) => readWorkspaceTextFile(p),
-      {
+      const discovered = await discoverWbsDocument(listMd, (p) => readWorkspaceTextFile(p), {
         preferredPath: opts?.preferredPath,
         extraCandidatePaths: [settings.defaultConfirmWritePath?.trim() || ""],
         wbsFilenameOnly: Boolean(opts?.wbsOnly),
-      },
-    );
+      });
 
-    let pickedPath = "";
-    let pickedText = "";
-    let wbsDiscoverSource: "filename" | "content-scan" | "" = "";
+      let pickedPath = "";
+      let pickedText = "";
+      let wbsDiscoverSource: "filename" | "content-scan" | "" = "";
 
-    if (discovered) {
-      pickedPath = discovered.path;
-      pickedText = discovered.text;
-      wbsDiscoverSource = discovered.source;
-    } else if (opts?.wbsOnly) {
-      const fallback = await discoverWbsDocument(
-        listMd,
-        (p) => readWorkspaceTextFile(p),
-        {
+      if (discovered) {
+        pickedPath = discovered.path;
+        pickedText = discovered.text;
+        wbsDiscoverSource = discovered.source;
+      } else if (opts?.wbsOnly) {
+        const fallback = await discoverWbsDocument(listMd, (p) => readWorkspaceTextFile(p), {
           preferredPath: opts?.preferredPath,
-          extraCandidatePaths: [
-            settings.defaultConfirmWritePath?.trim() || "",
-          ],
+          extraCandidatePaths: [settings.defaultConfirmWritePath?.trim() || ""],
           wbsFilenameOnly: false,
-        },
-      );
-      if (fallback) {
-        pickedPath = fallback.path;
-        pickedText = fallback.text;
-        wbsDiscoverSource = fallback.source;
+        });
+        if (fallback) {
+          pickedPath = fallback.path;
+          pickedText = fallback.text;
+          wbsDiscoverSource = fallback.source;
+        }
       }
-    }
 
-    if (!pickedText) {
-      const error =
-        "未读取到可解析的 WBS。请确认项目中含有含「编号 | 工作摘要 | 执行 Agent」表格的文档。";
-      if (!opts?.recordUserLine) {
-        toast.error(
-          "未读取到可解析的 WBS。请先用 `/agent project-manager` 生成含「编号 | 工作摘要 | 执行 Agent」表格的 WBS 文档。",
-          { duration: 7200 },
-        );
+      if (!pickedText) {
+        const error =
+          "未读取到可解析的 WBS。请确认项目中含有含「编号 | 工作摘要 | 执行 Agent」表格的文档。";
+        if (!opts?.recordUserLine) {
+          toast.error(
+            "未读取到可解析的 WBS。请先用 `/agent project-manager` 生成含「编号 | 工作摘要 | 执行 Agent」表格的 WBS 文档。",
+            { duration: 7200 },
+          );
+        }
+        return { ok: false, error };
       }
-      return { ok: false, error };
-    }
-    const parsed = parseActiveChainFromBubbleText(pickedText);
-    if (!parsed.ok) {
-      const error = `WBS 解析失败：${parsed.error}`;
-      if (!opts?.recordUserLine) {
-        toast.error(error, { duration: 5000 });
+      const parsed = parseActiveChainFromBubbleText(pickedText);
+      if (!parsed.ok) {
+        const error = `WBS 解析失败：${parsed.error}`;
+        if (!opts?.recordUserLine) {
+          toast.error(error, { duration: 5000 });
+        }
+        return { ok: false, error };
       }
-      return { ok: false, error };
-    }
-    const saved = await registerParsedChainInList(api, {
-      state: parsed.state,
-      wbsPath: pickedPath,
-      description: `WBS 来源：${pickedPath} · 工作区同步`,
-      resetProgress: true,
-    });
-    if (!saved.ok) {
-      const error = saved.error || "注册任务链失败";
-      if (!opts?.recordUserLine) toast.error(error, { duration: 5000 });
-      return { ok: false, error };
-    }
+      const saved = await registerParsedChainInList(api, {
+        state: parsed.state,
+        wbsPath: pickedPath,
+        description: `WBS 来源：${pickedPath} · 工作区同步`,
+        resetProgress: true,
+      });
+      if (!saved.ok) {
+        const error = saved.error || "注册任务链失败";
+        if (!opts?.recordUserLine) toast.error(error, { duration: 5000 });
+        return { ok: false, error };
+      }
 
-    const autoRun = Boolean(opts?.autoRun);
-    const result: WbsChainSyncResult = {
-      ok: true,
-      pickedPath,
-      chainName: saved.chainName,
-      chainId: saved.chainId,
-      stepCount: saved.stepCount,
-      autoRun,
-    };
+      const autoRun = Boolean(opts?.autoRun);
+      const result: WbsChainSyncResult = {
+        ok: true,
+        pickedPath,
+        chainName: saved.chainName,
+        chainId: saved.chainId,
+        stepCount: saved.stepCount,
+        autoRun,
+      };
 
-    if (autoRun) {
-      if (!opts?.quietPickToast) {
+      if (autoRun) {
+        if (!opts?.quietPickToast) {
+          toast.success(
+            `已基于 ${pickedPath} 同步任务链「${saved.chainName}」（${saved.stepCount} 步）到列表，开始执行…`,
+          );
+        }
+        await runOrchestrationChain({ skipConfirm: true, pinnedSessionId: activeIdRef.current });
+      } else if (!opts?.quietPickToast) {
         toast.success(
-          `已基于 ${pickedPath} 同步任务链「${saved.chainName}」（${saved.stepCount} 步）到列表，开始执行…`,
+          `已生成任务链「${saved.chainName}」（${saved.stepCount} 步），可在侧栏「任务链」查看并执行`,
+          { duration: 5500 },
         );
       }
-      await runOrchestrationChain({ skipConfirm: true, pinnedSessionId: activeIdRef.current });
-    } else if (!opts?.quietPickToast) {
-      toast.success(
-        `已生成任务链「${saved.chainName}」（${saved.stepCount} 步），可在侧栏「任务链」查看并执行`,
-        { duration: 5500 },
-      );
-    }
 
-    if (opts?.recordUserLine) {
-      await appendLocalChatExchange(
-        activeIdRef.current,
-        opts.recordUserLine,
-        `${formatWbsChainSyncAssistantReply(result)}\n\n可在侧栏 **任务链** 搜索 \`WBS\` 或筛选 **自定义** 查看。`,
-      );
-    }
+      if (opts?.recordUserLine) {
+        await appendLocalChatExchange(
+          activeIdRef.current,
+          opts.recordUserLine,
+          `${formatWbsChainSyncAssistantReply(result)}\n\n可在侧栏 **任务链** 搜索 \`WBS\` 或筛选 **自定义** 查看。`,
+        );
+      }
 
-    return result;
+      return result;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("runWorkflowFromWbs", e);
@@ -3585,14 +3885,17 @@ function ChatPage() {
       return;
     }
     const sess = sessions.find((s) => s.id === activeId);
-    const exitTs = [...(sess?.history ?? [])].reverse().find((m) => typeof m.ts === "number")?.ts ?? Date.now();
+    const exitTs =
+      [...(sess?.history ?? [])].reverse().find((m) => typeof m.ts === "number")?.ts ?? Date.now();
     if (typeof api.listWorkspaceMarkdownFiles !== "function") {
       await runWorkflowFromWbs({ wbsOnly: true });
       return;
     }
-    let listed:
-      | { ok: boolean; files?: { relPath: string; mtimeMs: number; size: number }[]; error?: string }
-      | null = null;
+    let listed: {
+      ok: boolean;
+      files?: { relPath: string; mtimeMs: number; size: number }[];
+      error?: string;
+    } | null = null;
     try {
       listed = await api.listWorkspaceMarkdownFiles();
     } catch {
@@ -3663,7 +3966,10 @@ function ChatPage() {
     (opts?: { onlyImages?: boolean }) => void pickLocalFiles(opts),
     [pickLocalFiles],
   );
-  const inlineOnAgentChange = useCallback((b: string) => void handleAgentChange(b), [handleAgentChange]);
+  const inlineOnAgentChange = useCallback(
+    (b: string) => void handleAgentChange(b),
+    [handleAgentChange],
+  );
   const inlineOnModelPick = useCallback(
     (pick: { mode: OrchMode; model: string }) => void handleModelPick(pick),
     [handleModelPick],
@@ -3685,9 +3991,9 @@ function ChatPage() {
       hasDesktopApi,
       canSend: Boolean(
         editComposer.input.trim() ||
-          editComposer.pendingImages.length ||
-          editComposer.pendingFiles.length ||
-          editComposer.pendingTerminalSnippets.length,
+        editComposer.pendingImages.length ||
+        editComposer.pendingFiles.length ||
+        editComposer.pendingTerminalSnippets.length,
       ),
       pendingImages: editComposer.pendingImages,
       onRemoveImage: inlineOnRemoveImage,
@@ -3796,66 +4102,69 @@ function ChatPage() {
         />
         {chatBodyMountEl
           ? createPortal(
-        <div
-          className="chat-pane-layout h-full min-h-0"
-          style={{ ["--composer-h" as string]: `${composerDockHeight}px` }}
-        >
-          <ChatMessagesPane
-            messages={messages}
-            editHistoryIndex={editHistoryIndex}
-            editingUserMessage={editingUserMessage}
-            inlineComposer={inlineComposer}
-            scrollAreaRef={scrollAreaRef}
-            messagesEndRef={messagesEndRef}
-            showJumpLatest={showJumpLatest}
-            onJumpToLatest={jumpToLatest}
-            hasDesktopApi={hasDesktopApi}
-            onWriteToWorkspace={handleBubbleWriteToWorkspace}
-            onGenerateChain={handleBubbleGenerateChain}
-            onEditUserMessage={beginEditUserMessage}
-            onRequestResendUserMessage={requestResendUserMessage}
-          />
+              <div
+                className="chat-pane-layout h-full min-h-0"
+                style={{ ["--composer-h" as string]: `${composerDockHeight}px` }}
+              >
+                <ChatMessagesPane
+                  messages={messages}
+                  editHistoryIndex={editHistoryIndex}
+                  editingUserMessage={editingUserMessage}
+                  inlineComposer={inlineComposer}
+                  scrollAreaRef={scrollAreaRef}
+                  messagesEndRef={messagesEndRef}
+                  showJumpLatest={showJumpLatest}
+                  onJumpToLatest={jumpToLatest}
+                  hasDesktopApi={hasDesktopApi}
+                  onWriteToWorkspace={handleBubbleWriteToWorkspace}
+                  onGenerateChain={handleBubbleGenerateChain}
+                  onEditUserMessage={beginEditUserMessage}
+                  onRequestResendUserMessage={requestResendUserMessage}
+                />
 
-          <ChatComposerCursor
-            dockRef={composerDockRef}
-            textareaRef={taRef}
-            input={input}
-            onInputChange={setInput}
-            onSend={() => void sendChat()}
-            onStop={() => stopChat()}
-            onPaste={handleComposerPaste}
-            onDropFiles={(files, cursor) => void handleComposerDropFiles(files, cursor)}
-            placeholder={composerPlaceholder}
-            disabled={workflowBusy}
-            workflowBusy={workflowBusy}
-            hasDesktopApi={hasDesktopApi}
-            canSend={
-              Boolean(input.trim() || pendingImages.length || pendingFiles.length || pendingTerminalSnippets.length)
-            }
-            pendingImages={pendingImages}
-            onRemoveImage={(id) => setPendingImages((p) => p.filter((x) => x.id !== id))}
-            pendingFiles={pendingFiles}
-            onRemoveFile={(id) => setPendingFiles((p) => p.filter((x) => x.id !== id))}
-            pendingTerminalSnippets={pendingTerminalSnippets}
-            onRemoveTerminalSnippet={(id) =>
-              setPendingTerminalSnippets((p) => p.filter((x) => x.id !== id))
-            }
-            onPickFiles={(opts) => void pickLocalFiles(opts)}
-            orchMode={orchMode}
-            localAgentBasename={localAgentBasename}
-            onAgentChange={(b) => void handleAgentChange(b)}
-            cloudModels={orchestratorModels}
-            localModels={localOllamaTags}
-            modelValue={activeSession?.modelId || globalModel || primaryModelFallback || ""}
-            modelFallback={primaryModelFallback}
-            onModelPick={(pick) => void handleModelPick(pick)}
-            chainStatusLabel={chainStatusBadge.label}
-            chainStatusTone={chainStatusBadge.tone}
-            onAddTask={handleAddTask}
-            chainOptions={chainOptions}
-            onCancelEdit={cancelEditUserMessage}
-          />
-        </div>,
+                <ChatComposerCursor
+                  dockRef={composerDockRef}
+                  textareaRef={taRef}
+                  input={input}
+                  onInputChange={setInput}
+                  onSend={() => void sendChat()}
+                  onStop={() => stopChat()}
+                  onPaste={handleComposerPaste}
+                  onDropFiles={(files, cursor) => void handleComposerDropFiles(files, cursor)}
+                  placeholder={composerPlaceholder}
+                  disabled={workflowBusy}
+                  workflowBusy={workflowBusy}
+                  hasDesktopApi={hasDesktopApi}
+                  canSend={Boolean(
+                    input.trim() ||
+                    pendingImages.length ||
+                    pendingFiles.length ||
+                    pendingTerminalSnippets.length,
+                  )}
+                  pendingImages={pendingImages}
+                  onRemoveImage={(id) => setPendingImages((p) => p.filter((x) => x.id !== id))}
+                  pendingFiles={pendingFiles}
+                  onRemoveFile={(id) => setPendingFiles((p) => p.filter((x) => x.id !== id))}
+                  pendingTerminalSnippets={pendingTerminalSnippets}
+                  onRemoveTerminalSnippet={(id) =>
+                    setPendingTerminalSnippets((p) => p.filter((x) => x.id !== id))
+                  }
+                  onPickFiles={(opts) => void pickLocalFiles(opts)}
+                  orchMode={orchMode}
+                  localAgentBasename={localAgentBasename}
+                  onAgentChange={(b) => void handleAgentChange(b)}
+                  cloudModels={orchestratorModels}
+                  localModels={localOllamaTags}
+                  modelValue={activeSession?.modelId || globalModel || primaryModelFallback || ""}
+                  modelFallback={primaryModelFallback}
+                  onModelPick={(pick) => void handleModelPick(pick)}
+                  chainStatusLabel={chainStatusBadge.label}
+                  chainStatusTone={chainStatusBadge.tone}
+                  onAddTask={handleAddTask}
+                  chainOptions={chainOptions}
+                  onCancelEdit={cancelEditUserMessage}
+                />
+              </div>,
               chatBodyMountEl,
             )
           : null}
@@ -3870,6 +4179,22 @@ function ChatPage() {
         onChange={onAttachInputChange}
       />
       <GithubDialog open={githubOpen} onClose={() => setGithubOpen(false)} />
+      <ParallelDispatchDialog
+        open={parallelDialogOpen}
+        presetAgents={parallelDialogPreset}
+        defaultTask={parallelDialogDefaultTask}
+        onConfirm={(config) => {
+          setParallelDialogOpen(false);
+          setParallelDialogPreset(undefined);
+          setParallelDialogDefaultTask(undefined);
+          runParallelDelegation(config);
+        }}
+        onCancel={() => {
+          setParallelDialogOpen(false);
+          setParallelDialogPreset(undefined);
+          setParallelDialogDefaultTask(undefined);
+        }}
+      />
       <ChatResendConfirmDialog
         open={checkpointConfirm != null}
         onOpenChange={(open) => {
