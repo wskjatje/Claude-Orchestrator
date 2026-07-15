@@ -1,12 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Clock,
-  MoreHorizontal,
-  PanelRightClose,
-  Plus,
-  TerminalSquare,
-  X,
-} from "lucide-react";
+import { Clock, Plus, X } from "lucide-react";
 import { ChatHistoryDropdown } from "@/components/chat-history-dropdown";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { ChatHistoryListItem } from "@/lib/chat-history-groups";
@@ -23,9 +16,6 @@ type Props = {
   onNewSession: () => void;
   onCloseSession: (id: string) => void;
   hasDesktopApi: boolean;
-  onClosePanel: () => void;
-  terminalOpen?: boolean;
-  onToggleTerminal?: () => void;
   projectHistoryItems: ChatHistoryListItem[];
   allHistoryItems: ChatHistoryListItem[];
   onSelectHistorySession: (sessionId: string) => void;
@@ -41,10 +31,7 @@ export function ChatSessionTabs({
   onNewSession,
   onCloseSession,
   hasDesktopApi,
-  onClosePanel,
   activeStreamRequestId,
-  terminalOpen,
-  onToggleTerminal,
   projectHistoryItems,
   allHistoryItems,
   onSelectHistorySession,
@@ -52,8 +39,6 @@ export function ChatSessionTabs({
   onHistoryOpen,
 }: Props) {
   const tabsRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyScope, setHistoryScope] = useState<"project" | "all">("project");
 
@@ -61,16 +46,6 @@ export function ChatSessionTabs({
     const el = tabsRef.current?.querySelector<HTMLElement>(`[data-session-id="${activeId}"]`);
     el?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeId, sessions.length]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (menuRef.current && !menuRef.current.contains(t)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [menuOpen]);
 
   const onTabsWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     const el = tabsRef.current;
@@ -217,59 +192,6 @@ export function ChatSessionTabs({
           </PopoverContent>
         </Popover>
 
-        <div ref={menuRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            disabled={!hasDesktopApi || sessions.length <= 1}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-40"
-            title="更多"
-          >
-            <MoreHorizontal className="h-3.5 w-3.5" />
-          </button>
-          {menuOpen ? (
-            <div className="absolute right-0 top-full z-50 mt-1 w-40 rounded-md border border-border bg-popover py-1 shadow-lg">
-              {sessions.length > 1 ? (
-                <button
-                  type="button"
-                  className="block w-full px-3 py-1.5 text-left text-[11px] text-destructive transition hover:bg-secondary"
-                  onClick={() => {
-                    onCloseSession(activeId);
-                    setMenuOpen(false);
-                  }}
-                >
-                  关闭当前会话
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-
-        {onToggleTerminal ? (
-          <button
-            type="button"
-            onClick={onToggleTerminal}
-            className={cn(
-              "inline-flex h-7 w-7 items-center justify-center rounded-md transition",
-              terminalOpen
-                ? "bg-primary/12 text-primary"
-                : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-            )}
-            title="终端（Ctrl+`）"
-            aria-pressed={terminalOpen}
-          >
-            <TerminalSquare className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={onClosePanel}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-          title="隐藏聊天面板"
-        >
-          <PanelRightClose className="h-3.5 w-3.5" />
-        </button>
       </div>
     </div>
   );

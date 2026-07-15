@@ -9,8 +9,14 @@ export const MCP_PRESET_COMMAND_LINES: Record<string, string> = {
   "brave-search": "npx -y @modelcontextprotocol/server-brave-search",
   "google-maps": "npx -y @modelcontextprotocol/server-google-maps",
   slack: "npx -y @modelcontextprotocol/server-slack",
+  sqlite: "uvx mcp-server-sqlite --db-path <path/to/db>",
   sanshengliubu: "node __BUNDLED_SANSHENGLIUBU__",
 };
+
+/** 检测未替换的尖括号占位符，如 `<path/to/db>`、`<connection-string>` */
+export function hasAngleBracketPlaceholder(text: string): boolean {
+  return /<[^>]+>/.test(text);
+}
 
 /** 各预设 MCP 需要的环境变量 key（值为空，由用户填写） */
 export const MCP_TEMPLATE_ENV: Record<string, Record<string, string>> = {
@@ -67,7 +73,7 @@ export const MCP_PRESETS: McpPresetMeta[] = [
     name: "sqlite",
     label: "SQLite",
     desc: "本地数据管理（需安装 uv / Python 3.10+）",
-    commandLine: "uvx mcp-server-sqlite --db-path <path/to/db>",
+    commandLine: MCP_PRESET_COMMAND_LINES.sqlite,
   },
   {
     name: "brave-search",

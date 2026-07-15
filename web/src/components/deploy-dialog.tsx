@@ -21,9 +21,9 @@ type CheckItem = {
 
 type Phase = "idle" | "checking" | "installing" | "done";
 
-const IconOk = () => <Check className="h-3.5 w-3.5 text-emerald-500" />;
-const IconWarn = () => <TriangleAlert className="h-3.5 w-3.5 text-amber-500" />;
-const IconError = () => <CircleAlert className="h-3.5 w-3.5 text-red-500" />;
+const IconOk = () => <Check className="h-3.5 w-3.5 text-success" />;
+const IconWarn = () => <TriangleAlert className="h-3.5 w-3.5 text-warning" />;
+const IconError = () => <CircleAlert className="h-3.5 w-3.5 text-destructive" />;
 const IconSpin = () => <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />;
 
 function StatusIcon({ status }: { status: CheckItem["status"] }) {
@@ -37,9 +37,9 @@ function CheckRow({ item, phase }: { item: CheckItem; phase: Phase }) {
     <div
       className={cn(
         "flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-[12px]",
-        item.status === "ok" && "border-emerald-500/20 bg-emerald-500/5",
-        item.status === "warn" && "border-amber-500/20 bg-amber-500/10",
-        item.status === "error" && "border-red-500/20 bg-red-500/10",
+        item.status === "ok" && "border-success/25 bg-success/8",
+        item.status === "warn" && "border-warning/25 bg-warning/10",
+        item.status === "error" && "border-destructive/25 bg-destructive/10",
         phase === "checking" && "animate-pulse",
       )}
     >
@@ -50,9 +50,9 @@ function CheckRow({ item, phase }: { item: CheckItem; phase: Phase }) {
           <span
             className={cn(
               "font-mono text-[11px]",
-              item.status === "ok" && "text-emerald-600",
-              item.status === "warn" && "text-amber-600",
-              item.status === "error" && "text-red-600",
+              item.status === "ok" && "text-success",
+              item.status === "warn" && "text-warning",
+              item.status === "error" && "text-destructive",
             )}
           >
             {item.detail}
@@ -73,7 +73,7 @@ function LogBlock({ logs }: { logs: LogLine[] }) {
   return (
     <div className="max-h-[200px] overflow-y-auto rounded-lg border border-border bg-surface-elevated p-2.5 font-mono text-[11px] leading-relaxed text-foreground">
       {logs.map((line, i) => (
-        <div key={i} className={cn(line.startsWith("  ✓") && "text-emerald-600", line.startsWith("  ✗") && "text-red-500")}>
+        <div key={i} className={cn(line.startsWith("  ✓") && "text-success", line.startsWith("  ✗") && "text-destructive")}>
           {line}
         </div>
       ))}
@@ -209,12 +209,12 @@ export function DeployDialog({
             <div
               className={cn(
                 "rounded-lg border px-3 py-2 text-[12px]",
-                error ? "border-red-500/20 bg-red-500/10 text-red-600" : "border-border/70 bg-secondary/30 text-foreground",
+                error ? "border-destructive/25 bg-destructive/10 text-destructive" : "border-border/70 bg-secondary/30 text-foreground",
               )}
             >
               {error ? (
                 <div className="flex items-start gap-2">
-                  <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
+                  <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
                   <span>{error}</span>
                 </div>
               ) : (

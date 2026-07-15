@@ -5,10 +5,12 @@ import { ChatModelSelector, type ModelPick } from "@/components/chat-model-selec
 import { GraphifyChip } from "@/components/chat/composer-chips";
 import { ComposerFileAttachments, type PendingFileEntry } from "@/components/composer-file-attachments";
 import { ComposerTerminalAttachments } from "@/components/composer-terminal-attachments";
+import { ComposerDomAttachments } from "@/components/composer-dom-attachments";
 import { ImageLightbox } from "@/components/image-lightbox";
 import { useGraphifyHealth } from "@/lib/use-graphify-status";
 import { cn } from "@/lib/utils";
 import { modelSupportsChatVision } from "@/lib/chat-image-cursor";
+import type { PendingDomElement } from "@/lib/dom-element-meta";
 import type { PendingTerminalSnippet } from "@/lib/chat-terminal-paste";
 import type { UserImageAttachment } from "@/lib/ollama-messages";
 
@@ -32,6 +34,8 @@ export type ChatComposerShellProps = {
   onRemoveFile: (id: string) => void;
   pendingTerminalSnippets: PendingTerminalSnippet[];
   onRemoveTerminalSnippet: (id: string) => void;
+  pendingDomElements: PendingDomElement[];
+  onRemoveDomElement: (id: string) => void;
   onPickFiles: (opts?: { onlyImages?: boolean }) => void;
   orchMode: "claude-code" | "local-mcp";
   localAgentBasename: string;
@@ -67,6 +71,8 @@ export function ChatComposerShell({
   onRemoveFile,
   pendingTerminalSnippets,
   onRemoveTerminalSnippet,
+  pendingDomElements,
+  onRemoveDomElement,
   onPickFiles,
   orchMode,
   localAgentBasename,
@@ -200,6 +206,11 @@ export function ChatComposerShell({
         <ComposerTerminalAttachments
           snippets={pendingTerminalSnippets}
           onRemove={onRemoveTerminalSnippet}
+          className="!px-0 !pt-0 !pb-0 mb-2"
+        />
+        <ComposerDomAttachments
+          elements={pendingDomElements}
+          onRemove={onRemoveDomElement}
           className="!px-0 !pt-0 !pb-0 mb-2"
         />
 

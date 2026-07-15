@@ -65,7 +65,11 @@ import {
   getDefaultModelPricing,
 } from "./token-pricing.mjs";
 import {
+  gitCommitLog,
+  gitCommitWorkspace,
   gitDiff,
+  gitDiffVsBase,
+  gitRemoteSync,
   listPanelTree,
   readTextFile,
   shellSnapshot,
@@ -81,10 +85,15 @@ import {
   dailyReportsDir,
   orchestrationChainPath,
   PROJECT_DATA_DIR,
+  ensureProjectDataDir,
   PROJECT_DB_PATH,
   readGlobalClaudeEnv,
   scheduledTasksPath,
 } from "./paths.mjs";
+import {
+  normalizeRpcErrorMessage,
+  normalizeRpcPayload,
+} from "./bridge-constants.mjs";
 
 const require = createRequire(import.meta.url);
 const cadBridge = require("./cad-bridge.cjs");
@@ -103,6 +112,7 @@ const PROJECT_ROOT = path.join(
 cloudProviders.attachDb(() =>
   projectDb.getDb(PROJECT_DB_PATH, PROJECT_DATA_DIR),
 );
+cloudProviders.attachChatSettings(() => loadChatSettings());
 
 /** @type {Map<string, Set<(detail: unknown) => void>>} */
 const eventSubs = new Map();
@@ -158,6 +168,55 @@ function appendBridgeAppLog(message) {
   } catch (e) {
     console.warn("[log] appendBridgeAppLog 失败", e?.message || e);
   }
+}
+
+/** 供应商删除或历史外部导入清理后，同步 catalog / enabled / 默认模型 */
+function syncSettingsAfterProviderRemoval(removedIds, baseSettings) {
+  const removed = new Set(
+    (removedIds || []).map((id) => String(id || "").trim()).filter(Boolean),
+  );
+  if (!removed.size) return;
+  const cur = baseSettings || loadChatSettings();
+  const nextProviderCatalog = (cur.cloudProviderCatalog || []).filter(
+    (id) => !removed.has(id),
+  );
+  const nextEnabled = (cur.chatEnabledCloudProviders || []).filter(
+    (id) => !removed.has(id),
+  );
+  const draft = {
+    ...cur,
+    cloudProviderCatalog: nextProviderCatalog,
+    chatEnabledCloudProviders: nextEnabled,
+  };
+  const visible = cloudProviders.filterProvidersForSettings(
+    cloudProviders.listProviders(),
+    draft,
+  );
+  const modelSet = new Set();
+  for (const p of visible) {
+    for (const m of p.models || []) {
+      const id = String(m || "").trim();
+      if (id && id !== "#") modelSet.add(id);
+    }
+  }
+  let nextModel = String(cur.model || "").trim();
+  if (nextModel && !modelSet.has(nextModel)) {
+    nextModel = modelSet.size ? [...modelSet][0] : "";
+  }
+  const nextCloudModelCatalog = (cur.cloudModelCatalog || []).filter((m) =>
+    modelSet.has(String(m || "").trim()),
+  );
+  const allProviders = cloudProviders.listProviders();
+  saveChatSettings({
+    ...cur,
+    model: nextModel,
+    cloudProviderCatalog: nextProviderCatalog,
+    chatEnabledCloudProviders: nextEnabled,
+    cloudModelCatalog: nextCloudModelCatalog,
+    tokenPricing: cloudProviders.buildTokenPricingFromProviders(
+      cloudProviders.filterProvidersForSettings(allProviders, draft),
+    ),
+  });
 }
 
 startTaskScheduler({
@@ -223,7 +282,23 @@ export const handlers = {
       mode: args?.[1] === "open" ? "open" : "full",
     }),
   "workspace:getShellSnapshot": async () => shellSnapshot(),
+  "workspace:getGitCommitLog": async (args) => gitCommitLog(args?.[0]?.limit),
   "workspace:getGitDiff": async () => gitDiff(),
+  "workspace:getGitDiffVsBase": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return gitDiffVsBase(body.base);
+  },
+  "workspace:gitCommit": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return gitCommitWorkspace({
+      message: body.message,
+      stageAll: body.stageAll !== false,
+    });
+  },
+  "workspace:gitRemoteSync": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return gitRemoteSync(body.action);
+  },
 
   "chat-settings:get": async () => loadChatSettings(),
   "chat-settings:save": async (args) => {
@@ -547,6 +622,78 @@ export const handlers = {
 
   "claude-code:restartDesktop": async () => ({ ok: true }),
 
+  /** 从 Web 预览启动 Electron：browserHostOnly 仅后台内嵌浏览器，不打开桌面窗口 */
+  "shell:launchDesktopApp": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    const browserUrl = typeof body.browserUrl === "string" ? body.browserUrl.trim() : "";
+    const browserHostOnly =
+      body.browserHostOnly === true || body.mode === "browser-host";
+    if (browserUrl) {
+      ensureProjectDataDir();
+      const pendingPath = path.join(PROJECT_DATA_DIR, "pending-desktop-browser.json");
+      fs.writeFileSync(
+        pendingPath,
+        JSON.stringify({ url: browserUrl, at: Date.now() }),
+        "utf8",
+      );
+      broadcast("desktop:openBrowser", { url: browserUrl });
+    }
+
+    const electronBin = path.join(PROJECT_ROOT, "desktop/node_modules/.bin/electron");
+    const desktopDir = path.join(PROJECT_ROOT, "desktop");
+    if (!fs.existsSync(electronBin)) {
+      return { ok: false, error: "未安装 desktop 依赖，请运行 npm run desktop:install" };
+    }
+    const { spawn, execFile } = await import("node:child_process");
+    try {
+      const child = spawn(electronBin, ["."], {
+        cwd: desktopDir,
+        detached: true,
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          CLAUDE_ORCHESTRATOR_BROWSER_HOST_ONLY: browserHostOnly ? "1" : "",
+        },
+      });
+      child.unref();
+      if (!browserHostOnly && process.platform === "darwin") {
+        setTimeout(() => {
+          execFile(
+            "osascript",
+            [
+              "-e",
+              'tell application "System Events" to set frontmost of first process whose name is "Electron" or name is "Claude Orchestrator" to true',
+            ],
+            () => {},
+          );
+        }, 1200);
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  },
+
+  /** Electron 启动时读取并清除待打开的浏览器 URL */
+  "shell:consumePendingDesktopBrowser": async () => {
+    ensureProjectDataDir();
+    const pendingPath = path.join(PROJECT_DATA_DIR, "pending-desktop-browser.json");
+    if (!fs.existsSync(pendingPath)) return { ok: true, url: null };
+    try {
+      const raw = JSON.parse(fs.readFileSync(pendingPath, "utf8"));
+      fs.unlinkSync(pendingPath);
+      const url = typeof raw?.url === "string" ? raw.url.trim() : "";
+      return { ok: true, url: url || null };
+    } catch {
+      try {
+        fs.unlinkSync(pendingPath);
+      } catch {
+        /* ignore */
+      }
+      return { ok: true, url: null };
+    }
+  },
+
   "workbench-git:status": async () => getWorkbenchGitStatus(),
 
   "workbench-git:checkUpstream": async (args) => {
@@ -803,14 +950,13 @@ export const handlers = {
     return pickReferenceFilesNative(opts);
   },
 
-  "cc-switch:status": async () => ({
+  "cloud-providers:status": async () => ({
     ok: true,
-    installed: true,
-    source: "project",
     configured: cloudProviders.providersConfigured(),
+    storage: "workbench-kv",
   }),
 
-  "cc-switch:providerNeedsCcr": async (args) => {
+  "cloud-providers:providerNeedsCcr": async (args) => {
     try {
       const providerName = args?.[0]?.name || args?.[0]?.providerName || "";
       const result = cloudProviders.providerNeedsCcrProxy(providerName);
@@ -826,7 +972,7 @@ export const handlers = {
     }
   },
 
-  "cc-switch:listKnownProviders": async () => {
+  "cloud-providers:listKnownProviders": async () => {
     try {
       const providers = cloudProviders.listKnownProviders();
       return { ok: true, providers };
@@ -835,16 +981,37 @@ export const handlers = {
     }
   },
 
-  "cc-switch:listProviders": async () => {
+  "cloud-providers:listProviders": async () => {
     try {
-      const providers = cloudProviders.listProviders();
+      const settings = loadChatSettings();
+      const providers = cloudProviders.filterProvidersForCatalog(
+        cloudProviders.listProviders(),
+        settings,
+      );
       return { ok: true, providers };
     } catch (e) {
       return { ok: false, error: e?.message || String(e), providers: [] };
     }
   },
 
-  "cc-switch:upsertProvider": async (args) => {
+  "cloud-providers:getModelPools": async () => {
+    try {
+      const settings = loadChatSettings();
+      const pools = cloudProviders.buildModelPools(settings);
+      return { ok: true, ...pools };
+    } catch (e) {
+      return {
+        ok: false,
+        error: normalizeRpcErrorMessage(e?.message || String(e)),
+        chat: { cloudModels: [], localModels: [] },
+        configured: { cloudModels: [], localModels: [] },
+        invokableProviderIds: [],
+        catalogProviderIds: [],
+      };
+    }
+  },
+
+  "cloud-providers:upsertProvider": async (args) => {
     try {
       const body = args?.[0] || {};
       const result = cloudProviders.upsertProvider(body);
@@ -871,6 +1038,9 @@ export const handlers = {
           chatEnabledCloudProviders: nextEnabled,
           tokenPricing,
         });
+        const afterUpsert = loadChatSettings();
+        const sanitizedUpsert = cloudProviders.sanitizeChatModelState(afterUpsert);
+        if (sanitizedUpsert.changed) saveChatSettings(sanitizedUpsert.settings);
         const providerName = String(body.name || "").trim();
         if (providerName && result.provider) {
           // CCR 同步已移除
@@ -896,7 +1066,7 @@ export const handlers = {
     }
   },
 
-  "cc-switch:deleteProvider": async (args) => {
+  "cloud-providers:deleteProvider": async (args) => {
     try {
       const providerId = args?.[0]?.providerId;
       const result = cloudProviders.deleteProvider(providerId);
@@ -917,6 +1087,9 @@ export const handlers = {
           chatEnabledCloudProviders: nextChatEnabled,
           tokenPricing,
         });
+        const afterDelete = loadChatSettings();
+        const sanitizedDelete = cloudProviders.sanitizeChatModelState(afterDelete);
+        if (sanitizedDelete.changed) saveChatSettings(sanitizedDelete.settings);
       }
       broadcast("chat-settings:changed", {});
       return result;
@@ -925,7 +1098,7 @@ export const handlers = {
     }
   },
 
-  "cc-switch:setCurrentProvider": async (args) => {
+  "cloud-providers:setCurrentProvider": async (args) => {
     try {
       const body = args?.[0] || {};
       const r = cloudProviders.setCurrentProvider(body.providerId, body.model);
@@ -944,7 +1117,7 @@ export const handlers = {
     }
   },
 
-  "cc-switch:syncWorkbench": async () => {
+  "cloud-providers:syncWorkbench": async () => {
     try {
       const r = await cloudProviders.syncProvidersToWorkbench({
         loadChatSettings,
@@ -959,7 +1132,7 @@ export const handlers = {
     }
   },
 
-  "cc-switch:fetchProviderModels": async (args) => {
+  "cloud-providers:fetchProviderModels": async (args) => {
     const body = args?.[0] || {};
     try {
       const r = await cloudProviders.fetchProviderModels({
@@ -973,6 +1146,7 @@ export const handlers = {
         error: r.error,
         defaultInputPrice: r.defaultInputPrice,
         defaultOutputPrice: r.defaultOutputPrice,
+        defaultCurrency: r.defaultCurrency,
       };
     } catch (e) {
       return { ok: false, error: e?.message || String(e), models: [] };
@@ -983,7 +1157,7 @@ export const handlers = {
     return getDefaultModelPricing();
   },
 
-  "cc-switch:refreshCloudModels": async (args) => {
+  "cloud-providers:refreshCloudModels": async (args) => {
     try {
       const settings = loadChatSettings();
       const fetchRemote = args?.[0]?.fetchRemote !== false;
@@ -1026,42 +1200,120 @@ export const handlers = {
     const { deployVerify } = await import("./env-deploy.mjs");
     return deployVerify();
   },
+
+  "workbenchBrowser:capabilities": async () => {
+    const { getWorkbenchBrowserCapabilities } = await import("./workbench-browser-native.mjs");
+    return getWorkbenchBrowserCapabilities();
+  },
+
+  "embedded-browser:ping": async () => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("ping", []);
+  },
+
+  "embedded-browser:create": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("create", args);
+  },
+
+  "embedded-browser:destroy": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("destroy", args);
+  },
+
+  "embedded-browser:setLayout": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("setLayout", args);
+  },
+
+  "embedded-browser:focus": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("focus", args);
+  },
+
+  "embedded-browser:loadURL": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("loadURL", args);
+  },
+
+  "embedded-browser:reload": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("reload", args);
+  },
+
+  "embedded-browser:goBack": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("goBack", args);
+  },
+
+  "embedded-browser:goForward": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("goForward", args);
+  },
+
+  "embedded-browser:canNav": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("canNav", args);
+  },
+
+  "embedded-browser:openDevTools": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("openDevTools", args);
+  },
+
+  "embedded-browser:setPickerActive": async (args) => {
+    const { dispatchEmbeddedBrowser } = await import("./workbench-browser-native.mjs");
+    return dispatchEmbeddedBrowser("setPickerActive", args);
+  },
 };
 
 export async function dispatchRpc(channel, args = []) {
   const fn = handlers[channel];
   if (!fn) {
-    return { ok: false, error: `未知 RPC: ${channel}` };
+    return {
+      ok: false,
+      error: normalizeRpcErrorMessage(`未知 RPC: ${channel}`),
+    };
   }
-  return fn(args);
+  try {
+    return normalizeRpcPayload(await fn(args));
+  } catch (e) {
+    return {
+      ok: false,
+      error: normalizeRpcErrorMessage(e?.message || String(e)),
+    };
+  }
 }
 
 ensureDefaultWorkspace();
 
 try {
+  const removedLegacy = cloudProviders.purgeLegacyImportedProvidersIfNeeded();
+  let settings = loadChatSettings();
+  if (removedLegacy.length) {
+    syncSettingsAfterProviderRemoval(removedLegacy, settings);
+    settings = loadChatSettings();
+  }
+  const reconciled = cloudProviders.reconcileCloudProviderCatalog(settings);
+  if (reconciled.changed) {
+    saveChatSettings(reconciled.settings);
+    settings = loadChatSettings();
+  }
+  const sanitized = cloudProviders.sanitizeChatModelState(settings);
+  if (sanitized.changed) {
+    saveChatSettings(sanitized.settings);
+    settings = loadChatSettings();
+  }
   const sess = loadChatSessions();
-  const settings = loadChatSettings();
-  // 启动时从已存储的供应商重建 tokenPricing 表
-  const allProviders = cloudProviders.listProviders();
+  const visibleProviders = cloudProviders.filterProvidersForSettings(
+    cloudProviders.listProviders(),
+    settings,
+  );
   const rebuiltPricing =
-    cloudProviders.buildTokenPricingFromProviders(allProviders);
+    cloudProviders.buildTokenPricingFromProviders(visibleProviders);
   if (Object.keys(rebuiltPricing).length > 0) {
     saveChatSettings({ ...settings, tokenPricing: rebuiltPricing });
-  }
-  // 启动时重建 cloudModelCatalog：仅保留当前供应商在册的模型，清除累积的过期条目
-  const currentCloudModels = new Set();
-  for (const p of allProviders) {
-    for (const m of p.models || []) {
-      const id = String(m || "").trim();
-      if (id && id !== "#") currentCloudModels.add(id);
-    }
-  }
-  if (currentCloudModels.size > 0) {
-    const rebuilt = [...currentCloudModels].sort();
-    const oldCatalog = settings.cloudModelCatalog || [];
-    if (JSON.stringify(rebuilt) !== JSON.stringify(oldCatalog)) {
-      saveChatSettings({ ...settings, cloudModelCatalog: rebuilt });
-    }
+    settings = loadChatSettings();
   }
   const mergedPricing = { ...rebuiltPricing, ...(settings.tokenPricing || {}) };
   // 一次性回填：为已有 usage 但无 costUsd 的消息冻结费用

@@ -34,6 +34,7 @@ import {
   MCP_PRESETS,
   MCP_TEMPLATE_ENV,
   type McpPresetMeta,
+  hasAngleBracketPlaceholder,
   resolvePresetCommandLineForForm,
   resolveMcpCommandLine,
 } from "@/lib/mcp-presets";
@@ -98,6 +99,9 @@ function buildUpsertPayload(form: McpForm): Parameters<
   if (!name) return { error: "请填写名称" };
   const hasEnv = form.env && Object.keys(form.env).length > 0;
   if (form.transport === "stdio") {
+    if (hasAngleBracketPlaceholder(form.commandLine)) {
+      return { error: "请将命令中的 <…> 占位符替换为真实路径或连接串" };
+    }
     const parsed = parseStdioCommand(form.commandLine);
     if (!parsed) return { error: "请填写启动命令" };
     const payload: Record<string, unknown> = { name, transport: "stdio", command: parsed.command, args: parsed.args };
@@ -106,6 +110,9 @@ function buildUpsertPayload(form: McpForm): Parameters<
   }
   const url = form.url.trim();
   if (!url) return { error: "请填写 URL" };
+  if (hasAngleBracketPlaceholder(url)) {
+    return { error: "请将 URL 中的 <…> 占位符替换为真实连接串" };
+  }
   const payload: Record<string, unknown> = { name, transport: form.transport, url };
   if (hasEnv) payload.env = form.env;
   return payload as Parameters<NonNullable<ReturnType<typeof getDesktop>["upsertClaudeMcpServer"]>>[0];

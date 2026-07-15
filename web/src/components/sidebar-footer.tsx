@@ -28,12 +28,12 @@ export function SidebarFooter({
         <div className="flex justify-center" title={online ? "本机服务已连接" : "本机服务未连接"}>
           <span className="relative flex h-2 w-2">
             {online && (
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500/60 opacity-60" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/60 opacity-60" />
             )}
             <span
               className={cn(
                 "relative inline-flex h-2 w-2 rounded-full",
-                online ? "bg-emerald-500" : "bg-muted-foreground/40",
+                online ? "bg-success" : "bg-muted-foreground/40",
               )}
             />
           </span>
@@ -50,11 +50,11 @@ export function SidebarFooter({
             className={cn(
               "inline-flex max-w-[58%] shrink-0 items-center rounded-md border px-2 py-1 text-[10.5px] font-medium leading-snug",
               chainStatusBadge.tone === "active" &&
-                "border-emerald-400/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                "border-success/40 bg-success/10 text-success",
               chainStatusBadge.tone === "idle" &&
-                "border-sky-400/40 bg-sky-500/10 text-sky-900 dark:text-sky-300",
+                "border-info/40 bg-info/10 text-info",
               chainStatusBadge.tone === "paused" &&
-                "border-amber-400/45 bg-amber-500/12 text-amber-900 dark:text-amber-300",
+                "border-warning/45 bg-warning/12 text-warning",
             )}
             title="切换页签不会中断任务链；可在聊天页停止"
           >
@@ -72,7 +72,7 @@ export function SidebarFooter({
           <span
             className={cn(
               "h-1.5 w-1.5 shrink-0 rounded-full",
-              connected ? "bg-emerald-500" : mounted ? "animate-pulse bg-amber-500" : "bg-muted-foreground/50",
+              connected ? "bg-success" : mounted ? "animate-pulse bg-warning" : "bg-muted-foreground/50",
             )}
             aria-hidden
           />

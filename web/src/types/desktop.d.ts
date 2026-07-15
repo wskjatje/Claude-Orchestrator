@@ -33,7 +33,7 @@ export type SavedChainDetail = SavedChainSummary & {
   state: OrchestrationState & { steps: NonNullable<OrchestrationState["steps"]> };
 };
 
-export type CcSwitchProviderSummary = {
+export type CloudProviderSummary = {
   id: string;
   name: string;
   isCurrent: boolean;
@@ -43,9 +43,18 @@ export type CcSwitchProviderSummary = {
   apiKeyPreview: string;
   websiteUrl?: string;
   notes?: string;
+  source?: string;
   inputPrice?: number;
   outputPrice?: number;
   currency?: string;
+};
+
+/** @deprecated 使用 CloudProviderSummary */
+export type CcSwitchProviderSummary = CloudProviderSummary;
+
+export type ModelCatalogPools = {
+  cloudModels: string[];
+  localModels: string[];
 };
 
 /** 与主进程 `workspace:listPanelTree` 返回的 `tree` 节点一致（侧栏文件树） */
@@ -321,6 +330,12 @@ export type DesktopApi = {
     text?: string;
     error?: string | null;
   }>;
+  /** 侧栏提交图谱：结构化 git log */
+  workspaceGetGitCommitLog?: (limit?: number) => Promise<{
+    ok: boolean;
+    commits?: { hash: string; subject: string }[];
+    error?: string | null;
+  }>;
   /** 侧栏「改动」：`git diff HEAD` 文本（可能截断） */
   workspaceGetGitDiff?: () => Promise<{
     ok: boolean;
@@ -328,6 +343,19 @@ export type DesktopApi = {
     statusLine?: string;
     error?: string | null;
   }>;
+  workspaceGetGitDiffVsBase?: (payload?: { base?: string }) => Promise<{
+    ok: boolean;
+    diff?: string;
+    baseBranch?: string | null;
+    error?: string | null;
+  }>;
+  workspaceGitCommit?: (payload: {
+    message: string;
+    stageAll?: boolean;
+  }) => Promise<{ ok: boolean; output?: string | null; error?: string | null }>;
+  workspaceGitRemoteSync?: (payload: {
+    action: "fetch" | "pull" | "push";
+  }) => Promise<{ ok: boolean; output?: string | null; error?: string | null }>;
   /** 工作区目录变更（选择 / 清除）后由主进程广播 */
   onWorkspaceChanged?: (fn: (detail: { workspace: string | null }) => void) => () => void;
   /** 轻量级文件存在性检查（仅 stat，不读内容） */
@@ -507,20 +535,20 @@ export type DesktopApi = {
     upstreamGithubRepo?: string;
     tokenPricing?: Record<string, { inputPer1M: number; outputPer1M: number; currency?: string }>;
   }) => Promise<unknown>;
-  ccSwitchStatus?: () => Promise<{
+  cloudProvidersStatus?: () => Promise<{
     ok: boolean;
-    installed: boolean;
-    dbPath?: string;
+    configured: boolean;
+    storage?: string;
     error?: string;
   }>;
-  ccSwitchProviderNeedsCcr?: (opts: { name: string }) => Promise<{
+  cloudProvidersProviderNeedsCcr?: (opts: { name: string }) => Promise<{
     ok: boolean;
     needsCcr: boolean;
     ccrEndpoint: string;
     reason: string;
     error?: string;
   }>;
-  ccSwitchListKnownProviders?: () => Promise<{
+  cloudProvidersListKnownProviders?: () => Promise<{
     ok: boolean;
     providers: {
       name: string;
@@ -532,12 +560,20 @@ export type DesktopApi = {
     }[];
     error?: string;
   }>;
-  ccSwitchListProviders?: () => Promise<{
+  cloudProvidersListProviders?: () => Promise<{
     ok: boolean;
-    providers?: CcSwitchProviderSummary[];
+    providers?: CloudProviderSummary[];
     error?: string;
   }>;
-  ccSwitchUpsertProvider?: (body: {
+  cloudProvidersGetModelPools?: () => Promise<{
+    ok: boolean;
+    chat?: ModelCatalogPools;
+    configured?: ModelCatalogPools;
+    invokableProviderIds?: string[];
+    catalogProviderIds?: string[];
+    error?: string;
+  }>;
+  cloudProvidersUpsertProvider?: (body: {
     id?: string;
     name: string;
     endpoint: string;
@@ -556,20 +592,20 @@ export type DesktopApi = {
   }) => Promise<{
     ok: boolean;
     providerId?: string;
-    provider?: CcSwitchProviderSummary;
+    provider?: CloudProviderSummary;
     importLink?: string;
     error?: string;
     ccrNeedsRestart?: boolean;
   }>;
-  ccSwitchDeleteProvider?: (body: {
+  cloudProvidersDeleteProvider?: (body: {
     providerId: string;
   }) => Promise<{ ok: boolean; providerId?: string; error?: string }>;
-  ccSwitchSetCurrentProvider?: (body: {
+  cloudProvidersSetCurrentProvider?: (body: {
     providerId: string;
     model?: string;
     syncWorkbench?: boolean;
   }) => Promise<{ ok: boolean; providerId?: string; model?: string; error?: string }>;
-  ccSwitchSyncWorkbench?: () => Promise<{
+  cloudProvidersSyncWorkbench?: () => Promise<{
     ok: boolean;
     providerId?: string;
     providerName?: string;
@@ -578,14 +614,14 @@ export type DesktopApi = {
     modelCount?: number;
     error?: string;
   }>;
-  ccSwitchRefreshCloudModels?: (opts?: { fetchRemote?: boolean }) => Promise<{
+  cloudProvidersRefreshCloudModels?: (opts?: { fetchRemote?: boolean }) => Promise<{
     ok: boolean;
     models?: string[];
     remoteModels?: string[];
     cloudModelCatalog?: string[];
     error?: string;
   }>;
-  ccSwitchFetchProviderModels?: (body: {
+  cloudProvidersFetchProviderModels?: (body: {
     providerName: string;
     endpoint?: string;
     apiKey: string;
@@ -595,6 +631,7 @@ export type DesktopApi = {
     error?: string;
     defaultInputPrice?: number;
     defaultOutputPrice?: number;
+    defaultCurrency?: string;
   }>;
   getDefaultModelPricing?: () => Promise<
     Record<string, { inputPer1M: number; outputPer1M: number }>
@@ -725,6 +762,10 @@ export type DesktopApi = {
     orchestratorModel?: string;
   }) => Promise<{ userLine: string; images?: string[]; visionModel?: string | null }>;
   openExternal: (url: string) => Promise<unknown>;
+  /** 启动或聚焦 Electron 桌面窗口（内嵌浏览器必需） */
+  launchDesktopApp: (opts?: { browserUrl?: string; browserHostOnly?: boolean; mode?: string }) => Promise<{ ok?: boolean; error?: string }>;
+  consumePendingDesktopBrowser: () => Promise<{ ok?: boolean; url?: string | null; error?: string }>;
+  onDesktopOpenBrowser?: (fn: (detail: { url?: string }) => void) => () => void;
   restartClaudeCodeDesktop: () => Promise<{ ok?: boolean; error?: string }>;
   /** 检测本机 `claude` CLI 路径、版本、npm registry 最新版（仅 npm 分发说明） */
   claudeCodeCliStatus: () => Promise<{

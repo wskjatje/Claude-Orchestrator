@@ -22,7 +22,7 @@ import { getDesktop } from "@/lib/desktop-api";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { useOrchestrationExecution } from "@/hooks/use-orchestration-execution";
 import type { SavedChainDetail, SavedChainSummary } from "@/types/desktop";
-import { chainCardStatus, chainCategoryLabel } from "@/lib/chain-card-status";
+import { chainCardStatus, chainCategoryLabel, type ChainCardStatusTone } from "@/lib/chain-card-status";
 import {
   applyChainTemplate,
   CHAIN_TEMPLATE_CATEGORY_LABEL,
@@ -61,6 +61,10 @@ type ChainStep = {
 type CategoryFilter = "全部" | "单 Agent" | "流水线" | "自定义";
 
 const CATEGORY_FILTERS: CategoryFilter[] = ["全部", "单 Agent", "流水线", "自定义"];
+
+function chainStatusLabelClass(tone: ChainCardStatusTone) {
+  return cn("ui-status-label", `ui-status-label--${tone}`);
+}
 
 function chainCategoryIcon(category: SavedChainSummary["category"] | ChainTemplate["category"]) {
   if (category === "pipeline") return Layers;
@@ -583,7 +587,11 @@ function ChainsPage() {
         <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3">
           <StatCard label="任务链" value={visibleChainCount} />
           <StatCard label="已启用" value={enabledCount} valueClass="text-success" />
-          <StatCard label="执行中" value={runningCount} valueClass={runningCount ? "text-success" : undefined} />
+          <StatCard
+            label="执行中"
+            value={runningCount}
+            valueClass={runningCount ? "text-info" : "text-muted-foreground"}
+          />
         </div>
 
         {listErr ? <p className="mb-3 text-[12px] text-destructive">{listErr}</p> : null}
@@ -604,10 +612,10 @@ function ChainsPage() {
                 key={c}
                 type="button"
                 onClick={() => setCat(c)}
-                className={cn(
-                  "rounded-md px-2.5 py-1 text-[11.5px] font-medium transition",
-                  cat === c ? "bg-surface text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
-                )}
+                  className={cn(
+                    "ui-filter-chip",
+                    cat === c ? "ui-filter-chip--active" : "ui-filter-chip--idle",
+                  )}
               >
                 {c}
               </button>
@@ -640,26 +648,24 @@ function ChainsPage() {
                     key={entry.key}
                     type="button"
                     onClick={() => openPresetDetail(t)}
-                    className="group rounded-xl border border-dashed border-border bg-surface-elevated/80 p-4 text-left shadow-xs transition hover:border-primary/40 hover:bg-surface-elevated"
+                    className="chain-card group border-dashed hover:border-primary/40"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft/80 text-primary">
+                      <div className="chain-card-icon chain-card-icon--preset">
                         <PresetIcon className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="truncate text-[12.5px] font-semibold text-foreground">{t.name}</span>
-                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            {CHAIN_TEMPLATE_CATEGORY_LABEL[t.category]}
-                          </span>
-                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">官方</span>
+                          <span className="ui-tag ui-tag--neutral">{CHAIN_TEMPLATE_CATEGORY_LABEL[t.category]}</span>
+                          <span className="ui-tag ui-tag--info">官方</span>
                         </div>
                         <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">{t.description}</p>
                       </div>
                     </div>
                     <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5 text-[11px]">
                       <span className="text-muted-foreground">{t.steps.length} 步</span>
-                      <span className="font-medium text-primary">● 官方 · 点击配置</span>
+                      <span className={chainStatusLabelClass("info")}>● 官方 · 点击配置</span>
                     </div>
                   </button>
                 );
@@ -669,23 +675,25 @@ function ChainsPage() {
               const SavedIcon = chainCategoryIcon(c.category);
               const isOfficial = Boolean(c.official || c.id.startsWith("official-"));
               const st = chainCardStatus(c, { running: chainRunning, activeChainId });
+              const isActive = activeChainId === c.id;
+              const isRunningHere = isActive && chainRunning;
               return (
                 <button
                   key={entry.key}
                   type="button"
                   onClick={() => setDetailId(c.id)}
                   className={cn(
-                    "group rounded-xl border bg-surface-elevated p-4 text-left shadow-xs transition hover:border-primary/30",
-                    c.enabled ? "border-border" : "border-border opacity-75",
-                    activeChainId === c.id && "border-primary/45 ring-1 ring-primary/20",
-                    activeChainId === c.id && chainRunning && "border-success/40",
+                    "chain-card group",
+                    !c.enabled && "chain-card--disabled",
+                    isActive && !isRunningHere && "chain-card--active",
+                    isRunningHere && "chain-card--running",
                   )}
                 >
                   <div className="flex items-start gap-3">
                     <div
                       className={cn(
-                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-                        c.enabled ? "bg-primary-soft text-primary" : "bg-secondary text-muted-foreground",
+                        "chain-card-icon",
+                        c.enabled ? "chain-card-icon--enabled" : "chain-card-icon--disabled",
                       )}
                     >
                       <SavedIcon className="h-4 w-4" />
@@ -693,22 +701,11 @@ function ChainsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="truncate text-[12.5px] font-semibold text-foreground">{c.name}</span>
-                        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          {chainCategoryLabel(c.category)}
-                        </span>
-                        <span
-                          className={cn(
-                            "rounded px-1.5 py-0.5 text-[10px]",
-                            isOfficial ? "bg-primary/10 text-primary" : "bg-success/10 text-success",
-                          )}
-                        >
+                        <span className="ui-tag ui-tag--neutral">{chainCategoryLabel(c.category)}</span>
+                        <span className={cn("ui-tag", isOfficial ? "ui-tag--info" : "ui-tag--success")}>
                           {isOfficial ? "官方" : "我的"}
                         </span>
-                        {activeChainId === c.id ? (
-                          <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                            当前链
-                          </span>
-                        ) : null}
+                        {isActive ? <span className="ui-tag ui-tag--warning">当前链</span> : null}
                       </div>
                       <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
                         {c.description || `${c.stepCount} 步 · ${st.progress}`}
@@ -719,7 +716,9 @@ function ChainsPage() {
                       onClick={(e) => void toggleEnabled(c, e)}
                       className={cn(
                         "cursor-pointer rounded-md p-1.5 transition",
-                        c.enabled ? "text-success hover:bg-success/10" : "text-muted-foreground hover:bg-secondary",
+                        c.enabled
+                          ? "text-success hover:bg-success/10"
+                          : "text-muted-foreground hover:bg-secondary",
                       )}
                       title={c.enabled ? "停用" : "启用"}
                     >
@@ -728,17 +727,7 @@ function ChainsPage() {
                   </div>
                   <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5 text-[11px]">
                     <span className="text-muted-foreground">{st.progress}</span>
-                    <span
-                      className={cn(
-                        "font-medium",
-                        st.tone === "success" && "text-success",
-                        st.tone === "primary" && "text-primary",
-                        st.tone === "warning" && "text-warning",
-                        st.tone === "muted" && "text-muted-foreground",
-                      )}
-                    >
-                      {st.label}
-                    </span>
+                    <span className={chainStatusLabelClass(st.tone)}>{st.label}</span>
                   </div>
                 </button>
               );
@@ -823,9 +812,9 @@ function ChainsPage() {
 
 function StatCard({ label, value, valueClass }: { label: string; value: number | string; valueClass?: string }) {
   return (
-    <div className="rounded-xl border border-border bg-surface-elevated p-4 shadow-xs">
-      <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 text-[22px] font-bold tracking-tight text-foreground", valueClass)}>{value}</div>
+    <div className="stat-card">
+      <div className="stat-card__label">{label}</div>
+      <div className={cn("stat-card__value", valueClass)}>{value}</div>
     </div>
   );
 }
@@ -895,7 +884,7 @@ function PresetChainDrawer({
             <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">会用到的 Agent</div>
             <div className="mt-1.5 flex flex-wrap gap-1">
               {template.agents.map((a) => (
-                <span key={a} className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                <span key={a} className="ui-tag ui-tag--primary">
                   {agentDisplayNameForStem(a, agents)}
                 </span>
               ))}
@@ -1310,7 +1299,7 @@ function ChainDetailDrawer({
           <div className="grid grid-cols-2 gap-2.5">
             <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
               <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">执行状态</div>
-              <div className={cn("mt-0.5 text-[13px] font-semibold", st.tone === "success" && "text-success", st.tone === "primary" && "text-primary", st.tone === "warning" && "text-warning")}>
+              <div className={cn("mt-0.5 text-[13px] font-semibold", chainStatusLabelClass(st.tone))}>
                 {st.label.replace(/^●\s*/, "")}
               </div>
             </div>

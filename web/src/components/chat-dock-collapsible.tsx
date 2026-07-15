@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type ChatCursorCollapsibleProps = {
+type ChatDockCollapsibleProps = {
   lineCount: number;
   collapseAfterLines?: number;
   children: ReactNode;
@@ -15,7 +15,7 @@ type ChatCursorCollapsibleProps = {
 };
 
 /** 默认收起约 4 行，底部 overlay chevron 或头部 chevron 展开 */
-export function ChatCursorCollapsible({
+export function ChatDockCollapsible({
   lineCount,
   collapseAfterLines = 4,
   children,
@@ -23,7 +23,7 @@ export function ChatCursorCollapsible({
   expanded: expandedProp,
   onExpandedChange,
   hideToggle = false,
-}: ChatCursorCollapsibleProps) {
+}: ChatDockCollapsibleProps) {
   const [expandedLocal, setExpandedLocal] = useState(false);
   const expanded = expandedProp ?? expandedLocal;
   const setExpanded = onExpandedChange ?? setExpandedLocal;
@@ -77,7 +77,7 @@ export function ChatCursorCollapsible({
 }
 
 /** 文件卡片头部左侧 chevron */
-export function ChatCursorCollapsibleChevron({
+export function ChatDockCollapsibleChevron({
   expanded,
   collapsible,
 }: {
@@ -98,7 +98,7 @@ export function ChatCursorCollapsibleChevron({
   );
 }
 
-export function useCursorCollapsibleState(lineCount: number, collapseAfterLines = 4) {
+export function useDockCollapsibleState(lineCount: number, collapseAfterLines = 4) {
   const [expanded, setExpanded] = useState(false);
   const collapsible = lineCount > collapseAfterLines;
   return { expanded, setExpanded, collapsible, toggle: () => collapsible && setExpanded((v) => !v) };

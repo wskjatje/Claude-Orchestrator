@@ -1,9 +1,11 @@
 /**
  * Bridge WebSocket client — connects to local Claude CLI Bridge daemon.
- * Default endpoint: ws://127.0.0.1:18789
+ * 默认端点来自 VITE_BRIDGE_WS_URL / VITE_WORKBENCH_WS_PORT（见 bridge-constants）。
  * Falls back gracefully when daemon is offline; UI continues to render
  * cached/static data and surfaces an "offline" banner.
  */
+
+import { getBridgeWsUrl } from "@/lib/bridge-connection-error";
 
 export type BridgeStatus = "connecting" | "online" | "offline";
 
@@ -24,7 +26,7 @@ class BridgeClient {
   private listeners = new Set<Listener>();
   private statusListeners = new Set<(s: BridgeStatus, version?: string) => void>();
   private version: string | undefined;
-  private url = "ws://127.0.0.1:18789";
+  private url = getBridgeWsUrl();
   private retry = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;

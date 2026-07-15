@@ -1,7 +1,5 @@
 import { memo, useEffect, type ReactNode, type Ref } from "react";
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
-import { cn } from "@/lib/utils";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { WorkbenchProblemsProvider } from "@/contexts/workbench-problems-context";
 import { WorkbenchWorkspaceProvider } from "@/contexts/workbench-workspace-context";
@@ -11,10 +9,12 @@ import { WorkbenchComposerFileSync } from "@/components/workbench-composer-file-
 import { WorkbenchCenterPanel } from "@/components/workbench-center-panel";
 import { WorkbenchLeftSidebar } from "@/components/workbench-side-panels";
 import { WorkbenchChatComposerBridge } from "@/components/workbench-chat-composer-bridge";
+import { WorkbenchStatusBar } from "@/components/workbench-status-bar";
 import { ssrSafeLayoutStorage } from "@/lib/ssr-safe-layout-storage";
 import { initWorkbenchBottomPanels } from "@/lib/workbench-panel-init";
 import { useTheme } from "@/hooks/use-theme";
 import type { TerminalSelectionPayload } from "@/lib/terminal-selection-meta";
+import type { DomElementPayload } from "@/lib/dom-element-meta";
 
 /** v4：数字 = 像素，字符串 = 百分比；侧栏默认约 22% / 38% / 40% */
 const PANEL_IDS = ["workbench-left", "workbench-center", "workbench-chat"] as const;
@@ -24,18 +24,19 @@ const FALLBACK_LAYOUT = {
   "workbench-chat": 40,
 };
 
-export function WorkbenchCursorLayout({
+export function WorkbenchMainLayout({
   chatHeader,
   chatBodyMountRef,
   onOpenChatPanel,
   onInsertTerminalSelection,
-  centerToolbar,
+  onInsertDomElement,
   terminalOpen,
   onTerminalOpenChange,
   leftOpen,
   onLeftOpenChange,
   rightOpen,
   onRightOpenChange,
+  onOpenProblems,
 }: {
   /** 会话 / 模型控件置于聊天面板顶栏 */
   chatHeader?: ReactNode;
@@ -43,14 +44,15 @@ export function WorkbenchCursorLayout({
   chatBodyMountRef: Ref<HTMLDivElement | null>;
   onOpenChatPanel: () => void;
   onInsertTerminalSelection: (payload: TerminalSelectionPayload) => void;
-  /** 编辑器区浮动工具条（终端、侧栏开关等） */
-  centerToolbar?: ReactNode;
+  onInsertDomElement: (payload: DomElementPayload) => void;
   terminalOpen: boolean;
   onTerminalOpenChange: (open: boolean) => void;
   leftOpen: boolean;
   onLeftOpenChange: (open: boolean) => void;
   rightOpen: boolean;
   onRightOpenChange: (open: boolean) => void;
+  /** 状态栏点击问题计数时打开底部面板 */
+  onOpenProblems?: () => void;
 }) {
   const { prefsLoaded } = useTheme();
   const leftPanelRef = usePanelRef();
@@ -87,9 +89,12 @@ export function WorkbenchCursorLayout({
         <WorkbenchChatComposerBridge
           onOpenChatPanel={onOpenChatPanel}
           onInsertTerminalSelection={onInsertTerminalSelection}
+          onInsertDomElement={onInsertDomElement}
         />
+        <WorkbenchProblemsProvider>
         <div className="workbench-shell flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ResizablePanelGroup
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ResizablePanelGroup
             key={prefsLoaded ? "workbench-cursor-ready" : "workbench-cursor-boot"}
             orientation="horizontal"
             className="h-full min-h-0 flex-1"
@@ -113,29 +118,10 @@ export function WorkbenchCursorLayout({
             <ResizableHandle withHandle />
             <ResizablePanel id="workbench-center" defaultSize="38" minSize="22">
               <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-                {!leftOpen ? (
-                  <PanelToggle
-                    className="absolute left-1.5 top-1.5 z-20"
-                    onClick={() => onLeftOpenChange(true)}
-                    side="left"
-                    expand
-                  />
-                ) : null}
-                {!rightOpen ? (
-                  <PanelToggle
-                    className="absolute right-1.5 top-1.5 z-20"
-                    onClick={() => onRightOpenChange(true)}
-                    side="right"
-                    expand
-                  />
-                ) : null}
-                <WorkbenchProblemsProvider>
                   <WorkbenchCenterPanel
                     terminalOpen={terminalOpen}
                     onTerminalOpenChange={onTerminalOpenChange}
-                    panelToggles={centerToolbar}
                   />
-                </WorkbenchProblemsProvider>
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
@@ -151,7 +137,10 @@ export function WorkbenchCursorLayout({
               <WorkbenchChatPaneShell header={chatHeader} bodyMountRef={chatBodyMountRef} />
             </ResizablePanel>
           </ResizablePanelGroup>
+          </div>
+          <WorkbenchStatusBar onOpenProblems={onOpenProblems} />
         </div>
+        </WorkbenchProblemsProvider>
         </WorkbenchTerminalBridgeProvider>
       </WorkbenchComposerBridgeProvider>
     </WorkbenchWorkspaceProvider>
@@ -176,46 +165,3 @@ const WorkbenchChatPaneShell = memo(function WorkbenchChatPaneShell({
     </div>
   );
 });
-
-function PanelToggle({
-  onClick,
-  side,
-  expand,
-  className,
-}: {
-  onClick: () => void;
-  side: "left" | "right";
-  expand?: boolean;
-  className?: string;
-}) {
-  const Icon =
-    side === "left"
-      ? expand
-        ? PanelLeftOpen
-        : PanelLeftClose
-      : expand
-        ? PanelRightOpen
-        : PanelRightClose;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex h-7 w-7 items-center justify-center rounded-md border border-border/80 bg-surface/90 text-muted-foreground shadow-sm backdrop-blur-sm transition hover:bg-secondary hover:text-foreground",
-        className,
-      )}
-      title={
-        expand
-          ? side === "left"
-            ? "显示文件树"
-            : "显示聊天"
-          : side === "left"
-            ? "隐藏文件树"
-            : "隐藏聊天"
-      }
-      aria-label={expand ? "展开侧栏" : "收起侧栏"}
-    >
-      <Icon className="h-3.5 w-3.5" />
-    </button>
-  );
-}

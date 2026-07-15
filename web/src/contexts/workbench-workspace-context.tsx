@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -16,12 +17,16 @@ import {
   fileNameFromRel,
   isBrowserTab,
   isFileTab,
-  normalizeBrowserUrl,
   type WorkbenchBrowserTab,
   type WorkbenchEditorTab,
   type WorkbenchFileTab,
 } from "@/types/workbench-editor";
-import { isBinaryFileResult } from "@/lib/is-binary-file";
+import { sanitizeBrowserNavigationUrl, isBlankBrowserUrl } from "@/lib/workbench-browser-frame";
+import {
+  WORKBENCH_BROWSER_OPEN_TAB_MESSAGE,
+} from "@/lib/workbench-browser-messages";
+import { hasEmbeddedBrowserNative } from "@/lib/embedded-browser-native";
+import { onBridgeEvent } from "@/lib/install-desktop-bridge";
 import { normalizeFileContentForEditor } from "@/lib/format-file-content";
 import { buildExplorerGitDecor, parseGitStatusShortBranch } from "@/lib/explorer-git-decor";
 import { requestWorkbenchLint } from "@/lib/workbench-lint-bridge";
@@ -70,6 +75,9 @@ type WorkbenchWorkspaceContextValue = {
   diffErr: string | null;
   statusLine: string;
   loadingDiff: boolean;
+  gitCommits: { hash: string; subject: string }[];
+  gitLogErr: string | null;
+  loadingGitLog: boolean;
   openFile: (relPath: string, opts?: { line?: number; column?: number }) => Promise<void>;
   openBrowserTab: (url?: string, opts?: { label?: string; blobUrl?: string | null }) => void;
   navigateBrowserTab: (tabId: string, url: string) => void;
@@ -81,6 +89,7 @@ type WorkbenchWorkspaceContextValue = {
   refreshFiles: () => Promise<void>;
   refreshShell: () => Promise<void>;
   refreshDiff: () => Promise<void>;
+  refreshGitLog: () => Promise<void>;
 };
 
 const WorkbenchWorkspaceContext = createContext<WorkbenchWorkspaceContextValue | null>(null);
@@ -95,6 +104,8 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [editorTabs, setEditorTabs] = useState<WorkbenchEditorTab[]>([]);
   const [activeEditorTabId, setActiveEditorTabId] = useState<string | null>(null);
+  const editorTabsRef = useRef(editorTabs);
+  editorTabsRef.current = editorTabs;
   const [shellText, setShellText] = useState("");
   const [shellErr, setShellErr] = useState<string | null>(null);
   const [loadingShell, setLoadingShell] = useState(false);
@@ -102,6 +113,9 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
   const [diffErr, setDiffErr] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState("");
   const [loadingDiff, setLoadingDiff] = useState(false);
+  const [gitCommits, setGitCommits] = useState<{ hash: string; subject: string }[]>([]);
+  const [gitLogErr, setGitLogErr] = useState<string | null>(null);
+  const [loadingGitLog, setLoadingGitLog] = useState(false);
 
   const activeEditorTab = useMemo(
     () => editorTabs.find((t) => t.id === activeEditorTabId) ?? null,
@@ -219,6 +233,31 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
     }
   }, []);
 
+  const refreshGitLog = useCallback(async () => {
+    const api = getDesktop();
+    if (!api?.workspaceGetGitCommitLog) {
+      setGitLogErr("当前环境不支持提交历史。");
+      setGitCommits([]);
+      return;
+    }
+    setLoadingGitLog(true);
+    setGitLogErr(null);
+    try {
+      const r = await api.workspaceGetGitCommitLog(48);
+      if (!r.ok) {
+        setGitCommits([]);
+        setGitLogErr(r.error || "读取失败");
+        return;
+      }
+      setGitCommits(Array.isArray(r.commits) ? r.commits : []);
+    } catch (e) {
+      setGitLogErr(e instanceof Error ? e.message : String(e));
+      setGitCommits([]);
+    } finally {
+      setLoadingGitLog(false);
+    }
+  }, []);
+
   const loadFileTabContent = useCallback(async (tabId: string, relPath: string) => {
     const api = getDesktop();
     if (!api?.readWorkspaceTextFile) return;
@@ -328,7 +367,7 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
 
   const openBrowserTab = useCallback(
     (url?: string, opts?: { label?: string; blobUrl?: string | null }) => {
-      const resolved = opts?.blobUrl ?? (url ? normalizeBrowserUrl(url) : "about:blank");
+      const resolved = opts?.blobUrl ?? sanitizeBrowserNavigationUrl(url ?? "");
       const label =
         opts?.label ||
         (resolved === "about:blank"
@@ -340,6 +379,33 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
                 return "浏览器";
               }
             })());
+
+      // 先算好 id 再同步写 tabs + activeId，避免在 setEditorTabs updater 内嵌套
+      // setActiveEditorTabId，导致新标签首帧以 active=false（display:none）挂载 iframe。
+      if (!opts?.blobUrl && !isBlankBrowserUrl(resolved)) {
+        const existing = editorTabsRef.current.find(
+          (t) => isBrowserTab(t) && t.url === resolved,
+        );
+        if (existing) {
+          setActiveEditorTabId(existing.id);
+          return;
+        }
+        const tabId = makeTabId("browser");
+        const newTab: WorkbenchBrowserTab = {
+          id: tabId,
+          kind: "browser",
+          url: resolved,
+          label,
+          blobUrl: null,
+        };
+        setEditorTabs((prev) => {
+          const again = prev.find((t) => isBrowserTab(t) && t.url === resolved);
+          if (again) return prev;
+          return [...prev, newTab];
+        });
+        setActiveEditorTabId(tabId);
+        return;
+      }
 
       const tabId = makeTabId("browser");
       const newTab: WorkbenchBrowserTab = {
@@ -356,7 +422,7 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
   );
 
   const navigateBrowserTab = useCallback((tabId: string, url: string) => {
-    const resolved = normalizeBrowserUrl(url);
+    const resolved = sanitizeBrowserNavigationUrl(url);
     setEditorTabs((prev) =>
       prev.map((t) => {
         if (t.id !== tabId || !isBrowserTab(t)) return t;
@@ -456,6 +522,54 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
 
   useEffect(() => {
     if (!desktopReady) return;
+    const api = getDesktop();
+    if (!api) return;
+
+    const openFromDetail = (detail: unknown) => {
+      const url =
+        detail && typeof detail === "object" && "url" in detail
+          ? String((detail as { url?: string }).url || "")
+          : "";
+      if (!url || isBlankBrowserUrl(url)) return;
+      openBrowserTab(url);
+    };
+
+    if (hasEmbeddedBrowserNative()) {
+      void api.consumePendingDesktopBrowser?.().then((res) => {
+        if (res?.url) openBrowserTab(res.url);
+      });
+    }
+
+    const offDesktop = api.onDesktopOpenBrowser?.((detail) => openFromDetail(detail));
+    const offBridge = onBridgeEvent("desktop:openBrowser", openFromDetail);
+
+    return () => {
+      offDesktop?.();
+      offBridge();
+    };
+  }, [desktopReady, openBrowserTab]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as { type?: string; logicalUrl?: string } | null;
+      if (!data || data.type !== WORKBENCH_BROWSER_OPEN_TAB_MESSAGE) return;
+      const source = event.source;
+      if (!source) return;
+      const fromBrowserFrame = Array.from(
+        document.querySelectorAll("iframe[data-workbench-browser-frame]"),
+      ).some((el) => el instanceof HTMLIFrameElement && el.contentWindow === source);
+      if (!fromBrowserFrame) return;
+      const url = typeof data.logicalUrl === "string" ? data.logicalUrl.trim() : "";
+      if (!url || isBlankBrowserUrl(url)) return;
+      openBrowserTab(sanitizeBrowserNavigationUrl(url));
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [openBrowserTab]);
+
+  useEffect(() => {
+    if (!desktopReady) return;
     void refreshFiles();
   }, [desktopReady, refreshFiles]);
 
@@ -493,6 +607,9 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
       diffErr,
       statusLine,
       loadingDiff,
+      gitCommits,
+      gitLogErr,
+      loadingGitLog,
       openFile,
       openBrowserTab,
       navigateBrowserTab,
@@ -504,6 +621,7 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
       refreshFiles,
       refreshShell,
       refreshDiff,
+      refreshGitLog,
     }),
     [
       rootLabel,
@@ -523,6 +641,9 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
       diffErr,
       statusLine,
       loadingDiff,
+      gitCommits,
+      gitLogErr,
+      loadingGitLog,
       openFile,
       openBrowserTab,
       navigateBrowserTab,
@@ -534,6 +655,7 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
       refreshFiles,
       refreshShell,
       refreshDiff,
+      refreshGitLog,
     ],
   );
 

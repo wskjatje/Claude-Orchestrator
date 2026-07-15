@@ -12,6 +12,7 @@ import {
   Server,
   Keyboard,
   Info,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 import { HELP_SECTION_DESC, PAGE_DESC } from "@/lib/ui-copy";
@@ -21,6 +22,9 @@ export const Route = createFileRoute("/help")({
   head: () => ({ meta: [{ title: "帮助与链接 · Claude Orchestrator" }] }),
   component: HelpPage,
 });
+
+/** 与 desktop/package.json 的 version 对齐 */
+const APP_VERSION = "0.4.2";
 
 type CardItem = {
   label: string;
@@ -77,30 +81,26 @@ const externalLinkGroups: CardGroup[] = [
 
 const shortcutGroups: CardGroup[] = [
   {
-    title: "对话与导航",
+    title: "对话与输入",
     icon: MessageSquare,
     items: [
-      { label: "命令面板", keys: "⌘K", desc: "搜索会话、技能与命令" },
-      { label: "新建对话", keys: "⌘N", desc: "开启空白会话" },
-      { label: "折叠侧栏", keys: "⌘B", desc: "扩大主工作区" },
+      { label: "发送", keys: "Enter", desc: "提交当前输入（Shift+Enter 换行）" },
+      { label: "终端选区到对话", keys: "⌘L", desc: "将终端选区添加到对话" },
     ],
   },
   {
-    title: "输入与技能",
-    icon: Sparkles,
-    items: [
-      { label: "发送", keys: "⌘⏎", desc: "提交当前输入" },
-      { label: "切换技能", keys: "⌘⇧P", desc: "在支持场景下切换 Skill" },
-      { label: "清空对话", keys: "⌘⇧K", desc: "清除当前会话消息" },
-    ],
-  },
-  {
-    title: "界面与设置",
+    title: "工作台",
     icon: Keyboard,
     items: [
-      { label: "应用设置", keys: "⌘,", desc: "打开设置页" },
-      { label: "深/浅色", keys: "⌘D", desc: "切换主题模式" },
-      { label: "Windows 提示", desc: "将 ⌘ 换为 Ctrl 使用相同快捷键" },
+      { label: "切换终端", keys: "⌘` / Ctrl+`", desc: "显示或隐藏底部终端面板" },
+      { label: "保存当前文件", keys: "⌘S / Ctrl+S", desc: "保存编辑器中的活动文件" },
+    ],
+  },
+  {
+    title: "平台提示",
+    icon: Sparkles,
+    items: [
+      { label: "Windows / Linux", desc: "无特殊说明时，将 ⌘ 换为 Ctrl" },
     ],
   },
 ];
@@ -128,9 +128,13 @@ const aboutGroups: CardGroup[] = [
     title: "版本与运行时",
     icon: Server,
     items: [
-      { label: "应用版本", value: "0.4.2", desc: "当前工作台版本" },
+      { label: "应用版本", value: APP_VERSION, desc: "当前桌面包版本（desktop/package.json）" },
       { label: "Claude CLI", value: "≥ 1.0", desc: "建议保持 claude 命令为最新版" },
-      { label: "本机服务", value: "已启用", desc: "对话、终端与文件读写依赖本机连接" },
+      {
+        label: "本机服务",
+        value: "Bridge",
+        desc: "依赖本机 Bridge；Web 模式需 npm run web:dev:full（或桌面应用）",
+      },
     ],
   },
   {
@@ -150,6 +154,37 @@ const aboutGroups: CardGroup[] = [
       {
         label: "编排说明",
         desc: "见本页「编排与集成」区块",
+      },
+    ],
+  },
+];
+
+const browserGroups: CardGroup[] = [
+  {
+    title: "Web 预览（iframe）",
+    icon: Globe,
+    items: [
+      {
+        label: "外网经代理",
+        desc: "不在本机直连外站文档；经工作台代理拉取主文档",
+      },
+      {
+        label: "Cookie / 登录态",
+        desc: "不持久化站点 Cookie；登录态与跨页会话受限",
+      },
+      {
+        label: "子资源",
+        desc: "图片/脚本等子资源仍可能直连源站",
+      },
+    ],
+  },
+  {
+    title: "桌面完整能力",
+    icon: Server,
+    items: [
+      {
+        label: "WebContentsView",
+        desc: "桌面应用内嵌浏览器支持更完整的站点 Cookie 与导航能力",
       },
     ],
   },
@@ -201,6 +236,13 @@ function HelpPage() {
 
         <OverviewSection title="键盘快捷键" description={HELP_SECTION_DESC.shortcuts}>
           <CardGroupGrid groups={shortcutGroups} />
+        </OverviewSection>
+
+        <OverviewSection
+          title="内嵌浏览器（Web 预览）"
+          description="代理预览局限；完整能力见桌面 WebContentsView"
+        >
+          <CardGroupGrid groups={browserGroups} />
         </OverviewSection>
 
         <OverviewSection title="关于本应用" description={HELP_SECTION_DESC.about}>

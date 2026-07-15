@@ -11,18 +11,15 @@ export function workspaceSessionKey(path: string | null | undefined): string {
   return p || "";
 }
 
-/** sessionStorage 缓存是否可用于当前工作区（路径一致，或缓存内已有本会话） */
+/** sessionStorage 缓存是否可用于当前工作区（仅当路径与桌面端 getWorkspace 一致） */
 export function chatSessionsCacheMatchesWorkspace(
   cachedWorkspacePath: string | null | undefined,
   workspacePath: string | null | undefined,
-  cachedSessions: WorkspaceScopedSession[] = [],
 ): boolean {
-  if (workspaceSessionKey(cachedWorkspacePath) === workspaceSessionKey(workspacePath)) {
-    return true;
-  }
-  const key = workspaceSessionKey(workspacePath);
-  if (!key || !cachedSessions.length) return false;
-  return cachedSessions.some((s) => sessionMatchesWorkspaceTab(s, workspacePath));
+  const cachedKey = workspaceSessionKey(cachedWorkspacePath);
+  const currentKey = workspaceSessionKey(workspacePath);
+  if (!cachedKey || !currentKey) return false;
+  return cachedKey === currentKey;
 }
 
 export function sessionBelongsToWorkspace(

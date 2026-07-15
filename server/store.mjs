@@ -510,16 +510,7 @@ export function loadChatSettings() {
         });
       }
     }
-    // 若 cloud_providers KV 有供应商但 cloudProviderCatalog 为空，自动回填
-    try {
-      const cp = projectDb.loadKv(db(), "cloud_providers", null);
-      const cpIds = Object.keys(cp?.providers || {});
-      if (cpIds.length && !(merged.cloudProviderCatalog || []).length) {
-        merged.cloudProviderCatalog = cpIds;
-      }
-    } catch (e) {
-      console.warn("[store] 加载云供应商失败", e?.message || e);
-    }
+    // cloudProviderCatalog 仅包含用户显式添加/启用的供应商，不在此处自动回填全部 KV 条目
     const enabled = migrateChatEnabledFields(merged);
     const migrated = migrateDeprecatedModelFields({ ...merged, ...enabled });
     const storedEnabled = normalizeStringList(merged.chatEnabledCloudProviders);

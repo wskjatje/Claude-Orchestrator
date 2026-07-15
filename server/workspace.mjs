@@ -273,6 +273,32 @@ export function shellSnapshot() {
   return { ok: true, text: lines.join('\n').trim() }
 }
 
+/** 结构化提交历史，供侧栏「提交图谱」渲染 */
+export function gitCommitLog(limit = 48) {
+  const workspaceDir = loadWorkspace()
+  if (!workspaceDir || !fs.existsSync(workspaceDir)) {
+    return { ok: false, error: '未选择工作区', commits: [] }
+  }
+  const cwd = path.resolve(workspaceDir)
+  const opt = { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }
+  const n = Math.min(Math.max(Number(limit) || 48, 1), 120)
+  try {
+    const out = String(execFileSync('git', ['log', '--format=%H%x09%s', '-n', String(n)], opt) || '').trim()
+    const commits = out
+      ? out.split('\n').map((line) => {
+          const tab = line.indexOf('\t')
+          if (tab < 0) return { hash: line.slice(0, 7), subject: line }
+          const fullHash = line.slice(0, tab)
+          const subject = line.slice(tab + 1)
+          return { hash: fullHash.slice(0, 7), subject }
+        })
+      : []
+    return { ok: true, commits }
+  } catch (e) {
+    return { ok: false, error: e.message, commits: [] }
+  }
+}
+
 export function gitDiff() {
   const workspaceDir = loadWorkspace()
   if (!workspaceDir || !fs.existsSync(workspaceDir)) {
@@ -300,5 +326,99 @@ export function gitDiff() {
     statusLine,
     diff: truncated || '（与 HEAD 无差异：工作区干净）',
     error: null,
+  }
+}
+
+function gitExecOpt(cwd) {
+  return { cwd: path.resolve(cwd), encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }
+}
+
+function resolveGitWorkspace() {
+  const workspaceDir = loadWorkspace()
+  if (!workspaceDir || !fs.existsSync(workspaceDir)) {
+    return { ok: false, error: '未选择工作区', cwd: null }
+  }
+  return { ok: true, error: null, cwd: path.resolve(workspaceDir) }
+}
+
+/** 解析对照分支：main → master → develop */
+function resolveDiffBaseBranch(cwd, opt, preferred) {
+  const candidates = []
+  const pref = String(preferred || '').trim()
+  if (pref) candidates.push(pref)
+  for (const name of ['main', 'master', 'develop']) {
+    if (!candidates.includes(name)) candidates.push(name)
+  }
+  for (const name of candidates) {
+    try {
+      execFileSync('git', ['rev-parse', '--verify', name], opt)
+      return name
+    } catch {
+      /* try next */
+    }
+  }
+  return null
+}
+
+/** 相对对照分支的 diff（含工作区未提交变更） */
+export function gitDiffVsBase(baseBranch) {
+  const ws = resolveGitWorkspace()
+  if (!ws.ok) return { ok: false, error: ws.error, diff: '', baseBranch: null }
+  const opt = gitExecOpt(ws.cwd)
+  const base = resolveDiffBaseBranch(ws.cwd, opt, baseBranch)
+  if (!base) {
+    return { ok: false, error: '未找到 main/master/develop 对照分支', diff: '', baseBranch: null }
+  }
+  try {
+    const diff = String(execFileSync('git', ['diff', base], opt) || '').trim()
+    const max = 150_000
+    const truncated = diff.length > max ? `${diff.slice(0, max)}\n\n…（已截断）` : diff
+    return {
+      ok: true,
+      baseBranch: base,
+      diff: truncated || `（相对 ${base} 无差异）`,
+      error: null,
+    }
+  } catch (e) {
+    return { ok: false, error: e.message, diff: '', baseBranch: base }
+  }
+}
+
+/** 工作区 git 提交：默认暂存全部后提交 */
+export function gitCommitWorkspace({ message, stageAll = true } = {}) {
+  const ws = resolveGitWorkspace()
+  if (!ws.ok) return { ok: false, error: ws.error }
+  const trimmed = String(message || '').trim()
+  if (!trimmed) return { ok: false, error: '请填写提交说明' }
+  const opt = gitExecOpt(ws.cwd)
+  try {
+    if (stageAll) execFileSync('git', ['add', '-A'], opt)
+    const out = String(execFileSync('git', ['commit', '-m', trimmed], opt) || '').trim()
+    return { ok: true, output: out || '已提交', error: null }
+  } catch (e) {
+    const msg = String(e.stderr || e.message || e).trim()
+    return { ok: false, error: msg || '提交失败', output: null }
+  }
+}
+
+/** fetch / pull / push */
+export function gitRemoteSync(action) {
+  const ws = resolveGitWorkspace()
+  if (!ws.ok) return { ok: false, error: ws.error, output: null }
+  const opt = gitExecOpt(ws.cwd)
+  const act = String(action || '').trim()
+  const argsByAction = {
+    fetch: ['fetch', '--all', '--prune'],
+    pull: ['pull', '--ff-only'],
+    push: ['push'],
+  }
+  const args = argsByAction[act]
+  if (!args) return { ok: false, error: '未知远程操作', output: null }
+  try {
+    const out = String(execFileSync('git', args, opt) || '').trim()
+    return { ok: true, output: out || '完成', error: null }
+  } catch (e) {
+    const msg = String(e.stderr || e.message || e).trim()
+    return { ok: false, error: msg || '远程操作失败', output: null }
   }
 }

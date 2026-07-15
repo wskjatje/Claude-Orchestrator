@@ -29,6 +29,9 @@
     "files": [
       "main.mjs",
       "runtime.mjs",
+      "embedded-browser.mjs",
+      "browser-bridge-host.mjs",
+      "embedded-browser-preload.cjs",
       "preload.cjs",
       "assets/**"
     ],

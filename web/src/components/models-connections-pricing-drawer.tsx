@@ -58,7 +58,7 @@ export function PricingManagerDrawer({
           <div>
             <div className="text-[14px] font-semibold">模型单价管理</div>
             <div className="mt-0.5 text-[11px] text-muted-foreground">
-              设置每个模型的单价，币种从供应商配置继承。再次点击"获取模型单价"可重新获取最新价格。
+              设置每个模型的单价，币种从供应商配置继承。再次点击「获取模型单价」将按最新供应商与内置默认价覆盖刷新。
             </div>
           </div>
           <button

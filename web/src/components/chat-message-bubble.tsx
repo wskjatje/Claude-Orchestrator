@@ -1,4 +1,5 @@
 import { memo, useRef } from "react";
+import { cn } from "@/lib/utils";
 import { ChatAssistantContent } from "@/components/chat-assistant-content";
 import { ChatMessageContextMenu } from "@/components/chat-message-context-menu";
 import { ChatUserMessageBody } from "@/components/chat-user-message-body";
@@ -15,6 +16,8 @@ export type ChatBubbleMessage = {
   terminalSnippets?: TerminalSelectionPayload[];
   /** 对应会话 history 中的下标（仅 user 消息） */
   historyIndex?: number;
+  /** API / 请求失败 */
+  requestError?: boolean;
 };
 
 function UserMessageBody({
@@ -131,7 +134,7 @@ function MessageBubbleInner({
             />
           ) : null}
         </div>
-        <div className="chat-bubble-assistant">
+        <div className={cn("chat-bubble-assistant", m.requestError && "chat-bubble-assistant--error")}>
           {m.content === "__WAITING__" ? (
             <WaitingReply modelName={m.name ?? "assistant"} />
           ) : (
@@ -179,6 +182,7 @@ export const MessageBubble = memo(MessageBubbleInner, (prev, next) => {
     prev.onGenerateChain === next.onGenerateChain &&
     prev.onEditUserMessage === next.onEditUserMessage &&
     prev.m.historyIndex === next.m.historyIndex &&
+    prev.m.requestError === next.m.requestError &&
     attachmentsEqual(prev.m.attachments, next.m.attachments) &&
     terminalSnippetsEqual(prev.m.terminalSnippets, next.m.terminalSnippets)
   );

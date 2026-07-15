@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { registerWorkbenchTerminalFocusTab } from "@/lib/workbench-terminal-run-bridge";
+import { subscribeProblemsPanelFocus, subscribeBottomPanelFocus } from "@/lib/workbench-panel-init";
 import { matchProblemFilter } from "@/lib/workbench-problems-filter";
 import {
   clearOutput,
@@ -139,6 +140,18 @@ export function WorkbenchBottomPanel({ onClose }: { onClose: () => void }) {
     }
     prevErrorCountRef.current = errorCount;
   }, [errorCount]);
+
+  useEffect(() => {
+    return subscribeProblemsPanelFocus(() => setActiveTab("problems"));
+  }, []);
+
+  useEffect(() => {
+    return subscribeBottomPanelFocus((tab) => {
+      if (tab === "problems" || tab === "output" || tab === "debug" || tab === "terminal" || tab === "ports") {
+        setActiveTab(tab);
+      }
+    });
+  }, []);
 
   const onMetaChange = useCallback((next: WorkspaceTerminalMeta) => {
     setMeta((prev) =>

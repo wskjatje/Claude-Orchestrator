@@ -5,6 +5,11 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
+import {
+  getWorkbenchHttpPort,
+  getWorkbenchUiPort,
+  getBridgeHealthUrl,
+} from '../server/bridge-constants.mjs'
 
 /** @type {import('node:child_process').ChildProcess[]} */
 const children = []
@@ -104,9 +109,20 @@ function spawnBackendNode(scriptAbs, envExtra = {}) {
   return child
 }
 
+function workbenchEnvPorts() {
+  const httpPort = String(getWorkbenchHttpPort())
+  const uiPort = String(getWorkbenchUiPort())
+  return {
+    WORKBENCH_HTTP_PORT: process.env.WORKBENCH_HTTP_PORT || httpPort,
+    WORKBENCH_UI_PORT: process.env.WORKBENCH_UI_PORT || uiPort,
+  }
+}
+
 export async function startPackagedRuntime() {
+  const ports = workbenchEnvPorts()
+  const uiBase = `http://127.0.0.1:${ports.WORKBENCH_UI_PORT}/`
   if (started) {
-    return { url: 'http://127.0.0.1:5188/' }
+    return { url: uiBase }
   }
   const paths = getPackagedBackendPaths()
   if (!fs.existsSync(path.join(paths.serverDir, 'index.mjs'))) {
@@ -116,9 +132,12 @@ export async function startPackagedRuntime() {
     throw new Error(`打包前端缺失：${paths.webDist}`)
   }
 
-  spawnBackendNode(path.join(paths.serverDir, 'index.mjs'))
+  spawnBackendNode(path.join(paths.serverDir, 'index.mjs'), {
+    WORKBENCH_HTTP_PORT: ports.WORKBENCH_HTTP_PORT,
+    WORKBENCH_UI_PORT: ports.WORKBENCH_UI_PORT,
+  })
 
-  const bridgeOk = await waitUrl('http://127.0.0.1:18790/health')
+  const bridgeOk = await waitUrl(getBridgeHealthUrl())
   if (!bridgeOk) {
     stopPackagedRuntime()
     const hint = bridgeLogTail.join('\n')
@@ -135,18 +154,18 @@ export async function startPackagedRuntime() {
 
   spawnBackendNode(path.join(paths.serverDir, 'packaged-ui-server.mjs'), {
     WEB_STATIC_DIR: paths.webDist,
-    WORKBENCH_UI_PORT: '5188',
-    WORKBENCH_HTTP_PORT: '18790',
+    WORKBENCH_UI_PORT: ports.WORKBENCH_UI_PORT,
+    WORKBENCH_HTTP_PORT: ports.WORKBENCH_HTTP_PORT,
   })
 
-  const uiOk = await waitUrl('http://127.0.0.1:5188/')
+  const uiOk = await waitUrl(uiBase)
   if (!uiOk) {
     stopPackagedRuntime()
     throw new Error('界面服务未能启动，请退出应用后重试。')
   }
 
   started = true
-  return { url: 'http://127.0.0.1:5188/' }
+  return { url: uiBase }
 }
 
 export function stopPackagedRuntime() {

@@ -610,6 +610,9 @@ export async function runClaudeCodePrint({
   }
 
   const resolved = cloudProviders.resolveEnvForModel(model)
+  if (resolved.error) {
+    return { ok: false, error: resolved.error, content: '', aborted: false }
+  }
   const globalEnv = readGlobalClaudeEnv()
   const providerEnv = resolved.env || globalEnv
   const claudeEnv = cloudProviders.normalizeProviderEnv(

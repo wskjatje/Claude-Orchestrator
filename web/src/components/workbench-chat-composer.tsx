@@ -7,7 +7,7 @@ import {
   subscribeComposerFileBar,
 } from "@/lib/workbench-composer-file-bar";
 
-export type ChatComposerCursorProps = ChatComposerShellProps & {
+export type WorkbenchChatComposerProps = ChatComposerShellProps & {
   dockRef: RefObject<HTMLDivElement | null>;
   chainStatusLabel: string;
   chainStatusTone: "active" | "paused" | "done" | "neutral" | "idle";
@@ -18,7 +18,7 @@ export type ChatComposerCursorProps = ChatComposerShellProps & {
 };
 
 /** Composer：底部始终保留输入框；历史编辑在顶部内联 Composer。 */
-export function ChatComposerCursor({
+export function WorkbenchChatComposer({
   dockRef,
   chainStatusLabel,
   chainStatusTone,
@@ -27,7 +27,7 @@ export function ChatComposerCursor({
   editHistoryActive,
   onCancelEdit,
   ...shellProps
-}: ChatComposerCursorProps) {
+}: WorkbenchChatComposerProps) {
   const fileBar = useSyncExternalStore(
     subscribeComposerFileBar,
     getComposerFileBarState,

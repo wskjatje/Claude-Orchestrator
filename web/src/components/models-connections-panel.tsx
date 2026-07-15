@@ -8,8 +8,11 @@ import {
   AUTO_MODEL_ID,
   chatSettingsPreservePayload,
   isAutoModelSelection,
-  resolveCloudProviderCatalog,
 } from "@/lib/model-catalog";
+import {
+  formatFetchModelsError,
+  normalizeRpcErrorMessage,
+} from "@/lib/bridge-connection-error";
 import { BRIDGE_OFFLINE_TOAST } from "@/lib/ui-copy";
 import { PricingManagerDrawer } from "./models-connections-pricing-drawer";
 import {
@@ -29,7 +32,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-export type CcSwitchProvider = {
+export type CloudProvider = {
   id: string;
   name: string;
   isCurrent: boolean;
@@ -71,7 +74,7 @@ const rowKeyLocal = (model: string): RowKey => `local:${model}`;
 
 export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   const desktop = useHasDesktop();
-  const [providers, setProviders] = useState<CcSwitchProvider[]>([]);
+  const [providers, setProviders] = useState<CloudProvider[]>([]);
   const [busy, setBusy] = useState<"load" | "save" | "sync" | "local" | "batch" | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<RowKey>>(new Set());
 
@@ -157,27 +160,21 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
 
   const refreshProviders = useCallback(async () => {
     const api = getDesktop();
-    if (!api?.ccSwitchListProviders) return;
+    if (!api?.cloudProvidersListProviders) return;
     setBusy("load");
     try {
-      const r = await api.ccSwitchListProviders();
+      const r = await api.cloudProvidersListProviders();
       if (!r.ok) {
-        toast.error(r.error || "读取云模型失败");
+        toast.error(normalizeRpcErrorMessage(r.error) || "读取云模型失败");
         setProviders([]);
         return;
       }
       const allProviders = r.providers ?? [];
       const s = await api.getChatSettings();
-      const resolved = resolveCloudProviderCatalog(s.cloudProviderCatalog, allProviders);
-      const stored = s.cloudProviderCatalog ?? [];
-      if (resolved.length !== stored.length || resolved.some((id, i) => id !== stored[i])) {
-        const latest = await api.getChatSettings();
-        await api.saveChatSettings({
-          ...chatSettingsPreservePayload(latest),
-          cloudProviderCatalog: resolved,
-        });
-      }
-      setProviders(allProviders.filter((p) => resolved.includes(p.id)));
+      const catalogIds = new Set(
+        (s.cloudProviderCatalog ?? []).map((id) => String(id || "").trim()).filter(Boolean),
+      );
+      setProviders(allProviders.filter((p) => catalogIds.has(p.id)));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "读取云模型失败");
       setProviders([]);
@@ -199,10 +196,10 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   useEffect(() => {
     if (drawer !== "cloud-create" && drawer !== "cloud-edit") return;
     const api = getDesktop();
-    if (!api?.ccSwitchListKnownProviders) return;
+    if (!api?.cloudProvidersListKnownProviders) return;
     let cancelled = false;
     api
-      .ccSwitchListKnownProviders()
+      .cloudProvidersListKnownProviders()
       .then((r) => {
         if (cancelled || !r.ok) return;
         setProviderOptions(r.providers);
@@ -285,7 +282,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     setDrawer("cloud-create");
   };
 
-  const openCloudEdit = (p: CcSwitchProvider) => {
+  const openCloudEdit = (p: CloudProvider) => {
     const models = p.models.filter(Boolean);
     const preview = p.hasApiKey ? p.apiKeyPreview : "";
     setEditingProviderId(p.id);
@@ -321,12 +318,12 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
 
   const refreshCloudModels = async () => {
     const api = getDesktop();
-    if (!api?.ccSwitchRefreshCloudModels) return;
+    if (!api?.cloudProvidersRefreshCloudModels) return;
     setBusy("sync");
     try {
-      const r = await api.ccSwitchRefreshCloudModels({ fetchRemote: true });
+      const r = await api.cloudProvidersRefreshCloudModels({ fetchRemote: true });
       if (!r.ok) {
-        toast.error(r.error || "刷新云模型列表失败");
+        toast.error(normalizeRpcErrorMessage(r.error) || "刷新云模型列表失败");
         return;
       }
       toast.success(`已合并 ${r.models?.length ?? 0} 个云模型`);
@@ -338,7 +335,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
 
   const saveCloudProvider = async () => {
     const api = getDesktop();
-    if (!api?.ccSwitchUpsertProvider) {
+    if (!api?.cloudProvidersUpsertProvider) {
       toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
@@ -375,7 +372,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     }
     setBusy("save");
     try {
-      const r = await api.ccSwitchUpsertProvider({
+      const r = await api.cloudProvidersUpsertProvider({
         id: targetId || undefined,
         name: name.trim(),
         endpoint: endpoint.trim(),
@@ -392,7 +389,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         syncWorkbench: true,
       });
       if (!r.ok) {
-        toast.error(r.error || "保存失败");
+        toast.error(normalizeRpcErrorMessage(r.error) || "保存失败");
         return;
       }
       if (setAsCurrent) {
@@ -412,7 +409,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       closeDrawer();
       await refreshProviders();
       try {
-        await api.ccSwitchRefreshCloudModels?.({ fetchRemote: true });
+        await api.cloudProvidersRefreshCloudModels?.({ fetchRemote: true });
       } catch {
         /* ignore */
       }
@@ -537,86 +534,79 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     const def = defaultPricing || {};
     const tokenPricing = s.tokenPricing || {};
 
-    // 构建模型→供应商单价映射（含币种）
+    const modelProviderCurrency = new Map<string, string>();
     const providerPriceMap: Record<string, { input: number; output: number; currency?: string }> =
       {};
     for (const p of providers) {
-      if (p.inputPrice != null) {
-        const providerCurrency = String(p.currency || "USD")
-          .trim()
-          .toUpperCase();
-        for (const m of p.models ?? []) {
-          if (m && !providerPriceMap[m]) {
-            providerPriceMap[m] = {
-              input: p.inputPrice,
-              output: p.outputPrice ?? p.inputPrice,
-              currency: providerCurrency === "USD" ? undefined : providerCurrency,
-            };
-          }
+      const providerCurrency = String(p.currency || "USD")
+        .trim()
+        .toUpperCase();
+      for (const m of p.models ?? []) {
+        if (!m) continue;
+        modelProviderCurrency.set(m, providerCurrency);
+        if (p.inputPrice != null && !providerPriceMap[m]) {
+          providerPriceMap[m] = {
+            input: p.inputPrice,
+            output: p.outputPrice ?? p.inputPrice,
+            currency: providerCurrency === "USD" ? undefined : providerCurrency,
+          };
         }
       }
     }
 
-    let filled = 0;
-    setPricingEntries((prev) => {
-      const next: Record<string, { input: string; output: string; currency?: string }> = {};
-
-      // 重新获取：最新供应商数据 > 内置默认价 > 已保存的单价备份
-      for (const [model, v] of Object.entries(prev)) {
-        const provPrice = providerPriceMap[model];
-        const defPrice = def[model];
-        const existing = tokenPricing[model];
-
-        const input = provPrice
-          ? String(provPrice.input)
-          : defPrice?.inputPer1M != null
-            ? String(defPrice.inputPer1M)
-            : existing?.inputPer1M != null
-              ? String(existing.inputPer1M)
-              : v.input;
-        const output = provPrice
-          ? String(provPrice.output)
-          : defPrice?.outputPer1M != null
-            ? String(defPrice.outputPer1M)
-            : existing?.outputPer1M != null
-              ? String(existing.outputPer1M)
-              : v.output;
-        const currency =
-          provPrice?.currency ||
-          (existing?.currency && existing.currency !== "USD" ? existing.currency : undefined);
-
-        if (input || output) filled++;
-        next[model] = { input, output, currency };
+    const allModels = new Set<string>();
+    for (const p of providers) {
+      for (const m of p.models ?? []) {
+        if (m) allModels.add(m);
       }
-      // 再补充 tokenPricing/默认中有但列表中没有的新模型
-      for (const [model, v] of Object.entries(tokenPricing)) {
-        if (!next[model] && model) {
-          next[model] = {
-            input: v?.inputPer1M != null ? String(v.inputPer1M) : "",
-            output: v?.outputPer1M != null ? String(v.outputPer1M) : "",
-            currency: v?.currency && v.currency !== "USD" ? v.currency : undefined,
-          };
-          if (v?.inputPer1M || v?.outputPer1M) filled++;
-        }
-      }
-      for (const [model, v] of Object.entries(def)) {
-        if (!next[model] && model) {
-          next[model] = {
-            input: v?.inputPer1M != null ? String(v.inputPer1M) : "",
-            output: v?.outputPer1M != null ? String(v.outputPer1M) : "",
-          };
-          if (v?.inputPer1M || v?.outputPer1M) filled++;
-        }
-      }
-      return next;
-    });
-    if (filled > 0) toast.success(`已获取并填充 ${filled} 个模型单价`);
-    else toast.message("所有模型已有单价");
+    }
+    for (const m of Object.keys(tokenPricing)) {
+      if (m) allModels.add(m);
+    }
+    for (const m of Object.keys(def)) {
+      if (m) allModels.add(m);
+    }
+
+    if (allModels.size === 0) {
+      toast.message("暂无可更新的云模型");
+      return;
+    }
+
+    const next: Record<string, { input: string; output: string; currency?: string }> = {};
+    for (const model of allModels) {
+      const provPrice = providerPriceMap[model];
+      const defPrice = def[model];
+      const existing = tokenPricing[model];
+      const providerCurrency = modelProviderCurrency.get(model);
+      const providerCurToken =
+        providerCurrency && providerCurrency !== "USD" ? providerCurrency : undefined;
+
+      const input = provPrice
+        ? String(provPrice.input)
+        : defPrice?.inputPer1M != null
+          ? String(defPrice.inputPer1M)
+          : existing?.inputPer1M != null
+            ? String(existing.inputPer1M)
+            : "";
+      const output = provPrice
+        ? String(provPrice.output)
+        : defPrice?.outputPer1M != null
+          ? String(defPrice.outputPer1M)
+          : existing?.outputPer1M != null
+            ? String(existing.outputPer1M)
+            : "";
+      const currency = provPrice?.currency || providerCurToken || undefined;
+
+      next[model] = { input, output, currency };
+    }
+
+    setPricingEntries(next);
+    toast.success(`已更新 ${allModels.size} 个云模型单价`);
   }, [providers]);
 
   const handleFetchModels = useCallback(async () => {
     const api = getDesktop();
-    if (!api?.ccSwitchFetchProviderModels) {
+    if (!api?.cloudProvidersFetchProviderModels) {
       toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
@@ -635,7 +625,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     setFetchingModels(true);
     setFetchModelsError("");
     try {
-      const r = await api.ccSwitchFetchProviderModels({
+      const r = await api.cloudProvidersFetchProviderModels({
         providerName: name.trim(),
         endpoint: endpoint.trim() || undefined,
         apiKey: actualKey,
@@ -643,7 +633,9 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       // 异步返回后若已切换为其他供应商编辑，放弃本次结果
       if (callEditingId !== editingProviderId) return;
       if (!r.ok || !Array.isArray(r.models) || r.models.length === 0) {
-        setFetchModelsError(r.error || "未获取到模型，请检查 API Key 与端点");
+        setFetchModelsError(
+          formatFetchModelsError(r.error || "未获取到模型，请检查 API Key 与端点", name.trim()),
+        );
         return;
       }
       // 通用启发式：从模型列表中自动推荐最适合聊天的默认模型
@@ -671,16 +663,23 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         ...f,
         defaultModel: first,
         extraModels: rest.join(", "),
-        inputPrice:
-          f.inputPrice ||
-          (typeof r.defaultInputPrice === "number" ? String(r.defaultInputPrice) : ""),
-        outputPrice:
-          f.outputPrice ||
-          (typeof r.defaultOutputPrice === "number" ? String(r.defaultOutputPrice) : ""),
+        ...(typeof r.defaultInputPrice === "number" && r.defaultInputPrice > 0
+          ? { inputPrice: String(r.defaultInputPrice) }
+          : {}),
+        ...(typeof r.defaultOutputPrice === "number" && r.defaultOutputPrice > 0
+          ? { outputPrice: String(r.defaultOutputPrice) }
+          : {}),
+        ...(r.defaultCurrency ? { currency: r.defaultCurrency } : {}),
       }));
-      toast.success(`已获取 ${r.models.length} 个模型`);
+      const currencyHint = r.defaultCurrency && r.defaultCurrency !== "USD" ? `，币种 ${r.defaultCurrency}` : "";
+      toast.success(`已获取 ${r.models.length} 个模型${currencyHint}`);
     } catch (e) {
-      setFetchModelsError(e instanceof Error ? e.message : "获取失败");
+      setFetchModelsError(
+        formatFetchModelsError(
+          e instanceof Error ? e.message : "获取失败",
+          cloudForm.name.trim(),
+        ),
+      );
     } finally {
       setFetchingModels(false);
     }
@@ -717,7 +716,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       } else {
         setLocalTest({
           status: "fail",
-          message: r.error || "无法连接或未安装模型",
+          message: normalizeRpcErrorMessage(r.error) || "无法连接或未安装模型",
           discovered: [],
         });
       }
@@ -747,7 +746,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     setLocalPick(new Set(notAdded));
   };
 
-  const deleteCloudProvider = (p: CcSwitchProvider) => {
+  const deleteCloudProvider = (p: CloudProvider) => {
     if (cloudChatEnabledSet.has(p.id)) {
       toast.error("请先在聊天中停用该供应商，再删除");
       return;
@@ -757,15 +756,15 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
 
   const deleteCloudProviderAction = async (id: string, name: string) => {
     const api = getDesktop();
-    if (!api?.ccSwitchDeleteProvider) {
+    if (!api?.cloudProvidersDeleteProvider) {
       toast.error(BRIDGE_OFFLINE_TOAST);
       return;
     }
     setBusy("save");
     try {
-      const r = await api.ccSwitchDeleteProvider({ providerId: id });
+      const r = await api.cloudProvidersDeleteProvider({ providerId: id });
       if (!r.ok) {
-        toast.error(r.error || "删除失败");
+        toast.error(normalizeRpcErrorMessage(r.error) || "删除失败");
         return;
       }
       toast.success(`已删除「${name}」`);
@@ -866,16 +865,16 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
 
     setBusy("batch");
     try {
-      if (toEnableCloud.length && api.ccSwitchSetCurrentProvider) {
+      if (toEnableCloud.length && api.cloudProvidersSetCurrentProvider) {
         const anchor = toEnableCloud[toEnableCloud.length - 1]!;
         const model = anchor.models[0] || "";
-        const r = await api.ccSwitchSetCurrentProvider({
+        const r = await api.cloudProvidersSetCurrentProvider({
           providerId: anchor.id,
           model,
           syncWorkbench: false,
         });
         if (!r.ok) {
-          toast.error(r.error || "批量启用失败");
+          toast.error(normalizeRpcErrorMessage(r.error) || "批量启用失败");
           return;
         }
       }
@@ -1016,12 +1015,12 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
 
   const syncWorkbench = async () => {
     const api = getDesktop();
-    if (!api?.ccSwitchSyncWorkbench) return;
+    if (!api?.cloudProvidersSyncWorkbench) return;
     setBusy("sync");
     try {
-      const r = await api.ccSwitchSyncWorkbench();
+      const r = await api.cloudProvidersSyncWorkbench();
       if (!r.ok) {
-        toast.error(r.error || "同步失败");
+        toast.error(normalizeRpcErrorMessage(r.error) || "同步失败");
         return;
       }
       toast.success(`已同步：${r.providerName} → ${r.model}`);
@@ -1406,6 +1405,6 @@ function ChatEnableStatus({ enabled }: { enabled: boolean }) {
 }
 
 /** @deprecated 使用 ModelsConnectionsPanel */
-export function CcSwitchProvidersPanel(props: Props) {
+export function CloudProvidersPanel(props: Props) {
   return <ModelsConnectionsPanel {...props} />;
 }

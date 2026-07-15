@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { ChatFileEditCard, ChatFileEditList } from "@/components/chat-file-edit-card";
-import { ChatCursorCollapsible } from "@/components/chat-cursor-collapsible";
+import { ChatDockCollapsible } from "@/components/chat-dock-collapsible";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { ChatThoughtBlock } from "@/components/chat-thought-block";
 import {
@@ -64,17 +64,17 @@ function ClassicTerminalOutputBlock({ title, body }: { title: string; body: stri
   );
 }
 
-function CursorTerminalOutputBlock({ title, body }: { title: string; body: string }) {
+function DockTerminalOutputBlock({ title, body }: { title: string; body: string }) {
   const lineCount = body ? body.replace(/\r\n/g, "\n").split("\n").length : 0;
   return (
     <div className="chat-terminal-output">
       <div className="chat-terminal-output-head">{title}</div>
-      <ChatCursorCollapsible
+      <ChatDockCollapsible
         lineCount={lineCount}
         bodyClassName="chat-terminal-output-body"
       >
         <pre className="workbench-code m-0 whitespace-pre-wrap break-words">{body}</pre>
-      </ChatCursorCollapsible>
+      </ChatDockCollapsible>
     </div>
   );
 }
@@ -194,7 +194,7 @@ function ClassicAssistantContent({
   );
 }
 
-function CursorAssistantContent({ units }: { units: RenderUnit[] }) {
+function DockAssistantContent({ units }: { units: RenderUnit[] }) {
   return (
     <div className="chat-assistant-blocks chat-assistant-blocks--cursor">
       {units.map((u, i) => {
@@ -209,13 +209,13 @@ function CursorAssistantContent({ units }: { units: RenderUnit[] }) {
           );
         }
         if (u.kind === "terminal") {
-          return <CursorTerminalOutputBlock key={`term:${i}`} title={u.title} body={u.body} />;
+          return <DockTerminalOutputBlock key={`term:${i}`} title={u.title} body={u.body} />;
         }
         if (u.kind === "markdown") {
           return <ChatMarkdown key={`md:${i}`} content={u.body} />;
         }
         if (u.kind === "file-edit") {
-          return <ChatFileEditCard key={u.edit.id} edit={u.edit} variant="cursor" />;
+          return <ChatFileEditCard key={u.edit.id} edit={u.edit} variant="dock" />;
         }
         return null;
       })}
@@ -236,7 +236,7 @@ export function ChatAssistantContent({ content }: { content: string }) {
   }, [blocks, edits]);
 
   if (resolved === "dark") {
-    return <CursorAssistantContent units={cursorUnits} />;
+    return <DockAssistantContent units={cursorUnits} />;
   }
 
   return <ClassicAssistantContent content={stripped} blocks={blocks} edits={edits} />;

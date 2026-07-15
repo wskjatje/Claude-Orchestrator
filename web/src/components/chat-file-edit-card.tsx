@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { ChevronRight, FileCode2 } from "lucide-react";
 import {
-  ChatCursorCollapsible,
-  ChatCursorCollapsibleChevron,
-  useCursorCollapsibleState,
-} from "@/components/chat-cursor-collapsible";
+  ChatDockCollapsible,
+  ChatDockCollapsibleChevron,
+  useDockCollapsibleState,
+} from "@/components/chat-dock-collapsible";
 import { highlightDiffLine } from "@/components/chat-diff-highlight";
 import { cn } from "@/lib/utils";
 import {
@@ -56,11 +56,11 @@ function EditStats({ edit }: { edit: ChatFileEdit }) {
 }
 
 /** 默认收起 diff，头部/底部 chevron 展开 */
-function CursorFileEditCard({ edit }: { edit: ChatFileEdit }) {
+function DockFileEditCard({ edit }: { edit: ChatFileEdit }) {
   const badge = fileBadgeFromPath(edit.path);
   const fileName = edit.path.split("/").pop() ?? edit.path;
   const hasPreview = edit.previewLines.length > 0;
-  const { expanded, setExpanded, collapsible, toggle } = useCursorCollapsibleState(
+  const { expanded, setExpanded, collapsible, toggle } = useDockCollapsibleState(
     edit.previewLines.length,
   );
   const HeadTag = collapsible ? "button" : "div";
@@ -82,7 +82,7 @@ function CursorFileEditCard({ edit }: { edit: ChatFileEdit }) {
         onClick={collapsible ? toggle : undefined}
         aria-expanded={collapsible ? expanded : undefined}
       >
-        <ChatCursorCollapsibleChevron expanded={expanded} collapsible={collapsible} />
+        <ChatDockCollapsibleChevron expanded={expanded} collapsible={collapsible} />
         <span className="chat-file-edit-badge">{badge}</span>
         <FileCode2 className="chat-file-edit-card-icon" aria-hidden />
         <span className="chat-file-edit-card-name" title={edit.path}>
@@ -91,7 +91,7 @@ function CursorFileEditCard({ edit }: { edit: ChatFileEdit }) {
         <EditStats edit={edit} />
       </HeadTag>
       {hasPreview ? (
-        <ChatCursorCollapsible
+        <ChatDockCollapsible
           lineCount={edit.previewLines.length}
           bodyClassName="chat-file-edit-card-body"
           expanded={expanded}
@@ -100,7 +100,7 @@ function CursorFileEditCard({ edit }: { edit: ChatFileEdit }) {
           {edit.previewLines.map((line, i) => (
             <EditLine key={i} line={line} language={edit.language} cursorStyle />
           ))}
-        </ChatCursorCollapsible>
+        </ChatDockCollapsible>
       ) : null}
     </div>
   );
@@ -164,9 +164,9 @@ export function ChatFileEditCard({
   variant = "classic",
 }: {
   edit: ChatFileEdit;
-  variant?: "classic" | "cursor";
+  variant?: "classic" | "dock";
 }) {
-  if (variant === "cursor") return <CursorFileEditCard edit={edit} />;
+  if (variant === "dock") return <DockFileEditCard edit={edit} />;
   return <ClassicFileEditCard edit={edit} />;
 }
 
@@ -177,15 +177,15 @@ export function ChatFileEditList({
 }: {
   edits: ChatFileEdit[];
   usePanel?: boolean;
-  variant?: "classic" | "cursor";
+  variant?: "classic" | "dock";
 }) {
   if (!edits.length) return null;
 
-  if (variant === "cursor") {
+  if (variant === "dock") {
     return (
       <div className="chat-file-edit-stack">
         {edits.map((edit) => (
-          <ChatFileEditCard key={edit.id} edit={edit} variant="cursor" />
+          <ChatFileEditCard key={edit.id} edit={edit} variant="dock" />
         ))}
       </div>
     );

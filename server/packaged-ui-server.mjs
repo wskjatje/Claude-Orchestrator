@@ -13,10 +13,14 @@ import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import {
+  formatBridgeConnectionError,
+  getWorkbenchHttpPort,
+} from './bridge-constants.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const UI_PORT = Number(process.env.WORKBENCH_UI_PORT || 5188)
-const BRIDGE_PORT = Number(process.env.WORKBENCH_HTTP_PORT || 18790)
+const BRIDGE_PORT = getWorkbenchHttpPort()
 const STATIC_DIR = process.env.WEB_STATIC_DIR?.trim()
   ? path.resolve(process.env.WEB_STATIC_DIR.trim())
   : path.join(__dirname, '..', 'web', 'dist-electron')
@@ -89,7 +93,12 @@ function proxyToBridge(req, res, targetPath) {
   })
   upstream.on('error', (e) => {
     res.writeHead(502, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ ok: false, error: e.message }))
+    res.end(
+      JSON.stringify({
+        ok: false,
+        error: formatBridgeConnectionError(e?.message || String(e)),
+      }),
+    )
   })
   req.pipe(upstream)
 }

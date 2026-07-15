@@ -84,15 +84,11 @@ export function ExplorerTreeRow({
             )}
           </span>
         ) : (
-          <span className="explorer-tree-twistie" aria-hidden />
+          <>
+            <span className="explorer-tree-twistie" aria-hidden />
+            <ExplorerTreeIcon ext={node.ext} fileName={node.name} isDir={false} />
+          </>
         )}
-
-        <ExplorerTreeIcon
-          ext={node.ext}
-          fileName={node.name}
-          isDir={isDir}
-          expanded={expanded}
-        />
 
         <span
           className={cn(

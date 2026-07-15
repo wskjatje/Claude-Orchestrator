@@ -1,7 +1,7 @@
 import { BRIDGE_OFFLINE_TOAST } from "@/lib/ui-copy";
+import { getBridgeWsUrl } from "@/lib/bridge-connection-error";
 
-const WS_URL =
-  (import.meta.env.VITE_BRIDGE_WS_URL as string | undefined) || "ws://127.0.0.1:18789";
+const WS_URL = getBridgeWsUrl();
 
 export function isOpenTerminalMessage(text: string): boolean {
   const t = text.trim();

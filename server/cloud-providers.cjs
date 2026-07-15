@@ -8,14 +8,25 @@ const https = require("node:https");
 const http = require("node:http");
 const projectDb = require("./project-db.cjs");
 const { PROJECT_DATA_DIR, PROJECT_DB_PATH } = require("./paths.mjs");
+const {
+  formatBridgeConnectionError,
+  isBridgeLoopbackConnectionError,
+  normalizeRpcErrorMessage,
+} = require("./bridge-constants.mjs");
 
 const PROVIDERS_KV = "cloud_providers";
 
 /** @type {() => import('better-sqlite3').Database} */
 let getDb = null;
+/** @type {() => Record<string, unknown>} */
+let getChatSettings = null;
 
 function attachDb(fn) {
   getDb = fn;
+}
+
+function attachChatSettings(fn) {
+  getChatSettings = fn;
 }
 
 function defaultStore() {
@@ -23,7 +34,8 @@ function defaultStore() {
     version: 1,
     currentProviderId: "",
     providers: {},
-    ccSwitchMigrated: false,
+    ccSwitchMigrated: true,
+    ccSwitchPurged: false,
   };
 }
 
@@ -35,6 +47,184 @@ function loadStore() {
 function saveStore(store) {
   if (!getDb) return;
   projectDb.saveKv(getDb(), PROVIDERS_KV, store);
+}
+
+const PROVIDER_SOURCE_USER = "user";
+const PROVIDER_SOURCE_LEGACY_IMPORT = "legacy-import";
+
+function providerSource(rec) {
+  const explicit = String(rec?.source || "").trim();
+  if (
+    explicit === PROVIDER_SOURCE_USER ||
+    explicit === PROVIDER_SOURCE_LEGACY_IMPORT ||
+    explicit === "cc-switch"
+  ) {
+    return explicit === "cc-switch" ? PROVIDER_SOURCE_LEGACY_IMPORT : explicit;
+  }
+  if (/CC Switch/i.test(String(rec?.notes || "").trim())) {
+    return PROVIDER_SOURCE_LEGACY_IMPORT;
+  }
+  return PROVIDER_SOURCE_USER;
+}
+
+function isLegacyImportedProvider(rec) {
+  return providerSource(rec) === PROVIDER_SOURCE_LEGACY_IMPORT;
+}
+
+/** @deprecated 使用 isLegacyImportedProvider */
+function isCcSwitchImportedProvider(rec) {
+  return isLegacyImportedProvider(rec);
+}
+
+function isUserManagedProvider(rec) {
+  return providerSource(rec) === PROVIDER_SOURCE_USER;
+}
+
+function normalizeProviderSourcesInStore() {
+  const store = loadStore();
+  let changed = false;
+  for (const rec of Object.values(store.providers || {})) {
+    const src = providerSource(rec);
+    if (rec.source !== src) {
+      rec.source = src;
+      changed = true;
+    }
+  }
+  if (changed) saveStore(store);
+  return changed;
+}
+
+/** 从 chat_settings 解析聊天可调用供应商 id（catalog ∩ enabled） */
+function getInvokableProviderIds(settings) {
+  if (!settings || typeof settings !== "object") return [];
+  const catalog = [
+    ...new Set(
+      (settings.cloudProviderCatalog ?? [])
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  const enabled = [
+    ...new Set(
+      (settings.chatEnabledCloudProviders ?? [])
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!catalog.length || !enabled.length) return [];
+  return enabled.filter((id) => catalog.includes(id));
+}
+
+function loadInvokableProviderIds() {
+  if (!getChatSettings) return [];
+  try {
+    return getInvokableProviderIds(getChatSettings());
+  } catch {
+    return [];
+  }
+}
+
+function filterProviderRowsByIds(rows, allowedIds) {
+  if (!allowedIds || !(allowedIds instanceof Set) || !allowedIds.size) return rows;
+  return rows.filter(({ id }) => allowedIds.has(id));
+}
+
+function filterProvidersForSettings(providers, settings) {
+  const allowed = getInvokableProviderIds(settings);
+  if (!allowed || !allowed.length) return [];
+  const set = new Set(allowed);
+  return providers.filter((p) => set.has(p.id));
+}
+
+/** 管理 UI 用：cloudProviderCatalog 中的供应商（含已停用），剔除 KV 中已不存在的陈旧 id */
+function filterProvidersForCatalog(providers, settings) {
+  const catalog = [
+    ...new Set(
+      (settings?.cloudProviderCatalog ?? [])
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!catalog.length) return [];
+  const set = new Set(catalog);
+  return providers.filter((p) => set.has(p.id));
+}
+
+/**
+ * 将 KV 中用户在本应用内添加的供应商（非 CC Switch 导入）补回 catalog。
+ * 修复「停用后 listProviders 只返回 enabled 子集 → 旧逻辑把 catalog 写残」导致的管理页丢项。
+ */
+function reconcileCloudProviderCatalog(settings) {
+  if (!settings || typeof settings !== "object") return { settings, changed: false };
+  const store = loadStore();
+  const catalog = new Set(
+    (settings.cloudProviderCatalog ?? [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean),
+  );
+  let changed = false;
+  for (const [id, rec] of Object.entries(store.providers || {})) {
+    if (!isUserManagedProvider(rec)) continue;
+    if (!catalog.has(id)) {
+      catalog.add(id);
+      changed = true;
+    }
+  }
+  if (!changed) return { settings, changed: false };
+  const nextCatalog = [...catalog];
+  const enabled = new Set(
+    (settings.chatEnabledCloudProviders ?? [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean),
+  );
+  return {
+    settings: {
+      ...settings,
+      cloudProviderCatalog: nextCatalog,
+      chatEnabledCloudProviders: [...enabled],
+    },
+    changed: true,
+  };
+}
+
+/** 移除历史外部导入的供应商；返回被删 id 列表 */
+function purgeLegacyImportedProviders() {
+  const store = loadStore();
+  const removed = [];
+  for (const [id, rec] of Object.entries(store.providers || {})) {
+    if (!isLegacyImportedProvider(rec)) continue;
+    delete store.providers[id];
+    removed.push(id);
+    if (store.currentProviderId === id) store.currentProviderId = "";
+  }
+  if (removed.length) saveStore(store);
+  return removed;
+}
+
+/** 一次性清除历史外部导入（依据 source / notes，非硬编码 id） */
+function purgeLegacyImportedProvidersIfNeeded() {
+  const store = loadStore();
+  if (store.legacyImportPurged || store.ccSwitchPurged) {
+    if (!store.legacyImportPurged) {
+      store.legacyImportPurged = true;
+      saveStore(store);
+    }
+    return [];
+  }
+  const removed = purgeLegacyImportedProviders();
+  store.legacyImportPurged = true;
+  delete store.ccSwitchPurged;
+  delete store.ccSwitchMigrated;
+  saveStore(store);
+  return removed;
+}
+
+function purgeCcSwitchImportedProviders() {
+  return purgeLegacyImportedProviders();
+}
+
+function purgeCcSwitchImportedProvidersIfNeeded() {
+  return purgeLegacyImportedProvidersIfNeeded();
 }
 
 function slugifyProviderId(name) {
@@ -53,10 +243,19 @@ function maskApiKey(key) {
   return `${k.slice(0, 4)}…${k.slice(-4)}`;
 }
 
+function sanitizeEndpointUrl(base) {
+  let b = String(base || "").trim();
+  if (!b) return b;
+  const schemeEnd = b.indexOf("://");
+  if (schemeEnd >= 0) {
+    const secondHttp = b.indexOf("http", schemeEnd + 3);
+    if (secondHttp > 0) b = b.slice(0, secondHttp);
+  }
+  return b.replace(/\/+$/, "");
+}
+
 function normalizeAnthropicBaseUrl(base) {
-  let b = String(base || "")
-    .trim()
-    .replace(/\/+$/, "");
+  let b = sanitizeEndpointUrl(base);
   if (!b) return b;
   if (/^https:\/\/api\.deepseek\.com$/i.test(b)) return `${b}/anthropic`;
   if (/^https:\/\/api\.deepseek\.com\/v1$/i.test(b))
@@ -215,36 +414,42 @@ const KNOWN_CLOUD_PROVIDERS = [
     needsCcr: false,
     directApi: true,
     fetchModelsStrategy: "openai-compatible",
+    defaultCurrency: "CNY",
   },
   {
     name: "Alibaba (通义)",
     needsCcr: false,
     directApi: true,
     fetchModelsStrategy: "openai-compatible",
+    defaultCurrency: "CNY",
   },
   {
     name: "Zhipu (智谱)",
     needsCcr: false,
     directApi: true,
     fetchModelsStrategy: "openai-compatible",
+    defaultCurrency: "CNY",
   },
   {
     name: "Moonshot (月之暗面)",
     needsCcr: false,
     directApi: true,
     fetchModelsStrategy: "openai-compatible",
+    defaultCurrency: "CNY",
   },
   {
     name: "MiniMax",
     needsCcr: false,
     directApi: true,
     fetchModelsStrategy: "openai-compatible",
+    defaultCurrency: "CNY",
   },
   {
     name: "01.AI (零一万物)",
     needsCcr: false,
     directApi: true,
     fetchModelsStrategy: "openai-compatible",
+    defaultCurrency: "CNY",
   },
   { name: "Amazon Bedrock", needsCcr: false, directApi: true },
   { name: "Azure OpenAI", needsCcr: false, directApi: true },
@@ -266,6 +471,7 @@ function listKnownProviders(_currentProviderId) {
       directApi,
       directApiBase,
       defaultPricing,
+      defaultCurrency,
       fetchModelsStrategy,
     }) => ({
       name,
@@ -275,9 +481,11 @@ function listKnownProviders(_currentProviderId) {
         ? {
             defaultInputPrice: defaultPricing.inputPer1M,
             defaultOutputPrice: defaultPricing.outputPer1M,
-            defaultCurrency: "USD",
+            defaultCurrency: defaultCurrency || "USD",
           }
-        : {}),
+        : defaultCurrency
+          ? { defaultCurrency }
+          : {}),
       ...(fetchModelsStrategy ? { canFetchModels: true } : {}),
     }),
   );
@@ -376,7 +584,7 @@ function inferDirectApiFromModel(modelName) {
  *   'openai-compatible' — GET {base}/models → data[].id
  *   'gemini'            — GET /v1beta/models?key= → models[].name（过滤 generateContent 方法）
  *   未声明 / 自定义供应商 — 按端点特征启发式推断，默认为 openai-compatible。
- * 返回 { ok, models, provider, defaultInputPrice, defaultOutputPrice }。
+ * 返回 { ok, models, provider, defaultInputPrice, defaultOutputPrice, defaultCurrency }。
  */
 async function fetchProviderModels({
   providerName,
@@ -389,14 +597,14 @@ async function fetchProviderModels({
 
   // 未传 API Key 时尝试从已存储的供应商中查找
   let resolvedKey = String(apiKey || "").trim();
-  if (!resolvedKey) {
-    const store = loadStore();
-    const providers = listProviderRecords(store);
-    for (const { rec } of providers) {
-      if (rec.name === providerName) {
-        resolvedKey = String(rec.apiKey || "").trim();
-        break;
-      }
+  let storedRec = null;
+  const store = loadStore();
+  const providerRecords = listProviderRecords(store);
+  for (const { rec } of providerRecords) {
+    if (rec.name === providerName) {
+      storedRec = rec;
+      if (!resolvedKey) resolvedKey = String(rec.apiKey || "").trim();
+      break;
     }
   }
   if (!resolvedKey)
@@ -409,9 +617,15 @@ async function fetchProviderModels({
   // 查找获取策略
   const known = KNOWN_CLOUD_PROVIDERS.find((p) => p.name === providerName);
   let strategy = known?.fetchModelsStrategy || "";
-  const base = String(endpoint || "")
+  let base = String(endpoint || "")
     .trim()
     .replace(/\/+$/, "");
+  if (!base && known?.directApiBase) {
+    base = String(known.directApiBase).trim().replace(/\/+$/, "");
+  }
+  if (!base && storedRec?.endpoint) {
+    base = String(storedRec.endpoint).trim().replace(/\/+$/, "");
+  }
 
   // 未声明策略时按端点启发式推断
   if (!strategy) {
@@ -426,8 +640,14 @@ async function fetchProviderModels({
   }
 
   const knownPricing = known?.defaultPricing;
-  const defaultInputPrice = knownPricing?.inputPer1M || 0;
-  const defaultOutputPrice = knownPricing?.outputPer1M || 0;
+  const storedInput = Number(storedRec?.inputPrice) || 0;
+  const storedOutput = Number(storedRec?.outputPrice) || 0;
+  const defaultInputPrice = storedInput || knownPricing?.inputPer1M || 0;
+  const defaultOutputPrice = storedOutput || knownPricing?.outputPer1M || 0;
+  const defaultCurrency =
+    String(storedRec?.currency || known?.defaultCurrency || "USD")
+      .trim()
+      .toUpperCase() || "USD";
 
   try {
     let models = [];
@@ -439,8 +659,10 @@ async function fetchProviderModels({
         .replace(/\/+$/, "");
       const apiBase =
         cleanBase || "https://generativelanguage.googleapis.com/v1beta";
-      const url = `${apiBase}/models?key=${encodeURIComponent(resolvedKey)}`;
-      const { status, data } = await httpGetJson(url, timeoutMs);
+      const url = `${apiBase}/models`;
+      const { status, data } = await httpGetJson(url, timeoutMs, {
+        "x-goog-api-key": resolvedKey,
+      });
       if (status !== 200)
         return { ok: false, error: `Gemini API 返回 ${status}`, models: [] };
       const rawModels = Array.isArray(data?.models) ? data.models : [];
@@ -495,11 +717,12 @@ async function fetchProviderModels({
       provider: providerName,
       defaultInputPrice,
       defaultOutputPrice,
+      defaultCurrency,
     };
   } catch (e) {
     const msg = String(e?.message || e).slice(0, 300);
-    // 将常见 Node.js 网络/TLS/连接错误译为友好中文提示
-    const friendly = friendlyNetworkError(msg, providerName);
+    const friendly =
+      normalizeRpcErrorMessage(msg) || friendlyNetworkError(msg, providerName);
     return { ok: false, error: friendly || msg, models: [] };
   }
 }
@@ -508,6 +731,10 @@ async function fetchProviderModels({
  * 将 Node.js 底层网络/TLS/DNS 错误译为用户友好的中文提示。
  */
 function friendlyNetworkError(msg, providerName) {
+  const raw = String(msg || "");
+  if (isBridgeLoopbackConnectionError(raw)) {
+    return formatBridgeConnectionError(raw);
+  }
   const name = providerName || "该供应商";
   if (/Client network socket disconnected.*TLS/i.test(msg)) {
     return `无法与 ${name} 建立安全连接，请检查网络环境（防火墙/VPN/代理）是否阻拦了外网 HTTPS 请求。`;
@@ -677,6 +904,7 @@ function providerToSummary(id, rec, isCurrent) {
     category: "third_party",
     websiteUrl: rec.websiteUrl || "",
     notes: rec.notes || "项目内配置",
+    source: providerSource(rec),
     baseUrl: normalizeAnthropicBaseUrl(rec.endpoint || ""),
     models: [...(rec.models || [])],
     hasApiKey: Boolean(String(rec.apiKey || "").trim()),
@@ -708,13 +936,18 @@ function normalizeStoreModelIds() {
       rec.models = next;
       changed = true;
     }
+    const endpoint = normalizeAnthropicBaseUrl(rec.endpoint || "");
+    if (endpoint !== rec.endpoint) {
+      rec.endpoint = endpoint;
+      changed = true;
+    }
   }
   if (changed) saveStore(store);
   return changed;
 }
 
 function listProviders() {
-  migrateFromCcSwitchIfEmpty();
+  normalizeProviderSourcesInStore();
   normalizeStoreModelIds();
   const store = loadStore();
   return listProviderRecords(store)
@@ -727,9 +960,14 @@ function listProviders() {
     );
 }
 
-function findProviderForModel(modelId, store = loadStore()) {
+function findProviderForModel(modelId, store = loadStore(), options = {}) {
   const model = normalizeCloudModelId(String(modelId || "").trim());
-  const rows = listProviderRecords(store);
+  let rows = listProviderRecords(store);
+  const allowedList = options.allowedProviderIds ?? loadInvokableProviderIds();
+  if (Array.isArray(allowedList)) {
+    if (!allowedList.length) return null;
+    rows = filterProviderRowsByIds(rows, new Set(allowedList));
+  }
   if (!rows.length) return null;
 
   const modelInList = (rec, id) => {
@@ -748,7 +986,7 @@ function findProviderForModel(modelId, store = loadStore()) {
   if (matches.length > 1) {
     return matches.find((r) => r.isCurrent) || matches[0];
   }
-  return rows.find((r) => r.isCurrent) || null;
+  return null;
 }
 
 function readGlobalClaudeEnvFromDisk() {
@@ -782,7 +1020,6 @@ function writeClaudeSettingsFromEnv(env, language = "chinese") {
 }
 
 function upsertProvider(input) {
-  migrateFromCcSwitchIfEmpty();
   const name = String(input.name || "").trim();
   if (!name) throw new Error("供应商名称不能为空");
 
@@ -833,7 +1070,9 @@ function upsertProvider(input) {
   store.providers[id] = {
     id,
     name,
-    endpoint: String(input.endpoint || existing?.endpoint || "").trim(),
+    endpoint: normalizeAnthropicBaseUrl(
+      String(input.endpoint || existing?.endpoint || "").trim(),
+    ),
     apiKey,
     models,
     inputPrice,
@@ -846,6 +1085,7 @@ function upsertProvider(input) {
       input.homepage || input.websiteUrl || existing?.websiteUrl || "",
     ).trim(),
     notes: String(input.notes || "项目内配置").trim(),
+    source: PROVIDER_SOURCE_USER,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
@@ -922,12 +1162,143 @@ function setCurrentProvider(providerId, preferredModel) {
   };
 }
 
-function resolveEnvForModel(modelId) {
+function collectProviderModelIds(providers) {
+  const out = new Set();
+  for (const p of providers || []) {
+    for (const m of p.models || []) {
+      const id = String(m || "").trim();
+      if (id && id !== "#") out.add(id);
+    }
+  }
+  return out;
+}
+
+/** 服务端单一真相：聊天池 / 已配置池 / 供应商 id 列表 */
+function buildModelPools(settings) {
+  const providers = listProviders();
+  const chatProviders = filterProvidersForSettings(providers, settings);
+  const catalogProviders = filterProvidersForCatalog(providers, settings);
+  const configuredLocal = [
+    ...new Set(
+      (settings?.localModelCatalog ?? [])
+        .map((m) => String(m || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  const enabledLocal = [
+    ...new Set(
+      (settings?.chatEnabledLocalModels ?? [])
+        .map((m) => String(m || "").trim())
+        .filter((m) => configuredLocal.includes(m)),
+    ),
+  ];
+  return {
+    chat: {
+      cloudModels: [...collectProviderModelIds(chatProviders)].sort(),
+      localModels: enabledLocal,
+    },
+    configured: {
+      cloudModels: [...collectProviderModelIds(catalogProviders)].sort(),
+      localModels: configuredLocal,
+    },
+    invokableProviderIds: getInvokableProviderIds(settings),
+    catalogProviderIds: [
+      ...new Set(
+        (settings?.cloudProviderCatalog ?? [])
+          .map((id) => String(id || "").trim())
+          .filter(Boolean),
+      ),
+    ],
+  };
+}
+
+/**
+ * 启动或供应商变更后：剔除陈旧 catalog/enabled、重建 cloudModelCatalog、修正不可用的默认模型。
+ */
+function sanitizeChatModelState(settings) {
+  if (!settings || typeof settings !== "object") {
+    return { settings, changed: false };
+  }
+  const store = loadStore();
+  const kvIds = new Set(Object.keys(store.providers || {}));
+  const pools = buildModelPools(settings);
+  let changed = false;
+  const next = { ...settings };
+
+  const nextCatalog = (settings.cloudProviderCatalog ?? [])
+    .map((id) => String(id || "").trim())
+    .filter((id) => kvIds.has(id));
+  if (
+    JSON.stringify(nextCatalog) !==
+    JSON.stringify(settings.cloudProviderCatalog ?? [])
+  ) {
+    next.cloudProviderCatalog = nextCatalog;
+    changed = true;
+  }
+
+  const nextEnabled = (settings.chatEnabledCloudProviders ?? [])
+    .map((id) => String(id || "").trim())
+    .filter((id) => kvIds.has(id));
+  if (
+    JSON.stringify(nextEnabled) !==
+    JSON.stringify(settings.chatEnabledCloudProviders ?? [])
+  ) {
+    next.chatEnabledCloudProviders = nextEnabled;
+    changed = true;
+  }
+
+  const rebuiltCloudModels = pools.chat.cloudModels;
+  if (
+    JSON.stringify(rebuiltCloudModels) !==
+    JSON.stringify(settings.cloudModelCatalog ?? [])
+  ) {
+    next.cloudModelCatalog = rebuiltCloudModels;
+    changed = true;
+  }
+
+  const configuredLocal = new Set(pools.configured.localModels);
+  const nextEnabledLocal = (settings.chatEnabledLocalModels ?? [])
+    .map((m) => String(m || "").trim())
+    .filter((m) => configuredLocal.has(m));
+  if (
+    JSON.stringify(nextEnabledLocal) !==
+    JSON.stringify(settings.chatEnabledLocalModels ?? [])
+  ) {
+    next.chatEnabledLocalModels = nextEnabledLocal;
+    changed = true;
+  }
+
+  const chatCombined = new Set([
+    ...pools.chat.cloudModels,
+    ...pools.chat.localModels,
+  ]);
+  const model = String(settings.model || "").trim();
+  if (model && model !== "auto" && !chatCombined.has(model)) {
+    const fallback =
+      pools.chat.cloudModels[0] ||
+      pools.chat.localModels[0] ||
+      "auto";
+    next.model = fallback;
+    changed = true;
+  }
+
+  return { settings: next, changed };
+}
+
+function resolveEnvForModelOnce(modelId, store = loadStore()) {
   const globalEnv = readGlobalClaudeEnvFromDisk();
   const model = String(modelId || "").trim();
-  const store = loadStore();
   const hit = findProviderForModel(model, store);
   if (!hit) {
+    if (model && !/^(sonnet|opus|haiku|claude-)/i.test(model)) {
+      return {
+        env: {},
+        providerId: "",
+        providerName: "",
+        model,
+        error: `未找到模型「${model}」对应的已启用云供应商，请在「设置 → 模型与连接」中检查 catalog 与启用状态。`,
+      };
+    }
     return { env: globalEnv, providerId: "", providerName: "", model };
   }
 
@@ -947,6 +1318,32 @@ function resolveEnvForModel(modelId) {
     model: pickModel,
     models: rec.models || [],
   };
+}
+
+function resolveEnvForModel(modelId, options = {}) {
+  const primary = resolveEnvForModelOnce(modelId);
+  if (!primary.error || options.fallback === false) return primary;
+  let settings = options.settings;
+  if (!settings && getChatSettings) {
+    try {
+      settings = getChatSettings();
+    } catch {
+      settings = null;
+    }
+  }
+  if (!settings) return primary;
+  const pools = buildModelPools(settings);
+  for (const candidate of pools.chat.cloudModels) {
+    if (candidate === String(modelId || "").trim()) continue;
+    const attempt = resolveEnvForModelOnce(candidate);
+    if (!attempt.error) {
+      return {
+        ...attempt,
+        fallbackFrom: String(modelId || "").trim(),
+      };
+    }
+  }
+  return primary;
 }
 
 function isLocalOllamaProvider(provider) {
@@ -1049,7 +1446,10 @@ async function collectCloudModelPool({
   };
 
   const models = new Set(aliases.filter(Boolean));
-  const providers = listProviders();
+  const allProviders = listProviders();
+  const allowed = getInvokableProviderIds(settings);
+  const allowedSet = new Set(allowed);
+  const providers = allProviders.filter((p) => allowedSet.has(p.id));
   for (const p of providers) {
     if (isLocalOllamaProvider(p)) continue;
     for (const m of p.models || []) {
@@ -1144,92 +1544,13 @@ function providersConfigured() {
   return Object.keys(store.providers || {}).length > 0;
 }
 
-/** 一次性从 CC Switch 导入（若项目尚无供应商） */
-function migrateFromCcSwitchIfEmpty() {
-  const store = loadStore();
-  if (store.ccSwitchMigrated) return false;
-  if (Object.keys(store.providers || {}).length > 0) {
-    store.ccSwitchMigrated = true;
-    saveStore(store);
-    return false;
-  }
-
-  const ccDb = path.join(os.homedir(), ".cc-switch", "cc-switch.db");
-  if (!fs.existsSync(ccDb)) return false;
-
-  try {
-    const CAD_SQLITE = path.join(
-      __dirname,
-      "vendor/cad/node_modules/better-sqlite3",
-    );
-    const Database = require(CAD_SQLITE);
-    const db = new Database(ccDb, { readonly: true });
-    try {
-      const rows = db
-        .prepare(
-          "SELECT * FROM providers WHERE app_type='claude' ORDER BY is_current DESC, sort_index ASC, name ASC",
-        )
-        .all();
-      if (!rows.length) return false;
-
-      for (const row of rows) {
-        let cfg = {};
-        try {
-          cfg = JSON.parse(row.settings_config || "{}");
-        } catch {
-          cfg = {};
-        }
-        const env = cfg.env || {};
-        const apiKey = String(
-          env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || "",
-        ).trim();
-        if (!apiKey) continue;
-        const endpoint = String(env.ANTHROPIC_BASE_URL || "").trim();
-        const sonnet = String(env.ANTHROPIC_DEFAULT_SONNET_MODEL || "").trim();
-        let extra = [];
-        try {
-          const meta = JSON.parse(row.meta || "{}");
-          extra = Array.isArray(meta.extraModels) ? meta.extraModels : [];
-        } catch {
-          extra = [];
-        }
-        const models = [...new Set([sonnet, ...extra].filter(Boolean))];
-        if (!endpoint || !models.length) continue;
-        store.providers[row.id] = {
-          id: row.id,
-          name: row.name,
-          endpoint,
-          apiKey,
-          models,
-          websiteUrl: row.website_url || "",
-          notes: "自 CC Switch 迁移",
-          createdAt: row.created_at || Date.now(),
-          updatedAt: Date.now(),
-        };
-        if (row.is_current) store.currentProviderId = row.id;
-      }
-      if (Object.keys(store.providers).length) {
-        store.ccSwitchMigrated = true;
-        saveStore(store);
-        return true;
-      }
-    } finally {
-      db.close();
-    }
-  } catch {
-    /* ignore migration errors */
-  }
-  store.ccSwitchMigrated = true;
-  saveStore(store);
-  return false;
-}
-
 function geminiDirectEndpointError() {
   return ""; // Gemini 直连已支持，不再需要错误提示
 }
 
 module.exports = {
   attachDb,
+  attachChatSettings,
   listProviders,
   upsertProvider,
   deleteProvider,
@@ -1243,7 +1564,6 @@ module.exports = {
   normalizeProviderEnv,
   writeClaudeSettingsFromEnv,
   mapDeepSeekModelForClaude,
-  migrateFromCcSwitchIfEmpty,
   providerNeedsCcrProxy,
   supportsDirectApi,
   inferDirectApiFromModel,
@@ -1252,4 +1572,20 @@ module.exports = {
   listKnownProviders,
   normalizeCloudModelId,
   geminiDirectEndpointError,
+  purgeLegacyImportedProvidersIfNeeded,
+  purgeLegacyImportedProviders,
+  isLegacyImportedProvider,
+  getInvokableProviderIds,
+  filterProvidersForSettings,
+  filterProvidersForCatalog,
+  reconcileCloudProviderCatalog,
+  isCcSwitchImportedProvider,
+  isUserManagedProvider,
+  providerSource,
+  buildModelPools,
+  sanitizeChatModelState,
+  PROVIDER_SOURCE_USER,
+  PROVIDER_SOURCE_LEGACY_IMPORT,
+  purgeCcSwitchImportedProvidersIfNeeded,
+  purgeCcSwitchImportedProviders,
 };

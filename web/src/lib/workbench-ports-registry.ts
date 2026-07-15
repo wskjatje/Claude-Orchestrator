@@ -1,3 +1,9 @@
+import {
+  getWorkbenchHttpPort,
+  getWorkbenchUiPort,
+  getWorkbenchWsPort,
+} from "@/lib/bridge-connection-error";
+
 export type ForwardedPort = {
   id: string;
   port: number;
@@ -10,22 +16,34 @@ export type ForwardedPort = {
 const PORT_URL_RE =
   /(?:https?:\/\/)?(?:127\.0\.0\.1|localhost|\[::1\]|0\.0\.0\.0):(\d{2,5})\b/gi;
 
-const KNOWN: Omit<ForwardedPort, "id">[] = [
-  {
-    port: 5188,
-    address: "127.0.0.1:5188",
-    url: "http://127.0.0.1:5188",
-    label: "工作台 UI（Vite）",
-    source: "工作台",
-  },
-  {
-    port: 18790,
-    address: "127.0.0.1:18790",
-    url: "http://127.0.0.1:18790",
-    label: "Web 桥接 API",
-    source: "桥接",
-  },
-];
+function buildKnownPorts(): Omit<ForwardedPort, "id">[] {
+  const ui = getWorkbenchUiPort();
+  const http = getWorkbenchHttpPort();
+  const ws = getWorkbenchWsPort();
+  return [
+    {
+      port: ui,
+      address: `127.0.0.1:${ui}`,
+      url: `http://127.0.0.1:${ui}`,
+      label: "工作台 UI（Vite）",
+      source: "工作台",
+    },
+    {
+      port: http,
+      address: `127.0.0.1:${http}`,
+      url: `http://127.0.0.1:${http}`,
+      label: "Web 桥接 API",
+      source: "桥接",
+    },
+    {
+      port: ws,
+      address: `127.0.0.1:${ws}`,
+      url: `ws://127.0.0.1:${ws}`,
+      label: "Web 桥接 WebSocket",
+      source: "桥接",
+    },
+  ];
+}
 
 const ports = new Map<number, ForwardedPort>();
 const listeners = new Set<() => void>();
@@ -57,7 +75,7 @@ export function getForwardedPorts(): ForwardedPort[] {
 }
 
 export function initKnownPorts() {
-  for (const p of KNOWN) upsert(p);
+  for (const p of buildKnownPorts()) upsert(p);
   emit();
 }
 

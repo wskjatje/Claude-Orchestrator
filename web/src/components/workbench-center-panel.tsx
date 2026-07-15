@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { useWorkbenchProblems } from "@/contexts/workbench-problems-context";
 import {
@@ -20,11 +20,9 @@ const CENTER_FALLBACK = {
 export function WorkbenchCenterPanel({
   terminalOpen,
   onTerminalOpenChange,
-  panelToggles,
 }: {
   terminalOpen: boolean;
   onTerminalOpenChange: (open: boolean) => void;
-  panelToggles?: ReactNode;
 }) {
   const { prefsLoaded } = useTheme();
   const { errorCount } = useWorkbenchProblems();
@@ -45,7 +43,6 @@ export function WorkbenchCenterPanel({
   if (!terminalOpen) {
     return (
       <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-        {panelToggles}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <WorkbenchCenterPreview />
         </div>
@@ -55,7 +52,6 @@ export function WorkbenchCenterPanel({
 
   return (
     <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-      {panelToggles}
       <ResizablePanelGroup
         key={prefsLoaded ? "workbench-center-ready" : "workbench-center-boot"}
         orientation="vertical"

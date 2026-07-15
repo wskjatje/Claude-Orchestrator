@@ -1,6 +1,6 @@
 import type { SavedChainSummary } from "@/types/desktop";
 
-export type ChainCardStatusTone = "success" | "primary" | "warning" | "muted";
+export type ChainCardStatusTone = "success" | "primary" | "warning" | "muted" | "info";
 
 export function chainCategoryLabel(category: SavedChainSummary["category"]): string {
   if (category === "single") return "单 Agent";
@@ -28,5 +28,5 @@ export function chainCardStatus(
   if (idx > 0) {
     return { label: `● 已暂停（${idx}/${total}）`, tone: "warning", progress };
   }
-  return { label: "● 待执行", tone: "success", progress };
+  return { label: "● 待执行", tone: "info", progress };
 }

@@ -11,7 +11,7 @@ import {
 import { createPortal } from "react-dom";
 import { AppShell } from "@/components/app-shell";
 import { useChatState } from "@/contexts/chat-state-context";
-import { WorkbenchCursorLayout } from "@/components/workbench-cursor-layout";
+import { WorkbenchMainLayout } from "@/components/workbench-main-layout";
 import { getDesktop } from "@/lib/desktop-api";
 import {
   AUTO_MODEL_ID,
@@ -110,15 +110,15 @@ import {
   PieChart,
   Sparkle,
   ChevronDown,
-  PanelRightOpen,
-  MessageCircle,
 } from "lucide-react";
-import { ChatComposerCursor } from "@/components/chat-composer-cursor";
+import { WorkbenchChatComposer } from "@/components/workbench-chat-composer";
 import type { ChatComposerShellProps } from "@/components/chat-composer-shell";
 import { type PendingFileEntry } from "@/components/composer-file-attachments";
 import { ChatMessagesPane } from "@/components/chat-messages-pane";
 import { useChatScroll } from "@/hooks/use-chat-scroll";
 import { useChatStream } from "@/hooks/use-chat-stream";
+import { WorkbenchPanelToolbar } from "@/components/workbench-panel-toolbar";
+import { focusBottomPanel } from "@/lib/workbench-panel-init";
 import { ChatPanelToolbar } from "@/components/chat-panel-toolbar";
 import { ChatResendConfirmDialog } from "@/components/chat-resend-confirm-dialog";
 import { GithubDialog } from "@/components/chat/github-dialog";
@@ -153,6 +153,11 @@ import {
   syncExplicitEmptyInCache,
 } from "@/lib/chat-sessions-store";
 import { type PendingTerminalSnippet } from "@/components/composer-terminal-attachments";
+import {
+  formatDomElementContext,
+  type DomElementPayload,
+  type PendingDomElement,
+} from "@/lib/dom-element-meta";
 import { trimTerminalDisplay } from "@/lib/chat-terminal-paste";
 import type { TerminalSelectionPayload } from "@/lib/terminal-selection-meta";
 import { chatRouteSearch, EMPTY_CHAT_SEARCH } from "@/lib/chat-route-search";
@@ -294,6 +299,7 @@ type Msg = {
   attachments?: UserImageAttachment[];
   terminalSnippets?: TerminalSelectionPayload[];
   historyIndex?: number;
+  requestError?: boolean;
 };
 
 /** 旧版任务链写入的超长「用户」气泡，在列表中折叠为摘要（不改磁盘时可逆：仅展示层）。 */
@@ -387,6 +393,7 @@ function diskToDisplay(list: DiskMsg[], modelLabel: string): Msg[] {
     terminalSnippets:
       m.role === "user" && m.terminalSnippets?.length ? m.terminalSnippets : undefined,
     historyIndex: m.role === "user" ? historyIndex : undefined,
+    requestError: m.role === "assistant" && m.requestError === true ? true : undefined,
   }));
 }
 
@@ -434,13 +441,22 @@ function newLocalId() {
     : `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function buildComposerUserLine(text: string, terminalSnippets: PendingTerminalSnippet[]): string {
+function buildComposerUserLine(
+  text: string,
+  terminalSnippets: PendingTerminalSnippet[],
+  domElements: PendingDomElement[] = [],
+): string {
+  const parts: string[] = [];
+  if (text) parts.push(text);
+  for (const el of domElements) {
+    parts.push(formatDomElementContext(el));
+  }
   const terminalPart = terminalSnippets
     .map((s) => trimTerminalDisplay(s.text))
     .filter(Boolean)
     .join("\n\n");
-  if (text && terminalPart) return `${text}\n\n${terminalPart}`;
-  return text || terminalPart;
+  if (terminalPart) parts.push(terminalPart);
+  return parts.join("\n\n");
 }
 
 /** 按编排模式从池中选取会话 modelId；Auto / inherit 保留为 auto 哨兵值 */
@@ -567,6 +583,7 @@ function ChatPage() {
   const [pendingTerminalSnippets, setPendingTerminalSnippets] = useState<PendingTerminalSnippet[]>(
     [],
   );
+  const [pendingDomElements, setPendingDomElements] = useState<PendingDomElement[]>([]);
   const [editHistoryIndex, setEditHistoryIndex] = useState<number | null>(null);
   const editHistoryIndexRef = useRef<number | null>(null);
 
@@ -592,6 +609,7 @@ function ChatPage() {
     pendingImages: (UserImageAttachment & { id: string })[];
     pendingFiles: PendingFileEntry[];
     pendingTerminalSnippets: PendingTerminalSnippet[];
+    pendingDomElements: PendingDomElement[];
   } | null>(null);
   const editComposerRef = useRef<typeof editComposer>(null);
   const sendPayloadOverrideRef = useRef<{
@@ -599,6 +617,7 @@ function ChatPage() {
     pendingImages: (UserImageAttachment & { id: string })[];
     pendingFiles: PendingFileEntry[];
     pendingTerminalSnippets: PendingTerminalSnippet[];
+    pendingDomElements?: PendingDomElement[];
     editCutoff: number;
   } | null>(null);
   const newSessionInFlightRef = useRef(false);
@@ -643,6 +662,12 @@ function ChatPage() {
         endLine: payload.endLine,
       },
     ]);
+    requestAnimationFrame(() => taRef.current?.focus());
+  }, []);
+
+  const insertDomElement = useCallback((payload: DomElementPayload) => {
+    if (!payload.selector) return;
+    setPendingDomElements((prev) => [...prev, { ...payload, id: newLocalId() }]);
     requestAnimationFrame(() => taRef.current?.focus());
   }, []);
 
@@ -1273,71 +1298,101 @@ function ChatPage() {
     if (chatCtx.sessions.length === 0) return; // 首次加载，让正常 hydration 执行
 
     contextRestoredRef.current = true;
-    sessionsHydratedRef.current = true;
 
-    const ctxSessions = chatCtx.sessions as unknown as ChatSession[];
-    const ctxAid = chatCtx.activeId;
+    void (async () => {
+      const api = getDesktop();
+      let workspace: string | null = workspacePathRef.current;
+      if (api) {
+        try {
+          workspace = await api.getWorkspace();
+        } catch {
+          /* 仍以 ref 为准 */
+        }
+      }
+      workspacePathRef.current = workspace;
+      setWorkspacePath(workspace);
 
-    sessionsRef.current = ctxSessions;
-    activeIdRef.current = ctxAid;
-    setSessions(ctxSessions);
-    setActiveId(ctxAid);
-    // 从 context 恢复已打开的标签页列表（跨路由切换保留）
-    const ctxTabIds = chatCtx.openTabIds;
-    if (ctxTabIds.length > 0 && ctxTabIds.some((tid) => ctxSessions.some((s) => s.id === tid))) {
-      setOpenTabIds(ctxTabIds.includes(ctxAid) ? ctxTabIds : [...new Set([...ctxTabIds, ctxAid])]);
-    } else {
-      setOpenTabIds([ctxAid]);
-    }
+      const cachedExplicitId =
+        getChatSessionsCache()?.explicitEmptySessionId ?? chatCtx.explicitEmptySessionId ?? null;
+      const ctxSessions = chatCtx.sessions as unknown as ChatSession[];
+      const resolved = resolveWorkspaceChatSessions(
+        ctxSessions,
+        workspace,
+        activeByWorkspaceRef.current,
+        () => ({
+          id: genSessionId(),
+          title: "新对话",
+          modelId: chatCtx.globalModel?.trim() || globalModel || AUTO_MODEL_ID,
+          history: [],
+          workspacePath: workspaceSessionKey(workspace) || null,
+        }),
+        {
+          resume: true,
+          explicitEmptySessionId: cachedExplicitId,
+          cachedActiveId: chatCtx.activeId,
+        },
+      );
 
-    // 恢复流状态：如果 GlobalChatPanel 仍在在流，同步 sending / activeStream 状态
-    if (chatCtx.activeStreamRequestId) {
-      activeStreamRequestIdRef.current = chatCtx.activeStreamRequestId;
-      setActiveStreamRequestId(chatCtx.activeStreamRequestId);
-      streamInProgressRef.current = true;
-    }
-    const ctxSending = chatCtx.sendingSessions;
-    if (Object.keys(ctxSending).length > 0) {
-      sendingSessionsRef.current = ctxSending;
-      setSendingSessions(ctxSending);
-    }
+      const ctxAid = resolved.activeId;
+      sessionsRef.current = resolved.sessions;
+      activeIdRef.current = ctxAid;
+      activeByWorkspaceRef.current = resolved.activeByWorkspace;
+      setSessions(resolved.sessions);
+      setActiveId(ctxAid);
 
-    // 优先从 per-session 累积池恢复（GlobalChatPanel 在 ChatPage 卸载期间写入的流式消息）
-    const perSessionMsgs = chatCtx.perSessionMessagesRef.current[ctxAid];
-    if (perSessionMsgs?.length) {
-      setMessages(perSessionMsgs);
-      chatCtx.syncMessages(perSessionMsgs);
-    } else {
-      // 回退到会话历史
-      const active = ctxSessions.find((s) => s.id === ctxAid) ?? ctxSessions[0];
-      syncMessagesFromSession(active);
-    }
+      const visibleIds = new Set(
+        filterSessionsForWorkspaceTabs(resolved.sessions, workspace).map((s) => s.id),
+      );
+      const ctxTabIds = chatCtx.openTabIds.filter((id) => visibleIds.has(id));
+      if (ctxTabIds.length > 0 && ctxTabIds.some((tid) => resolved.sessions.some((s) => s.id === tid))) {
+        setOpenTabIds(ctxTabIds.includes(ctxAid) ? ctxTabIds : [...new Set([...ctxTabIds, ctxAid])]);
+      } else {
+        setOpenTabIds([ctxAid]);
+      }
 
-    // 同步到 sessionStorage 缓存，确保 URL 驱动的导航能看到会话
-    const cachedExplicitId = getChatSessionsCache()?.explicitEmptySessionId;
-    setChatSessionsCache({
-      sessions: ctxSessions,
-      activeId: ctxAid,
-      activeByWorkspace: activeByWorkspaceRef.current,
-      workspacePath: workspacePathRef.current,
-      composerDrafts: composerDraftsRef.current,
-      explicitEmptySessionId: cachedExplicitId ?? null,
-      localAgentBasename: getChatSessionsCache()?.localAgentBasename,
-    });
-    // 同步 explicitEmptySessionId 到 context，跨路由切换保留
-    if (cachedExplicitId) {
-      chatCtx.syncExplicitEmptySessionId(cachedExplicitId);
-    }
+      if (chatCtx.activeStreamRequestId) {
+        activeStreamRequestIdRef.current = chatCtx.activeStreamRequestId;
+        setActiveStreamRequestId(chatCtx.activeStreamRequestId);
+        streamInProgressRef.current = true;
+      }
+      const ctxSending = chatCtx.sendingSessions;
+      if (Object.keys(ctxSending).length > 0) {
+        sendingSessionsRef.current = ctxSending;
+        setSendingSessions(ctxSending);
+      }
 
-    // 跨路由切换后恢复 globalModel（当次会话 handleModelPick 已同步到 context）
-    if (chatCtx.globalModel) {
-      setGlobalModel(chatCtx.globalModel);
-    }
-    // 从 sessionStorage 缓存恢复 localAgentBasename（避免异步加载闪动）
-    const cachedAgent = getChatSessionsCache()?.localAgentBasename;
-    if (cachedAgent) {
-      setLocalAgentBasename(cachedAgent);
-    }
+      const perSessionMsgs = chatCtx.perSessionMessagesRef.current[ctxAid];
+      if (perSessionMsgs?.length) {
+        setMessages(perSessionMsgs);
+        chatCtx.syncMessages(perSessionMsgs);
+      } else {
+        const active = resolved.sessions.find((s) => s.id === ctxAid) ?? resolved.sessions[0];
+        syncMessagesFromSession(active);
+      }
+
+      setChatSessionsCache({
+        sessions: resolved.sessions,
+        activeId: ctxAid,
+        activeByWorkspace: resolved.activeByWorkspace,
+        workspacePath: workspace,
+        composerDrafts: composerDraftsRef.current,
+        explicitEmptySessionId: cachedExplicitId,
+        localAgentBasename: getChatSessionsCache()?.localAgentBasename,
+      });
+      if (cachedExplicitId) {
+        chatCtx.syncExplicitEmptySessionId(cachedExplicitId);
+      }
+
+      if (chatCtx.globalModel) {
+        setGlobalModel(chatCtx.globalModel);
+      }
+      const cachedAgent = getChatSessionsCache()?.localAgentBasename;
+      if (cachedAgent) {
+        setLocalAgentBasename(cachedAgent);
+      }
+
+      sessionsHydratedRef.current = true;
+    })();
   }, [hasDesktopApi, urlNewSession, chatCtx.sessions.length, chatCtx.messages.length]); // eslint-disable-line
 
   useEffect(() => {
@@ -1470,7 +1525,7 @@ function ChatPage() {
       const cached = getChatSessionsCache();
       const cacheMatchesWorkspace =
         cached &&
-        chatSessionsCacheMatchesWorkspace(cached.workspacePath, workspace, cached.sessions);
+        chatSessionsCacheMatchesWorkspace(cached.workspacePath, workspace);
       const explicitEmptyId = cacheMatchesWorkspace
         ? cached.explicitEmptySessionId
         : (chatCtx.explicitEmptySessionId ?? null);
@@ -1849,15 +1904,15 @@ function ChatPage() {
       nextMode === "claude-code" &&
       nextModel &&
       !isAutoModelSelection(nextModel) &&
-      api.ccSwitchListProviders &&
-      api.ccSwitchSetCurrentProvider
+      api.cloudProvidersListProviders &&
+      api.cloudProvidersSetCurrentProvider
     ) {
       try {
-        const listed = await api.ccSwitchListProviders();
+        const listed = await api.cloudProvidersListProviders();
         const matches = (listed.providers || []).filter((p) => p.models?.includes(nextModel));
         const provider = matches.find((p) => p.isCurrent) || matches[0];
         if (provider) {
-          await api.ccSwitchSetCurrentProvider({
+          await api.cloudProvidersSetCurrentProvider({
             providerId: provider.id,
             model: nextModel,
             syncWorkbench: false,
@@ -1941,10 +1996,6 @@ function ChatPage() {
     activeIdRef.current = cached.activeId;
     setSessions(list);
     setActiveId(cached.activeId);
-    if (cached.workspacePath) {
-      workspacePathRef.current = cached.workspacePath;
-      setWorkspacePath(cached.workspacePath);
-    }
     if (cached.activeByWorkspace) {
       activeByWorkspaceRef.current = { ...cached.activeByWorkspace };
     }
@@ -1963,7 +2014,7 @@ function ChatPage() {
     } else {
       setOpenTabIds([cached.activeId]);
     }
-  }, [globalModel, chatCtx]);
+  }, [globalModel, chatCtx.openTabIds]);
 
   /** 后台任务链写入会话后同步 UI（切换页签返回聊天页亦生效） */
   const refreshSessionsFromDisk = useCallback(async () => {
@@ -2132,6 +2183,7 @@ function ChatPage() {
         pendingImages: restored.attachments,
         pendingFiles: [],
         pendingTerminalSnippets: restored.terminalSnippets,
+        pendingDomElements: [],
       });
       setEditHistoryIndex(historyIndex);
       editHistoryIndexRef.current = historyIndex;
@@ -2500,6 +2552,7 @@ function ChatPage() {
       setInput("");
       setPendingImages([]);
       setPendingTerminalSnippets([]);
+      setPendingDomElements([]);
       setMessages([{ role: "assistant", content: EMPTY_SESSION_WELCOME }]);
       chatCtx.syncMessages([{ role: "assistant", content: EMPTY_SESSION_WELCOME }]);
       await persist(next, id);
@@ -2857,13 +2910,17 @@ function ChatPage() {
     const activePendingTerminal =
       override?.pendingTerminalSnippets ??
       (editingFromInline ? editDraft.pendingTerminalSnippets : pendingTerminalSnippets);
+    const activePendingDom =
+      override?.pendingDomElements ??
+      (editingFromInline ? editDraft.pendingDomElements : pendingDomElements);
     const presetEditCutoff = override?.editCutoff;
 
     const hasTerminal = activePendingTerminal.length > 0;
+    const hasDom = activePendingDom.length > 0;
     const hasFiles = activePendingFiles.length > 0;
     const sendSessionId = activeIdRef.current;
     if (
-      (!text && !activePendingImages.length && !activePendingFiles.length && !hasTerminal) ||
+      (!text && !activePendingImages.length && !activePendingFiles.length && !hasTerminal && !hasDom) ||
       sendingSessionsRef.current[sendSessionId]
     )
       return;
@@ -3070,7 +3127,11 @@ function ChatPage() {
     const filePrefix = activePendingFiles.length
       ? activePendingFiles.map((f) => `[文件: ${f.name}]`).join("\n") + "\n\n"
       : "";
-    const displayLine = buildComposerUserLine(filePrefix + baseText, activePendingTerminal);
+    const displayLine = buildComposerUserLine(
+      filePrefix + baseText,
+      activePendingTerminal,
+      activePendingDom,
+    );
 
     const route = resolveAgentForTurn(displayLine, localAgentBasename);
     // 自动模式（底栏显示「通用」/ 未选择 Agent）：不走 Agent 路由，保持普通聊天
@@ -3318,6 +3379,7 @@ function ChatPage() {
       setPendingImages([]);
       setPendingFiles([]);
       setPendingTerminalSnippets([]);
+      setPendingDomElements([]);
     }
     if (sendSessionId === activeIdRef.current) {
       const waitingMsgs: any[] = [
@@ -3958,6 +4020,15 @@ function ChatPage() {
       ),
     [],
   );
+  const inlineOnRemoveDomElement = useCallback(
+    (id: string) =>
+      setEditComposer((prev) =>
+        prev
+          ? { ...prev, pendingDomElements: prev.pendingDomElements.filter((x) => x.id !== id) }
+          : prev,
+      ),
+    [],
+  );
   const inlineOnDropFiles = useCallback(
     (files: File[], cursor: number) => void handleInlineComposerDropFiles(files, cursor),
     [handleInlineComposerDropFiles],
@@ -3993,7 +4064,8 @@ function ChatPage() {
         editComposer.input.trim() ||
         editComposer.pendingImages.length ||
         editComposer.pendingFiles.length ||
-        editComposer.pendingTerminalSnippets.length,
+        editComposer.pendingTerminalSnippets.length ||
+        editComposer.pendingDomElements.length,
       ),
       pendingImages: editComposer.pendingImages,
       onRemoveImage: inlineOnRemoveImage,
@@ -4001,6 +4073,8 @@ function ChatPage() {
       onRemoveFile: inlineOnRemoveFile,
       pendingTerminalSnippets: editComposer.pendingTerminalSnippets,
       onRemoveTerminalSnippet: inlineOnRemoveTerminalSnippet,
+      pendingDomElements: editComposer.pendingDomElements,
+      onRemoveDomElement: inlineOnRemoveDomElement,
       onPickFiles: inlineOnPickFiles,
       orchMode,
       localAgentBasename,
@@ -4041,12 +4115,25 @@ function ChatPage() {
   }, [editHistoryIndex, sessions, activeId, globalModel]);
 
   return (
-    <AppShell variant="workbench">
+    <AppShell
+      variant="workbench"
+      headerToolbar={
+        <WorkbenchPanelToolbar
+          leftOpen={leftSidebarOpen}
+          onLeftOpenChange={setLeftSidebarOpen}
+          chatOpen={chatPanelOpen}
+          onChatOpenChange={setChatPanelOpen}
+          terminalOpen={terminalOpen}
+          onTerminalOpenChange={setTerminalOpen}
+        />
+      }
+    >
       <div className="workbench-page flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-        <WorkbenchCursorLayout
+        <WorkbenchMainLayout
           chatBodyMountRef={onChatBodyMountRef}
           onOpenChatPanel={openChatPanel}
           onInsertTerminalSelection={insertTerminalSelection}
+          onInsertDomElement={insertDomElement}
           chatHeader={
             <ChatPanelToolbar
               sessions={tabSessions}
@@ -4057,9 +4144,6 @@ function ChatPage() {
               onNewSession={() => void handleNewSession()}
               onCloseSession={(id) => void handleCloseSession(id)}
               hasDesktopApi={hasDesktopApi}
-              onClosePanel={() => setChatPanelOpen(false)}
-              terminalOpen={terminalOpen}
-              onToggleTerminal={() => setTerminalOpen((v) => !v)}
               projectHistoryItems={projectHistoryItems}
               allHistoryItems={allHistoryItems}
               onSelectHistorySession={(id) => void activateHistorySession(id)}
@@ -4067,38 +4151,16 @@ function ChatPage() {
               onHistoryOpen={handleHistoryOpen}
             />
           }
-          centerToolbar={
-            <div className="absolute left-1.5 top-1.5 z-20 flex items-center gap-1">
-              {!leftSidebarOpen ? (
-                <button
-                  type="button"
-                  onClick={() => setLeftSidebarOpen(true)}
-                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border/80 bg-surface/90 px-2 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm transition hover:bg-secondary hover:text-foreground"
-                  title="显示文件树"
-                >
-                  <PanelRightOpen className="h-3.5 w-3.5 rotate-180" />
-                  <span className="hidden sm:inline">文件</span>
-                </button>
-              ) : null}
-              {!chatPanelOpen ? (
-                <button
-                  type="button"
-                  onClick={() => setChatPanelOpen(true)}
-                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border/80 bg-surface/90 px-2 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm transition hover:bg-secondary hover:text-foreground"
-                  title="显示聊天"
-                >
-                  <MessageCircle className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">聊天</span>
-                </button>
-              ) : null}
-            </div>
-          }
           terminalOpen={terminalOpen}
           onTerminalOpenChange={setTerminalOpen}
           leftOpen={leftSidebarOpen}
           onLeftOpenChange={setLeftSidebarOpen}
           rightOpen={chatPanelOpen}
           onRightOpenChange={setChatPanelOpen}
+          onOpenProblems={() => {
+            setTerminalOpen(true);
+            focusBottomPanel("problems");
+          }}
         />
         {chatBodyMountEl
           ? createPortal(
@@ -4122,7 +4184,7 @@ function ChatPage() {
                   onRequestResendUserMessage={requestResendUserMessage}
                 />
 
-                <ChatComposerCursor
+                <WorkbenchChatComposer
                   dockRef={composerDockRef}
                   textareaRef={taRef}
                   input={input}
@@ -4139,7 +4201,8 @@ function ChatPage() {
                     input.trim() ||
                     pendingImages.length ||
                     pendingFiles.length ||
-                    pendingTerminalSnippets.length,
+                    pendingTerminalSnippets.length ||
+                    pendingDomElements.length,
                   )}
                   pendingImages={pendingImages}
                   onRemoveImage={(id) => setPendingImages((p) => p.filter((x) => x.id !== id))}
@@ -4148,6 +4211,10 @@ function ChatPage() {
                   pendingTerminalSnippets={pendingTerminalSnippets}
                   onRemoveTerminalSnippet={(id) =>
                     setPendingTerminalSnippets((p) => p.filter((x) => x.id !== id))
+                  }
+                  pendingDomElements={pendingDomElements}
+                  onRemoveDomElement={(id) =>
+                    setPendingDomElements((p) => p.filter((x) => x.id !== id))
                   }
                   onPickFiles={(opts) => void pickLocalFiles(opts)}
                   orchMode={orchMode}

@@ -100,35 +100,42 @@
   --color-tool-web: var(--tool-web);
 }
 
+/*
+ * 配色语义（oklch hue）：
+ * - primary / ring / accent：~198 青绿（操作、选中、主按钮）
+ * - destructive / diff-del：~27  红（错误、删除、警告性失败）
+ * - success ~155 | warning ~78 | info ~240
+ * 禁止把 primary 设为红色系，避免与错误态混淆。
+ */
 :root {
   --radius: 0.625rem;
-  --background: oklch(0.985 0.005 60);
-  --foreground: oklch(0.22 0.02 30);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.02 30);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.02 30);
-  --primary: oklch(0.68 0.15 25);
+  --background: oklch(0.985 0.006 210);
+  --foreground: oklch(0.24 0.015 230);
+  --card: oklch(0.995 0.004 210);
+  --card-foreground: oklch(0.24 0.015 230);
+  --popover: oklch(0.995 0.004 210);
+  --popover-foreground: oklch(0.24 0.015 230);
+  --primary: oklch(0.54 0.12 198);
   --primary-foreground: oklch(0.99 0 0);
-  --primary-soft: oklch(0.94 0.04 25);
-  --primary-glow: oklch(0.78 0.13 28);
-  --secondary: oklch(0.96 0.008 60);
-  --secondary-foreground: oklch(0.28 0.02 30);
-  --muted: oklch(0.96 0.008 60);
-  --muted-foreground: oklch(0.52 0.02 30);
-  --accent: oklch(0.94 0.04 25);
-  --accent-foreground: oklch(0.4 0.13 25);
-  --destructive: oklch(0.6 0.22 25);
+  --primary-soft: oklch(0.94 0.035 198);
+  --primary-glow: oklch(0.62 0.11 198);
+  --secondary: oklch(0.965 0.008 210);
+  --secondary-foreground: oklch(0.28 0.015 230);
+  --muted: oklch(0.965 0.008 210);
+  --muted-foreground: oklch(0.5 0.015 230);
+  --accent: oklch(0.945 0.03 198);
+  --accent-foreground: oklch(0.38 0.1 198);
+  --destructive: oklch(0.55 0.22 27);
   --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.92 0.01 40);
-  --input: oklch(0.92 0.01 40);
-  --ring: oklch(0.68 0.15 25);
-  --success: oklch(0.7 0.14 155);
-  --warning: oklch(0.78 0.14 70);
-  --info: oklch(0.65 0.13 240);
-  --surface: oklch(0.99 0.003 60);
-  --surface-elevated: oklch(1 0 0);
-  --code-bg: oklch(0.97 0.012 30);
+  --border: oklch(0.91 0.008 210);
+  --input: oklch(0.91 0.008 210);
+  --ring: oklch(0.54 0.12 198);
+  --success: oklch(0.62 0.14 155);
+  --warning: oklch(0.72 0.14 78);
+  --info: oklch(0.58 0.12 240);
+  --surface: oklch(0.992 0.004 210);
+  --surface-elevated: oklch(0.998 0.003 210);
+  --code-bg: oklch(0.975 0.008 205);
   --terminal-bg: var(--code-bg);
   --terminal-fg: oklch(0.28 0.02 30);
   --terminal-cursor: oklch(0.45 0.02 30);
@@ -152,22 +159,22 @@
   --terminal-chip-bg: oklch(0.94 0.04 195);
   --terminal-chip-fg: oklch(0.42 0.1 195);
   --terminal-chip-border: oklch(0.78 0.08 195 / 0.45);
-  --gradient-subtle: linear-gradient(180deg, oklch(0.99 0.004 60), oklch(0.97 0.008 50));
-  --shadow-xs: 0 1px 2px oklch(0.2 0.02 30 / 0.04);
-  --shadow-sm: 0 1px 3px oklch(0.2 0.02 30 / 0.06), 0 1px 2px oklch(0.2 0.02 30 / 0.04);
-  --shadow-md: 0 4px 14px oklch(0.2 0.02 30 / 0.07), 0 2px 4px oklch(0.2 0.02 30 / 0.04);
-  --shadow-lg: 0 12px 36px oklch(0.2 0.02 30 / 0.1), 0 4px 8px oklch(0.2 0.02 30 / 0.04);
-  --shadow-xl: 0 20px 52px oklch(0.2 0.02 30 / 0.12), 0 6px 12px oklch(0.2 0.02 30 / 0.05);
-  --shadow-glow: 0 8px 28px oklch(0.68 0.15 25 / 0.22);
-  --gradient-primary: linear-gradient(135deg, oklch(0.74 0.16 22), oklch(0.66 0.15 34));
-  --gradient-primary-hover: linear-gradient(135deg, oklch(0.76 0.16 22), oklch(0.68 0.15 34));
+  --gradient-subtle: linear-gradient(180deg, oklch(0.992 0.005 210), oklch(0.975 0.008 205));
+  --shadow-xs: 0 1px 2px oklch(0.22 0.015 230 / 0.04);
+  --shadow-sm: 0 1px 3px oklch(0.22 0.015 230 / 0.06), 0 1px 2px oklch(0.22 0.015 230 / 0.04);
+  --shadow-md: 0 4px 14px oklch(0.22 0.015 230 / 0.07), 0 2px 4px oklch(0.22 0.015 230 / 0.04);
+  --shadow-lg: 0 12px 36px oklch(0.22 0.015 230 / 0.1), 0 4px 8px oklch(0.22 0.015 230 / 0.04);
+  --shadow-xl: 0 20px 52px oklch(0.22 0.015 230 / 0.12), 0 6px 12px oklch(0.22 0.015 230 / 0.05);
+  --shadow-glow: 0 8px 28px oklch(0.54 0.12 198 / 0.2);
+  --gradient-primary: linear-gradient(135deg, oklch(0.58 0.12 195), oklch(0.52 0.11 205));
+  --gradient-primary-hover: linear-gradient(135deg, oklch(0.6 0.12 195), oklch(0.54 0.11 205));
   --transition-base: 180ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-smooth: 250ms cubic-bezier(0.16, 1, 0.3, 1);
   /* Diff colors */
   --diff-add: oklch(0.94 0.08 145);
   --diff-add-fg: oklch(0.42 0.14 145);
-  --diff-del: oklch(0.94 0.07 25);
-  --diff-del-fg: oklch(0.5 0.18 25);
+  --diff-del: oklch(0.94 0.06 27);
+  --diff-del-fg: oklch(0.48 0.2 27);
   --diff-hunk: oklch(0.94 0.04 250);
   --diff-hunk-fg: oklch(0.45 0.12 250);
   /* Tool call colors */
@@ -180,19 +187,25 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.975 0.006 50);
-  --sidebar-foreground: oklch(0.3 0.02 30);
-  --sidebar-primary: oklch(0.68 0.15 25);
+  --sidebar: oklch(0.978 0.007 205);
+  --sidebar-foreground: oklch(0.3 0.015 230);
+  --sidebar-primary: oklch(0.54 0.12 198);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.94 0.04 25);
-  --sidebar-accent-foreground: oklch(0.4 0.13 25);
-  --sidebar-border: oklch(0.92 0.01 40);
-  --sidebar-ring: oklch(0.68 0.15 25);
-  --chat-panel: oklch(0.985 0.004 55);
+  --sidebar-accent: oklch(0.945 0.03 198);
+  --sidebar-accent-foreground: oklch(0.38 0.1 198);
+  --sidebar-border: oklch(0.91 0.008 210);
+  --sidebar-ring: oklch(0.54 0.12 198);
+  --chat-panel: oklch(0.988 0.005 210);
+  --chat-user-bg: oklch(0.94 0.025 210);
+  --chat-user-border: oklch(0.88 0.02 210 / 0.85);
+  --chat-user-fg: var(--foreground);
+  --chat-error-fg: var(--destructive);
+  --chat-error-bg: color-mix(in oklab, var(--destructive) 8%, var(--chat-panel));
+  --chat-error-border: color-mix(in oklab, var(--destructive) 28%, var(--border));
   /* 资源管理器列表 */
-  --explorer-row-hover: oklch(0.955 0.004 50);
-  --explorer-row-active: oklch(0.905 0.006 50);
-  --explorer-row-active-fg: oklch(0.28 0.02 30);
+  --explorer-row-hover: oklch(0.955 0.006 210);
+  --explorer-row-active: oklch(0.925 0.025 198);
+  --explorer-row-active-fg: oklch(0.28 0.015 230);
   --explorer-modified-dot: oklch(0.52 0.17 250);
   --explorer-twistie: oklch(0.55 0.02 50);
   --explorer-indent-guide: oklch(0.85 0.006 50);
@@ -205,6 +218,14 @@
   --explorer-bg: var(--code-bg);
   --explorer-border: color-mix(in oklab, var(--border) 80%, transparent);
   --explorer-label-fg: var(--sidebar-foreground);
+  --explorer-icon-size: 16px;
+  --explorer-icon-saturate: 1;
+  --explorer-icon-contrast: 1;
+  --explorer-icon-brightness: 1.04;
+  --git-graph-line: color-mix(in oklab, var(--info) 78%, var(--primary));
+  --git-graph-node: color-mix(in oklab, var(--info) 82%, var(--primary));
+  --git-graph-node-halo: color-mix(in oklab, var(--info) 22%, transparent);
+  --sc-section-min-h: 7rem;
 }
 
 /* ============================================================
@@ -218,21 +239,21 @@
   --card-foreground: oklch(0.92 0.004 285);
   --popover: oklch(0.2 0.008 285);
   --popover-foreground: oklch(0.92 0.004 285);
-  --primary: oklch(0.72 0.17 25);
-  --primary-foreground: oklch(0.16 0.012 35);
-  --primary-soft: oklch(0.3 0.065 25);
-  --primary-glow: oklch(0.78 0.14 28);
+  --primary: oklch(0.72 0.11 198);
+  --primary-foreground: oklch(0.14 0.012 285);
+  --primary-soft: oklch(0.28 0.045 198);
+  --primary-glow: oklch(0.78 0.1 198);
   --secondary: oklch(0.205 0.01 285);
   --secondary-foreground: oklch(0.92 0.004 285);
   --muted: oklch(0.205 0.01 285);
   --muted-foreground: oklch(0.72 0.012 285);
-  --accent: oklch(0.26 0.05 25);
-  --accent-foreground: oklch(0.94 0.04 25);
-  --destructive: oklch(0.62 0.2 25);
+  --accent: oklch(0.26 0.04 198);
+  --accent-foreground: oklch(0.92 0.03 198);
+  --destructive: oklch(0.65 0.2 27);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(1 0 0 / 24%);
   --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.74 0.17 25);
+  --ring: oklch(0.72 0.11 198);
   --success: oklch(0.72 0.14 155);
   --warning: oklch(0.8 0.14 70);
   --info: oklch(0.7 0.13 240);
@@ -270,38 +291,41 @@
   --terminal-chip-bg: oklch(0.24 0.04 195 / 0.55);
   --terminal-chip-fg: oklch(0.78 0.1 195);
   --terminal-chip-border: oklch(0.55 0.1 195 / 0.35);
-  --gradient-primary: linear-gradient(135deg, oklch(0.7 0.17 22), oklch(0.64 0.17 34));
-  --gradient-subtle: linear-gradient(180deg, oklch(0.175 0.014 42), oklch(0.14 0.014 42));
+  --gradient-primary: linear-gradient(135deg, oklch(0.68 0.11 195), oklch(0.62 0.1 205));
+  --gradient-subtle: linear-gradient(180deg, oklch(0.175 0.012 285), oklch(0.14 0.012 285));
   --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.4);
   --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.45), 0 1px 2px oklch(0 0 0 / 0.32);
   --shadow-md: 0 4px 14px oklch(0 0 0 / 0.5), 0 2px 4px oklch(0 0 0 / 0.32);
   --shadow-lg: 0 12px 36px oklch(0 0 0 / 0.58), 0 4px 8px oklch(0 0 0 / 0.38);
   --shadow-xl: 0 20px 52px oklch(0 0 0 / 0.62), 0 6px 12px oklch(0 0 0 / 0.42);
-  --shadow-glow: 0 8px 28px oklch(0.72 0.17 25 / 0.42);
+  --shadow-glow: 0 8px 28px oklch(0.72 0.11 198 / 0.35);
   /* Diff & tool colors — dark variants */
   --diff-add: oklch(0.32 0.07 145);
   --diff-add-fg: oklch(0.78 0.14 145);
-  --diff-del: oklch(0.34 0.08 25);
-  --diff-del-fg: oklch(0.78 0.16 25);
+  --diff-del: oklch(0.34 0.08 27);
+  --diff-del-fg: oklch(0.78 0.16 27);
   --diff-hunk: oklch(0.3 0.05 250);
   --diff-hunk-fg: oklch(0.78 0.13 250);
   --tool-read: oklch(0.72 0.13 240);
   --tool-edit: oklch(0.78 0.16 60);
   --tool-bash: oklch(0.7 0.18 295);
   --tool-web: oklch(0.72 0.12 195);
-  --chart-1: oklch(0.7 0.18 25);
+  --chart-1: oklch(0.72 0.11 198);
   --chart-2: oklch(0.7 0.14 160);
   --chart-3: oklch(0.74 0.16 70);
   --chart-4: oklch(0.65 0.2 300);
   --chart-5: oklch(0.68 0.18 220);
   --sidebar: oklch(0.195 0.008 285);
   --sidebar-foreground: oklch(0.88 0.006 285);
-  --sidebar-primary: oklch(0.72 0.17 25);
-  --sidebar-primary-foreground: oklch(0.16 0.012 35);
-  --sidebar-accent: oklch(0.24 0.045 28);
-  --sidebar-accent-foreground: oklch(0.94 0.04 25);
+  --sidebar-primary: oklch(0.72 0.11 198);
+  --sidebar-primary-foreground: oklch(0.14 0.012 285);
+  --sidebar-accent: oklch(0.24 0.04 198);
+  --sidebar-accent-foreground: oklch(0.92 0.03 198);
   --sidebar-border: oklch(1 0 0 / 18%);
-  --sidebar-ring: oklch(0.74 0.17 25);
+  --sidebar-ring: oklch(0.72 0.11 198);
+  --chat-error-fg: var(--destructive);
+  --chat-error-bg: color-mix(in oklab, var(--destructive) 12%, var(--chat-panel));
+  --chat-error-border: color-mix(in oklab, var(--destructive) 35%, var(--border));
   --explorer-row-hover: oklch(0.24 0.01 285);
   --explorer-row-active: oklch(0.28 0.012 285);
   --explorer-row-active-fg: oklch(0.98 0.004 285);
@@ -389,12 +413,12 @@
     border-bottom: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
   }
 
-  /** 主内容区轻微氛围光，贴近 Workbench 深色工作台观感 */
+  /** 主内容区轻微氛围光（浅色：青绿；夜间关闭） */
   .main-canvas {
     background-color: var(--color-background);
     background-image:
-      radial-gradient(130% 80% at 100% 0%, oklch(0.72 0.17 25 / 0.06), transparent 60%),
-      radial-gradient(100% 60% at 0% 100%, oklch(0.78 0.14 70 / 0.04), transparent 55%);
+      radial-gradient(130% 80% at 100% 0%, oklch(0.54 0.12 198 / 0.05), transparent 60%),
+      radial-gradient(100% 60% at 0% 100%, oklch(0.58 0.12 240 / 0.04), transparent 55%);
   }
 
   .dark .main-canvas {
@@ -429,15 +453,12 @@
     --chat-inline-padding: 12px;
     --chat-user-bubble-max: 100%;
     --chat-assistant-max: 100%;
-    --chat-user-bg: oklch(0.965 0.004 50);
-    --chat-user-border: oklch(0.9 0.006 50 / 0.85);
-    --chat-user-fg: var(--foreground);
   }
 
   .dark .workbench-chat-pane {
     --chat-inline-padding: 14px;
-    --chat-user-bg: oklch(0.28 0.012 285);
-    --chat-user-border: oklch(0.38 0.012 285 / 0.65);
+    --chat-user-bg: oklch(0.28 0.02 210);
+    --chat-user-border: oklch(0.36 0.02 210 / 0.65);
     --chat-user-fg: oklch(0.94 0.005 285);
     background-color: var(--chat-panel);
     border-left: 1px solid var(--border);
@@ -447,6 +468,553 @@
   .workbench-chat-mount {
     transform: translateZ(0);
     backface-visibility: hidden;
+  }
+
+  /** 编辑器区右上角图标按钮（与聊天顶栏控件同语义） */
+  .workbench-icon-btn {
+    display: inline-flex;
+    height: 1.75rem;
+    width: 1.75rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+    background-color: color-mix(in oklab, var(--surface-elevated) 92%, transparent);
+    color: var(--muted-foreground);
+    box-shadow: var(--shadow-xs);
+    backdrop-filter: blur(8px);
+    transition:
+      background-color var(--transition-base),
+      color var(--transition-base),
+      border-color var(--transition-base);
+  }
+
+  .workbench-icon-btn--sm {
+    height: 1.375rem;
+    width: 1.375rem;
+    border-radius: 4px;
+  }
+
+  .workbench-icon-btn:hover:not(:disabled) {
+    background-color: var(--secondary);
+    color: var(--foreground);
+    border-color: color-mix(in oklab, var(--primary) 28%, var(--border));
+  }
+
+  .workbench-icon-btn--active {
+    background-color: color-mix(in oklab, var(--primary-soft) 85%, var(--surface-elevated));
+    color: color-mix(in oklab, var(--primary) 88%, var(--foreground));
+    border-color: color-mix(in oklab, var(--primary) 32%, var(--border));
+  }
+
+  .workbench-panel-toolbar {
+    padding: 1px;
+    border-radius: 6px;
+    border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+    background-color: color-mix(in oklab, var(--surface) 90%, transparent);
+  }
+
+  /** 底部状态栏 */
+  .workbench-status-bar {
+    display: flex;
+    height: 22px;
+    min-height: 22px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border-top: 1px solid var(--border);
+    background-color: color-mix(in oklab, var(--sidebar) 92%, var(--surface-elevated));
+    padding: 0 0.5rem;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--sidebar-foreground);
+  }
+
+  .workbench-status-bar__left,
+  .workbench-status-bar__right {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .workbench-status-bar__item {
+    display: inline-flex;
+    max-width: 12rem;
+    align-items: center;
+    gap: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workbench-status-bar__item--muted {
+    color: color-mix(in oklab, var(--sidebar-foreground) 72%, transparent);
+  }
+
+  .workbench-status-bar__sep {
+    width: 1px;
+    height: 12px;
+    background-color: color-mix(in oklab, var(--border) 90%, var(--sidebar-foreground) 10%);
+  }
+
+  .workbench-status-bar__count {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    border-radius: 4px;
+    padding: 0 0.25rem;
+    color: color-mix(in oklab, var(--sidebar-foreground) 55%, transparent);
+    background: transparent;
+    border: none;
+    font: inherit;
+    line-height: 1;
+  }
+
+  .workbench-status-bar__count:disabled {
+    cursor: default;
+    opacity: 0.85;
+  }
+
+  .workbench-status-bar__count:not(:disabled):hover {
+    background-color: var(--explorer-row-hover);
+    color: var(--sidebar-foreground);
+  }
+
+  .workbench-status-bar__count--error {
+    color: var(--destructive);
+  }
+
+  .workbench-status-bar__count--warning {
+    color: var(--warning);
+  }
+
+  /** 侧栏顶栏页签（与主导航分离，仅在资源面板内） */
+  .workbench-side-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 4px 6px;
+    background-color: color-mix(in oklab, var(--explorer-bg) 96%, var(--sidebar));
+  }
+
+  .workbench-side-tab {
+    display: inline-flex;
+    min-width: 0;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    padding: 6px;
+    font-size: 10.5px;
+    font-weight: 500;
+    color: color-mix(in oklab, var(--sidebar-foreground) 68%, transparent);
+    background: transparent;
+    transition:
+      background-color var(--transition-base),
+      color var(--transition-base),
+      border-color var(--transition-base);
+  }
+
+  .workbench-side-tab:hover {
+    color: var(--sidebar-foreground);
+    background-color: var(--explorer-row-hover);
+  }
+
+  .workbench-side-tab--active {
+    color: color-mix(in oklab, var(--primary) 88%, var(--foreground));
+    background-color: color-mix(in oklab, var(--primary-soft) 75%, var(--surface-elevated));
+    border-color: color-mix(in oklab, var(--primary) 28%, var(--border));
+  }
+
+  /** 源代码管理 / 资源管理器面板 */
+  .sc-panel-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 6px 8px 4px;
+  }
+
+  .sc-panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in oklab, var(--sidebar-foreground) 78%, transparent);
+  }
+
+  .sc-branch-line {
+    font-size: 10.5px;
+    color: color-mix(in oklab, var(--sidebar-foreground) 62%, transparent);
+  }
+
+  .sc-section {
+    border-top: 1px solid color-mix(in oklab, var(--explorer-border) 88%, transparent);
+  }
+
+  .sc-panel-scroll-regions {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .sc-section--scrollable {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: var(--sc-section-min-h, 7rem);
+  }
+
+  .sc-section--scrollable .sc-section-header {
+    flex-shrink: 0;
+  }
+
+  .sc-section--compact {
+    flex: 0 0 auto;
+  }
+
+  .sc-section-header-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding-right: 4px;
+  }
+
+  .sc-section-header-row .sc-section-header {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sc-commit-compose {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0 0.5rem 0.5rem;
+  }
+
+  .sc-commit-input {
+    width: 100%;
+    min-height: 2.75rem;
+    resize: vertical;
+    border-radius: 4px;
+    border: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+    background-color: color-mix(in oklab, var(--surface-elevated) 55%, var(--explorer-bg));
+    padding: 0.35rem 0.5rem;
+    font-size: 11.5px;
+    line-height: 1.35;
+    color: var(--sidebar-foreground);
+  }
+
+  .sc-commit-input::placeholder {
+    color: color-mix(in oklab, var(--sidebar-foreground) 48%, transparent);
+  }
+
+  .sc-commit-input:focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--primary) 45%, transparent);
+    outline-offset: 1px;
+  }
+
+  .sc-split-btn {
+    display: flex;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 4px;
+    border: 1px solid color-mix(in oklab, var(--primary) 32%, var(--border));
+  }
+
+  .sc-split-btn-main,
+  .sc-split-btn-menu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    border: none;
+    background: color-mix(in oklab, var(--primary-soft) 82%, var(--surface-elevated));
+    color: color-mix(in oklab, var(--primary) 88%, var(--foreground));
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color var(--transition-base);
+  }
+
+  .sc-split-btn-main {
+    flex: 1;
+    min-width: 0;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .sc-split-btn-menu {
+    width: 1.75rem;
+    flex-shrink: 0;
+    border-left: 1px solid color-mix(in oklab, var(--primary) 24%, var(--border));
+  }
+
+  .sc-split-btn-main:hover:not(:disabled),
+  .sc-split-btn-menu:hover:not(:disabled) {
+    background-color: color-mix(in oklab, var(--primary-soft) 95%, var(--surface-elevated));
+  }
+
+  .sc-split-btn-main:disabled,
+  .sc-split-btn-menu:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .sc-section-actions {
+    padding: 0 0.5rem 0.25rem;
+  }
+
+  .sc-review-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0 0.75rem 0.5rem;
+    font-size: 10.5px;
+    color: color-mix(in oklab, var(--sidebar-foreground) 58%, transparent);
+  }
+
+  .sc-review-hint-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+    opacity: 0.75;
+  }
+
+  .sc-graph-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    flex-shrink: 0;
+  }
+
+  .sc-graph-toolbar-chip,
+  .sc-graph-toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    border: none;
+    background: transparent;
+    color: color-mix(in oklab, var(--sidebar-foreground) 72%, transparent);
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .sc-graph-toolbar-chip--active {
+    color: color-mix(in oklab, var(--git-graph-node) 92%, var(--foreground));
+    background-color: color-mix(in oklab, var(--git-graph-node) 12%, transparent);
+  }
+
+  .sc-graph-toolbar-btn:hover:not(:disabled),
+  .sc-graph-toolbar-chip:hover {
+    color: var(--sidebar-foreground);
+    background-color: var(--explorer-row-hover);
+  }
+
+  .sc-graph-toolbar-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .sc-section-header {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: color-mix(in oklab, var(--sidebar-foreground) 82%, transparent);
+    background: transparent;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .sc-section-header:hover {
+    background-color: var(--explorer-row-hover);
+  }
+
+  .sc-section-title {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sc-section-badge {
+    display: inline-flex;
+    min-width: 1.125rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    padding: 0 5px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    color: var(--primary-foreground);
+    background-color: color-mix(in oklab, var(--primary) 82%, var(--foreground));
+  }
+
+  .sc-section-body {
+    padding-bottom: 4px;
+  }
+
+  .sc-section-body--scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .sc-empty-hint {
+    padding: 4px 12px 8px;
+    font-size: 11px;
+    color: color-mix(in oklab, var(--sidebar-foreground) 58%, transparent);
+  }
+
+  /** 侧栏活动栏（已废弃，保留类名避免残留引用） */
+  .workbench-activity-bar {
+    display: none;
+  }
+
+  /** Git 更改列表 */
+  .git-changes-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .git-changes-row {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.5rem 0 1.25rem;
+    height: 22px;
+    min-height: 22px;
+    border: none;
+    background: transparent;
+    text-align: left;
+    font-size: 12px;
+    color: var(--sidebar-foreground);
+    cursor: pointer;
+  }
+
+  .git-changes-row:hover {
+    background-color: var(--explorer-row-hover);
+  }
+
+  .git-changes-name {
+    grid-column: 1;
+    min-width: 0;
+  }
+
+  .git-changes-dir {
+    grid-column: 2;
+    min-width: 0;
+    font-size: 10.5px;
+    color: color-mix(in oklab, var(--sidebar-foreground) 52%, transparent);
+    text-align: right;
+  }
+
+  .git-changes-letter {
+    grid-column: 3;
+    width: 12px;
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  /** 提交图谱 */
+  .git-graph-list {
+    position: relative;
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0.5rem 0.5rem;
+  }
+
+  .git-graph-list::before {
+    content: "";
+    position: absolute;
+    left: 1.125rem;
+    top: 0.65rem;
+    bottom: 0.65rem;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--git-graph-line);
+  }
+
+  .git-graph-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem 0.35rem 0.75rem;
+  }
+
+  .git-graph-dot {
+    position: relative;
+    z-index: 1;
+    width: 10px;
+    height: 10px;
+    margin-top: 3px;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    box-sizing: border-box;
+  }
+
+  .git-graph-dot--head {
+    background-color: var(--explorer-bg);
+    border: 2px solid var(--git-graph-node);
+    box-shadow: 0 0 0 3px var(--git-graph-node-halo);
+  }
+
+  .git-graph-dot--commit {
+    background-color: var(--git-graph-node);
+    border: 2px solid var(--explorer-bg);
+  }
+
+  .git-graph-subject {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.35;
+    color: var(--sidebar-foreground);
+  }
+
+  .git-graph-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.1rem;
+  }
+
+  .git-graph-branch {
+    display: inline-flex;
+    border-radius: 4px;
+    padding: 0 5px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    color: color-mix(in oklab, var(--git-graph-node) 92%, var(--foreground));
+    background-color: color-mix(in oklab, var(--git-graph-node) 12%, var(--explorer-bg));
+    border: 1px solid color-mix(in oklab, var(--git-graph-node) 38%, var(--border));
+  }
+
+  .git-graph-hash {
+    margin: 0;
+    font-size: 10px;
+    color: color-mix(in oklab, var(--sidebar-foreground) 55%, transparent);
   }
 
   .dark .workbench-code-gutter {
@@ -587,6 +1155,219 @@
     @apply rounded-lg border px-3 py-2 text-[12px] leading-relaxed;
   }
 
+  .page-notice--info {
+    border-color: color-mix(in oklab, var(--info) 28%, var(--border));
+    background-color: color-mix(in oklab, var(--info) 8%, var(--surface-elevated));
+    color: var(--foreground);
+  }
+
+  .page-notice--warning {
+    border-color: color-mix(in oklab, var(--warning) 30%, var(--border));
+    background-color: color-mix(in oklab, var(--warning) 10%, var(--surface-elevated));
+    color: color-mix(in oklab, var(--warning) 75%, var(--foreground));
+  }
+
+  .page-notice--error {
+    border-color: color-mix(in oklab, var(--destructive) 30%, var(--border));
+    background-color: color-mix(in oklab, var(--destructive) 10%, var(--surface-elevated));
+    color: var(--destructive);
+  }
+
+  /** 列表页语义标签：neutral / info / primary / success / warning 色相分离 */
+  .ui-tag {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.35;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+
+  .ui-tag--neutral {
+    background-color: color-mix(in oklab, var(--muted) 65%, var(--surface-elevated));
+    color: var(--secondary-foreground);
+    border-color: color-mix(in oklab, var(--border) 80%, var(--muted-foreground));
+  }
+
+  .ui-tag--info {
+    background-color: color-mix(in oklab, var(--info) 14%, var(--surface-elevated));
+    color: color-mix(in oklab, var(--info) 88%, var(--foreground));
+    border-color: color-mix(in oklab, var(--info) 32%, var(--border));
+  }
+
+  .ui-tag--primary {
+    background-color: color-mix(in oklab, var(--primary) 14%, var(--surface-elevated));
+    color: color-mix(in oklab, var(--primary) 90%, var(--foreground));
+    border-color: color-mix(in oklab, var(--primary) 32%, var(--border));
+  }
+
+  .ui-tag--success {
+    background-color: color-mix(in oklab, var(--success) 14%, var(--surface-elevated));
+    color: color-mix(in oklab, var(--success) 88%, var(--foreground));
+    border-color: color-mix(in oklab, var(--success) 32%, var(--border));
+  }
+
+  .ui-tag--warning {
+    background-color: color-mix(in oklab, var(--warning) 16%, var(--surface-elevated));
+    color: color-mix(in oklab, var(--warning) 82%, var(--foreground));
+    border-color: color-mix(in oklab, var(--warning) 36%, var(--border));
+  }
+
+  .ui-status-label {
+    font-weight: 500;
+  }
+
+  .ui-status-label--success {
+    color: var(--success);
+  }
+
+  .ui-status-label--primary {
+    color: var(--primary);
+  }
+
+  .ui-status-label--info {
+    color: var(--info);
+  }
+
+  .ui-status-label--warning {
+    color: var(--warning);
+  }
+
+  .ui-status-label--muted {
+    color: var(--muted-foreground);
+  }
+
+  .ui-filter-chip {
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+    transition:
+      background-color var(--transition-base),
+      color var(--transition-base),
+      border-color var(--transition-base),
+      box-shadow var(--transition-base);
+  }
+
+  .ui-filter-chip--active {
+    background-color: var(--primary-soft);
+    color: color-mix(in oklab, var(--primary) 92%, var(--foreground));
+    border: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
+    box-shadow: var(--shadow-xs);
+  }
+
+  .ui-filter-chip--idle {
+    color: var(--muted-foreground);
+    border: 1px solid transparent;
+  }
+
+  .ui-filter-chip--idle:hover {
+    color: var(--foreground);
+    background-color: color-mix(in oklab, var(--secondary) 55%, transparent);
+  }
+
+  .chain-card {
+    border-radius: 12px;
+    border: 1px solid color-mix(in oklab, var(--border) 92%, var(--muted-foreground) 8%);
+    background-color: var(--surface-elevated);
+    padding: 1rem;
+    text-align: left;
+    box-shadow: var(--shadow-xs);
+    transition:
+      border-color var(--transition-base),
+      box-shadow var(--transition-base),
+      opacity var(--transition-base);
+  }
+
+  .chain-card:hover {
+    border-color: color-mix(in oklab, var(--primary) 38%, var(--border));
+  }
+
+  .chain-card--disabled {
+    opacity: 0.78;
+    border-style: dashed;
+  }
+
+  .chain-card--active {
+    border-color: color-mix(in oklab, var(--info) 52%, var(--border));
+    box-shadow:
+      var(--shadow-xs),
+      0 0 0 1px color-mix(in oklab, var(--info) 22%, transparent);
+  }
+
+  .chain-card--running {
+    border-color: color-mix(in oklab, var(--success) 55%, var(--border));
+    box-shadow:
+      var(--shadow-xs),
+      0 0 0 1px color-mix(in oklab, var(--success) 24%, transparent);
+  }
+
+  .chain-card-icon {
+    display: flex;
+    height: 2.25rem;
+    width: 2.25rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: 1px solid transparent;
+  }
+
+  .chain-card-icon--enabled {
+    background-color: color-mix(in oklab, var(--primary-soft) 85%, var(--surface-elevated));
+    color: var(--primary);
+    border-color: color-mix(in oklab, var(--primary) 22%, var(--border));
+  }
+
+  .chain-card-icon--disabled {
+    background-color: color-mix(in oklab, var(--muted) 55%, var(--surface-elevated));
+    color: var(--muted-foreground);
+    border-color: color-mix(in oklab, var(--border) 90%, transparent);
+  }
+
+  .chain-card-icon--preset {
+    background-color: color-mix(in oklab, var(--info) 12%, var(--surface-elevated));
+    color: color-mix(in oklab, var(--info) 90%, var(--foreground));
+    border-color: color-mix(in oklab, var(--info) 28%, var(--border));
+  }
+
+  .stat-card {
+    border-radius: 12px;
+    border: 1px solid color-mix(in oklab, var(--border) 92%, var(--muted-foreground) 6%);
+    background-color: var(--surface-elevated);
+    padding: 1rem;
+    box-shadow: var(--shadow-xs);
+  }
+
+  .stat-card__label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .stat-card__value {
+    margin-top: 0.25rem;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--foreground);
+  }
+
+  .dark .chain-card {
+    border-color: color-mix(in oklab, var(--border) 100%, var(--foreground) 8%);
+    background-color: color-mix(in oklab, var(--surface-elevated) 88%, var(--card));
+  }
+
+  .dark .stat-card {
+    border-color: color-mix(in oklab, var(--border) 100%, var(--foreground) 6%);
+    background-color: color-mix(in oklab, var(--surface-elevated) 90%, var(--card));
+  }
+
   .input-enhanced {
     transition:
       border-color var(--transition-base),
@@ -678,7 +1459,7 @@
   }
   .btn-gradient-primary:hover {
     background-image: var(--gradient-primary-hover);
-    box-shadow: 0 2px 8px oklch(0.68 0.15 25 / 0.25);
+    box-shadow: 0 2px 8px oklch(0.54 0.12 198 / 0.22);
   }
   .btn-gradient-primary:active {
     transform: translateY(0);
@@ -1340,8 +2121,9 @@
     padding: 10px 13px;
     color: var(--chat-user-fg);
     transition: background-color 0.15s ease;
-    background-color: oklch(0.92 0.015 255 / 0.65);
-    box-shadow: 0 1px 2px 0 oklch(0 0 0 / 0.04);
+    background-color: var(--chat-user-bg);
+    border: 1px solid var(--chat-user-border);
+    box-shadow: var(--shadow-xs);
   }
 
   .chat-message-row--user .chat-bubble-user {
@@ -1351,17 +2133,31 @@
   .dark .chat-bubble-user {
     padding: 11px 14px;
     font-size: var(--font-size-ui);
-    background-color: oklch(0.35 0.035 265 / 0.55);
-    box-shadow: 0 1px 2px 0 oklch(0 0 0 / 0.08);
+    background-color: var(--chat-user-bg);
+    border-color: var(--chat-user-border);
+    box-shadow: var(--shadow-xs);
     border-bottom-right-radius: 4px;
   }
 
   .chat-bubble-user:has(.chat-user-body[role="button"]:hover) {
-    background-color: oklch(0.9 0.015 255 / 0.8);
+    background-color: color-mix(in oklab, var(--chat-user-bg) 85%, var(--primary-soft));
   }
 
   .dark .chat-bubble-user:has(.chat-user-body[role="button"]:hover) {
-    background-color: oklch(0.37 0.035 265 / 0.65);
+    background-color: color-mix(in oklab, var(--chat-user-bg) 90%, var(--primary-soft));
+  }
+
+  /** 助手消息：API / 请求失败 */
+  .chat-bubble-assistant--error {
+    border-radius: 10px;
+    border: 1px solid var(--chat-error-border);
+    background-color: var(--chat-error-bg);
+    padding: 10px 12px;
+    color: var(--chat-error-fg);
+  }
+
+  .chat-bubble-assistant--error .chat-md {
+    color: inherit;
   }
 
   .chat-user-body {
@@ -2028,6 +2824,16 @@
     color: var(--terminal-chip-fg);
   }
 
+  .dom-context-chip {
+    border: 1px solid color-mix(in oklab, var(--primary) 28%, var(--border));
+    background-color: color-mix(in oklab, var(--primary-soft) 70%, var(--surface));
+    color: color-mix(in oklab, var(--primary) 82%, var(--foreground));
+  }
+
+  .browser-dom-picker-highlight {
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 40%, transparent);
+  }
+
   /** 资源管理器树 */
   .explorer-panel-toolbar {
     min-height: 35px;
@@ -2259,22 +3065,25 @@
   }
 
   .dark .workbench-explorer-sidebar {
-    --explorer-bg: #252526;
-    --explorer-border: #2b2b2b;
-    --sidebar-foreground: #cccccc;
-    --explorer-label-fg: #cccccc;
-    --explorer-twistie: #c5c5c5;
-    --explorer-row-hover: #2a2d2e;
-    --explorer-row-active: #37373d;
-    --explorer-row-active-fg: #ffffff;
-    --explorer-indent-guide: #404040;
-    --explorer-modified-dot: #3794ff;
-    /* gitDecoration.* */
-    --explorer-git-modified: #e2c08d;
-    --explorer-git-untracked: #73b8ff;
-    --explorer-git-added: #73c991;
-    --explorer-git-deleted: #f48771;
-    --explorer-git-renamed: #73b8ff;
+    --explorer-bg: color-mix(in oklab, var(--sidebar) 88%, var(--background));
+    --explorer-border: color-mix(in oklab, var(--border) 92%, var(--foreground) 8%);
+    --sidebar-foreground: color-mix(in oklab, var(--foreground) 88%, var(--muted));
+    --explorer-label-fg: var(--sidebar-foreground);
+    --explorer-twistie: color-mix(in oklab, var(--sidebar-foreground) 78%, transparent);
+    --explorer-row-hover: color-mix(in oklab, var(--sidebar-accent) 55%, var(--sidebar));
+    --explorer-row-active: color-mix(in oklab, var(--sidebar-accent) 75%, var(--sidebar));
+    --explorer-row-active-fg: var(--foreground);
+    --explorer-indent-guide: color-mix(in oklab, var(--border) 85%, var(--foreground) 12%);
+    --explorer-modified-dot: color-mix(in oklab, var(--info) 82%, var(--surface-elevated));
+    --explorer-folder-icon: color-mix(in oklab, var(--warning) 72%, var(--foreground));
+    --explorer-icon-saturate: 1.06;
+    --explorer-icon-contrast: 1;
+    --explorer-icon-brightness: 1;
+    --explorer-git-modified: color-mix(in oklab, var(--warning) 78%, var(--foreground));
+    --explorer-git-untracked: var(--info);
+    --explorer-git-added: var(--success);
+    --explorer-git-deleted: var(--destructive);
+    --explorer-git-renamed: var(--info);
     color: var(--sidebar-foreground);
   }
 
@@ -2288,13 +3097,20 @@
   }
 
   .workbench-explorer-sidebar .explorer-tree-icon-wrap {
-    width: 16px;
-    height: 16px;
+    width: var(--explorer-icon-size, 16px);
+    height: var(--explorer-icon-size, 16px);
     margin-right: 2px;
+    flex-shrink: 0;
   }
 
   .workbench-explorer-sidebar .explorer-tree-icon {
     display: block;
+    width: 100%;
+    height: 100%;
+    color: transparent;
+    filter: saturate(var(--explorer-icon-saturate, 1))
+      contrast(var(--explorer-icon-contrast, 1))
+      brightness(var(--explorer-icon-brightness, 1));
   }
 
   .workbench-explorer-sidebar .explorer-section-actions {
@@ -2311,11 +3127,11 @@
   }
 
   .dark .workbench-explorer-sidebar .explorer-section-action {
-    color: #cccccc99;
+    color: color-mix(in oklab, var(--sidebar-foreground) 60%, transparent);
   }
 
   .dark .workbench-explorer-sidebar .explorer-section-action:hover {
-    color: #cccccc;
+    color: var(--sidebar-foreground);
     background-color: var(--explorer-row-hover);
   }
 

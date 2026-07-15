@@ -58,6 +58,7 @@ type CloudDrawerProps = {
     defaultEndpoint?: string;
     defaultInputPrice?: number;
     defaultOutputPrice?: number;
+    defaultCurrency?: string;
     canFetchModels?: boolean;
   }[];
   providerCustomOpen: boolean;

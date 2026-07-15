@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "@tanstack/react-router";
 import {
   MessageCircle,
-  FolderTree,
+  FolderOpen,
   LayoutDashboard,
   Clock,
   ScrollText,
@@ -15,7 +15,6 @@ import {
   BookOpen,
   Menu,
   PanelLeftClose,
-  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -41,7 +40,7 @@ const groups: NavGroup[] = [
     label: "工作区",
     items: [
       { to: "/", label: "聊天", icon: MessageCircle },
-      { to: "/workspaces", label: "工作目录", icon: FolderTree },
+      { to: "/workspaces", label: "工作目录", icon: FolderOpen },
     ],
   },
   {
@@ -77,10 +76,13 @@ const groups: NavGroup[] = [
 export function AppShell({
   children,
   variant = "default",
+  headerToolbar,
 }: {
   children: React.ReactNode;
   /** default：内容区可滚动；fill：占满主栏高度（列表/详情页）；workbench：聊天工作台 */
   variant?: "default" | "fill" | "workbench";
+  /** 工作台顶栏右侧：布局开关（与主导航分离） */
+  headerToolbar?: React.ReactNode;
 }) {
   const location = useLocation();
   const bridge = useBridge();
@@ -123,24 +125,7 @@ export function AppShell({
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <button
-            type="button"
-            className="group hidden min-h-9 items-center gap-2 rounded-md border border-border bg-surface/70 px-2 text-[11.5px] text-muted-foreground transition hover:border-primary/40 hover:text-foreground sm:inline-flex lg:min-w-[220px]"
-            title="全局搜索 (⌘K)"
-          >
-            <Search className="h-3 w-3 shrink-0" />
-            <span className="hidden truncate lg:inline">搜索会话、技能、命令…</span>
-            <kbd className="ml-auto hidden rounded border border-border bg-background px-1 font-mono text-[10px] text-muted-foreground xl:inline">
-              ⌘K
-            </kbd>
-          </button>
-          <button
-            type="button"
-            className="group inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface/70 text-muted-foreground transition hover:border-primary/40 hover:text-foreground sm:hidden"
-            title="搜索"
-          >
-            <Search className="h-3.5 w-3.5" />
-          </button>
+          {headerToolbar}
           <ThemeToggle />
         </div>
       </div>

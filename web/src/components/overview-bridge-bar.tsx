@@ -11,8 +11,9 @@ import {
   OPENCLAW_TOKEN_PLACEHOLDER,
   OPENCLAW_TOKEN_UNAVAILABLE,
 } from "@/lib/ui-copy";
+import { getBridgeWsUrl } from "@/lib/bridge-connection-error";
 
-const DEFAULT_BRIDGE_URL = "ws://127.0.0.1:18789";
+const DEFAULT_BRIDGE_URL = getBridgeWsUrl();
 
 export function OverviewBridgeBar() {
   const bridge = useBridge();

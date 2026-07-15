@@ -135,6 +135,14 @@ async function directPrompt(payload) {
 
   // 1. 通过 cloud-providers 解析当前供应商配置
   const resolved = cloudProviders.resolveEnvForModel(model)
+  if (resolved.error) {
+    return {
+      ok: false,
+      error: resolved.error,
+      content: '',
+      aborted: false,
+    }
+  }
   if (!resolved.env?.ANTHROPIC_BASE_URL) {
     return {
       ok: false,

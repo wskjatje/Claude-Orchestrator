@@ -1,21 +1,29 @@
 #!/usr/bin/env node
 /**
  * Claude Orchestrator Web Bridge
- * - HTTP RPC :18790  → window.desktop 垫片
- * - WebSocket :18789 → Bridge 状态 + 事件推送
+ * - HTTP RPC → window.desktop 垫片（WORKBENCH_HTTP_PORT）
+ * - WebSocket → Bridge 状态 + 事件推送（WORKBENCH_WS_PORT）
  */
 import http from 'node:http'
 import { WebSocketServer } from 'ws'
 import { createRequire } from 'node:module'
 import { broadcast, dispatchRpc } from './handlers.mjs'
 import { runStartupMcpHealthCheck } from './mcp-health-persist.mjs'
+import { getWorkbenchHttpPort, getWorkbenchWsPort } from './bridge-constants.mjs'
+import { handleWorkbenchBrowserProxy } from './workbench-browser-proxy.mjs'
+import {
+  getWorkbenchBrowserCapabilities,
+  handleBrowserWebSocketMessage,
+  unsubscribeBrowserSession,
+  EMBEDDED_BROWSER_CHANNELS,
+} from './workbench-browser-native.mjs'
 
 const require = createRequire(import.meta.url)
 const { attachTerminalToWebSocket } = require('./workspace-terminal.cjs')
 const { loadWorkspace } = await import('./store.mjs')
 
-const HTTP_PORT = Number(process.env.WORKBENCH_HTTP_PORT || 18790)
-const WS_PORT = Number(process.env.WORKBENCH_WS_PORT || 18789)
+const HTTP_PORT = getWorkbenchHttpPort()
+const WS_PORT = getWorkbenchWsPort()
 const VERSION = 'claudecode-bridge/1.0.0'
 
 /** @type {Set<import('ws').WebSocket>} */
@@ -30,7 +38,7 @@ function sendWs(obj) {
 
 // 将 store 层 broadcast 桥接到 WebSocket
 import { subscribeEvent } from './handlers.mjs'
-for (const ch of ['workspace:changed', 'chat-sessions:changed', 'chat-settings:changed', 'scheduler:toast', 'scheduled-tasks:changed', 'orchestration:chain-status', 'workspace:preview-changed', 'agent-exec:changed', 'mcp-health:changed', 'message_delta']) {
+for (const ch of ['workspace:changed', 'chat-sessions:changed', 'chat-settings:changed', 'scheduler:toast', 'scheduled-tasks:changed', 'orchestration:chain-status', 'workspace:preview-changed', 'agent-exec:changed', 'mcp-health:changed', 'message_delta', ...EMBEDDED_BROWSER_CHANNELS]) {
   subscribeEvent(ch, (detail) => {
     sendWs({ type: 'event', channel: ch, detail })
   })
@@ -50,6 +58,23 @@ const httpServer = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ ok: true, version: VERSION }))
+    return
+  }
+
+  if (req.method === 'GET' && req.url === '/workbench-browser/capabilities') {
+    const caps = await getWorkbenchBrowserCapabilities()
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(caps))
+    return
+  }
+
+  if (req.method === 'GET' && req.url?.startsWith('/workbench-browser/proxy')) {
+    await handleWorkbenchBrowserProxy(req, res)
+    return
+  }
+
+  if (req.method === 'POST' && req.url?.startsWith('/workbench-browser/proxy')) {
+    await handleWorkbenchBrowserProxy(req, res)
     return
   }
 
@@ -132,23 +157,84 @@ function scheduleStartupMcpHealthCheck() {
   console.log('[bridge] MCP 启动健康检查已推迟（待 Web 就绪后触发）')
 }
 
-httpServer.listen(HTTP_PORT, '127.0.0.1', () => {
-  console.log(`[bridge] HTTP RPC http://127.0.0.1:${HTTP_PORT}/rpc`)
-  scheduleStartupMcpHealthCheck()
-})
+/** @param {import('node:http').Server | import('node:net').Server} server */
+function listenWithRetry(server, port, host, label) {
+  const maxAttempts = Number(process.env.BRIDGE_BIND_RETRIES || 40)
+  const delayMs = Number(process.env.BRIDGE_BIND_RETRY_MS || 250)
+
+  return new Promise((resolve, reject) => {
+    let attempt = 0
+
+    const tryListen = () => {
+      attempt++
+
+      const onListening = () => {
+        cleanup()
+        resolve(undefined)
+      }
+
+      const onError = (err) => {
+        cleanup()
+        if (err?.code === 'EADDRINUSE' && attempt < maxAttempts) {
+          if (attempt === 1) {
+            console.warn(`[bridge] ${label} 端口 ${port} 占用，等待释放…`)
+          }
+          server.close(() => {
+            setTimeout(tryListen, delayMs)
+          })
+          return
+        }
+        reject(err)
+      }
+
+      const cleanup = () => {
+        server.removeListener('listening', onListening)
+        server.removeListener('error', onError)
+      }
+
+      server.once('listening', onListening)
+      server.once('error', onError)
+      server.listen(port, host)
+    }
+
+    tryListen()
+  })
+}
+
+await listenWithRetry(httpServer, HTTP_PORT, '127.0.0.1', 'HTTP')
+console.log(`[bridge] HTTP RPC http://127.0.0.1:${HTTP_PORT}/rpc`)
+scheduleStartupMcpHealthCheck()
 
 const wss = new WebSocketServer({ host: '127.0.0.1', port: WS_PORT })
+wss.on('error', (err) => {
+  console.error('[bridge] WebSocket 服务错误:', err?.message || err)
+  process.exit(1)
+})
 
 wss.on('connection', (ws) => {
   wsClients.add(ws)
   attachTerminalToWebSocket(ws, () => loadWorkspace())
+  ws.on('message', (raw) => {
+    void (async () => {
+      let msg
+      try {
+        msg = JSON.parse(String(raw))
+      } catch {
+        return
+      }
+      await handleBrowserWebSocketMessage(ws, msg)
+    })()
+  })
   ws.send(
     JSON.stringify({
       type: 'hello',
       payload: { version: VERSION, account: 'local', subscription: 'web-bridge' },
     }),
   )
-  ws.on('close', () => wsClients.delete(ws))
+  ws.on('close', () => {
+    wsClients.delete(ws)
+    unsubscribeBrowserSession(ws)
+  })
 })
 
 console.log(`[bridge] WebSocket ws://127.0.0.1:${WS_PORT}`)

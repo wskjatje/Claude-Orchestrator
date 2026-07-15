@@ -3,16 +3,44 @@
  * 不设置 __WEB_BRIDGE__，以便前端识别为桌面客户端。
  */
 const { contextBridge, ipcRenderer } = require('electron')
+const path = require('node:path')
+const { pathToFileURL } = require('node:url')
 
-const RPC_BASE = 'http://127.0.0.1:18790/rpc'
-const WS_URL = 'ws://127.0.0.1:18789'
+const bridgeConstantsUrl = pathToFileURL(
+  path.join(__dirname, '../server/bridge-constants.mjs'),
+).href
+const bridgeConstantsPromise = import(bridgeConstantsUrl)
+
+let WS_URL = null
+async function getWsUrl() {
+  if (WS_URL) return WS_URL
+  const bc = await bridgeConstantsPromise
+  WS_URL = bc.getBridgeWsUrl()
+  return WS_URL
+}
+
+let rpcBaseCache = null
+
+async function getRpcBase() {
+  if (rpcBaseCache) return rpcBaseCache
+  const bc = await bridgeConstantsPromise
+  rpcBaseCache = bc.getUiProxyRpcUrl()
+  return rpcBaseCache
+}
 
 async function rpc(channel, ...args) {
-  const res = await fetch(RPC_BASE, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ channel, args }),
-  })
+  const bc = await bridgeConstantsPromise
+  const RPC_BASE = await getRpcBase()
+  let res
+  try {
+    res = await fetch(RPC_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel, args }),
+    })
+  } catch (e) {
+    throw new Error(bc.normalizeRpcErrorMessage(e instanceof Error ? e.message : String(e)))
+  }
   const text = await res.text()
   let data = text
   try {
@@ -25,7 +53,10 @@ async function rpc(channel, ...args) {
       data && typeof data === 'object' && data.error
         ? String(data.error)
         : text || `RPC ${channel} failed (${res.status})`
-    throw new Error(err)
+    throw new Error(bc.normalizeRpcErrorMessage(err))
+  }
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    return bc.normalizeRpcPayload(data)
   }
   return data
 }
@@ -40,9 +71,10 @@ function onEvent(channel, fn) {
 
 function connectBridgeEvents() {
   let ws
-  const connect = () => {
+  const connect = async () => {
     try {
-      ws = new WebSocket(WS_URL)
+      const url = await getWsUrl()
+      ws = new WebSocket(url)
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(String(ev.data))
@@ -54,13 +86,17 @@ function connectBridgeEvents() {
         }
       }
       ws.onclose = () => {
-        setTimeout(connect, 3000)
+        setTimeout(() => {
+          void connect()
+        }, 3000)
       }
     } catch {
-      setTimeout(connect, 3000)
+      setTimeout(() => {
+        void connect()
+      }, 3000)
     }
   }
-  connect()
+  void connect()
 }
 
 const desktop = {
@@ -85,7 +121,11 @@ const desktop = {
   listWorkspaceMarkdownFiles: () => rpc('workspace:listMarkdownFiles'),
   listWorkspacePanelTree: () => rpc('workspace:listPanelTree'),
   workspaceGetShellSnapshot: () => rpc('workspace:getShellSnapshot'),
+  workspaceGetGitCommitLog: (limit?: number) => rpc('workspace:getGitCommitLog', limit != null ? { limit } : {}),
   workspaceGetGitDiff: () => rpc('workspace:getGitDiff'),
+  workspaceGetGitDiffVsBase: (payload) => rpc('workspace:getGitDiffVsBase', payload ?? {}),
+  workspaceGitCommit: (payload) => rpc('workspace:gitCommit', payload),
+  workspaceGitRemoteSync: (payload) => rpc('workspace:gitRemoteSync', payload),
   onWorkspaceChanged: (fn) => onEvent('workspace:changed', fn),
   getCrossAgentContext: () => rpc('memory:getCrossAgentContextText'),
   getChatSettings: () => rpc('chat-settings:get'),
@@ -101,21 +141,25 @@ const desktop = {
   localOrchestrationPrompt: (payload) => rpc('local-orchestration:prompt', payload),
   localOrchestrationAbort: (requestId) => rpc('local-orchestration:abort', requestId),
   claudeCodeListModels: () => rpc('claude-code:listModels'),
-  ccSwitchStatus: () => rpc('cc-switch:status'),
-  ccSwitchListProviders: () => rpc('cc-switch:listProviders'),
-  ccSwitchUpsertProvider: (body) => rpc('cc-switch:upsertProvider', body),
-  ccSwitchDeleteProvider: (body) => rpc('cc-switch:deleteProvider', body),
-  ccSwitchSetCurrentProvider: (body) => rpc('cc-switch:setCurrentProvider', body),
-  ccSwitchSyncWorkbench: () => rpc('cc-switch:syncWorkbench'),
-  ccSwitchRefreshCloudModels: (opts) => rpc('cc-switch:refreshCloudModels', opts),
-  ccSwitchProviderNeedsCcr: (opts) => rpc('cc-switch:providerNeedsCcr', opts),
-  ccSwitchListKnownProviders: () => rpc('cc-switch:listKnownProviders'),
-  ccSwitchFetchProviderModels: (body) => rpc('cc-switch:fetchProviderModels', body),
+  cloudProvidersStatus: () => rpc('cloud-providers:status'),
+  cloudProvidersListProviders: () => rpc('cloud-providers:listProviders'),
+  cloudProvidersGetModelPools: () => rpc('cloud-providers:getModelPools'),
+  cloudProvidersUpsertProvider: (body) => rpc('cloud-providers:upsertProvider', body),
+  cloudProvidersDeleteProvider: (body) => rpc('cloud-providers:deleteProvider', body),
+  cloudProvidersSetCurrentProvider: (body) => rpc('cloud-providers:setCurrentProvider', body),
+  cloudProvidersSyncWorkbench: () => rpc('cloud-providers:syncWorkbench'),
+  cloudProvidersRefreshCloudModels: (opts) => rpc('cloud-providers:refreshCloudModels', opts),
+  cloudProvidersProviderNeedsCcr: (opts) => rpc('cloud-providers:providerNeedsCcr', opts),
+  cloudProvidersListKnownProviders: () => rpc('cloud-providers:listKnownProviders'),
+  cloudProvidersFetchProviderModels: (body) => rpc('cloud-providers:fetchProviderModels', body),
   readReferenceFilesAsImageAttachments: (filePaths) =>
     rpc('reference-files:readAsImageAttachments', filePaths),
   saveChatImageAttachments: (attachments) => rpc('chat:saveImageAttachments', attachments),
   enrichChatUserLineForImages: (payload) => rpc('chat:enrichUserLineForImages', payload),
   openExternal: (url) => rpc('shell:openExternal', url),
+  launchDesktopApp: (opts) => rpc('shell:launchDesktopApp', opts ?? {}),
+  consumePendingDesktopBrowser: () => rpc('shell:consumePendingDesktopBrowser'),
+  onDesktopOpenBrowser: (fn) => onEvent('desktop:openBrowser', fn),
   restartClaudeCodeDesktop: () => rpc('claude-code:restartDesktop'),
   claudeCodeCliStatus: () => rpc('claude-code:cliStatus'),
   claudeCodeDoctor: () => rpc('claude-code:doctor'),
@@ -219,6 +263,33 @@ const desktop = {
   envDeployVerify: () => rpc('env:deployVerify'),
 }
 
+function onEmbeddedBrowserEvent(channel, fn) {
+  const handler = (_event, detail) => fn(detail)
+  ipcRenderer.on(channel, handler)
+  return () => ipcRenderer.removeListener(channel, handler)
+}
+
+const embeddedBrowser = {
+  create: (tabId) => ipcRenderer.invoke('embedded-browser:create', tabId),
+  destroy: (tabId) => ipcRenderer.invoke('embedded-browser:destroy', tabId),
+  setLayout: (tabId, layout) => ipcRenderer.invoke('embedded-browser:setLayout', tabId, layout),
+  focus: (tabId) => ipcRenderer.invoke('embedded-browser:focus', tabId),
+  loadURL: (tabId, url) => ipcRenderer.invoke('embedded-browser:loadURL', tabId, url),
+  reload: (tabId) => ipcRenderer.invoke('embedded-browser:reload', tabId),
+  goBack: (tabId) => ipcRenderer.invoke('embedded-browser:goBack', tabId),
+  goForward: (tabId) => ipcRenderer.invoke('embedded-browser:goForward', tabId),
+  canNav: (tabId) => ipcRenderer.invoke('embedded-browser:canNav', tabId),
+  openDevTools: (tabId) => ipcRenderer.invoke('embedded-browser:openDevTools', tabId),
+  setPickerActive: (tabId, active) => ipcRenderer.invoke('embedded-browser:setPickerActive', tabId, active),
+  onNavigated: (fn) => onEmbeddedBrowserEvent('embedded-browser:navigated', fn),
+  onDomReady: (fn) => onEmbeddedBrowserEvent('embedded-browser:dom-ready', fn),
+  onLoadingState: (fn) => onEmbeddedBrowserEvent('embedded-browser:loading-state', fn),
+  onLoadFailed: (fn) => onEmbeddedBrowserEvent('embedded-browser:load-failed', fn),
+  onTitleUpdated: (fn) => onEmbeddedBrowserEvent('embedded-browser:title-updated', fn),
+  onElementPicked: (fn) => onEmbeddedBrowserEvent('embedded-browser:element-picked', fn),
+}
+
 contextBridge.exposeInMainWorld('__ELECTRON_DESKTOP__', true)
 contextBridge.exposeInMainWorld('desktop', desktop)
+contextBridge.exposeInMainWorld('embeddedBrowser', embeddedBrowser)
 connectBridgeEvents()

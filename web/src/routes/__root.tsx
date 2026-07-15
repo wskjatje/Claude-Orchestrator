@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { EMPTY_CHAT_SEARCH } from "@/lib/chat-route-search";
+import { isBrowserProxyShellPath } from "@/lib/workbench-app-shell-guard";
 
 import "../styles.css";
 import { ThemeProvider } from "@/hooks/use-theme";
@@ -16,7 +18,14 @@ import { useGSAP } from "@gsap/react";
 gsap.registerPlugin(useGSAP);
 
 const themeBootstrap = `
-(function(){try{var dark=window.matchMedia('(prefers-color-scheme: dark)').matches;var r=document.documentElement;r.classList.toggle('dark',dark);r.style.colorScheme=dark?'dark':'light';}catch(e){}})();
+(function(){try{
+var p=location.pathname;
+if(p==='/api/workbench-browser/proxy'||p==='/workbench-browser/proxy'){location.replace('/');return;}
+var dark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+var r=document.documentElement;
+r.classList.toggle('dark',dark);
+r.style.colorScheme=dark?'dark':'light';
+}catch(e){}})();
 `;
 
 function NotFoundComponent() {
@@ -86,6 +95,12 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  useEffect(() => {
+    if (isBrowserProxyShellPath(window.location.pathname)) {
+      window.location.replace("/");
+    }
+  }, []);
+
   return (
     <ThemeProvider>
       <DesktopHydrationProvider>

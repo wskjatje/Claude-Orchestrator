@@ -23,6 +23,14 @@ export function porcelainLetter(x: string, y: string): string {
 }
 
 /** 解析 `git status -sb` 输出（Bridge 旧版无 gitStatus 时的回退） */
+export function gitBranchFromStatusLine(statusLine: string): string | null {
+  const line = statusLine.split("\n").find((l) => l.startsWith("##"));
+  if (!line) return null;
+  const rest = line.slice(3).trim();
+  const branch = rest.split("...")[0]?.split(" ")[0]?.trim();
+  return branch || null;
+}
+
 export function parseGitStatusShortBranch(statusLine: string): ExplorerGitStatusEntry[] {
   const entries: ExplorerGitStatusEntry[] = [];
   for (const line of statusLine.split("\n")) {

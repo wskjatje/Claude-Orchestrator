@@ -4,7 +4,16 @@
  */
 import type { DesktopApi } from "@/types/desktop";
 import { appendOutput } from "@/lib/workbench-output-log";
+import { installEmbeddedBrowserBridge } from "@/lib/install-embedded-browser-bridge";
+import {
+  formatBridgeConnectionError,
+  getBridgeWsUrl,
+  isBridgeConnectionError,
+  normalizeRpcErrorMessage,
+  normalizeRpcPayload,
+} from "@/lib/bridge-connection-error";
 import { RPC_CONNECTION_ERROR, RPC_CONNECTION_TIMEOUT_HINT } from "@/lib/ui-copy";
+import { dispatchBridgeEvent, onBridgeEvent } from "@/lib/bridge-events";
 
 const RPC_BASE = "/api";
 
@@ -13,12 +22,16 @@ const QUIET_RPC = new Set([
   "workspace:history:get",
   "workspace:listPanelTree",
   "workspace:getShellSnapshot",
+  "workspace:getGitCommitLog",
   "workspace:getGitDiff",
+  "workspace:getGitDiffVsBase",
+  "workspace:gitCommit",
+  "workspace:gitRemoteSync",
   "ui-prefs:get",
   "chat-settings:get",
   "chat-sessions:get",
   "claude-code:cliStatus",
-  "cc-switch:status",
+  "cloud-providers:status",
   "system:localWallClock",
 ]);
 
@@ -33,6 +46,9 @@ async function rpc<T>(channel: string, ...args: unknown[]): Promise<T> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     appendOutput("bridge", `RPC ${channel} 不可达: ${msg}`);
+    if (isBridgeConnectionError(msg)) {
+      throw new Error(formatBridgeConnectionError(msg));
+    }
     const hint = /fetch failed|ECONNREFUSED|ETIMEDOUT|socket hang up|network/i.test(msg)
       ? `（${RPC_CONNECTION_TIMEOUT_HINT}）`
       : "";
@@ -51,10 +67,15 @@ async function rpc<T>(channel: string, ...args: unknown[]): Promise<T> {
         ? String((data as { error: unknown }).error)
         : text;
     appendOutput("bridge", `RPC ${channel} 失败 (${res.status}): ${errObj || text}`);
-    throw new Error(errObj || `RPC ${channel} failed (${res.status})`);
+    throw new Error(
+      normalizeRpcErrorMessage(errObj) || `RPC ${channel} failed (${res.status})`,
+    );
   }
   if (!QUIET_RPC.has(channel)) {
     appendOutput("bridge", `RPC ${channel} 完成`);
+  }
+  if (data && typeof data === "object") {
+    return normalizeRpcPayload(data as Record<string, unknown>) as T;
   }
   return data as T;
 }
@@ -68,24 +89,9 @@ export async function pingWebBridgeHealth(): Promise<boolean> {
   }
 }
 
-type EventHandler = (detail: unknown) => void;
-const eventHandlers = new Map<string, Set<EventHandler>>();
-
-function onEvent(channel: string, fn: EventHandler) {
-  if (!eventHandlers.has(channel)) eventHandlers.set(channel, new Set());
-  eventHandlers.get(channel)!.add(fn);
-  return () => eventHandlers.get(channel)?.delete(fn);
-}
-
-/** 订阅 Bridge WebSocket 推送（如 message_delta 流式输出） */
-export function onBridgeEvent(channel: string, fn: EventHandler) {
-  return onEvent(channel, fn);
-}
-
 function connectBridgeEvents() {
   if (typeof window === "undefined") return;
-  const wsUrl =
-    (import.meta.env.VITE_BRIDGE_WS_URL as string | undefined) || "ws://127.0.0.1:18789";
+  const wsUrl = getBridgeWsUrl();
   try {
     const ws = new WebSocket(wsUrl);
     ws.onmessage = (ev) => {
@@ -96,7 +102,7 @@ function connectBridgeEvents() {
           detail?: unknown;
         };
         if (msg.type === "event" && msg.channel) {
-          eventHandlers.get(msg.channel)?.forEach((fn) => fn(msg.detail));
+          dispatchBridgeEvent(msg.channel, msg.detail);
         }
       } catch {
         /* ignore */
@@ -137,8 +143,16 @@ export function installDesktopBridge() {
     listWorkspaceMarkdownFiles: () => rpc("workspace:listMarkdownFiles"),
     listWorkspacePanelTree: () => rpc("workspace:listPanelTree"),
     workspaceGetShellSnapshot: () => rpc("workspace:getShellSnapshot"),
+    workspaceGetGitCommitLog: (limit?: number) =>
+      rpc("workspace:getGitCommitLog", limit != null ? { limit } : {}),
     workspaceGetGitDiff: () => rpc("workspace:getGitDiff"),
-    onWorkspaceChanged: (fn) => onEvent("workspace:changed", fn as EventHandler),
+    workspaceGetGitDiffVsBase: (payload?: { base?: string }) =>
+      rpc("workspace:getGitDiffVsBase", payload ?? {}),
+    workspaceGitCommit: (payload: { message: string; stageAll?: boolean }) =>
+      rpc("workspace:gitCommit", payload),
+    workspaceGitRemoteSync: (payload: { action: "fetch" | "pull" | "push" }) =>
+      rpc("workspace:gitRemoteSync", payload),
+    onWorkspaceChanged: (fn) => onBridgeEvent("workspace:changed", fn),
     getCrossAgentContext: () => rpc("memory:getCrossAgentContextText"),
     getChatSettings: () => rpc("chat-settings:get"),
     saveChatSettings: (body) => rpc("chat-settings:save", body),
@@ -155,22 +169,32 @@ export function installDesktopBridge() {
     cloudDirectPrompt: (payload) => rpc("cloud-direct:prompt", payload),
     cloudDirectAbort: (requestId) => rpc("cloud-direct:abort", { requestId }),
     claudeCodeListModels: () => rpc("claude-code:listModels"),
-    ccSwitchStatus: () => rpc("cc-switch:status"),
-    ccSwitchListProviders: () => rpc("cc-switch:listProviders"),
-    ccSwitchUpsertProvider: (body) => rpc("cc-switch:upsertProvider", body),
-    ccSwitchDeleteProvider: (body) => rpc("cc-switch:deleteProvider", body),
-    ccSwitchSetCurrentProvider: (body) => rpc("cc-switch:setCurrentProvider", body),
-    ccSwitchSyncWorkbench: () => rpc("cc-switch:syncWorkbench"),
-    ccSwitchRefreshCloudModels: (opts) => rpc("cc-switch:refreshCloudModels", opts),
-    ccSwitchProviderNeedsCcr: (opts) => rpc("cc-switch:providerNeedsCcr", opts),
-    ccSwitchListKnownProviders: () => rpc("cc-switch:listKnownProviders"),
-    ccSwitchFetchProviderModels: (body) => rpc("cc-switch:fetchProviderModels", body),
+    cloudProvidersStatus: () => rpc("cloud-providers:status"),
+    cloudProvidersListProviders: () => rpc("cloud-providers:listProviders"),
+    cloudProvidersGetModelPools: () => rpc("cloud-providers:getModelPools"),
+    cloudProvidersUpsertProvider: (body) => rpc("cloud-providers:upsertProvider", body),
+    cloudProvidersDeleteProvider: (body) => rpc("cloud-providers:deleteProvider", body),
+    cloudProvidersSetCurrentProvider: (body) =>
+      rpc("cloud-providers:setCurrentProvider", body),
+    cloudProvidersSyncWorkbench: () => rpc("cloud-providers:syncWorkbench"),
+    cloudProvidersRefreshCloudModels: (opts) =>
+      rpc("cloud-providers:refreshCloudModels", opts),
+    cloudProvidersProviderNeedsCcr: (opts) =>
+      rpc("cloud-providers:providerNeedsCcr", opts),
+    cloudProvidersListKnownProviders: () => rpc("cloud-providers:listKnownProviders"),
+    cloudProvidersFetchProviderModels: (body) =>
+      rpc("cloud-providers:fetchProviderModels", body),
     getDefaultModelPricing: () => rpc("default-model-pricing:get"),
     readReferenceFilesAsImageAttachments: (filePaths) =>
       rpc("reference-files:readAsImageAttachments", filePaths),
     saveChatImageAttachments: (attachments) => rpc("chat:saveImageAttachments", attachments),
     enrichChatUserLineForImages: (payload) => rpc("chat:enrichUserLineForImages", payload),
     openExternal: (url) => rpc("shell:openExternal", url),
+    launchDesktopApp: (opts?: { browserUrl?: string; browserHostOnly?: boolean; mode?: string }) =>
+      rpc("shell:launchDesktopApp", opts ?? {}),
+    consumePendingDesktopBrowser: () => rpc("shell:consumePendingDesktopBrowser"),
+    onDesktopOpenBrowser: (fn: (detail: { url?: string }) => void) =>
+      onBridgeEvent("desktop:openBrowser", fn as (detail: unknown) => void),
     restartClaudeCodeDesktop: () => rpc("claude-code:restartDesktop"),
     claudeCodeCliStatus: () => rpc("claude-code:cliStatus"),
     claudeCodeDoctor: () => rpc("claude-code:doctor"),
@@ -261,12 +285,12 @@ export function installDesktopBridge() {
     claudeMemoryTodayEventsSummary: (date) => rpc("claude-memory:todayEventsSummary", date),
     claudeLogsBundleMarkdown: (opts) => rpc("claude-logs:bundleMarkdown", opts),
     readAgentExecutionLog: (stem) => rpc("agentExecution:readTail", stem),
-    onSchedulerToast: (fn) => onEvent("scheduler:toast", fn as EventHandler),
-    onScheduledTasksChanged: (fn) => onEvent("scheduled-tasks:changed", fn as EventHandler),
-    onAgentExecChanged: (fn) => onEvent("agent-exec:changed", fn as EventHandler),
-    onChatSessionsChanged: (fn) => onEvent("chat-sessions:changed", fn as EventHandler),
-    onChatSettingsChanged: (fn) => onEvent("chat-settings:changed", fn as EventHandler),
-    onOrchestrationChainStatus: (fn) => onEvent("orchestration:chain-status", fn as EventHandler),
+    onSchedulerToast: (fn) => onBridgeEvent("scheduler:toast", fn),
+    onScheduledTasksChanged: (fn) => onBridgeEvent("scheduled-tasks:changed", fn),
+    onAgentExecChanged: (fn) => onBridgeEvent("agent-exec:changed", fn),
+    onChatSessionsChanged: (fn) => onBridgeEvent("chat-sessions:changed", fn),
+    onChatSettingsChanged: (fn) => onBridgeEvent("chat-settings:changed", fn),
+    onOrchestrationChainStatus: (fn) => onBridgeEvent("orchestration:chain-status", fn),
     getOpenclawGatewayToken: () =>
       Promise.resolve({ ok: false, error: "未配置", token: undefined }),
     fileStat: (relPath) => rpc("workspace:fileStat", relPath),
@@ -284,6 +308,7 @@ export function installDesktopBridge() {
 
   window.__WEB_BRIDGE__ = true;
   window.desktop = desktop;
+  installEmbeddedBrowserBridge();
   connectBridgeEvents();
 }
 
@@ -294,3 +319,5 @@ if (import.meta.hot) {
     installDesktopBridge();
   }
 }
+
+export { onBridgeEvent } from "@/lib/bridge-events";

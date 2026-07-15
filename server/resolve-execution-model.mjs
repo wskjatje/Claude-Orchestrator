@@ -70,63 +70,16 @@ export function resolveModelForExecution(input) {
 }
 
 export async function loadConfiguredModelPools(settings) {
-  const localModels = [
-    ...new Set((settings?.localModelCatalog ?? []).map((m) => String(m || '').trim()).filter(Boolean)),
-  ]
-  const cloudSet = new Set()
-  try {
-    const providers = cloudProviders.listProviders()
-    const allowed = new Set(settings?.cloudProviderCatalog ?? [])
-    for (const p of providers) {
-      if (allowed.size && !allowed.has(p.id)) continue
-      for (const m of p.models || []) {
-        const id = String(m || '').trim()
-        if (id) cloudSet.add(id)
-      }
-    }
-    const pool = await cloudProviders.collectCloudModelPool({ settings, fetchRemote: false })
-    for (const m of pool?.models ?? []) {
-      const id = String(m || '').trim()
-      if (id) cloudSet.add(id)
-    }
-  } catch {
-    /* ignore */
-  }
-  return { cloudModels: [...cloudSet], localModels }
+  const pools = cloudProviders.buildModelPools(settings);
+  return {
+    cloudModels: pools.configured.cloudModels,
+    localModels: pools.configured.localModels,
+  };
 }
 
 export async function loadChatModelPools(settings) {
-  const enabledCloud = new Set(
-    (settings?.chatEnabledCloudProviders ?? []).map((id) => String(id || '').trim()).filter(Boolean),
-  )
-  const providerCatalog = new Set(
-    (settings?.cloudProviderCatalog ?? []).map((id) => String(id || '').trim()).filter(Boolean),
-  )
-  const enabledLocal = (settings?.chatEnabledLocalModels ?? [])
-    .map((m) => String(m || '').trim())
-    .filter(Boolean)
-  const configuredLocal = new Set(
-    (settings?.localModelCatalog ?? []).map((m) => String(m || '').trim()).filter(Boolean),
-  )
-
-  const cloudSet = new Set()
-  try {
-    for (const p of cloudProviders.listProviders()) {
-      if (!enabledCloud.has(p.id)) continue
-      if (providerCatalog.size > 0 && !providerCatalog.has(p.id)) continue
-      for (const m of p.models || []) {
-        const id = String(m || '').trim()
-        if (id) cloudSet.add(id)
-      }
-    }
-  } catch {
-    /* ignore */
-  }
-
-  return {
-    cloudModels: [...cloudSet],
-    localModels: [...new Set(enabledLocal.filter((m) => configuredLocal.has(m)))],
-  }
+  const pools = cloudProviders.buildModelPools(settings);
+  return pools.chat;
 }
 
 export async function resolveExecutionModel({

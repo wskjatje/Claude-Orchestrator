@@ -1,6 +1,9 @@
 import { Icon } from "@iconify/react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/hooks/use-theme";
 import { ensureVscodeIcons } from "@/lib/explorer-iconify-setup";
+
+type IconPair = { dark: string; light?: string };
 
 function baseName(fileName?: string): string {
   const n = (fileName ?? "").trim();
@@ -20,71 +23,129 @@ function inferExt(ext?: string, fileName?: string): string {
   return base.split(".").pop()?.toLowerCase() ?? "";
 }
 
-/** vscode-icons — 按文件名规则匹配图标 */
-export function explorerIconifyId(ext?: string, fileName?: string, isDir?: boolean, expanded?: boolean): string {
-  if (isDir) {
-    return expanded ? "vscode-icons:folder-opened" : "vscode-icons:folder";
+function vscodeIcon(id: string): string {
+  return `vscode-icons:${id}`;
+}
+
+function pickPair(pair: IconPair, theme: "light" | "dark"): string {
+  if (theme === "light" && pair.light) return vscodeIcon(pair.light);
+  return vscodeIcon(pair.dark);
+}
+
+/** 扩展名 → 图标（同类文件统一；浅色主题优先 light 变体） */
+const EXT_ICON: Record<string, IconPair> = {
+  md: { dark: "file-type-markdown", light: "file-type-light-mdx" },
+  mdx: { dark: "file-type-markdown", light: "file-type-light-mdx" },
+  json: { dark: "file-type-json-official", light: "file-type-light-json" },
+  jsonc: { dark: "file-type-json-official", light: "file-type-light-json" },
+  js: { dark: "file-type-js", light: "file-type-light-js" },
+  mjs: { dark: "file-type-js", light: "file-type-light-js" },
+  cjs: { dark: "file-type-js", light: "file-type-light-js" },
+  ts: { dark: "file-type-typescript-official" },
+  tsx: { dark: "file-type-reactts" },
+  jsx: { dark: "file-type-reactjs" },
+  html: { dark: "file-type-html" },
+  htm: { dark: "file-type-html" },
+  css: { dark: "file-type-css2" },
+  scss: { dark: "file-type-sass" },
+  sass: { dark: "file-type-sass" },
+  less: { dark: "file-type-less" },
+  py: { dark: "file-type-python" },
+  yaml: { dark: "file-type-yaml-official", light: "file-type-light-yaml-official" },
+  yml: { dark: "file-type-yaml-official", light: "file-type-light-yaml-official" },
+  toml: { dark: "file-type-toml", light: "file-type-light-toml" },
+  sh: { dark: "file-type-shell" },
+  bash: { dark: "file-type-shell" },
+  zsh: { dark: "file-type-shell" },
+  ps1: { dark: "file-type-powershell" },
+  psm1: { dark: "file-type-powershell" },
+  xml: { dark: "file-type-xml" },
+  sql: { dark: "file-type-sql" },
+  woff: { dark: "file-type-font", light: "file-type-light-font" },
+  woff2: { dark: "file-type-font", light: "file-type-light-font" },
+  ttf: { dark: "file-type-font", light: "file-type-light-font" },
+  otf: { dark: "file-type-font", light: "file-type-light-font" },
+  png: { dark: "file-type-image" },
+  jpg: { dark: "file-type-image" },
+  jpeg: { dark: "file-type-image" },
+  gif: { dark: "file-type-image" },
+  webp: { dark: "file-type-image" },
+  svg: { dark: "file-type-svg" },
+  pdf: { dark: "file-type-pdf" },
+  zip: { dark: "file-type-zip" },
+  gz: { dark: "file-type-zip" },
+  tar: { dark: "file-type-zip" },
+  lock: { dark: "file-type-lock" },
+};
+
+const NAMED_FILE_ICON: Record<string, IconPair> = {
+  "readme.md": { dark: "file-type-readthedocs", light: "file-type-light-readthedocs" },
+  "changelog.md": { dark: "file-type-log" },
+  "license": { dark: "file-type-license" },
+  ".gitignore": { dark: "file-type-git" },
+  ".gitattributes": { dark: "file-type-git" },
+  ".gitmodules": { dark: "file-type-git" },
+  "package.json": { dark: "file-type-npm" },
+  "package-lock.json": { dark: "file-type-npm" },
+  makefile: { dark: "file-type-makefile" },
+  gnumakefile: { dark: "file-type-makefile" },
+  "bunfig.toml": { dark: "file-type-bun" },
+  "bun.lockb": { dark: "file-type-bun" },
+  "bun.lock": { dark: "file-type-bun" },
+  "tsconfig.json": { dark: "file-type-tsconfig" },
+  ".npmrc": { dark: "file-type-npm" },
+  "feed.xml": { dark: "file-type-rss" },
+};
+
+function namedFileIcon(base: string, theme: "light" | "dark"): string | null {
+  if (NAMED_FILE_ICON[base]) return pickPair(NAMED_FILE_ICON[base], theme);
+  if (base.startsWith("license.")) return pickPair(NAMED_FILE_ICON.license, theme);
+  if (base.startsWith("dockerfile")) return vscodeIcon("file-type-docker");
+  if (base.startsWith(".env")) return vscodeIcon("file-type-dotenv");
+  if (base === ".prettierrc" || base === ".prettierignore" || base.startsWith(".prettierrc.")) {
+    return pickPair({ dark: "file-type-prettier", light: "file-type-light-prettier" }, theme);
   }
+  if (base === ".eslintrc" || base.startsWith(".eslintrc.") || base === "eslint.config.js" || base === "eslint.config.mjs") {
+    return vscodeIcon("file-type-eslint");
+  }
+  if (base.endsWith(".config.js") || base.endsWith(".config.ts") || base.endsWith(".config.mjs")) {
+    return pickPair({ dark: "file-type-config", light: "file-type-light-config" }, theme);
+  }
+  if (base === "vite.config.ts" || base === "vite.config.js" || base === "vite.config.mts") {
+    return pickPair({ dark: "file-type-vite", light: "file-type-light-vite" }, theme);
+  }
+  if (base.endsWith(".tsconfig.json")) return vscodeIcon("file-type-tsconfig");
+  if (base.endsWith(".rss")) return vscodeIcon("file-type-rss");
+  return null;
+}
+
+/** 文件图标 id；目录返回 null（不展示文件夹图标） */
+export function explorerIconifyId(
+  ext?: string,
+  fileName?: string,
+  isDir?: boolean,
+  theme: "light" | "dark" = "light",
+): string | null {
+  if (isDir) return null;
 
   const base = baseName(fileName);
   const e = inferExt(ext, fileName);
 
-  if (base === ".gitignore" || base === ".gitattributes" || base === ".gitmodules") {
-    return "vscode-icons:file-type-git";
-  }
-  if (base === "license" || base.startsWith("license.")) return "vscode-icons:file-type-license";
-  if (base === "makefile" || base === "gnumakefile") return "vscode-icons:file-type-makefile";
-  if (base === "dockerfile" || base.startsWith("dockerfile.")) return "vscode-icons:file-type-docker";
-  if (base === "package.json" || base === "package-lock.json") return "vscode-icons:file-type-npm";
-  if (base === "bunfig.toml") return "vscode-icons:file-type-bun";
-  if (base === "bun.lockb" || base === "bun.lock") return "vscode-icons:file-type-bun";
-  if (base === "tsconfig.json" || base.endsWith(".tsconfig.json")) return "vscode-icons:file-type-tsconfig";
-  if (base.startsWith(".env")) return "vscode-icons:file-type-dotenv";
-  if (base === ".npmrc") return "vscode-icons:file-type-npm";
-  if (base === ".prettierrc" || base === ".prettierignore" || base.startsWith(".prettierrc.")) {
-    return "vscode-icons:file-type-prettier";
-  }
-  if (base === ".eslintrc" || base.startsWith(".eslintrc.") || base === "eslint.config.js" || base === "eslint.config.mjs") {
-    return "vscode-icons:file-type-eslint";
-  }
-  if (base.endsWith(".config.js") || base.endsWith(".config.ts") || base.endsWith(".config.mjs")) {
-    return "vscode-icons:file-type-config";
-  }
-  if (base === "feed.xml" || base.endsWith(".rss")) return "vscode-icons:file-type-rss";
-  if (base === "vite.config.ts" || base === "vite.config.js" || base === "vite.config.mts") {
-    return "vscode-icons:file-type-vite";
-  }
-  if (base.startsWith(".") && !e) return "vscode-icons:file-type-text";
+  const named = namedFileIcon(base, theme);
+  if (named) return named;
 
-  if (e === "json" || e === "jsonc") return "vscode-icons:file-type-json";
-  if (e === "md" || e === "mdx") return "vscode-icons:file-type-markdown";
-  if (e === "html" || e === "htm") return "vscode-icons:file-type-html";
-  if (e === "css") return "vscode-icons:file-type-css";
-  if (e === "scss" || e === "sass") return "vscode-icons:file-type-sass";
-  if (e === "less") return "vscode-icons:file-type-less";
-  if (e === "tsx") return "vscode-icons:file-type-reactts";
-  if (e === "ts") return "vscode-icons:file-type-typescript";
-  if (e === "jsx") return "vscode-icons:file-type-reactjs";
-  if (e === "js" || e === "mjs" || e === "cjs") return "vscode-icons:file-type-js";
-  if (e === "yaml" || e === "yml") return "vscode-icons:file-type-yaml";
-  if (e === "toml") return "vscode-icons:file-type-toml";
-  if (e === "sh" || e === "bash" || e === "zsh") return "vscode-icons:file-type-shell";
-  if (e === "ps1" || e === "psm1") return "vscode-icons:file-type-powershell";
-  if (e === "xml") return "vscode-icons:file-type-xml";
-  if (e === "sql") return "vscode-icons:file-type-sql";
-  if (e === "png" || e === "jpg" || e === "jpeg" || e === "gif" || e === "webp") return "vscode-icons:file-type-image";
-  if (e === "svg") return "vscode-icons:file-type-svg";
-  if (e === "pdf") return "vscode-icons:file-type-pdf";
-  if (e === "zip" || e === "gz" || e === "tar") return "vscode-icons:file-type-zip";
-  if (e === "lock") return "vscode-icons:file-type-lock";
-  return "vscode-icons:default-file";
+  if (base.startsWith(".") && !e) return vscodeIcon("file-type-text");
+
+  const byExt = EXT_ICON[e];
+  if (byExt) return pickPair(byExt, theme);
+
+  return vscodeIcon("default-file");
 }
 
 export function ExplorerTreeIcon({
   ext,
   fileName,
   isDir,
-  expanded,
   className,
 }: {
   ext?: string;
@@ -93,11 +154,22 @@ export function ExplorerTreeIcon({
   expanded?: boolean;
   className?: string;
 }) {
+  const { resolved } = useTheme();
+  if (isDir) return null;
+
   ensureVscodeIcons();
-  const icon = explorerIconifyId(ext, fileName, isDir, expanded);
+  const icon = explorerIconifyId(ext, fileName, false, resolved);
+  if (!icon) return null;
+
   return (
     <span className="explorer-tree-icon-wrap inline-flex shrink-0 items-center justify-center">
-      <Icon icon={icon} className={cn("explorer-tree-icon", className)} width={16} height={16} aria-hidden />
+      <Icon
+        icon={icon}
+        className={cn("explorer-tree-icon", className)}
+        width="100%"
+        height="100%"
+        aria-hidden
+      />
     </span>
   );
 }
