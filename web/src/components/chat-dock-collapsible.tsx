@@ -1,4 +1,10 @@
-import { useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,24 +18,28 @@ type ChatDockCollapsibleProps = {
   onExpandedChange?: (expanded: boolean) => void;
   /** 隐藏底部 chevron，仅配合外部头部切换 */
   hideToggle?: boolean;
+  /** CSS 变量：收起时可见行数（默认 8） */
+  collapsedVisibleLines?: number;
 };
 
-/** 默认收起约 4 行，底部 overlay chevron 或头部 chevron 展开 */
+/** 默认收起约 N 行，底部 overlay chevron 或头部 chevron 展开 */
 export function ChatDockCollapsible({
   lineCount,
-  collapseAfterLines = 4,
+  collapseAfterLines = 8,
   children,
   bodyClassName,
   expanded: expandedProp,
   onExpandedChange,
   hideToggle = false,
+  collapsedVisibleLines = 8,
 }: ChatDockCollapsibleProps) {
   const [expandedLocal, setExpandedLocal] = useState(false);
   const expanded = expandedProp ?? expandedLocal;
   const setExpanded = onExpandedChange ?? setExpandedLocal;
   const collapsible = lineCount > collapseAfterLines;
 
-  const toggle = () => {
+  const toggle = (e?: MouseEvent) => {
+    e?.stopPropagation();
     if (!collapsible) return;
     setExpanded(!expanded);
   };
@@ -45,6 +55,11 @@ export function ChatDockCollapsible({
         !expanded && "chat-cursor-collapsible--collapsed",
         expanded && "chat-cursor-collapsible--expanded",
       )}
+      style={
+        {
+          "--chat-collapsed-lines": String(collapsedVisibleLines),
+        } as CSSProperties
+      }
     >
       <div
         className={cn(
@@ -98,8 +113,25 @@ export function ChatDockCollapsibleChevron({
   );
 }
 
-export function useDockCollapsibleState(lineCount: number, collapseAfterLines = 4) {
-  const [expanded, setExpanded] = useState(false);
+export function useDockCollapsibleState(
+  lineCount: number,
+  collapseAfterLines = 8,
+  defaultExpanded = false,
+  /** 变更时重置展开态（如 enrich 后行数变化、换文件） */
+  resetKey?: string | number,
+) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const collapsible = lineCount > collapseAfterLines;
-  return { expanded, setExpanded, collapsible, toggle: () => collapsible && setExpanded((v) => !v) };
+  useEffect(() => {
+    setExpanded(defaultExpanded);
+  }, [resetKey, defaultExpanded, collapseAfterLines]);
+  return {
+    expanded,
+    setExpanded,
+    collapsible,
+    toggle: () => {
+      if (!collapsible) return;
+      setExpanded((v) => !v);
+    },
+  };
 }

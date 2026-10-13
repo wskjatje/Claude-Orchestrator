@@ -7,7 +7,20 @@ export function base64ToBytes(base64: string): Uint8Array {
   return out;
 }
 
-const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp", "avif", "icns"]);
+const IMAGE_EXT = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "ico",
+  "bmp",
+  "avif",
+  "icns",
+  "svg",
+  "heic",
+  "heif",
+]);
 
 export function imageMimeForPath(relPath: string): string | null {
   const base = (relPath.split("/").pop() ?? relPath).toLowerCase();
@@ -30,9 +43,18 @@ export function imageMimeForPath(relPath: string): string | null {
       return "image/bmp";
     case "avif":
       return "image/avif";
+    case "heic":
+    case "heif":
+      return "image/heic";
+    case "svg":
+      return "image/svg+xml";
     default:
       return IMAGE_EXT.has(ext) ? `image/${ext}` : null;
   }
+}
+
+export function isPdfPath(relPath: string): boolean {
+  return /\.pdf$/i.test(relPath);
 }
 
 export function formatFileSize(bytes?: number): string | null {

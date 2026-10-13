@@ -11,6 +11,10 @@ export type UiPrefs = {
   layoutStorage: Record<string, string>
   skipCheckpointConfirm: boolean
   defaultTerminalShell: TerminalShellId
+  /** 编辑器幽灵文本补全（默认开启） */
+  ghostTextEnabled: boolean
+  /** 补全模式：幽灵续写 / 仅 LS / 两者 */
+  completionMode: 'ghost' | 'lsp' | 'both'
 }
 
 const LEGACY_THEME_KEY = 'app-theme-mode'
@@ -27,11 +31,35 @@ const UI_PREFS_DEFAULTS: UiPrefs = {
   layoutStorage: {},
   skipCheckpointConfirm: false,
   defaultTerminalShell: 'zsh',
+  ghostTextEnabled: true,
+  completionMode: 'both',
 }
 
 let prefsCache: UiPrefs = { ...UI_PREFS_DEFAULTS, layoutStorage: {} }
 let prefsCacheReady = false
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let prefsEpoch = 0
+const prefsListeners = new Set<() => void>()
+
+export function getUiPrefsEpoch() {
+  return prefsEpoch
+}
+
+export function subscribeUiPrefs(fn: () => void) {
+  prefsListeners.add(fn)
+  return () => prefsListeners.delete(fn)
+}
+
+function bumpPrefsListeners() {
+  prefsEpoch++
+  prefsListeners.forEach((fn) => {
+    try {
+      fn()
+    } catch {
+      /* */
+    }
+  })
+}
 
 function normalizeLayoutStorage(raw?: Record<string, string> | null): Record<string, string> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
@@ -51,6 +79,10 @@ export function normalizeUiPrefs(raw?: Partial<UiPrefs> | null): UiPrefs {
     raw?.defaultTerminalShell === 'bash' || raw?.defaultTerminalShell === 'zsh'
       ? raw.defaultTerminalShell
       : UI_PREFS_DEFAULTS.defaultTerminalShell
+  const completionMode =
+    raw?.completionMode === 'ghost' || raw?.completionMode === 'lsp' || raw?.completionMode === 'both'
+      ? raw.completionMode
+      : UI_PREFS_DEFAULTS.completionMode
   return {
     themeMode,
     bridgeUrl: typeof raw?.bridgeUrl === 'string' ? raw.bridgeUrl : UI_PREFS_DEFAULTS.bridgeUrl,
@@ -63,12 +95,15 @@ export function normalizeUiPrefs(raw?: Partial<UiPrefs> | null): UiPrefs {
     layoutStorage: normalizeLayoutStorage(raw?.layoutStorage),
     skipCheckpointConfirm: raw?.skipCheckpointConfirm === true,
     defaultTerminalShell,
+    ghostTextEnabled: raw?.ghostTextEnabled !== false,
+    completionMode,
   }
 }
 
 function applyPrefsCache(prefs: UiPrefs) {
   prefsCache = normalizeUiPrefs(prefs)
   prefsCacheReady = true
+  bumpPrefsListeners()
 }
 
 export function getUiPrefsCache(): UiPrefs {
@@ -87,6 +122,7 @@ export function patchUiPrefsCache(partial: Partial<UiPrefs>) {
       ? { ...prefsCache.layoutStorage, ...partial.layoutStorage }
       : prefsCache.layoutStorage,
   })
+  bumpPrefsListeners()
 }
 
 export function scheduleSaveUiPrefs(partial: Partial<UiPrefs>, debounceMs = 300) {

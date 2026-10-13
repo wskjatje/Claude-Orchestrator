@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import {
+  AlertCircle,
   AlignJustify,
   AlignLeft,
   Check,
@@ -53,7 +54,7 @@ export function SpeedChip({ open, setOpen, speed, setSpeed }: { open: boolean; s
                 <div className="flex-1">
                   <div className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
                     {o.label}
-                    {o.badge && <span className="rounded bg-primary-soft px-1 py-px text-[10px] font-medium text-primary">{o.badge}</span>}
+                    {o.badge && <span className="rounded bg-primary-soft px-1 py-px text-[12px] font-medium text-primary">{o.badge}</span>}
                   </div>
                   <div className="text-[11.5px] text-muted-foreground">{o.desc}</div>
                 </div>
@@ -101,7 +102,7 @@ export function ModelChip({
       </button>
       {open && options.length > 0 && (
         <div className="absolute bottom-full left-0 z-30 mb-2 w-44 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground">模型</div>
+          <div className="px-3 py-1.5 text-[12px] font-medium text-muted-foreground">模型</div>
           {options.map((o) => {
             const sel = o === label;
             return (
@@ -130,7 +131,7 @@ export function StylePopover({ open, setOpen, value, setValue }: { open: boolean
       </button>
       {open && (
         <div className="absolute bottom-full left-0 z-30 mb-2 w-72 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground">风格</div>
+          <div className="px-3 py-1.5 text-[12px] font-medium text-muted-foreground">风格</div>
           <div className="max-h-72 space-y-0.5 overflow-y-auto scrollbar-thin pr-1">
             {STYLE_OPTIONS.map((s) => {
               const sel = s === value;
@@ -158,7 +159,7 @@ export function TemplatePopover({ open, setOpen, value, setValue }: { open: bool
       </button>
       {open && (
         <div className="absolute bottom-full left-0 z-30 mb-2 w-48 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground">模板</div>
+          <div className="px-3 py-1.5 text-[12px] font-medium text-muted-foreground">模板</div>
           {TEMPLATE_OPTIONS.map((t) => {
             const sel = t === value;
             return (
@@ -218,7 +219,7 @@ export function RatioChip({ open, setOpen, ratio, setRatio }: { open: boolean; s
       </button>
       {open && (
         <div className="absolute bottom-full right-0 z-30 mb-2 w-72 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground">比例</div>
+          <div className="px-3 py-1.5 text-[12px] font-medium text-muted-foreground">比例</div>
           {opts.map((o) => {
             const sel = o.v === ratio;
             return (
@@ -249,7 +250,7 @@ export function LengthChip({ open, setOpen, length, setLength }: { open: boolean
       </button>
       {open && (
         <div className="absolute bottom-full left-0 z-30 mb-2 w-44 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          <div className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground">篇幅</div>
+          <div className="px-3 py-1.5 text-[12px] font-medium text-muted-foreground">篇幅</div>
           {opts.map((o) => {
             const Icon = o.icon;
             const sel = o.v === length;
@@ -269,20 +270,25 @@ export function LengthChip({ open, setOpen, length, setLength }: { open: boolean
 export function GraphifyChip({
   graphJson,
   graphHtml,
+  needsUpdate,
+  cli,
   building,
+  buildError,
   onOpen,
   onBuild,
 }: {
   graphJson: boolean | null;
   graphHtml: boolean | null;
+  needsUpdate?: boolean;
+  cli?: boolean | null;
   building?: boolean;
+  buildError?: string | null;
   onOpen?: () => void;
   onBuild?: () => void;
 }) {
-  // 检测中
-  if (graphJson === null && graphHtml === null) {
+  if (graphJson === null) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground">
+      <span className="composer-chrome-chip inline-flex items-center gap-1">
         <GitBranch className="h-3 w-3" />
         图谱
         <span className="ml-0.5 h-3 w-3 animate-pulse rounded-full bg-muted-foreground/20" />
@@ -290,24 +296,50 @@ export function GraphifyChip({
     );
   }
 
-  // 构建中
   if (building) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary-soft/30 px-2.5 py-1 text-[11.5px] font-medium text-primary">
+      <span className="composer-chrome-chip composer-chrome-chip--active inline-flex items-center gap-1">
         <Loader className="h-3 w-3 animate-spin" />
         构建中…
       </span>
     );
   }
 
-  // 构建失败
+  if (buildError && cli !== false && onBuild && graphJson !== false) {
+    return (
+      <button
+        type="button"
+        onClick={onBuild}
+        title={buildError}
+        className="composer-chrome-chip inline-flex max-w-[11rem] items-center gap-1 text-destructive"
+      >
+        <AlertCircle className="h-3 w-3 shrink-0" />
+        <span className="truncate">图谱失败</span>
+      </button>
+    );
+  }
+
+  if (cli === false && onBuild) {
+    return (
+      <button
+        type="button"
+        onClick={onBuild}
+        title={buildError || "未安装 graphify：pip install graphifyy 或设置 WORKBENCH_GRAPHIFY"}
+        className="composer-chrome-chip inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"
+      >
+        <Plus className="h-3 w-3" />
+        安装图谱工具
+      </button>
+    );
+  }
+
   if (graphJson === false && onBuild) {
     return (
       <button
         type="button"
         onClick={onBuild}
-        title="知识图谱未生成，点击开始构建"
-        className="inline-flex items-center gap-1 rounded-full border border-dashed border-muted-foreground/30 bg-surface px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition hover:border-primary/30 hover:text-primary"
+        title={buildError || "生成结构索引"}
+        className="composer-chrome-chip inline-flex items-center gap-1"
       >
         <Plus className="h-3 w-3" />
         生成图谱
@@ -315,43 +347,121 @@ export function GraphifyChip({
     );
   }
 
-  // 有 graph.json 但无 graph.html → 可打开报告但不可交互查看
-  if (graphJson === true && !graphHtml) {
+  if (needsUpdate && onBuild) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary-soft/30 px-2.5 py-1 text-[11.5px] font-medium text-primary">
-        <GitBranch className="h-3 w-3" />
-        图谱
-        {onBuild && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onBuild(); }}
-            className="ml-0.5 rounded-full p-0.5 text-primary/60 transition hover:bg-primary/10 hover:text-primary"
-            title="生成交互式图谱页面"
-          >
-            <RefreshCw className="h-2.5 w-2.5" />
-          </button>
-        )}
-      </span>
+      <button
+        type="button"
+        onClick={onBuild}
+        title={buildError || "结构索引陈旧，点击更新（否则 @codebase 会失败）"}
+        className="composer-chrome-chip inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"
+      >
+        <RefreshCw className="h-3 w-3" />
+        更新图谱
+      </button>
     );
   }
 
-  // 有 graph.html → 可点击查看
+  if (graphJson === true && graphHtml !== true) {
+    return (
+      <button
+        type="button"
+        onClick={onBuild}
+        title={buildError || "导出图谱页"}
+        className="composer-chrome-chip composer-chrome-chip--active inline-flex items-center gap-1"
+      >
+        <GitBranch className="h-3 w-3" />
+        导出图谱页
+      </button>
+    );
+  }
+
   const viewerReady = graphHtml === true && !!onOpen;
   return (
     <button
-      type={viewerReady ? "button" : "button"}
+      type="button"
       disabled={!viewerReady}
       onClick={viewerReady ? onOpen : undefined}
-      title={viewerReady ? "查看知识图谱" : undefined}
+      title={buildError || (viewerReady ? "查看结构索引图谱" : undefined)}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition",
-        viewerReady
-          ? "border-primary/20 bg-primary-soft/30 text-primary hover:bg-primary-soft/50 cursor-pointer"
-          : "border-border bg-surface text-muted-foreground cursor-default",
+        "composer-chrome-chip inline-flex items-center gap-1",
+        viewerReady && "composer-chrome-chip--active",
+        !viewerReady && "cursor-default opacity-60",
       )}
     >
       <GitBranch className="h-3 w-3" />
       图谱
     </button>
+  );
+}
+
+/** @codebase 语义索引健康：BM25 / hybrid；缺失时一键 Ensure */
+export function CodeIndexChip({
+  ready,
+  hybrid,
+  chunkCount,
+  ensuring,
+  error,
+  onEnsure,
+}: {
+  ready: boolean | null;
+  hybrid: boolean;
+  chunkCount?: number;
+  ensuring?: boolean;
+  error?: string | null;
+  onEnsure?: () => void;
+}) {
+  if (ready === null) {
+    return (
+      <span className="composer-chrome-chip inline-flex items-center gap-1">
+        索引
+        <span className="ml-0.5 h-3 w-3 animate-pulse rounded-full bg-muted-foreground/20" />
+      </span>
+    );
+  }
+
+  if (ensuring) {
+    return (
+      <span className="composer-chrome-chip composer-chrome-chip--active inline-flex items-center gap-1">
+        <Loader className="h-3 w-3 animate-spin" />
+        索引…
+      </span>
+    );
+  }
+
+  if (!ready && onEnsure) {
+    return (
+      <button
+        type="button"
+        onClick={onEnsure}
+        title={error || "构建语义索引（BM25；有 Ollama 则 hybrid）"}
+        className="composer-chrome-chip inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"
+      >
+        <Plus className="h-3 w-3" />
+        构建索引
+      </button>
+    );
+  }
+
+  if (ready && !hybrid && onEnsure) {
+    return (
+      <button
+        type="button"
+        onClick={onEnsure}
+        title={error || `BM25 已就绪（${chunkCount ?? 0}）；点击升级 hybrid 嵌入`}
+        className="composer-chrome-chip inline-flex items-center gap-1"
+      >
+        <RefreshCw className="h-3 w-3" />
+        BM25
+      </button>
+    );
+  }
+
+  return (
+    <span
+      className="composer-chrome-chip composer-chrome-chip--active inline-flex items-center gap-1"
+      title={error || `语义索引 · hybrid · ${chunkCount ?? 0} chunks`}
+    >
+      hybrid
+    </span>
   );
 }

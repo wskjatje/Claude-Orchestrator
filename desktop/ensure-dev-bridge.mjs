@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   getBridgeHealthUrl,
   getWorkbenchHttpPort,
-} from "../server/bridge-constants.mjs";
+} from "./bridge-constants.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");

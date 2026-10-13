@@ -69,7 +69,7 @@ export async function buildChatCompletionMessages(
     '若用户要求将修改写入工作区，请在回复中使用 ```workspace-write``` 代码块，内容为 JSON：单文件 {"path":"相对路径","content":"完整正文"}；或多文件数组。',
     opts.workspaceDir
       ? `当前用户工作区路径（仅供参考）: ${opts.workspaceDir}`
-      : '当前用户工作区路径（仅供参考）: （未选择）',
+      : '当前用户工作区路径（仅供参考）:（未选择）',
     executionSnapshot,
   ]
 

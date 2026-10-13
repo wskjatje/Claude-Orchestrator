@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Clock, Plus, X } from "lucide-react";
+import { Clock, MoreHorizontal, PanelRightClose, Plus, X } from "lucide-react";
 import { ChatHistoryDropdown } from "@/components/chat-history-dropdown";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { ChatHistoryListItem } from "@/lib/chat-history-groups";
 import { cn } from "@/lib/utils";
@@ -21,6 +28,8 @@ type Props = {
   onSelectHistorySession: (sessionId: string) => void;
   onDeleteHistorySession: (sessionId: string) => void;
   onHistoryOpen?: () => void;
+  /** Agent 面板：折叠右侧聊天 */
+  onCollapsePanel?: () => void;
 };
 
 export function ChatSessionTabs({
@@ -37,6 +46,7 @@ export function ChatSessionTabs({
   onSelectHistorySession,
   onDeleteHistorySession,
   onHistoryOpen,
+  onCollapsePanel,
 }: Props) {
   const tabsRef = useRef<HTMLDivElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -84,7 +94,7 @@ export function ChatSessionTabs({
               aria-selected={active}
               aria-busy={sending || undefined}
               className={cn(
-                "chat-session-tab group relative flex h-[35px] max-w-[200px] min-w-[72px] shrink-0 cursor-pointer items-center gap-1.5 border-r border-border/70 px-2 text-[11px] transition-colors",
+                "chat-session-tab group relative flex h-[35px] max-w-[200px] min-w-[72px] shrink-0 cursor-pointer items-center gap-1.5 border-r border-border/70 px-2 text-[12px] transition-colors",
                 active
                   ? "bg-background text-foreground"
                   : "bg-transparent text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
@@ -139,8 +149,9 @@ export function ChatSessionTabs({
           type="button"
           onClick={onNewSession}
           disabled={!hasDesktopApi}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition hover:bg-secondary hover:text-foreground disabled:opacity-40"
+          className="workbench-icon-btn workbench-icon-btn--sm disabled:opacity-40"
           title="新对话"
+          aria-label="新对话"
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
@@ -160,10 +171,8 @@ export function ChatSessionTabs({
               type="button"
               disabled={!hasDesktopApi}
               className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-md transition",
-                historyOpen
-                  ? "bg-primary/12 text-primary"
-                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                "workbench-icon-btn workbench-icon-btn--sm",
+                historyOpen && "workbench-icon-btn--active",
                 !hasDesktopApi && "opacity-40",
               )}
               title="对话历史"
@@ -192,6 +201,44 @@ export function ChatSessionTabs({
           </PopoverContent>
         </Popover>
 
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="workbench-icon-btn workbench-icon-btn--sm"
+              title="更多操作"
+              aria-label="聊天更多操作"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[10rem]">
+            <DropdownMenuItem
+              disabled={sessions.length < 2}
+              onClick={() => onCloseSession(activeId)}
+            >
+              关闭当前会话
+            </DropdownMenuItem>
+            {onCollapsePanel ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onCollapsePanel}>隐藏聊天面板</DropdownMenuItem>
+              </>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {onCollapsePanel ? (
+          <button
+            type="button"
+            onClick={onCollapsePanel}
+            className="workbench-icon-btn workbench-icon-btn--sm"
+            title="隐藏聊天面板"
+            aria-label="隐藏聊天面板"
+          >
+            <PanelRightClose className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
       </div>
     </div>
   );

@@ -38,7 +38,7 @@ function sendWs(obj) {
 
 // 将 store 层 broadcast 桥接到 WebSocket
 import { subscribeEvent } from './handlers.mjs'
-for (const ch of ['workspace:changed', 'chat-sessions:changed', 'chat-settings:changed', 'scheduler:toast', 'scheduled-tasks:changed', 'orchestration:chain-status', 'workspace:preview-changed', 'agent-exec:changed', 'mcp-health:changed', 'message_delta', ...EMBEDDED_BROWSER_CHANNELS]) {
+for (const ch of ['workspace:changed', 'workspace:rules-changed', 'chat-sessions:changed', 'chat-settings:changed', 'scheduler:toast', 'scheduled-tasks:changed', 'orchestration:chain-status', 'workspace:preview-changed', 'agent-exec:changed', 'mcp-health:changed', 'message_delta', ...EMBEDDED_BROWSER_CHANNELS]) {
   subscribeEvent(ch, (detail) => {
     sendWs({ type: 'event', channel: ch, detail })
   })
@@ -238,3 +238,39 @@ wss.on('connection', (ws) => {
 })
 
 console.log(`[bridge] WebSocket ws://127.0.0.1:${WS_PORT}`)
+
+/** 启动时真实探测/安装 CLI，并尽力拉起 hybrid 语义索引（非占位） */
+void (async () => {
+  try {
+    const { resolveClaudeCliDetailed, ensureClaudeCliInstalled } = await import(
+      './ensure-claude-cli.mjs'
+    )
+    let cli = await resolveClaudeCliDetailed()
+    if (!cli.ok) {
+      console.log('[bridge] Claude CLI 未找到，执行 ensureCli（npm 全局安装）…')
+      cli = await ensureClaudeCliInstalled()
+    }
+    if (cli.ok) {
+      console.log(`[bridge] Claude CLI 就绪: ${cli.claudePath} ${cli.versionLine || ''}`)
+    } else {
+      console.warn('[bridge] Claude CLI 仍不可用:', cli.error || cli.hint)
+    }
+  } catch (e) {
+    console.warn('[bridge] Claude CLI 初始化异常:', e?.message || e)
+  }
+  try {
+    const { ensureCodeIndexHybrid } = await import('./ensure-code-index-hybrid.mjs')
+    const h = await ensureCodeIndexHybrid()
+    if (h.ok) {
+      console.log(
+        `[bridge] code-index hybrid 就绪 chunks=${h.chunkCount} model=${h.embedModel}` +
+          (h.ollamaStarted ? ' (已启动 Ollama)' : '') +
+          (h.modelPulled ? ' (已拉取嵌入模型)' : ''),
+      )
+    } else {
+      console.warn('[bridge] code-index hybrid 未就绪:', h.error)
+    }
+  } catch (e) {
+    console.warn('[bridge] code-index hybrid 初始化异常:', e?.message || e)
+  }
+})()

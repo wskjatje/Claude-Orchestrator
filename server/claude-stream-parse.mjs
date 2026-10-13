@@ -1,5 +1,6 @@
 /**
- * 解析 Claude Code `--output-format stream-json` NDJSON，转为聊天 UI 可展示的 Markdown 增量。
+ * 解析 Claude Code `--output-format stream-json` NDJSON，转为聊天 UI 可展示的 Markdown 增量，
+ * 并保留结构化 events 供步骤时间线使用。
  */
 
 const TOOL_NAMES = new Set([
@@ -16,6 +17,11 @@ const TOOL_NAMES = new Set([
   'Agent',
 ])
 
+const FILE_EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit'])
+
+const STREAM_EVENTS_BEGIN = '<<<stream-events>>>'
+const STREAM_EVENTS_END = '<<<end-stream-events>>>'
+
 function normalizeToolName(name) {
   const n = String(name || '').trim()
   if (!n) return 'Tool'
@@ -23,17 +29,23 @@ function normalizeToolName(name) {
   return n
 }
 
+/** 短轨迹行：⋯ Read · path（对齐 Host Agent ） */
 function formatToolLine(name, arg) {
   const tool = normalizeToolName(name)
-  const detail = String(arg || '').trim().replace(/^[`'"]|[`'"]$/g, '')
-  return detail ? `${tool} ${detail}` : tool
+  let detail = String(arg || '').trim().replace(/^[`'"]|[`'"]$/g, '')
+  if (tool === 'Bash' || tool === 'bash') {
+    detail = detail.replace(/\s+/g, ' ').slice(0, 80)
+  } else {
+    detail = detail.slice(0, 120)
+  }
+  return detail ? `⋯ ${tool} · ${detail}` : `⋯ ${tool}`
 }
 
 function extractToolArg(input) {
   if (input == null) return ''
-  if (typeof input === 'string') return input.trim()
+  if (typeof input === 'string') return input.trim().slice(0, 200)
   if (typeof input === 'object') {
-    return (
+    const raw =
       input.file_path ||
       input.path ||
       input.pattern ||
@@ -41,11 +53,26 @@ function extractToolArg(input) {
       input.url ||
       input.query ||
       input.description ||
-      JSON.stringify(input).slice(0, 240)
-    )
+      JSON.stringify(input).slice(0, 200)
+    return String(raw || '').trim()
   }
-  return String(input)
+  return String(input).slice(0, 200)
 }
+
+function extractToolPath(input) {
+  if (!input || typeof input !== 'object') return ''
+  const p = input.file_path || input.path || ''
+  return String(p || '').trim().replace(/\\/g, '/')
+}
+
+/**
+ * @typedef {object} StreamAgentEvent
+ * @property {'thinking'|'tool'|'text'} type
+ * @property {string} [name]
+ * @property {string} [arg]
+ * @property {'running'|'ok'|'fail'} [status]
+ * @property {string} [path]
+ */
 
 /**
  * @typedef {object} StreamDisplayState
@@ -53,6 +80,8 @@ function extractToolArg(input) {
  * @property {string} [thinkingOpen]
  * @property {Set<string>} seenTools
  * @property {string} [lastTextTail]
+ * @property {StreamAgentEvent[]} events
+ * @property {boolean} eventsFlushed
  */
 
 /** @returns {StreamDisplayState} */
@@ -62,7 +91,35 @@ export function createStreamDisplayState() {
     thinkingOpen: undefined,
     seenTools: new Set(),
     lastTextTail: '',
+    events: [],
+    eventsFlushed: false,
   }
+}
+
+function pushToolEvent(state, name, arg, status = 'ok') {
+  const tool = normalizeToolName(name)
+  const detail = String(arg || '').trim().replace(/^[`'"]|[`'"]$/g, '')
+  const path = FILE_EDIT_TOOLS.has(tool) && /\.\w+$/.test(detail) ? detail : undefined
+  const last = state.events[state.events.length - 1]
+  if (
+    last &&
+    last.type === 'tool' &&
+    last.name === tool &&
+    (last.arg || '') === detail &&
+    last.status === 'running' &&
+    status !== 'running'
+  ) {
+    last.status = status
+    if (path) last.path = path
+    return
+  }
+  state.events.push({
+    type: 'tool',
+    name: tool,
+    arg: detail || undefined,
+    status,
+    path,
+  })
 }
 
 /**
@@ -94,6 +151,7 @@ export function appendStreamJsonLine(line, state) {
       if (!state.thinkingOpen) {
         state.display += '\n\n<thinking>\n'
         state.thinkingOpen = 'stream'
+        state.events.push({ type: 'thinking' })
       }
       state.display += delta.text
     }
@@ -112,6 +170,7 @@ export function appendStreamJsonLine(line, state) {
       if (!state.thinkingOpen) {
         state.display += '\n\n<thinking>\n'
         state.thinkingOpen = 'stream'
+        state.events.push({ type: 'thinking' })
       }
       state.display += delta.text
     }
@@ -139,12 +198,17 @@ export function appendStreamJsonLine(line, state) {
       } else if (kind === 'thinking' && typeof block.thinking === 'string') {
         if (!state.display.includes(block.thinking)) {
           state.display += `\n\n<thinking>\n${block.thinking}\n</thinking>\n\n`
+          state.events.push({ type: 'thinking' })
         }
       } else if (kind === 'tool_use') {
         const key = `${block.name}:${JSON.stringify(block.input || {})}`
         if (!state.seenTools.has(key)) {
           state.seenTools.add(key)
-          state.display += `\n\n${formatToolLine(block.name, extractToolArg(block.input))}\n`
+          const arg = extractToolArg(block.input)
+          const path = extractToolPath(block.input)
+          state.display += `\n${formatToolLine(block.name, arg)}…\n`
+          // 工具开始时标 running；ok/fail 等 tool_result（finalize 仍会把遗留 running 收成 ok）
+          pushToolEvent(state, block.name, path || arg, 'running')
         }
       }
     }
@@ -157,7 +221,8 @@ export function appendStreamJsonLine(line, state) {
     const key = `${name}:${arg}`
     if (!state.seenTools.has(key)) {
       state.seenTools.add(key)
-      state.display += `\n\n${formatToolLine(name, arg)}\n`
+      state.display += `\n${formatToolLine(name, arg)}…\n`
+      pushToolEvent(state, name, arg, 'running')
     }
     return state.display.slice(before)
   }
@@ -169,9 +234,17 @@ export function appendStreamJsonLine(line, state) {
       const key = `progress:${name}:${arg}`
       if (!state.seenTools.has(key)) {
         state.seenTools.add(key)
-        state.display += `\n\n${formatToolLine(name, arg)} · running\n`
+        state.display += `\n${formatToolLine(name, arg)}…\n`
+        pushToolEvent(state, name, arg, 'running')
       }
     }
+    return state.display.slice(before)
+  }
+
+  if (type === 'tool_result' || type === 'tool_finished' || type === 'tool_end') {
+    const name = ev.tool_name || ev.name || ev.tool
+    const arg = extractToolArg(ev.input ?? ev.args ?? ev.parameters ?? ev.message)
+    if (name) pushToolEvent(state, name, arg, ev.is_error ? 'fail' : 'ok')
     return state.display.slice(before)
   }
 
@@ -183,12 +256,19 @@ export function appendStreamJsonLine(line, state) {
   return state.display.slice(before)
 }
 
-/** 收尾：关闭未闭合 thinking 块 */
+/** 收尾：关闭未闭合 thinking 块，并追加结构化 events 块 */
 export function finalizeStreamDisplay(state) {
   const before = state.display.length
   if (state.thinkingOpen) {
     state.display += '\n</thinking>\n\n'
     state.thinkingOpen = undefined
+  }
+  for (const e of state.events) {
+    if (e.type === 'tool' && e.status === 'running') e.status = 'ok'
+  }
+  if (!state.eventsFlushed && state.events.length > 0) {
+    state.display += `\n\n${STREAM_EVENTS_BEGIN}\n${JSON.stringify(state.events)}\n${STREAM_EVENTS_END}\n`
+    state.eventsFlushed = true
   }
   return state.display.slice(before)
 }

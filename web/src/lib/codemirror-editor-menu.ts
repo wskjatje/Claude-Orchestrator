@@ -54,10 +54,10 @@ export function runEditorMenuAction(
       break;
     case "goto-refs":
     case "find-refs":
-      findAllReferences(view, pos);
+      void findAllReferences(view, pos);
       break;
     case "rename":
-      renameSymbolAt(view, pos, handlers.readOnly);
+      void renameSymbolAt(view, pos, handlers.readOnly);
       break;
     case "change-all":
       changeAllOccurrences(view, pos, handlers.readOnly);

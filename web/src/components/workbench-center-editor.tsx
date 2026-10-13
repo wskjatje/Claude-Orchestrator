@@ -1,18 +1,45 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  Columns2,
+  Copy,
   ExternalLink,
   FileCode,
+  Files,
   Globe,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   RotateCw,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { useWorkbenchWorkspace } from "@/contexts/workbench-workspace-context";
+import {
+  getPendingWritesState,
+  subscribePendingWrites,
+} from "@/lib/workbench-pending-writes";
+import {
+  getAgentWrittenReviewState,
+  subscribeAgentWrittenReview,
+  closeAgentWrittenReview,
+  openAgentWrittenReview,
+} from "@/lib/agent-written-review";
+import { WorkbenchDiffReview } from "@/components/workbench-diff-review";
+import { WorkbenchAppliedDiffReview } from "@/components/workbench-applied-diff-review";
+import { WorkbenchReferencesPeek } from "@/components/workbench-references-peek";
 import { getDesktop } from "@/lib/desktop-api";
+import { wrapHtmlForWorkbenchPreview } from "@/lib/html-preview-theme";
+import { useTheme } from "@/hooks/use-theme";
 import { performProjectPreview } from "@/lib/project-preview";
 import { openExternalUrl } from "@/lib/open-external";
 import { toast } from "sonner";
@@ -97,29 +124,184 @@ function EditorWithTabs({
 }: {
   ws: ReturnType<typeof useWorkbenchWorkspace>;
 }) {
+  const pending = useSyncExternalStore(
+    subscribePendingWrites,
+    getPendingWritesState,
+    getPendingWritesState,
+  );
+  const applied = useSyncExternalStore(
+    subscribeAgentWrittenReview,
+    getAgentWrittenReviewState,
+    getAgentWrittenReviewState,
+  );
+  const [reviewOpen, setReviewOpen] = useState(false);
+  /** 拆分：右侧可独立选另一已打开文件并编辑 */
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitTabId, setSplitTabId] = useState<string | null>(null);
+  const pendingCount = pending.items.length;
+  const appliedCount = applied.open ? applied.paths.length : 0;
+  const showPendingReview = reviewOpen && pendingCount > 0;
+  const showAppliedReview = applied.open && appliedCount > 0 && pendingCount === 0;
+  const fileTabs = ws.editorTabs.filter(isFileTab);
+  const activeFileForSplit =
+    ws.activeEditorTab && isFileTab(ws.activeEditorTab) ? ws.activeEditorTab : null;
+  const splitTab =
+    (splitTabId && fileTabs.find((t) => t.id === splitTabId)) ||
+    fileTabs.find((t) => t.id !== activeFileForSplit?.id) ||
+    activeFileForSplit;
+
+  useEffect(() => {
+    if (pendingCount > 0) {
+      setReviewOpen(true);
+      if (applied.open) closeAgentWrittenReview();
+    }
+    if (pendingCount === 0) setReviewOpen(false);
+  }, [pendingCount, applied.open]);
+
+  useEffect(() => {
+    if (applied.open && appliedCount > 0 && pendingCount === 0) {
+      setReviewOpen(false);
+    }
+  }, [applied.open, appliedCount, pendingCount]);
+
+  // 写盘后聚合 Review 打开时，确保中栏处于 Review（不被其它状态盖住）
+  useEffect(() => {
+    if (!applied.open || !appliedCount || pendingCount > 0) return;
+    setReviewOpen(false);
+  }, [applied.open, applied.paths.join("\0"), appliedCount, pendingCount]);
+
+  useEffect(() => {
+    if (!splitOpen) return;
+    if (!fileTabs.length) {
+      setSplitOpen(false);
+      setSplitTabId(null);
+      return;
+    }
+    if (splitTabId && !fileTabs.some((t) => t.id === splitTabId)) {
+      setSplitTabId(fileTabs.find((t) => t.id !== ws.activeEditorTabId)?.id ?? fileTabs[0]?.id ?? null);
+    }
+  }, [splitOpen, fileTabs, splitTabId, ws.activeEditorTabId]);
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-r border-border bg-code-bg/30">
       <EditorTabBar
         tabs={ws.editorTabs}
-        activeId={ws.activeEditorTabId}
-        onSelect={ws.setActiveEditorTab}
+        activeId={
+          showPendingReview || showAppliedReview
+            ? "__diff_review__"
+            : ws.activeEditorTabId
+        }
+        onSelect={(id) => {
+          if (id === "__diff_review__") {
+            if (pendingCount > 0) setReviewOpen(true);
+            return;
+          }
+          setReviewOpen(false);
+          if (applied.open) closeAgentWrittenReview();
+          ws.setActiveEditorTab(id);
+        }}
         onClose={ws.closeEditorTab}
+        onCloseOthers={ws.closeOtherEditorTabs}
         onNewBrowser={() => ws.openBrowserTab()}
+        splitOpen={splitOpen}
+        onToggleSplit={() => {
+          if (splitOpen) {
+            setSplitOpen(false);
+            setSplitTabId(null);
+            return;
+          }
+          if (!activeFileForSplit) {
+            toast.message("请先打开文件再拆分编辑器");
+            return;
+          }
+          const other = fileTabs.find((t) => t.id !== activeFileForSplit.id);
+          setSplitTabId(other?.id ?? activeFileForSplit.id);
+          setSplitOpen(true);
+        }}
+        pendingCount={pendingCount || appliedCount}
+        reviewOpen={showPendingReview || showAppliedReview}
+        onOpenReview={() => {
+          if (pendingCount > 0) setReviewOpen(true);
+          else if (applied.paths.length) openAgentWrittenReview(applied.paths);
+        }}
+        reviewLabel={appliedCount > 0 && pendingCount === 0 ? "已写入" : "Review"}
       />
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        {ws.editorTabs.map((tab) =>
-          isBrowserTab(tab) ? (
-            <BrowserTabContent
-              key={tab.id}
-              tab={tab}
-              active={ws.activeEditorTabId === tab.id}
-              onNavigate={(url) => ws.navigateBrowserTab(tab.id, url)}
-            />
-          ) : null,
+        {showPendingReview ? (
+          <WorkbenchDiffReview onClose={() => setReviewOpen(false)} />
+        ) : showAppliedReview ? (
+          <WorkbenchAppliedDiffReview onClose={() => closeAgentWrittenReview()} />
+        ) : splitOpen && activeFileForSplit && splitTab ? (
+          <ResizablePanelGroup orientation="horizontal" className="h-full min-h-0">
+            <ResizablePanel defaultSize={50} minSize={25} className="min-h-0">
+              <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
+                {ws.editorTabs.map((tab) =>
+                  isBrowserTab(tab) ? (
+                    <BrowserTabContent
+                      key={tab.id}
+                      tab={tab}
+                      active={ws.activeEditorTabId === tab.id}
+                      onNavigate={(url) => ws.navigateBrowserTab(tab.id, url)}
+                    />
+                  ) : null,
+                )}
+                {ws.activeEditorTab && isFileTab(ws.activeEditorTab) ? (
+                  <FileTabContent tab={ws.activeEditorTab} />
+                ) : null}
+                <WorkbenchReferencesPeek />
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={50} minSize={25} className="min-h-0 border-l border-border">
+              <div className="flex h-full min-h-0 flex-col overflow-hidden">
+                <div className="flex shrink-0 items-center gap-1 border-b border-border/60 px-2 py-1 text-[11px]">
+                  <select
+                    className="min-w-0 flex-1 truncate rounded border border-border bg-background px-1.5 py-0.5 text-[11px] outline-none"
+                    value={splitTab.id}
+                    aria-label="拆分编辑器文件"
+                    onChange={(e) => setSplitTabId(e.target.value)}
+                  >
+                    {fileTabs.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="workbench-icon-btn workbench-icon-btn--sm"
+                    title="关闭拆分"
+                    aria-label="关闭拆分"
+                    onClick={() => {
+                      setSplitOpen(false);
+                      setSplitTabId(null);
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <FileTabContent tab={splitTab} />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          <>
+            {ws.editorTabs.map((tab) =>
+              isBrowserTab(tab) ? (
+                <BrowserTabContent
+                  key={tab.id}
+                  tab={tab}
+                  active={ws.activeEditorTabId === tab.id}
+                  onNavigate={(url) => ws.navigateBrowserTab(tab.id, url)}
+                />
+              ) : null,
+            )}
+            {ws.activeEditorTab && isFileTab(ws.activeEditorTab) ? (
+              <FileTabContent tab={ws.activeEditorTab} />
+            ) : null}
+            <WorkbenchReferencesPeek />
+          </>
         )}
-        {ws.activeEditorTab && isFileTab(ws.activeEditorTab) ? (
-          <FileTabContent tab={ws.activeEditorTab} />
-        ) : null}
       </div>
     </div>
   );
@@ -130,21 +312,76 @@ function EditorTabBar({
   activeId,
   onSelect,
   onClose,
+  onCloseOthers,
   onNewBrowser,
+  splitOpen,
+  onToggleSplit,
+  pendingCount = 0,
+  reviewOpen = false,
+  onOpenReview,
+  reviewLabel = "Review",
 }: {
   tabs: WorkbenchEditorTab[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
+  onCloseOthers: (keepTabId: string) => void;
   onNewBrowser: () => void;
+  splitOpen: boolean;
+  onToggleSplit: () => void;
+  pendingCount?: number;
+  reviewOpen?: boolean;
+  onOpenReview?: () => void;
+  reviewLabel?: string;
 }) {
+  const activeTab = tabs.find((t) => t.id === activeId) ?? null;
+
+  const copyActivePath = async () => {
+    if (!activeTab) return;
+    const text = isFileTab(activeTab) ? activeTab.relPath : activeTab.url;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("已复制");
+    } catch {
+      toast.error("复制失败");
+    }
+  };
+
   return (
     <div className="flex shrink-0 items-stretch border-b border-border bg-surface-elevated/80">
       <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto scrollbar-thin">
+        {pendingCount > 0 ? (
+          <div
+            className={cn(
+              "group flex max-w-[200px] shrink-0 items-center border-r border-border/60",
+              reviewOpen ? "bg-code-bg text-foreground" : "bg-surface-elevated/40 text-muted-foreground hover:bg-secondary/50",
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => onOpenReview?.()}
+              className={cn(
+                "flex min-w-0 flex-1 items-center gap-1.5 px-3 py-[7px] text-left text-[12px] transition",
+                reviewOpen && "border-t-2 border-t-primary pt-[5px]",
+              )}
+              title={reviewLabel === "已写入" ? "Agent 已写入 Diff Review" : "待确认写入 Diff Review"}
+            >
+              <Files className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span className="truncate">{reviewLabel}</span>
+              <span className="rounded bg-amber-500/15 px-1 font-mono text-[11px] text-amber-700 dark:text-amber-300">
+                {pendingCount}
+              </span>
+            </button>
+          </div>
+        ) : null}
         {tabs.map((tab) => {
           const active = tab.id === activeId;
-          const fileExt = isFileTab(tab) ? tab.relPath.split(".").pop() : undefined;
-          const fileName = isFileTab(tab) ? tab.label : undefined;
+          const fileName = isFileTab(tab)
+            ? (tab.relPath.split("/").pop() ?? tab.label)
+            : undefined;
+          const fileExt = fileName?.includes(".")
+            ? fileName.split(".").pop()
+            : undefined;
           const Icon = isBrowserTab(tab) ? Globe : fileIconFor(fileExt, fileName);
           const iconCls = isFileTab(tab) ? fileIconClass(fileExt, fileName) : "text-muted-foreground/80";
           return (
@@ -165,7 +402,14 @@ function EditorTabBar({
                 title={isFileTab(tab) ? tab.relPath : tab.url}
               >
                 <Icon className={cn("h-3.5 w-3.5 shrink-0", iconCls)} />
-                <span className="truncate">{tab.label}</span>
+                <span
+                  className={cn(
+                    "truncate",
+                    isFileTab(tab) && tab.preview && "italic text-muted-foreground",
+                  )}
+                >
+                  {tab.label}
+                </span>
                 {isFileTab(tab) && tab.dirty ? (
                   <span className="text-[9px] text-primary" title="未保存">●</span>
                 ) : null}
@@ -186,30 +430,83 @@ function EditorTabBar({
         })}
       </div>
       <WorkbenchBrowserInspectorChrome />
-      <button
-        type="button"
-        onClick={onNewBrowser}
-        title="新建浏览器标签"
-        aria-label="新建浏览器标签"
-        className="flex w-9 shrink-0 items-center justify-center border-l border-border/60 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </button>
+      <div className="flex shrink-0 items-center gap-0.5 border-l border-border/60 px-0.5">
+        <button
+          type="button"
+          onClick={onToggleSplit}
+          title={splitOpen ? "关闭拆分编辑器" : "拆分编辑器"}
+          aria-label={splitOpen ? "关闭拆分编辑器" : "拆分编辑器"}
+          aria-pressed={splitOpen}
+          className={cn(
+            "workbench-icon-btn workbench-icon-btn--sm",
+            splitOpen && "workbench-icon-btn--active",
+          )}
+        >
+          <Columns2 className="h-3.5 w-3.5" />
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="workbench-icon-btn workbench-icon-btn--sm"
+              title="更多操作"
+              aria-label="更多操作"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[10.5rem]">
+            <DropdownMenuItem onClick={onNewBrowser}>新建浏览器标签</DropdownMenuItem>
+            <DropdownMenuItem disabled={!activeTab} onClick={() => void copyActivePath()}>
+              <Copy className="mr-2 h-3.5 w-3.5" />
+              复制路径 / URL
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={!activeTab || activeId === "__diff_review__"}
+              onClick={() => activeTab && onClose(activeTab.id)}
+            >
+              关闭
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!activeTab || tabs.length < 2}
+              onClick={() => activeTab && onCloseOthers(activeTab.id)}
+            >
+              关闭其他
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <button
+          type="button"
+          onClick={onNewBrowser}
+          title="新建浏览器标签"
+          aria-label="新建浏览器标签"
+          className="workbench-icon-btn workbench-icon-btn--sm"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
 
-function FileTabContent({ tab }: { tab: Extract<WorkbenchEditorTab, { kind: "file" }> }) {
+function FileTabContent({
+  tab,
+}: {
+  tab: Extract<WorkbenchEditorTab, { kind: "file" }>;
+}) {
   const ws = useWorkbenchWorkspace();
+  const { resolved: themeResolved } = useTheme();
   const [previewing, setPreviewing] = useState(false);
   const isHtml = /\.html?$/i.test(tab.relPath);
 
   const previewHtmlInline = useCallback(() => {
     if (!tab.content) return;
-    const blob = new Blob([tab.content], { type: "text/html;charset=utf-8" });
+    const wrapped = wrapHtmlForWorkbenchPreview(tab.content, themeResolved === "dark");
+    const blob = new Blob([wrapped], { type: "text/html;charset=utf-8" });
     const blobUrl = URL.createObjectURL(blob);
     ws.openBrowserTab(undefined, { label: `${tab.label} 预览`, blobUrl });
-  }, [tab.content, tab.label, ws]);
+  }, [tab.content, tab.label, themeResolved, ws]);
 
   const previewHtmlServer = useCallback(async () => {
     const api = getDesktop();
@@ -237,7 +534,7 @@ function FileTabContent({ tab }: { tab: Extract<WorkbenchEditorTab, { kind: "fil
         type="button"
         disabled={previewing || tab.loading}
         onClick={previewHtmlInline}
-        className="shrink-0 rounded border border-border bg-background px-2 py-0.5 text-[10.5px] hover:bg-secondary disabled:opacity-50"
+        className="shrink-0 rounded border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-secondary disabled:opacity-50"
       >
         内嵌预览
       </button>
@@ -245,7 +542,7 @@ function FileTabContent({ tab }: { tab: Extract<WorkbenchEditorTab, { kind: "fil
         type="button"
         disabled={previewing || tab.loading}
         onClick={() => void previewHtmlServer()}
-        className="shrink-0 rounded border border-border bg-background px-2 py-0.5 text-[10.5px] hover:bg-secondary disabled:opacity-50"
+        className="shrink-0 rounded border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-secondary disabled:opacity-50"
       >
         {previewing ? "启动中…" : "本地服务预览"}
       </button>
@@ -271,7 +568,7 @@ function FileTabContent({ tab }: { tab: Extract<WorkbenchEditorTab, { kind: "fil
           ) : (
             <>
               {tab.truncated ? (
-                <p className="shrink-0 border-b border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[10.5px] text-amber-700 dark:text-amber-400">
+                <p className="shrink-0 border-b border-amber-500/20 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-700 dark:text-amber-400">
                   文件较大，仅显示前 512KB（不可编辑）
                 </p>
               ) : null}
@@ -829,6 +1126,40 @@ function BrowserTabContent({
         <NavBtn onClick={openExternal} title="在系统浏览器打开" disabled={showBlank}>
           <ExternalLink className="h-3.5 w-3.5" />
         </NavBtn>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="workbench-icon-btn"
+              title="更多操作"
+              aria-label="浏览器更多操作"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[10rem]">
+            <DropdownMenuItem
+              disabled={showBlank}
+              onClick={() => {
+                void navigator.clipboard.writeText(pageUrl).then(
+                  () => toast.success("已复制 URL"),
+                  () => toast.error("复制失败"),
+                );
+              }}
+            >
+              <Copy className="mr-2 h-3.5 w-3.5" />
+              复制 URL
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={!canReload} onClick={reload}>
+              <RotateCw className="mr-2 h-3.5 w-3.5" />
+              刷新
+            </DropdownMenuItem>
+            <DropdownMenuItem disabled={showBlank} onClick={openExternal}>
+              <ExternalLink className="mr-2 h-3.5 w-3.5" />
+              在系统浏览器打开
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <BrowserInspectorHost native={!iframeMode && shellReady} iframe={renderFrame()} />
     </div>

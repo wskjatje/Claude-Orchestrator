@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { lintGutter } from "@codemirror/lint";
 import { EditorView } from "@codemirror/view";
@@ -7,11 +7,12 @@ import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { useTheme } from "@/hooks/use-theme";
 import { useWorkbenchProblemsOptional } from "@/contexts/workbench-problems-context";
 import { codemirrorExtensionsForPath } from "@/lib/codemirror-lang";
-import { cursorThemeForFile } from "@/lib/codemirror-cursor-theme";
+import { editorThemeForFile } from "@/lib/codemirror-editor-theme";
 import { isMarkdownPath } from "@/lib/editor-file-kind";
 import { workspaceLinterExtension } from "@/lib/codemirror-workspace-lint";
 import { buildEditorMenuSnapshot } from "@/lib/codemirror-editor-menu";
 import { editorIdeExtensions, runPendingGotoWithRetry } from "@/lib/codemirror-ide-extensions";
+import { ghostTextExtension } from "@/lib/codemirror-ghost-text";
 import { setEditorIdeHandlers } from "@/lib/codemirror-ide-handlers";
 import {
   clearPendingGotoRetry,
@@ -19,10 +20,16 @@ import {
   pathsMatchAnyPending,
   resetEditorNavigationState,
 } from "@/lib/codemirror-pending-goto";
+import { createScmGutterController } from "@/lib/codemirror-scm-gutter";
+import { createAgentHighlightController } from "@/lib/codemirror-agent-highlight";
 import {
   CodemirrorEditorContextMenu,
   type EditorContextMenuState,
 } from "@/components/codemirror-editor-context-menu";
+import { CodemirrorInlineEditDialog } from "@/components/codemirror-inline-edit";
+import { setEditorSelectionSnapshot } from "@/lib/editor-selection-snapshot";
+import { setActiveEditorRelPath } from "@/lib/active-editor-path";
+import { getUiPrefsCache, getUiPrefsEpoch, subscribeUiPrefs } from "@/lib/ui-prefs";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -46,18 +53,27 @@ export function CodemirrorWorkbench({
 }: Props) {
   const { resolved } = useTheme();
   const problemsCtx = useWorkbenchProblemsOptional();
+  const prefsEpoch = useSyncExternalStore(subscribeUiPrefs, getUiPrefsEpoch, getUiPrefsEpoch);
   const isDark = resolved === "dark";
   const isMd = isMarkdownPath(relPath);
   const viewRef = useRef<EditorView | null>(null);
   const menuOpenRef = useRef(false);
   const [menuState, setMenuState] = useState<EditorContextMenuState>(null);
+  const [inlineEditOpen, setInlineEditOpen] = useState(false);
   const contentSampleRef = useRef("");
   const pendingRetryCancelRef = useRef<(() => void) | null>(null);
   const readFileRef = useRef(readWorkspaceFile);
   const onOpenFileRef = useRef(onOpenFile);
+  const scmCtrlRef = useRef<ReturnType<typeof createScmGutterController> | null>(null);
+  const agentCtrlRef = useRef<ReturnType<typeof createAgentHighlightController> | null>(null);
 
   readFileRef.current = readWorkspaceFile;
   onOpenFileRef.current = onOpenFile;
+
+  const scmCtrl = useMemo(() => createScmGutterController(relPath), [relPath]);
+  const agentCtrl = useMemo(() => createAgentHighlightController(relPath), [relPath]);
+  scmCtrlRef.current = scmCtrl;
+  agentCtrlRef.current = agentCtrl;
 
   const getProblems = useCallback(
     () => problemsCtx?.problemsForFile(relPath) ?? [],
@@ -112,39 +128,91 @@ export function CodemirrorWorkbench({
     contentSampleRef.current = value.slice(0, 4096);
   }, [relPath, closeMenu]);
 
+  useEffect(() => {
+    setActiveEditorRelPath(relPath);
+  }, [relPath]);
+
+  const themeExt = useMemo(
+    () => editorThemeForFile(relPath, isDark),
+    [relPath, isDark],
+  );
+
   const extensions = useMemo(() => {
     const langExts = codemirrorExtensionsForPath(relPath, readOnly, contentSampleRef.current);
-    const themeExt = cursorThemeForFile(relPath, isDark);
     return [
-      themeExt,
       ...langExts,
       ...editorIdeExtensions,
       lintGutter(),
+      ...scmCtrl.extension,
+      ...agentCtrl.extension,
       workspaceLinterExtension(relPath, getProblems),
       EditorView.editable.of(!readOnly),
       EditorView.lineWrapping,
-      keymap.of([...defaultKeymap, indentWithTab]),
+      keymap.of([
+        {
+          key: "Mod-k",
+          run: () => {
+            if (readOnly) return false;
+            setInlineEditOpen(true);
+            return true;
+          },
+        },
+        ...defaultKeymap,
+        indentWithTab,
+      ]),
+      // Tab 接受幽灵文本优先于缩进（accept 失败时回落 indentWithTab）
+      ...(!readOnly &&
+      getUiPrefsCache().ghostTextEnabled !== false &&
+      getUiPrefsCache().completionMode !== "lsp"
+        ? [ghostTextExtension(relPath)]
+        : []),
+      EditorView.updateListener.of((update) => {
+        if (!update.selectionSet && !update.docChanged) return;
+        const sel = update.state.selection.main;
+        if (sel.empty) {
+          setEditorSelectionSnapshot(null);
+          return;
+        }
+        const text = update.state.doc.sliceString(sel.from, sel.to);
+        const fromLine = update.state.doc.lineAt(sel.from).number;
+        const toLine = update.state.doc.lineAt(sel.to).number;
+        setEditorSelectionSnapshot({
+          relPath,
+          text,
+          fromLine,
+          toLine,
+          updatedAt: Date.now(),
+        });
+      }),
       EditorView.theme({
         "&": {
           height: "100%",
-          fontSize: isMd ? "var(--font-size-code, 14px)" : "var(--font-size-code, 13px)",
+          fontSize: "var(--font-size-code, 14px)",
+          backgroundColor: "var(--code-bg)",
         },
         ".cm-scroller": {
           overflow: "auto",
           fontFamily: "inherit",
           lineHeight: isMd ? "1.65" : "1.5",
+          backgroundColor: "var(--code-bg)",
+        },
+        ".cm-content": {
+          backgroundColor: "var(--code-bg)",
+          color: "var(--foreground)",
         },
         ".cm-line": {
           padding: isMd ? "0 2px 0 4px" : "0",
         },
         ".cm-gutters": {
-          borderRight: "1px solid color-mix(in oklab, var(--border) 80%, transparent)",
+          borderRight: "1px solid var(--border)",
+          backgroundColor: "var(--code-bg)",
+          color: "color-mix(in oklab, var(--foreground) 40%, transparent)",
         },
         ".cm-activeLineGutter": {
-          backgroundColor: "color-mix(in oklab, var(--primary) 10%, transparent)",
+          backgroundColor: "color-mix(in oklab, var(--foreground) 4%, transparent)",
         },
         ".cm-activeLine": {
-          backgroundColor: "color-mix(in oklab, var(--primary) 6%, transparent)",
+          backgroundColor: "color-mix(in oklab, var(--foreground) 4%, transparent)",
         },
         ".cm-ide-reference": {
           backgroundColor: "color-mix(in oklab, var(--primary) 22%, transparent)",
@@ -164,7 +232,8 @@ export function CodemirrorWorkbench({
         },
       }),
     ];
-  }, [relPath, readOnly, isDark, isMd, getProblems]);
+    // prefsEpoch：幽灵/补全偏好变更时重建扩展
+  }, [relPath, readOnly, isDark, isMd, getProblems, prefsEpoch, scmCtrl, agentCtrl]);
 
   const tryPendingGoto = useCallback(() => {
     const view = viewRef.current;
@@ -176,10 +245,19 @@ export function CodemirrorWorkbench({
   const onCreateEditor = useCallback(
     (view: EditorView) => {
       viewRef.current = view;
+      scmCtrlRef.current?.attach(view);
+      agentCtrlRef.current?.attach(view);
       if (pathsMatchAnyPending(relPath)) tryPendingGoto();
     },
     [relPath, tryPendingGoto],
   );
+
+  useEffect(() => {
+    return () => {
+      scmCtrl.dispose();
+      agentCtrl.dispose();
+    };
+  }, [scmCtrl, agentCtrl]);
 
   useEffect(() => {
     if (!pathsMatchAnyPending(relPath)) return;
@@ -198,7 +276,7 @@ export function CodemirrorWorkbench({
   return (
     <div
       className={cn(
-        "codemirror-workbench min-h-0 flex-1 overflow-hidden",
+        "codemirror-workbench relative min-h-0 flex-1 overflow-hidden",
         isMd && "codemirror-workbench--md",
         className,
       )}
@@ -207,6 +285,7 @@ export function CodemirrorWorkbench({
         key={`${relPath}:${isDark ? "d" : "l"}`}
         value={value}
         height="100%"
+        theme={themeExt}
         extensions={extensions}
         editable={!readOnly}
         onCreateEditor={onCreateEditor}
@@ -227,6 +306,13 @@ export function CodemirrorWorkbench({
         }}
         onChange={(v) => onChange?.(v)}
         className="h-full [&_.cm-editor]:h-full [&_.cm-editor]:outline-none"
+      />
+      <CodemirrorInlineEditDialog
+        open={inlineEditOpen}
+        view={viewRef.current}
+        relPath={relPath}
+        onClose={() => setInlineEditOpen(false)}
+        onApplied={(next) => onChange?.(next)}
       />
       <CodemirrorEditorContextMenu state={menuState} getView={getView} onClose={closeMenu} />
     </div>

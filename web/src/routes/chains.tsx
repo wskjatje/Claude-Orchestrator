@@ -572,7 +572,7 @@ function ChainsPage() {
             >
               <RefreshCw className={cn("h-3.5 w-3.5", listLoading && "animate-spin")} /> 刷新
             </button>
-            <InfoHint side="left">{CHAINS_INFO_HINT}</InfoHint>
+            {CHAINS_INFO_HINT ? <InfoHint side="left">{CHAINS_INFO_HINT}</InfoHint> : null}
           </>
         }
       />

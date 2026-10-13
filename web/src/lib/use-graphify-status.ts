@@ -1,163 +1,167 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { getDesktop } from "@/lib/desktop-api";
 import { openExternalUrl } from "@/lib/open-external";
 
-/** 图谱三态：null=检测中, false=不存在, true=存在 */
 export type GraphifyStatus = boolean | null;
 
-/** 图谱整体健康状态 */
 export type GraphifyHealth = {
-  /** graph.json 是否存在（技能可用） */
   graphJson: GraphifyStatus;
-  /** graph.html 是否存在（交互式查看器） */
   graphHtml: GraphifyStatus;
-  /** graph-status.html 是否存在（状态着色图） */
   graphStatusHtml: GraphifyStatus;
-  /** 是否正在构建 */
+  needsUpdate: boolean;
+  cli: boolean | null;
   building: boolean;
-  /** 最后一次构建错误信息 */
   buildError: string | null;
 };
 
-/**
- * 全量图谱状态 hook。
- * - 自动检测 graph.json 和 graph.html 的存在性
- * - 提供 buildGraph / openGraphHtml / buildStatusViz / openGraphStatusHtml 操作
- */
 export function useGraphifyHealth() {
   const [health, setHealth] = useState<GraphifyHealth>({
     graphJson: null,
     graphHtml: null,
     graphStatusHtml: null,
+    needsUpdate: false,
+    cli: null,
     building: false,
     buildError: null,
   });
 
-  /** 检测文件存在性 */
-  const checkFiles = useCallback(async () => {
+  const checkFiles = useCallback(async (opts?: { preserveBuildError?: boolean }) => {
     const api = getDesktop();
-    if (!api?.fileStat) {
-      setHealth((h) => ({ ...h, graphJson: false, graphHtml: false }));
+    if (!api?.graphifyStatus) {
+      setHealth((h) => ({
+        ...h,
+        graphJson: false,
+        graphHtml: false,
+        graphStatusHtml: false,
+        needsUpdate: false,
+        cli: false,
+        buildError: "graphifyStatus 不可用（需更新桌面壳）",
+      }));
       return;
     }
     try {
-      const [jsonStat, htmlStat, statusHtmlStat] = await Promise.all([
-        api.fileStat("graphify-out/graph.json"),
-        api.fileStat("graphify-out/graph.html"),
-        api.fileStat("graphify-out/graph-status.html"),
-      ]);
+      const st = await api.graphifyStatus();
+      if (!st?.ok) {
+        setHealth((h) => ({
+          ...h,
+          graphJson: false,
+          graphHtml: false,
+          needsUpdate: false,
+          cli: false,
+          buildError: st?.error || "状态读取失败",
+        }));
+        return;
+      }
+      let graphStatusHtml: boolean | null = null;
+      if (api.fileStat) {
+        const statusHtml = await api.fileStat("graphify-out/graph-status.html");
+        graphStatusHtml = statusHtml?.ok ? statusHtml.exists : false;
+      }
       setHealth((h) => ({
         ...h,
-        graphJson: jsonStat?.ok ? jsonStat.exists : false,
-        graphHtml: htmlStat?.ok ? htmlStat.exists : false,
-        graphStatusHtml: statusHtmlStat?.ok ? statusHtmlStat.exists : false,
+        graphJson: Boolean(st.graphJson),
+        graphHtml: Boolean(st.graphHtml),
+        graphStatusHtml,
+        needsUpdate: Boolean(st.needsUpdate),
+        cli: Boolean(st.cli),
+        // 构建刚失败时勿被「cli 已装」冲掉错误；无 cli 时展示安装引导
+        buildError: opts?.preserveBuildError
+          ? h.buildError
+          : st.cli
+            ? h.buildError && /构建失败|buildGraph|timeout|超时/i.test(h.buildError)
+              ? h.buildError
+              : null
+            : st.cliError || null,
       }));
-    } catch {
-      setHealth((h) => ({ ...h, graphJson: false, graphHtml: false }));
+    } catch (e) {
+      setHealth((h) => ({
+        ...h,
+        graphJson: false,
+        graphHtml: false,
+        buildError: e instanceof Error ? e.message : String(e),
+      }));
     }
   }, []);
 
-  // 初始检测
   useEffect(() => {
     void checkFiles();
   }, [checkFiles]);
 
-  /** 构建知识图谱（update + export html） */
   const buildGraph = useCallback(async () => {
     const api = getDesktop();
-    if (!api?.buildGraph) return;
+    if (!api?.buildGraph) {
+      const msg = "buildGraph 不可用";
+      setHealth((h) => ({ ...h, buildError: msg }));
+      toast.error(msg);
+      return;
+    }
     setHealth((h) => ({ ...h, building: true, buildError: null }));
     try {
       const r = await api.buildGraph();
       if (!r?.ok) {
+        const msg = r?.error || "构建失败";
         setHealth((h) => ({
           ...h,
           building: false,
-          buildError: r?.error || "构建失败",
+          buildError: msg,
         }));
+        toast.error(msg);
+        await checkFiles({ preserveBuildError: true });
         return;
       }
-      setHealth((h) => ({ ...h, building: false, buildError: null }));
+      setHealth((h) => ({ ...h, building: false, buildError: null, needsUpdate: false }));
+      toast.success("结构索引已更新");
       await checkFiles();
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       setHealth((h) => ({
         ...h,
         building: false,
-        buildError: e instanceof Error ? e.message : String(e),
+        buildError: msg,
       }));
+      toast.error(msg);
     }
   }, [checkFiles]);
 
-  /** 仅导出 HTML 查看器（已存在 graph.json 时） */
-  const rebuildHtml = useCallback(async () => {
-    const api = getDesktop();
-    if (!api?.buildGraph) return;
-    await buildGraph();
-  }, [buildGraph]);
-
-  /** 在系统浏览器中打开 graph.html */
   const openGraphHtml = useCallback(async () => {
     const api = getDesktop();
     if (!api?.getWorkspace) return;
-    let ws = "";
-    try {
-      ws = (await api.getWorkspace()) || "";
-    } catch {
-      return;
-    }
+    const ws = (await api.getWorkspace()) || "";
     if (!ws) return;
-    const fileUrl =
-      "file://" +
-      ws.replace(/\/+$/, "") +
-      "/graphify-out/graph.html";
-    try {
-      await openExternalUrl(fileUrl);
-    } catch {
-      // silent
-    }
+    const fileUrl = "file://" + ws.replace(/\/+$/, "") + "/graphify-out/graph.html";
+    await openExternalUrl(fileUrl);
   }, []);
 
-  /** 在系统浏览器中打开 graph-status.html */
   const openGraphStatusHtml = useCallback(async () => {
     const api = getDesktop();
     if (!api?.getWorkspace) return;
-    let ws = "";
-    try {
-      ws = (await api.getWorkspace()) || "";
-    } catch {
-      return;
-    }
+    const ws = (await api.getWorkspace()) || "";
     if (!ws) return;
-    const fileUrl =
-      "file://" +
-      ws.replace(/\/+$/, "") +
-      "/graphify-out/graph-status.html";
-    try {
-      await openExternalUrl(fileUrl);
-    } catch {
-      // silent
-    }
+    const fileUrl = "file://" + ws.replace(/\/+$/, "") + "/graphify-out/graph-status.html";
+    await openExternalUrl(fileUrl);
   }, []);
 
-  /** 生成状态着色图 */
   const buildStatusViz = useCallback(async () => {
     const api = getDesktop();
     if (!api?.buildStatusViz) return;
-    try {
-      await api.buildStatusViz();
-      await checkFiles();
-    } catch {
-      // silent
+    const r = await api.buildStatusViz();
+    if (!r?.ok) {
+      const msg = r?.error || "状态图生成失败";
+      setHealth((h) => ({ ...h, buildError: msg }));
+      toast.error(msg);
+      return;
     }
+    await checkFiles();
   }, [checkFiles]);
 
   return {
     health,
     checkFiles,
     buildGraph,
-    rebuildHtml,
+    rebuildHtml: buildGraph,
     openGraphHtml,
-    buildStatusViz,
     openGraphStatusHtml,
+    buildStatusViz,
   };
 }

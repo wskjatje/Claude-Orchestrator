@@ -93,7 +93,7 @@ export function serializeAgentMarkdown(
   }
   fmLines.push("---", "");
   const fm = fmLines.join("\n");
-  const body = meta.body.trim() ? meta.body.trim() : `# ${heading}\n\n## 职责\n\n- （待填）\n`;
+  const body = meta.body.trim() ? meta.body.trim() : `# ${heading}\n\n## 职责\n\n-（待填）\n`;
   return `${fm}${body}\n`;
 }
 
@@ -106,7 +106,7 @@ export function buildDefaultAgentMarkdown(stem: string): string {
       model: "inherit",
       tools: ["read", "edit"],
       skills: [],
-      body: `# ${name}\n\n## 职责\n\n- （待填）\n\n## 工作方式\n\n- （待填）\n`,
+      body: `# ${name}\n\n## 职责\n\n-（待填）\n\n## 工作方式\n\n-（待填）\n`,
     },
     { heading: name },
   );

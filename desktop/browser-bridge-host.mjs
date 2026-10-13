@@ -2,13 +2,22 @@
  * Electron 主进程：向 Bridge WebSocket 注册 browser-host，供 Web 预览远程驱动 overlay 内嵌浏览器。
  */
 import { createRequire } from 'node:module'
-import { getWorkbenchWsPort } from '../server/bridge-constants.mjs'
+import { getWorkbenchWsPort } from './bridge-constants.mjs'
 
 const require = createRequire(import.meta.url)
 const WS_PORT = getWorkbenchWsPort()
 
+let bridgeHostConnected = false
+
 /** @param {import('./embedded-browser.mjs').EmbeddedBrowserManager} mgr */
 export function connectBrowserBridgeHost(mgr) {
+  if (bridgeHostConnected) {
+    throw new Error(
+      'connectBrowserBridgeHost 只能在进程内调用一次（勿放在 createWindow）。重复调用会叠多条 Bridge WebSocket。',
+    )
+  }
+  bridgeHostConnected = true
+
   let ws = null
   let reconnectTimer = null
   let stopped = false

@@ -1,7 +1,10 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+
+const require = createRequire(import.meta.url)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -56,14 +59,37 @@ export function bundledSanshengliubuMcpServerPath() {
   return path.join(__dirname, 'mcp-sanshengliubu', 'server.mjs')
 }
 
+export function bundledExternalAppsMcpServerPath() {
+  return path.join(__dirname, 'mcp-external-apps', 'server.mjs')
+}
+
 export const CANONICAL_SANSHENGLIUBU_MCP = {
   command: 'node',
   args: [bundledSanshengliubuMcpServerPath()],
 }
 
+export const CANONICAL_EXTERNAL_APPS_MCP = {
+  command: 'node',
+  args: [bundledExternalAppsMcpServerPath()],
+}
+
+/** 为 external-apps 注入工作区根白名单（不覆盖用户已设 EXTERNAL_APPS_ALLOW_PREFIXES） */
+export function withExternalAppsWorkspaceEnv(cfg, workspaceRoot) {
+  if (!cfg || typeof cfg !== 'object') return cfg
+  const root = String(workspaceRoot || '').trim()
+  if (!root) return { ...cfg }
+  const env =
+    cfg.env && typeof cfg.env === 'object' ? { ...cfg.env } : {}
+  if (!String(env.EXTERNAL_APPS_ALLOW_PREFIXES || '').trim()) {
+    env.EXTERNAL_APPS_ALLOW_PREFIXES = path.resolve(root)
+  }
+  return { ...cfg, env }
+}
+
 export function bundledMcpPresetCommandLines() {
   return {
     sanshengliubu: formatMcpCommandLine(CANONICAL_SANSHENGLIUBU_MCP),
+    'external-apps': formatMcpCommandLine(CANONICAL_EXTERNAL_APPS_MCP),
   }
 }
 
@@ -150,6 +176,17 @@ export function repairMcpConfigData(data) {
         repairs.push('sanshengliubu: 使用内置 Bridge 脚本路径')
         changed = true
       }
+    } else if (name === 'external-apps' && String(raw?.command || '').trim() === 'node') {
+      const normalized = normalizeMcpServerEntry(raw)
+      const canonical = JSON.stringify(CANONICAL_EXTERNAL_APPS_MCP)
+      const current = JSON.stringify({ command: normalized.command, args: normalized.args })
+      if (current !== canonical) {
+        next = { ...CANONICAL_EXTERNAL_APPS_MCP }
+        if (raw.env && typeof raw.env === 'object') next.env = raw.env
+        repairs.push('external-apps: 使用内置外部应用 MCP 脚本路径')
+        changed = true
+      }
+      // 工作区白名单在 read/write 路径由调用方注入；此处仅保证结构
     } else if (JSON.stringify(next) !== JSON.stringify(raw)) {
       if (name === 'filesystem') repairs.push('filesystem: 规范化启动参数')
       else if (name === 'memory') repairs.push('memory: 规范化启动参数')
@@ -247,9 +284,17 @@ export function upsertMcpServer(customPath, name, serverConfig) {
   if (!read.ok) return read
   const data = read.data || { mcpServers: {} }
   const prev = data.mcpServers[validated.name]
-  const next = { ...serverConfig }
+  let next = { ...serverConfig }
   if (prev && typeof prev === 'object' && prev.disabled === true) {
     next.disabled = true
+  }
+  if (validated.name === 'external-apps') {
+    try {
+      const { getWorkspaceCwd } = require('./store.mjs')
+      next = withExternalAppsWorkspaceEnv(next, getWorkspaceCwd())
+    } catch {
+      /* cwd 默认由 MCP 进程 process.cwd() 兜底 */
+    }
   }
   data.mcpServers[validated.name] = next
   const written = writeMcpConfigFile(customPath, data)

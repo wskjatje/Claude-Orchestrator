@@ -25,7 +25,7 @@ export function TerminalAddToChatButton({
     >
       <MessageCirclePlus className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
       <span>Add to Chat</span>
-      <kbd className="rounded border border-border/60 bg-muted/50 px-1 py-px font-mono text-[10px] leading-none text-muted-foreground">
+      <kbd className="rounded border border-border/60 bg-muted/50 px-1 py-px font-mono text-[11px] leading-none text-muted-foreground">
         ⌘L
       </kbd>
     </button>

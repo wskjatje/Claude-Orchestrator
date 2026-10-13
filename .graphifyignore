@@ -1,10 +1,28 @@
-# 排除通用的文档/图片（需 LLM 提取），但保留 chain-steps（Agent 产出物）
+# 结构索引语料：以可执行代码为主；文档/插件示例不进主图
+
+# 文档（chains JSON 保留作编排知识）
+docs/**/*.md
+docs/**/*.mdx
 docs/prd.md
 docs/sprint-backlog.md
-docs/*.mdx
 docs/index.json
 docs/automation/
 docs/claude-code-artifacts/
+docs/agents/
+docs/skills/
+
+# 插件示例与非运行时代码
+plugins/**/examples/**
+plugins/**/README.md
+plugins/**/*.md
+
+# 历史/旁路
+gsap/
+changelog/
+examples/
+raw/
+
+# 媒体与纯文本
 *.txt
 *.pdf
 *.png
@@ -14,8 +32,13 @@ docs/claude-code-artifacts/
 *.gif
 *.mp4
 *.mov
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
 
-# 无关目录
+# 构建与依赖
 node_modules/
 web/node_modules/
 desktop/node_modules/
@@ -28,5 +51,5 @@ desktop/out/
 .claudecode/
 .tmp/
 
-# 输出目录自身
+# 图谱输出（含历史快照）
 graphify-out/

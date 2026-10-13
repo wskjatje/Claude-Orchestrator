@@ -1,7 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ensureDevBridge, stopDevBridge } from './ensure-dev-bridge.mjs'
 import { startPackagedRuntime, stopPackagedRuntime } from './runtime.mjs'
 import { EmbeddedBrowserManager, registerEmbeddedBrowserIpc } from './embedded-browser.mjs'
 import { connectBrowserBridgeHost } from './browser-bridge-host.mjs'
@@ -16,6 +15,11 @@ const appIcon = nativeImage.createFromPath(iconPath)
 const DEV_WEB_URL = process.env.CLAUDE_ORCHESTRATOR_URL || 'http://127.0.0.1:5188/'
 let appShellOrigin = new URL(DEV_WEB_URL).origin
 let packagedWebUrl = DEV_WEB_URL
+
+/** 开发专用：打包版勿静态 import（会拉仓库 server/ 路径） */
+async function loadDevBridge() {
+  return import('./ensure-dev-bridge.mjs')
+}
 
 if (process.platform === 'darwin') {
   app.setName(APP_DISPLAY_NAME)
@@ -44,6 +48,7 @@ let embeddedBrowserManager = null
 
 async function resolveWebUrl() {
   if (isDev) {
+    const { ensureDevBridge } = await loadDevBridge()
     const bridgeOk = await ensureDevBridge()
     if (!bridgeOk) {
       throw new Error(
@@ -143,11 +148,10 @@ function createWindow() {
   })
 
   mainWindow.on('closed', () => {
+    // 窗体销毁时清掉贴在该窗上的 BrowserView；IPC 句柄仍保留（进程级只注册一次）
+    embeddedBrowserManager?.destroyAll()
     mainWindow = null
   })
-
-  embeddedBrowserManager = registerEmbeddedBrowserIpc(() => mainWindow)
-  connectBrowserBridgeHost(embeddedBrowserManager)
 }
 
 function startBrowserHostMode() {
@@ -175,7 +179,11 @@ ipcMain.handle('dialog:chooseReferenceFiles', async (_event, opts = {}) => {
 
 app.on('before-quit', () => {
   embeddedBrowserManager?.destroyAll()
-  if (isDev && !browserHostOnly) stopDevBridge()
+  if (isDev && !browserHostOnly) {
+    void loadDevBridge()
+      .then(({ stopDevBridge }) => stopDevBridge())
+      .catch(() => {})
+  }
   if (!isDev && !browserHostOnly) stopPackagedRuntime()
 })
 
@@ -188,6 +196,10 @@ if (gotSingleInstanceLock) {
     if (process.platform === 'darwin' && app.dock && !appIcon.isEmpty()) {
       app.dock.setIcon(appIcon)
     }
+    // IPC / Bridge 主机：进程生命周期只注册一次。macOS 关窗后 activate 会再建窗，
+    // 若放在 createWindow 内会二次 ipcMain.handle → Uncaught Exception。
+    embeddedBrowserManager = registerEmbeddedBrowserIpc(() => mainWindow)
+    connectBrowserBridgeHost(embeddedBrowserManager)
     createWindow()
 
     app.on('activate', () => {

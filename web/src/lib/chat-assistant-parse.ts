@@ -1,4 +1,4 @@
-/** 将助手 Markdown 拆成块：思考、工具、终端、正文。 */
+/** 将助手 Markdown 拆成块：思考、工具、终端、正文（工具行）。 */
 
 export type AssistantBlock =
   | { kind: "thought"; title: string; body: string }
@@ -6,23 +6,60 @@ export type AssistantBlock =
   | { kind: "terminal"; title: string; body: string }
   | { kind: "markdown"; body: string };
 
-const TOOL_LINE =
-  /^(Read|Glob|Grep|Edit|Write|MultiEdit|Bash|WebFetch|WebSearch|Explored|Search)\s+(.+?)(?:\s*·|$)/i;
+const TOOL_NAMES =
+  "Read|Glob|Grep|Edit|Write|MultiEdit|Bash|WebFetch|WebSearch|Explored|Search|Diagnostics|code_search|read_file|write_file|search_replace|run_command|run_tests|get_diagnostics|git_status";
+
+/** `⋯ Read · path` / `Read path` / `Edit src/a.ts` */
+const TOOL_LINE = new RegExp(
+  `^(?:⋯\\s+)?(${TOOL_NAMES})(?:\\s*[·•]\\s*|\\s+)(.+?)(?:\\s*[✓×✔✖…]*)?$`,
+  "i",
+);
+const TOOL_LINE_BARE = new RegExp(`^(?:⋯\\s+)?(${TOOL_NAMES})\\s*$`, "i");
 
 const THOUGHT_HEAD =
   /^(?:#{1,3}\s*)?(?:Thought(?:\s+for\s+[\d.]+s)?|Thinking(?:\s+for\s+[\d.]+s)?|Reasoning|思考(?:\s+[\d.]+秒)?|思考中)\s*$/i;
 
 const THOUGHT_INLINE = /^>\s*(?:\*\*)?(?:Thought|Thinking|思考)(?:\*\*)?\s*$/i;
 
+function normalizeToolName(rawName: string): string {
+  const n = String(rawName || "").trim();
+  const map: Record<string, string> = {
+    Explored: "Explored",
+    Search: "Search",
+    code_search: "Search",
+    read_file: "Read",
+    write_file: "Write",
+    search_replace: "Edit",
+    run_command: "Bash",
+    run_tests: "Bash",
+    get_diagnostics: "Diagnostics",
+    git_status: "Bash",
+  };
+  if (map[n]) return map[n];
+  const lower = n.toLowerCase();
+  if (map[lower]) return map[lower];
+  return n;
+}
+
 /** 单行工具活动 */
 function tryToolLine(line: string): AssistantBlock | null {
   const t = line.trim();
-  const m = t.match(TOOL_LINE);
+  if (!t) return null;
+  // Host 双发的状态回声：⋯ Read ✓ —— 跳过
+  if (/^⋯\s+\S+\s*[✓✗✔✖]\s*$/.test(t)) return null;
+  const m = t.match(TOOL_LINE) || t.match(TOOL_LINE_BARE);
   if (!m) return null;
-  const rawName = m[1]!;
-  const name = rawName === "Explored" || rawName === "Search" ? "Grep" : rawName;
-  const arg = m[2]?.trim().replace(/^[`'"]|[`'"]$/g, "");
-  return { kind: "tool", name, arg, status: "ok" };
+  const name = normalizeToolName(m[1]!);
+  let arg = m[2]?.trim().replace(/^[`'"]|[`'"]$/g, "").replace(/[…]+$/, "") || "";
+  if (/^[✓✗✔✖]+$/.test(arg)) arg = "";
+  const status: "ok" | "fail" = /[✗✖]/.test(t) ? "fail" : "ok";
+  return arg
+    ? { kind: "tool", name, arg, status }
+    : { kind: "tool", name, status };
+}
+
+function isToolLine(line: string): boolean {
+  return tryToolLine(line) != null;
 }
 
 function tryTerminalBlock(lines: string[], start: number): { block: AssistantBlock; next: number } | null {
@@ -32,7 +69,12 @@ function tryTerminalBlock(lines: string[], start: number): { block: AssistantBlo
   if (/^【终端/.test(head)) {
     const bodyLines = [head];
     let i = start + 1;
-    while (i < lines.length && lines[i]?.trim() && !TOOL_LINE.test(lines[i]!.trim()) && !THOUGHT_HEAD.test(lines[i]!.trim())) {
+    while (
+      i < lines.length &&
+      lines[i]?.trim() &&
+      !isToolLine(lines[i]!) &&
+      !THOUGHT_HEAD.test(lines[i]!.trim())
+    ) {
       bodyLines.push(lines[i]!);
       i++;
     }
@@ -83,12 +125,14 @@ export function parseAssistantContent(content: string): AssistantBlock[] {
 
     if (THOUGHT_HEAD.test(trimmed) || THOUGHT_INLINE.test(trimmed)) {
       flushMarkdown();
-      const title = trimmed.replace(/^#{1,3}\s*/, "").replace(/^>\s*/, "").replace(/\*\*/g, "") || "Thought";
+      const title =
+        trimmed.replace(/^#{1,3}\s*/, "").replace(/^>\s*/, "").replace(/\*\*/g, "") || "Thought";
       const thoughtLines: string[] = [];
       i++;
       while (i < lines.length) {
         const tl = lines[i]?.trim() ?? "";
-        if (TOOL_LINE.test(tl) || THOUGHT_HEAD.test(tl) || THOUGHT_INLINE.test(tl) || /^【终端/.test(tl)) break;
+        if (isToolLine(tl) || THOUGHT_HEAD.test(tl) || THOUGHT_INLINE.test(tl) || /^【终端/.test(tl))
+          break;
         if (tl === "---" || tl === "***") {
           i++;
           break;

@@ -22,15 +22,16 @@ import {
   type WorkbenchFileTab,
 } from "@/types/workbench-editor";
 import { sanitizeBrowserNavigationUrl, isBlankBrowserUrl } from "@/lib/workbench-browser-frame";
-import {
-  WORKBENCH_BROWSER_OPEN_TAB_MESSAGE,
-} from "@/lib/workbench-browser-messages";
+import { WORKBENCH_BROWSER_OPEN_TAB_MESSAGE } from "@/lib/workbench-browser-messages";
 import { hasEmbeddedBrowserNative } from "@/lib/embedded-browser-native";
 import { onBridgeEvent } from "@/lib/install-desktop-bridge";
 import { normalizeFileContentForEditor } from "@/lib/format-file-content";
+import { isBinaryFileResult } from "@/lib/is-binary-file";
 import { buildExplorerGitDecor, parseGitStatusShortBranch } from "@/lib/explorer-git-decor";
 import { requestWorkbenchLint } from "@/lib/workbench-lint-bridge";
+import { registerWorkbenchOpenFileHandler } from "@/lib/workbench-open-file";
 import { setPendingLineGoto } from "@/lib/codemirror-pending-goto";
+import { setOpenEditorRelPaths } from "@/lib/active-editor-path";
 
 function shortenHomeInPath(abs: string): string {
   const m = abs.match(/^(\/Users\/[^/]+)(\/.*)?$/);
@@ -78,11 +79,16 @@ type WorkbenchWorkspaceContextValue = {
   gitCommits: { hash: string; subject: string }[];
   gitLogErr: string | null;
   loadingGitLog: boolean;
-  openFile: (relPath: string, opts?: { line?: number; column?: number }) => Promise<void>;
+  openFile: (
+    relPath: string,
+    opts?: { line?: number; column?: number; preview?: boolean; pin?: boolean },
+  ) => Promise<void>;
   openBrowserTab: (url?: string, opts?: { label?: string; blobUrl?: string | null }) => void;
   navigateBrowserTab: (tabId: string, url: string) => void;
   setActiveEditorTab: (tabId: string) => void;
   closeEditorTab: (tabId: string) => void;
+  /** 关闭除指定标签外的全部编辑器标签 */
+  closeOtherEditorTabs: (keepTabId: string) => void;
   closePreview: () => void;
   updateFileTabContent: (tabId: string, content: string) => void;
   saveFileTab: (tabId: string) => Promise<void>;
@@ -126,6 +132,12 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
     () => (activeEditorTab && isFileTab(activeEditorTab) ? activeEditorTab.relPath : null),
     [activeEditorTab],
   );
+
+  useEffect(() => {
+    setOpenEditorRelPaths(
+      editorTabs.filter(isFileTab).map((t) => t.relPath),
+    );
+  }, [editorTabs]);
 
   const refreshFiles = useCallback(async () => {
     const api = getDesktop();
@@ -325,7 +337,10 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
   }, []);
 
   const openFile = useCallback(
-    async (relPath: string, opts?: { line?: number; column?: number }) => {
+    async (
+      relPath: string,
+      opts?: { line?: number; column?: number; preview?: boolean; pin?: boolean },
+    ) => {
       if (opts?.line != null) {
         setPendingLineGoto(relPath, opts.line, opts.column ?? 1);
       }
@@ -333,9 +348,21 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
       const api = getDesktop();
       if (!api?.readWorkspaceTextFile) return;
 
-      const existing = editorTabs.find((t) => isFileTab(t) && t.relPath === relPath);
+      // 对话定位 / 显式 pin → 固定标签；资源管理器单击 → 预览标签
+      const asPreview = opts?.pin === true || opts?.line != null ? false : opts?.preview === true;
+
+      const existing = editorTabs.find(
+        (t): t is WorkbenchFileTab => isFileTab(t) && t.relPath === relPath,
+      );
       if (existing) {
         setActiveEditorTabId(existing.id);
+        if (existing.preview && (opts?.pin || opts?.line != null || opts?.preview === false)) {
+          setEditorTabs((prev) =>
+            prev.map((t) =>
+              t.id === existing.id && isFileTab(t) ? { ...t, preview: false } : t,
+            ),
+          );
+        }
         if (!existing.dirty) {
           void loadFileTabContent(existing.id, relPath);
         }
@@ -357,13 +384,26 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
         error: null,
         truncated: false,
         binary: false,
+        preview: asPreview || undefined,
       };
-      setEditorTabs((prev) => [...prev, newTab]);
+      setEditorTabs((prev) => {
+        let next = prev;
+        if (asPreview) {
+          // 替换已有预览标签（单击预览互替）
+          next = prev.filter((t) => !(isFileTab(t) && t.preview && !t.dirty));
+        }
+        return [...next, newTab];
+      });
       setActiveEditorTabId(tabId);
       await loadFileTabContent(tabId, relPath);
     },
     [editorTabs, loadFileTabContent],
   );
+
+  useEffect(() => {
+    registerWorkbenchOpenFileHandler((relPath) => openFile(relPath));
+    return () => registerWorkbenchOpenFileHandler(null);
+  }, [openFile]);
 
   const openBrowserTab = useCallback(
     (url?: string, opts?: { label?: string; blobUrl?: string | null }) => {
@@ -383,9 +423,7 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
       // 先算好 id 再同步写 tabs + activeId，避免在 setEditorTabs updater 内嵌套
       // setActiveEditorTabId，导致新标签首帧以 active=false（display:none）挂载 iframe。
       if (!opts?.blobUrl && !isBlankBrowserUrl(resolved)) {
-        const existing = editorTabsRef.current.find(
-          (t) => isBrowserTab(t) && t.url === resolved,
-        );
+        const existing = editorTabsRef.current.find((t) => isBrowserTab(t) && t.url === resolved);
         if (existing) {
           setActiveEditorTabId(existing.id);
           return;
@@ -466,6 +504,17 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
     [editorTabs, activeEditorTabId],
   );
 
+  const closeOtherEditorTabs = useCallback((keepTabId: string) => {
+    setEditorTabs((prev) => {
+      for (const t of prev) {
+        if (t.id !== keepTabId) revokeBlobUrl(t);
+      }
+      const next = prev.filter((t) => t.id === keepTabId);
+      setActiveEditorTabId(next[0]?.id ?? null);
+      return next;
+    });
+  }, []);
+
   const closePreview = useCallback(() => {
     if (activeEditorTabId) closeEditorTab(activeEditorTabId);
   }, [activeEditorTabId, closeEditorTab]);
@@ -474,51 +523,63 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
     setEditorTabs((prev) =>
       prev.map((t) => {
         if (t.id !== tabId || !isFileTab(t)) return t;
-        return { ...t, content, dirty: content !== t.savedContent };
+        const dirty = content !== t.savedContent;
+        return {
+          ...t,
+          content,
+          dirty,
+          // 编辑后固定预览标签
+          preview: dirty ? false : t.preview,
+        };
       }),
     );
   }, []);
 
-  const saveFileTab = useCallback(async (tabId: string) => {
-    const tab = editorTabs.find((t) => t.id === tabId && isFileTab(t));
-    if (!tab || !isFileTab(tab)) return;
-    const api = getDesktop();
-    if (!api?.workspaceApplyWriteFence) {
-      toast.error("无法保存文件");
-      return;
-    }
-    setEditorTabs((prev) =>
-      prev.map((t) => (t.id === tabId && isFileTab(t) ? { ...t, saving: true } : t)),
-    );
-    try {
-      const result = await api.workspaceApplyWriteFence([{ path: tab.relPath, content: tab.content }]);
-      if (result.ok && result.written?.length) {
-        setEditorTabs((prev) =>
-          prev.map((t) => {
-            if (t.id !== tabId || !isFileTab(t)) return t;
-            return { ...t, savedContent: t.content, dirty: false, saving: false };
-          }),
-        );
-        toast.success("文件已保存");
-        try {
-          requestWorkbenchLint([tab.relPath]);
-        } catch {
-          /* lint 不应阻断保存 */
+  const saveFileTab = useCallback(
+    async (tabId: string) => {
+      const tab = editorTabs.find((t) => t.id === tabId && isFileTab(t));
+      if (!tab || !isFileTab(tab)) return;
+      const api = getDesktop();
+      if (!api?.workspaceApplyWriteFence) {
+        toast.error("无法保存文件");
+        return;
+      }
+      setEditorTabs((prev) =>
+        prev.map((t) => (t.id === tabId && isFileTab(t) ? { ...t, saving: true } : t)),
+      );
+      try {
+        const result = await api.workspaceApplyWriteFence([
+          { path: tab.relPath, content: tab.content },
+        ]);
+        if (result.ok && result.written?.length) {
+          setEditorTabs((prev) =>
+            prev.map((t) => {
+              if (t.id !== tabId || !isFileTab(t)) return t;
+              return { ...t, savedContent: t.content, dirty: false, saving: false };
+            }),
+          );
+          toast.success("文件已保存");
+          try {
+            requestWorkbenchLint([tab.relPath]);
+          } catch {
+            /* lint 不应阻断保存 */
+          }
+          void refreshFiles();
+        } else {
+          toast.error(result.error || "保存失败");
+          setEditorTabs((prev) =>
+            prev.map((t) => (t.id === tabId && isFileTab(t) ? { ...t, saving: false } : t)),
+          );
         }
-        void refreshFiles();
-      } else {
-        toast.error(result.error || "保存失败");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "保存失败");
         setEditorTabs((prev) =>
           prev.map((t) => (t.id === tabId && isFileTab(t) ? { ...t, saving: false } : t)),
         );
       }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "保存失败");
-      setEditorTabs((prev) =>
-        prev.map((t) => (t.id === tabId && isFileTab(t) ? { ...t, saving: false } : t)),
-      );
-    }
-  }, [editorTabs, refreshFiles]);
+    },
+    [editorTabs, refreshFiles],
+  );
 
   useEffect(() => {
     if (!desktopReady) return;
@@ -615,6 +676,7 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
       navigateBrowserTab,
       setActiveEditorTab,
       closeEditorTab,
+      closeOtherEditorTabs,
       closePreview,
       updateFileTabContent,
       saveFileTab,
@@ -649,6 +711,7 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
       navigateBrowserTab,
       setActiveEditorTab,
       closeEditorTab,
+      closeOtherEditorTabs,
       closePreview,
       updateFileTabContent,
       saveFileTab,
@@ -660,7 +723,9 @@ export function WorkbenchWorkspaceProvider({ children }: { children: ReactNode }
   );
 
   return (
-    <WorkbenchWorkspaceContext.Provider value={value}>{children}</WorkbenchWorkspaceContext.Provider>
+    <WorkbenchWorkspaceContext.Provider value={value}>
+      {children}
+    </WorkbenchWorkspaceContext.Provider>
   );
 }
 
@@ -668,4 +733,8 @@ export function useWorkbenchWorkspace() {
   const ctx = useContext(WorkbenchWorkspaceContext);
   if (!ctx) throw new Error("useWorkbenchWorkspace must be used within WorkbenchWorkspaceProvider");
   return ctx;
+}
+
+export function useWorkbenchWorkspaceOptional() {
+  return useContext(WorkbenchWorkspaceContext);
 }

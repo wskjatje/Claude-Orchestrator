@@ -467,8 +467,21 @@ export class EmbeddedBrowserManager {
   }
 }
 
-/** @param {() => import('electron').BrowserWindow | null} getWindow */
+let embeddedBrowserIpcRegistered = false
+
+/**
+ * 注册内嵌浏览器 IPC（进程级只应调用一次）。
+ * getWindow 用闭包读取当前主窗，便于 macOS 关窗再建窗时仍指向新 BrowserWindow。
+ * @param {() => import('electron').BrowserWindow | null} getWindow
+ */
 export function registerEmbeddedBrowserIpc(getWindow) {
+  if (embeddedBrowserIpcRegistered) {
+    throw new Error(
+      'registerEmbeddedBrowserIpc 只能在进程内调用一次（勿放在 createWindow）。macOS 关窗后 activate 再建窗时 IPC 须复用。',
+    )
+  }
+  embeddedBrowserIpcRegistered = true
+
   const mgr = new EmbeddedBrowserManager(getWindow)
 
   ipcMain.handle('embedded-browser:create', (_e, tabId) =>

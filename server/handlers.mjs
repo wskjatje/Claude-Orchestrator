@@ -67,7 +67,9 @@ import {
 import {
   gitCommitLog,
   gitCommitWorkspace,
+  gitDiscardWorkspaceFile,
   gitDiff,
+  gitDiffPaths,
   gitDiffVsBase,
   gitRemoteSync,
   listPanelTree,
@@ -75,6 +77,59 @@ import {
   shellSnapshot,
 } from "./workspace.mjs";
 import { lintWorkspaceFiles } from "./workspace-lint.mjs";
+import {
+  ensureProjectRulesWatcher,
+  listProjectRuleFiles,
+  setProjectRulesChangedEmitter,
+} from "./project-rules.mjs";
+import {
+  invalidateTsServiceCache,
+  tsCompletionsAt,
+  tsDefinitionAt,
+  tsHoverAt,
+  tsImplementationAt,
+  tsReferencesAt,
+  tsRenameLocationsAt,
+  tsOrganizeImports,
+  tsCodeFixesAt,
+  tsApplyCodeFix,
+  tsSignatureHelpAt,
+  tsTypeDefinitionAt,
+} from "./workspace-tsservice.mjs";
+import { workspaceRipgrep } from "./workspace-ripgrep.mjs";
+import { workspaceGraphifyQuery } from "./workspace-graphify-query.mjs";
+import {
+  buildCodeIndex,
+  searchCodeIndex,
+  codeIndexStatus,
+  updateCodeIndexForFiles,
+} from "./code-index.mjs";
+import { runHostAgentLoop, abortHostAgent } from "./host-agent-loop.mjs";
+import {
+  workspaceRunCommand,
+  workspaceRunTests,
+} from "./workspace-run-command.mjs";
+import { ensureClaudeCliInstalled } from "./ensure-claude-cli.mjs";
+import { ensureCodeIndexHybrid } from "./ensure-code-index-hybrid.mjs";
+import {
+  buildWorkspaceGraph,
+  graphifyStatus,
+  markGraphifyNeedsUpdate,
+} from "./ensure-graphify.mjs";
+import {
+  detectExternalLspCandidates,
+  externalLspCompletionsAt,
+  externalLspDefinitionAt,
+  externalLspHoverAt,
+  externalLspReferencesAt,
+  externalLspRenameAt,
+  getExternalLspStatus,
+  pythonCompletionsAt,
+  pythonDefinitionAt,
+  pythonHoverAt,
+  pythonReferencesAt,
+  pythonRenameAt,
+} from "./workspace-external-lsp.mjs";
 import {
   pickFolderNative,
   pickReferenceFilesNative,
@@ -95,7 +150,14 @@ import {
   normalizeRpcPayload,
 } from "./bridge-constants.mjs";
 
+// CJS 模块须 createRequire：Electron 内嵌 Node 对「ESM 具名 import CJS」互操作不完整
 const require = createRequire(import.meta.url);
+const {
+  classifyChainError,
+  isMaxRetries,
+  retryDelayMs,
+  shouldRetry,
+} = require("./chain-error-classify.js");
 const cadBridge = require("./cad-bridge.cjs");
 const cloudProviders = require("./cloud-providers.cjs");
 const cloudDirect = require("./cloud-direct.cjs");
@@ -134,6 +196,10 @@ export function broadcast(channel, detail) {
     }
   }
 }
+
+setProjectRulesChangedEmitter((detail) =>
+  broadcast("workspace:rules-changed", detail),
+);
 
 cadBridge.init({
   loadWorkspace,
@@ -245,6 +311,8 @@ export const handlers = {
     const resolved = path.resolve(dir);
     saveWorkspace(resolved);
     recordWorkspaceOpen(resolved);
+    invalidateTsServiceCache();
+    ensureProjectRulesWatcher();
     broadcast("workspace:changed", { workspace: resolved });
     return resolved;
   },
@@ -260,6 +328,8 @@ export const handlers = {
 
   "workspace:clear": async () => {
     saveWorkspace(null);
+    invalidateTsServiceCache();
+    ensureProjectRulesWatcher();
     broadcast("workspace:changed", { workspace: null });
     return null;
   },
@@ -276,14 +346,173 @@ export const handlers = {
   },
 
   "workspace:listPanelTree": async () => listPanelTree(),
+  "workspace:listProjectRules": async () => listProjectRuleFiles(),
   "workspace:readTextFile": async (args) => readTextFile(args?.[0]),
   "workspace:lintFiles": async (args) =>
     lintWorkspaceFiles(args?.[0], {
       mode: args?.[1] === "open" ? "open" : "full",
     }),
+  "workspace:tsDefinition": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsDefinitionAt(body);
+  },
+  "workspace:tsTypeDefinition": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsTypeDefinitionAt(body);
+  },
+  "workspace:tsImplementation": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsImplementationAt(body);
+  },
+  "workspace:tsHover": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsHoverAt(body);
+  },
+  "workspace:tsSignatureHelp": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsSignatureHelpAt(body);
+  },
+  "workspace:tsCompletions": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsCompletionsAt(body);
+  },
+  "workspace:tsReferences": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsReferencesAt(body);
+  },
+  "workspace:tsRename": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsRenameLocationsAt(body);
+  },
+  "workspace:tsOrganizeImports": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsOrganizeImports(body);
+  },
+  "workspace:ripgrep": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return workspaceRipgrep(body);
+  },
+  "workspace:graphifyQuery": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return workspaceGraphifyQuery(body);
+  },
+  "workspace:graphifyStatus": async () => graphifyStatus(),
+  "workspace:graphifyUpdateFiles": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    const paths = Array.isArray(body.paths) ? body.paths.map(String) : [];
+    return markGraphifyNeedsUpdate(paths);
+  },
+  "workspace:codeIndexBuild": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return buildCodeIndex(body);
+  },
+  "workspace:codeIndexSearch": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return searchCodeIndex(body);
+  },
+  "workspace:codeIndexStatus": async () => codeIndexStatus(),
+  "workspace:codeIndexUpdateFiles": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    const paths = Array.isArray(body.paths) ? body.paths : [];
+    return updateCodeIndexForFiles(paths);
+  },
+  "workspace:codeIndexEnsureHybrid": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return ensureCodeIndexHybrid(body);
+  },
+  "host-agent:prompt": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    const requestId = typeof body.requestId === "string" ? body.requestId.trim() : "";
+    return runHostAgentLoop({
+      userLine: String(body.userLine || ""),
+      priorMessages: Array.isArray(body.priorMessages) ? body.priorMessages : [],
+      model: body.model || body.orchestratorModel,
+      maxTurns: body.maxTurns,
+      contextAppendix: typeof body.contextAppendix === "string" ? body.contextAppendix : "",
+      requestId,
+      onDelta: requestId
+        ? (chunk) => {
+            broadcast("message_delta", { requestId, content: chunk });
+          }
+        : undefined,
+    });
+  },
+  "host-agent:abort": async (args) => {
+    const id =
+      typeof args?.[0] === "string"
+        ? args[0]
+        : args?.[0] && typeof args[0] === "object"
+          ? String(args[0].requestId || "")
+          : "";
+    return abortHostAgent(id);
+  },
+  "claude-code:ensureCli": async () => ensureClaudeCliInstalled(),
+  "workspace:runCommand": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return workspaceRunCommand(body);
+  },
+  "workspace:runTests": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return workspaceRunTests(body);
+  },
+  "workspace:tsCodeFixes": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsCodeFixesAt(body);
+  },
+  "workspace:tsApplyCodeFix": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsApplyCodeFix(body);
+  },
+  "workspace:detectExternalLsp": async () => detectExternalLspCandidates(),
+  "workspace:externalLspStatus": async () => getExternalLspStatus(),
+  "workspace:pythonDefinition": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return pythonDefinitionAt(body);
+  },
+  "workspace:pythonHover": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return pythonHoverAt(body);
+  },
+  "workspace:pythonCompletions": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return pythonCompletionsAt(body);
+  },
+  "workspace:pythonReferences": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return pythonReferencesAt(body);
+  },
+  "workspace:pythonRename": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return pythonRenameAt(body);
+  },
+  "workspace:externalLspDefinition": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return externalLspDefinitionAt(body);
+  },
+  "workspace:externalLspHover": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return externalLspHoverAt(body);
+  },
+  "workspace:externalLspCompletions": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return externalLspCompletionsAt(body);
+  },
+  "workspace:externalLspReferences": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return externalLspReferencesAt(body);
+  },
+  "workspace:externalLspRename": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return externalLspRenameAt(body);
+  },
   "workspace:getShellSnapshot": async () => shellSnapshot(),
   "workspace:getGitCommitLog": async (args) => gitCommitLog(args?.[0]?.limit),
   "workspace:getGitDiff": async () => gitDiff(),
+  "workspace:getGitDiffPaths": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    const paths = Array.isArray(body.paths) ? body.paths : [];
+    return gitDiffPaths(paths);
+  },
   "workspace:getGitDiffVsBase": async (args) => {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
     return gitDiffVsBase(body.base);
@@ -294,6 +523,16 @@ export const handlers = {
       message: body.message,
       stageAll: body.stageAll !== false,
     });
+  },
+  "workspace:gitDiscardFile": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    const rel =
+      typeof body.path === "string"
+        ? body.path
+        : typeof args?.[0] === "string"
+          ? args[0]
+          : "";
+    return gitDiscardWorkspaceFile(rel);
   },
   "workspace:gitRemoteSync": async (args) => {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
@@ -425,7 +664,7 @@ export const handlers = {
       typeof p.timeoutMs === "number" && p.timeoutMs >= 0
         ? p.timeoutMs
         : undefined;
-    return runClaudeCodePrint({
+    const opts = {
       prompt: p.prompt,
       model: p.model,
       requestId: p.requestId,
@@ -435,12 +674,31 @@ export const handlers = {
       claudeSessionId: p.claudeSessionId,
       sessionName: p.sessionName,
       isNewClaudeSession: p.isNewClaudeSession,
+      permissionMode: p.permissionMode,
       onDelta: requestId
         ? (chunk) => {
             broadcast("message_delta", { requestId, content: chunk });
           }
         : undefined,
-    });
+    };
+    // 瞬态失败自动退避重试（timeout / rate_limit / network）
+    let attempts = 0;
+    let last;
+    for (;;) {
+      attempts += 1;
+      last = await runClaudeCodePrint(opts);
+      if (last?.ok || last?.aborted) return last;
+      const kind = classifyChainError(last?.error || "");
+      if (!shouldRetry(kind) || isMaxRetries(attempts)) {
+        if (attempts > 1 && last && typeof last === "object") {
+          return { ...last, retries: attempts - 1, errorKind: kind };
+        }
+        return last;
+      }
+      await new Promise((r) => setTimeout(r, retryDelayMs(attempts)));
+      // 重试时沿用同一 session，勿当新会话
+      opts.isNewClaudeSession = false;
+    }
   },
 
   "claude-code:abort": async (args) => abortClaudeCode(args?.[0]),
@@ -826,35 +1084,8 @@ export const handlers = {
     }
   },
 
-  /** 后台执行 graphify update 更新知识图谱（代码 AST 提取，无需 LLM） */
-  "workspace:buildGraph": async () => {
-    const wd = loadWorkspace();
-    if (!wd) return { ok: false, error: "未选择工作区" };
-    let output = "";
-    const { execFile } = await import("node:child_process");
-    try {
-      const { stdout: updateOut } = await execFile("graphify", ["update", wd, "--no-cluster"], {
-        timeout: 120_000,
-        windowsHide: true,
-        maxBuffer: 1024 * 1024,
-      });
-      output += updateOut || "";
-    } catch (e) {
-      return { ok: false, error: `图谱更新失败：${e?.message || e}`, output };
-    }
-    try {
-      const { stdout: htmlOut } = await execFile("graphify", ["export", "html"], {
-        cwd: wd,
-        timeout: 30_000,
-        windowsHide: true,
-        maxBuffer: 1024 * 1024,
-      });
-      output += "\n" + (htmlOut || "");
-    } catch (e) {
-      console.warn("[handlers] HTML 导出失败", e?.message || e);
-    }
-    return { ok: true, output };
-  },
+  /** AST 更新结构索引并导出 HTML（需本机 graphify） */
+  "workspace:buildGraph": async () => buildWorkspaceGraph(),
 
   /** 生成状态着色图 HTML */
   "workspace:buildStatusViz": async () => {
@@ -948,6 +1179,44 @@ export const handlers = {
   "dialog:chooseReferenceFiles": async (args) => {
     const opts = args?.[0] && typeof args[0] === "object" ? args[0] : {};
     return pickReferenceFilesNative(opts);
+  },
+
+  /** 读取本机绝对路径文本（附件注入）；单文件上限 200KB */
+  "files:readTextPaths": async (args) => {
+    const MAX = 200 * 1024;
+    const raw = args?.[0];
+    const paths = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.paths)
+        ? raw.paths
+        : [];
+    const items = [];
+    const errors = [];
+    for (const p of paths) {
+      const abs = String(p || "").trim();
+      if (!abs) continue;
+      try {
+        if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+          errors.push(`${abs}: 不是文件`);
+          continue;
+        }
+        const st = fs.statSync(abs);
+        if (st.size > MAX) {
+          errors.push(`${abs}: 超过 200KB`);
+          continue;
+        }
+        const buf = fs.readFileSync(abs);
+        if (buf.includes(0)) {
+          errors.push(`${abs}: 二进制文件`);
+          continue;
+        }
+        const name = path.basename(abs);
+        items.push({ path: abs, name, content: buf.toString("utf8") });
+      } catch (e) {
+        errors.push(`${abs}: ${e.message || e}`);
+      }
+    }
+    return { ok: errors.length === 0 || items.length > 0, items, errors };
   },
 
   "cloud-providers:status": async () => ({
@@ -1286,6 +1555,7 @@ export async function dispatchRpc(channel, args = []) {
 }
 
 ensureDefaultWorkspace();
+ensureProjectRulesWatcher();
 
 try {
   const removedLegacy = cloudProviders.purgeLegacyImportedProvidersIfNeeded();

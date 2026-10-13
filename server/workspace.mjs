@@ -135,9 +135,9 @@ export function listPanelTree() {
 /** 完整文件名（双扩展名等） */
 const BINARY_NAMES = new Set(['bun.lockb', '.ds_store'])
 
-/** 已知二进制扩展名（含 bun.lockb 等锁文件） */
+/** 已知二进制扩展名（与 web/src/lib/is-binary-file.ts 同步） */
 const BINARY_EXT = new Set([
-  'lockb', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp', 'icns', 'avif',
+  'lockb', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp', 'icns', 'avif', 'heic', 'heif',
   'woff', 'woff2', 'ttf', 'otf', 'eot',
   'exe', 'dll', 'so', 'dylib', 'bin', 'dat', 'wasm', 'pyc', 'class', 'o', 'a',
   'zip', 'gz', 'tar', 'rar', '7z', 'bz2', 'xz', 'zst',
@@ -156,30 +156,47 @@ function extOf(relPath) {
 function bufferLooksBinary(buf) {
   const sample = buf.subarray(0, Math.min(buf.length, 8192))
   if (!sample.length) return false
-  for (let i = 0; i < sample.length; i++) {
-    if (sample[i] === 0) return true
+  // UTF-16 BOM → 当文本
+  if (sample.length >= 2) {
+    const b0 = sample[0]
+    const b1 = sample[1]
+    if ((b0 === 0xff && b1 === 0xfe) || (b0 === 0xfe && b1 === 0xff)) return false
   }
+  // UTF-8 BOM
+  if (sample.length >= 3 && sample[0] === 0xef && sample[1] === 0xbb && sample[2] === 0xbf) {
+    return false
+  }
+  let nul = 0
   let control = 0
   for (let i = 0; i < sample.length; i++) {
     const b = sample[i]
+    if (b === 0) nul++
     if (b === 9 || b === 10 || b === 13) continue
     if (b < 32 || b === 127) control++
   }
-  return control / sample.length > 0.05
+  // 仅偶发 NUL 不够；NUL 占比高或控制符很高才判二进制
+  if (nul > 0 && nul / sample.length > 0.01) return true
+  if (nul > 8) return true
+  return sample.length > 200 && control / sample.length > 0.12
 }
 
 function textLooksBinary(text) {
   const sample = text.slice(0, 8192)
   if (!sample.length) return false
+  const c0 = sample.charCodeAt(0)
+  if (c0 === 0xfeff || c0 === 0xfffe) return false
   let replacement = 0
   let control = 0
+  let nul = 0
   for (let i = 0; i < sample.length; i++) {
     const c = sample.charCodeAt(i)
+    if (c === 0) nul++
     if (c === 0xfffd) replacement++
     if (c < 32 && c !== 9 && c !== 10 && c !== 13) control++
   }
-  if (replacement > 3 || replacement / sample.length > 0.01) return true
-  if (sample.length > 80 && control / sample.length > 0.05) return true
+  if (nul > 0) return true
+  if (replacement > 8 || (sample.length > 40 && replacement / sample.length > 0.02)) return true
+  if (sample.length > 200 && control / sample.length > 0.12) return true
   return false
 }
 
@@ -191,6 +208,32 @@ function isBinaryFile(relPath, buf, text) {
   if (bufferLooksBinary(buf)) return true
   if (textLooksBinary(text)) return true
   return false
+}
+
+/** 媒体预览上限：PDF/图片需要更大块；其余 hex 仍用 256KB */
+function binaryPreviewMaxBytes(relPath) {
+  const ext = extOf(relPath)
+  if (ext === 'pdf') return 12 * 1024 * 1024
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp', 'icns', 'avif', 'heic', 'heif', 'svg'].includes(ext)) {
+    return 8 * 1024 * 1024
+  }
+  return 256_000
+}
+
+function binaryPreviewPayload(rel, buf, size) {
+  const maxPreview = binaryPreviewMaxBytes(rel)
+  const previewLen = Math.min(buf.length, maxPreview)
+  const preview = buf.subarray(0, previewLen)
+  return {
+    ok: true,
+    binary: true,
+    relPath: rel,
+    size,
+    text: null,
+    base64: preview.toString('base64'),
+    previewBytes: previewLen,
+    truncated: buf.length > maxPreview,
+  }
 }
 
 export function readTextFile(relPathRaw) {
@@ -209,36 +252,12 @@ export function readTextFile(relPathRaw) {
     if (!stat.isFile()) return { ok: false, error: '不是文件' }
     const buf = fs.readFileSync(abs)
     if (isBinaryFile(rel, buf, '')) {
-      const maxPreview = 256_000
-      const previewLen = Math.min(buf.length, maxPreview)
-      const preview = buf.subarray(0, previewLen)
-      return {
-        ok: true,
-        binary: true,
-        relPath: rel,
-        size: stat.size,
-        text: null,
-        base64: preview.toString('base64'),
-        previewBytes: previewLen,
-        truncated: buf.length > maxPreview,
-      }
+      return binaryPreviewPayload(rel, buf, stat.size)
     }
     const max = 512_000
     let text = buf.toString('utf8')
     if (textLooksBinary(text)) {
-      const maxPreview = 256_000
-      const previewLen = Math.min(buf.length, maxPreview)
-      const preview = buf.subarray(0, previewLen)
-      return {
-        ok: true,
-        binary: true,
-        relPath: rel,
-        size: stat.size,
-        text: null,
-        base64: preview.toString('base64'),
-        previewBytes: previewLen,
-        truncated: buf.length > maxPreview,
-      }
+      return binaryPreviewPayload(rel, buf, stat.size)
     }
     let truncated = false
     if (text.length > max) {
@@ -308,24 +327,191 @@ export function gitDiff() {
   const opt = { cwd, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }
   let statusLine = ''
   let diff = ''
+  let statusOk = true
+  let diffOk = true
+  let statusErr = null
   try {
     statusLine = String(execFileSync('git', ['status', '-sb'], opt) || '').trim()
   } catch (e) {
-    statusLine = `（git status 不可用：${e.message}）`
+    statusOk = false
+    statusErr = e instanceof Error ? e.message : String(e)
+    statusLine = ''
   }
   try {
     diff = String(execFileSync('git', ['diff', 'HEAD'], opt) || '').trim()
   } catch (e) {
-    diff = `（git diff 不可用：${e.message}）`
+    diffOk = false
+    if (!statusErr) statusErr = e instanceof Error ? e.message : String(e)
+    diff = ''
   }
   const max = 150_000
   const truncated =
     diff.length > max ? `${diff.slice(0, max)}\n\n…（已截断）` : diff
+  // git 失败时 ok=false，避免前端把报错文案解析成「脏文件路径」
+  if (!statusOk && !diffOk) {
+    return {
+      ok: false,
+      statusLine: '',
+      diff: '',
+      error: statusErr || 'git 不可用',
+    }
+  }
   return {
     ok: true,
     statusLine,
-    diff: truncated || '（与 HEAD 无差异：工作区干净）',
-    error: null,
+    diff: truncated || (diffOk ? '（与 HEAD 无差异：工作区干净）' : ''),
+    error: statusOk ? null : statusErr,
+  }
+}
+
+/** 把磁盘文件合成「相对空文件」的 unified diff（无 HEAD / 未跟踪时用） */
+function synthesizeFullAddDiff(rel, abs) {
+  let body = ''
+  try {
+    body = fs.readFileSync(abs, 'utf8')
+  } catch {
+    return ''
+  }
+  if (body.length > 200_000) body = `${body.slice(0, 200_000)}\n…`
+  const lines = body.replace(/\r\n/g, '\n').split('\n')
+  const plus = lines.map((l) => `+${l}`).join('\n')
+  return [
+    `diff --git a/${rel} b/${rel}`,
+    'new file mode 100644',
+    '--- /dev/null',
+    `+++ b/${rel}`,
+    `@@ -0,0 +1,${lines.length} @@`,
+    plus,
+  ].join('\n')
+}
+
+function truncateDiffText(diff, max = 120_000) {
+  const t = String(diff || '')
+  return t.length > max ? `${t.slice(0, max)}\n\n…（已截断）` : t
+}
+
+/**
+ * 仅针对指定相对路径的 diff（优先 `git diff HEAD`；无 HEAD 时合成磁盘预览）。
+ * @param {string[] | undefined} paths
+ */
+export function gitDiffPaths(paths) {
+  const workspaceDir = loadWorkspace()
+  if (!workspaceDir || !fs.existsSync(workspaceDir)) {
+    return { ok: false, error: '未选择工作区', diff: '', paths: [] }
+  }
+  const cwd = path.resolve(workspaceDir)
+  const list = (Array.isArray(paths) ? paths : [])
+    .map((p) => String(p || '').replace(/\\/g, '/').replace(/^\.\//, '').trim())
+    .filter((p) => p && !p.includes('..'))
+    .slice(0, 40)
+  if (!list.length) {
+    return { ok: false, error: '无路径', diff: '', paths: [] }
+  }
+  const opt = { cwd, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }
+
+  const synthesizeAll = () => {
+    let diff = ''
+    for (const rel of list) {
+      const abs = path.join(cwd, rel)
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue
+      const chunk = synthesizeFullAddDiff(rel, abs)
+      if (!chunk) continue
+      diff = diff ? `${diff}\n${chunk}` : chunk
+    }
+    return truncateDiffText(diff)
+  }
+
+  let headOk = true
+  try {
+    execFileSync('git', ['rev-parse', '--verify', 'HEAD'], {
+      ...opt,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    })
+  } catch {
+    headOk = false
+  }
+
+  // 无提交 / 非 git 仓库：仍返回可预览 diff，避免 UI 报 Could not access HEAD
+  if (!headOk) {
+    const diff = synthesizeAll()
+    return {
+      ok: true,
+      paths: list,
+      diff: diff || '（无文件内容可预览）',
+      error: null,
+      baseline: 'disk',
+    }
+  }
+
+  try {
+    let diff = String(execFileSync('git', ['diff', 'HEAD', '--', ...list], opt) || '').trim()
+    // 未跟踪新文件：git diff HEAD 无输出 → 合成 /dev/null 全量 +
+    const covered = new Set()
+    for (const m of diff.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)) {
+      covered.add(String(m[2] || m[1] || '').replace(/\\/g, '/'))
+    }
+    for (const rel of list) {
+      if (covered.has(rel)) continue
+      const abs = path.join(cwd, rel)
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue
+      let tracked = true
+      try {
+        execFileSync('git', ['ls-files', '--error-unmatch', '--', rel], {
+          ...opt,
+          stdio: ['ignore', 'ignore', 'ignore'],
+        })
+      } catch {
+        tracked = false
+      }
+      if (tracked) continue
+      const chunk = synthesizeFullAddDiff(rel, abs)
+      if (!chunk) continue
+      diff = diff ? `${diff}\n${chunk}` : chunk
+    }
+    return {
+      ok: true,
+      paths: list,
+      diff: truncateDiffText(diff) || '（这些路径相对 HEAD 无差异）',
+      error: null,
+      baseline: 'HEAD',
+    }
+  } catch (e) {
+    // 已有 HEAD 但 git diff 失败：勿对已跟踪文件伪造全绿；仅未跟踪文件可 synthesize
+    let diff = ''
+    for (const rel of list) {
+      const abs = path.join(cwd, rel)
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue
+      let tracked = true
+      try {
+        execFileSync('git', ['ls-files', '--error-unmatch', '--', rel], {
+          ...opt,
+          stdio: ['ignore', 'ignore', 'ignore'],
+        })
+      } catch {
+        tracked = false
+      }
+      if (tracked) continue
+      const chunk = synthesizeFullAddDiff(rel, abs)
+      if (!chunk) continue
+      diff = diff ? `${diff}\n${chunk}` : chunk
+    }
+    if (diff) {
+      return {
+        ok: true,
+        paths: list,
+        diff: truncateDiffText(diff),
+        error: null,
+        baseline: 'disk-untracked',
+        warning: e instanceof Error ? e.message : String(e),
+      }
+    }
+    return {
+      ok: false,
+      paths: list,
+      diff: '',
+      error: e instanceof Error ? e.message : String(e),
+      baseline: null,
+    }
   }
 }
 
@@ -398,6 +584,36 @@ export function gitCommitWorkspace({ message, stageAll = true } = {}) {
   } catch (e) {
     const msg = String(e.stderr || e.message || e).trim()
     return { ok: false, error: msg || '提交失败', output: null }
+  }
+}
+
+/**
+ * 撤销工作区内单个已跟踪文件的未提交改动（git checkout -- path）。
+ * 未跟踪文件不会删除，仅返回明确错误。
+ */
+export function gitDiscardWorkspaceFile(relPath) {
+  const ws = resolveGitWorkspace()
+  if (!ws.ok) return { ok: false, error: ws.error }
+  const rel = String(relPath || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+  if (!rel || rel.includes('..')) {
+    return { ok: false, error: '路径无效' }
+  }
+  const opt = gitExecOpt(ws.cwd)
+  try {
+    const tracked = String(
+      execFileSync('git', ['ls-files', '--', rel], opt) || '',
+    ).trim()
+    if (!tracked) {
+      return { ok: false, error: '该文件未被 git 跟踪，无法安全撤销' }
+    }
+    execFileSync('git', ['checkout', '--', rel], opt)
+    return { ok: true, path: rel, error: null }
+  } catch (e) {
+    const msg = String(e.stderr || e.message || e).trim()
+    return { ok: false, error: msg || '撤销失败' }
   }
 }
 

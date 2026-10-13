@@ -24,8 +24,10 @@ const QUIET_RPC = new Set([
   "workspace:getShellSnapshot",
   "workspace:getGitCommitLog",
   "workspace:getGitDiff",
+  "workspace:getGitDiffPaths",
   "workspace:getGitDiffVsBase",
   "workspace:gitCommit",
+  "workspace:gitDiscardFile",
   "workspace:gitRemoteSync",
   "ui-prefs:get",
   "chat-settings:get",
@@ -67,9 +69,7 @@ async function rpc<T>(channel: string, ...args: unknown[]): Promise<T> {
         ? String((data as { error: unknown }).error)
         : text;
     appendOutput("bridge", `RPC ${channel} 失败 (${res.status}): ${errObj || text}`);
-    throw new Error(
-      normalizeRpcErrorMessage(errObj) || `RPC ${channel} failed (${res.status})`,
-    );
+    throw new Error(normalizeRpcErrorMessage(errObj) || `RPC ${channel} failed (${res.status})`);
   }
   if (!QUIET_RPC.has(channel)) {
     appendOutput("bridge", `RPC ${channel} 完成`);
@@ -127,7 +127,9 @@ export function installDesktopBridge() {
     getWorkspaceHistory: () => rpc("workspace:history:get"),
     removeWorkspaceHistoryEntry: (path: string) => rpc("workspace:history:remove", path),
     clearWorkspaceHistory: () => rpc("workspace:history:clear"),
-    chooseReferenceFiles: () => rpc("dialog:chooseReferenceFiles"),
+    chooseReferenceFiles: (opts) => rpc("dialog:chooseReferenceFiles", opts ?? {}),
+    readReferenceTextFiles: (filePaths: string[]) =>
+      rpc("files:readTextPaths", { paths: filePaths }),
     clearWorkspace: () => rpc("workspace:clear"),
     workspaceApplyWriteFence: (items) => rpc("workspace:applyWriteFence", items),
     workspaceIngestFromAssistantText: (payload) =>
@@ -140,19 +142,64 @@ export function installDesktopBridge() {
     workspaceGetExecutionSnapshot: () => rpc("workspace:getExecutionSnapshot"),
     readWorkspaceTextFile: (relPath) => rpc("workspace:readTextFile", relPath),
     workspaceLintFiles: (relPaths, mode) => rpc("workspace:lintFiles", relPaths, mode),
+    listWorkspaceProjectRules: () => rpc("workspace:listProjectRules"),
+    workspaceTsDefinition: (payload) => rpc("workspace:tsDefinition", payload),
+    workspaceTsTypeDefinition: (payload) => rpc("workspace:tsTypeDefinition", payload),
+    workspaceTsImplementation: (payload) => rpc("workspace:tsImplementation", payload),
+    workspaceTsHover: (payload) => rpc("workspace:tsHover", payload),
+    workspaceTsSignatureHelp: (payload) => rpc("workspace:tsSignatureHelp", payload),
+    workspaceTsCompletions: (payload) => rpc("workspace:tsCompletions", payload),
+    workspaceTsReferences: (payload) => rpc("workspace:tsReferences", payload),
+    workspaceTsRename: (payload) => rpc("workspace:tsRename", payload),
+    workspaceTsOrganizeImports: (payload) => rpc("workspace:tsOrganizeImports", payload),
+    workspaceRipgrep: (payload) => rpc("workspace:ripgrep", payload),
+    workspaceGraphifyQuery: (payload) => rpc("workspace:graphifyQuery", payload),
+    graphifyStatus: () => rpc("workspace:graphifyStatus"),
+    graphifyUpdateFiles: (payload) => rpc("workspace:graphifyUpdateFiles", payload || {}),
+    workspaceCodeIndexBuild: (payload) =>
+      rpc("workspace:codeIndexBuild", payload || {}),
+    workspaceCodeIndexSearch: (payload) => rpc("workspace:codeIndexSearch", payload),
+    workspaceCodeIndexStatus: () => rpc("workspace:codeIndexStatus"),
+    workspaceCodeIndexUpdateFiles: (payload) =>
+      rpc("workspace:codeIndexUpdateFiles", payload || {}),
+    workspaceCodeIndexEnsureHybrid: (payload) =>
+      rpc("workspace:codeIndexEnsureHybrid", payload || {}),
+    hostAgentPrompt: (payload) => rpc("host-agent:prompt", payload),
+    hostAgentAbort: (requestId) => rpc("host-agent:abort", requestId),
+    claudeCodeEnsureCli: () => rpc("claude-code:ensureCli"),
+    workspaceTsCodeFixes: (payload) => rpc("workspace:tsCodeFixes", payload),
+    workspaceTsApplyCodeFix: (payload) => rpc("workspace:tsApplyCodeFix", payload),
+    workspaceDetectExternalLsp: () => rpc("workspace:detectExternalLsp"),
+    workspaceExternalLspStatus: () => rpc("workspace:externalLspStatus"),
+    workspacePythonDefinition: (payload) => rpc("workspace:pythonDefinition", payload),
+    workspacePythonHover: (payload) => rpc("workspace:pythonHover", payload),
+    workspacePythonCompletions: (payload) => rpc("workspace:pythonCompletions", payload),
+    workspacePythonReferences: (payload) => rpc("workspace:pythonReferences", payload),
+    workspacePythonRename: (payload) => rpc("workspace:pythonRename", payload),
+    workspaceExternalLspDefinition: (payload) => rpc("workspace:externalLspDefinition", payload),
+    workspaceExternalLspHover: (payload) => rpc("workspace:externalLspHover", payload),
+    workspaceExternalLspCompletions: (payload) =>
+      rpc("workspace:externalLspCompletions", payload),
+    workspaceExternalLspReferences: (payload) => rpc("workspace:externalLspReferences", payload),
+    workspaceExternalLspRename: (payload) => rpc("workspace:externalLspRename", payload),
     listWorkspaceMarkdownFiles: () => rpc("workspace:listMarkdownFiles"),
     listWorkspacePanelTree: () => rpc("workspace:listPanelTree"),
     workspaceGetShellSnapshot: () => rpc("workspace:getShellSnapshot"),
     workspaceGetGitCommitLog: (limit?: number) =>
       rpc("workspace:getGitCommitLog", limit != null ? { limit } : {}),
     workspaceGetGitDiff: () => rpc("workspace:getGitDiff"),
+    workspaceGetGitDiffPaths: (payload: { paths: string[] }) =>
+      rpc("workspace:getGitDiffPaths", payload),
     workspaceGetGitDiffVsBase: (payload?: { base?: string }) =>
       rpc("workspace:getGitDiffVsBase", payload ?? {}),
     workspaceGitCommit: (payload: { message: string; stageAll?: boolean }) =>
       rpc("workspace:gitCommit", payload),
+    workspaceGitDiscardFile: (payload: { path: string }) =>
+      rpc("workspace:gitDiscardFile", payload),
     workspaceGitRemoteSync: (payload: { action: "fetch" | "pull" | "push" }) =>
       rpc("workspace:gitRemoteSync", payload),
     onWorkspaceChanged: (fn) => onBridgeEvent("workspace:changed", fn),
+    onWorkspaceRulesChanged: (fn) => onBridgeEvent("workspace:rules-changed", fn),
     getCrossAgentContext: () => rpc("memory:getCrossAgentContextText"),
     getChatSettings: () => rpc("chat-settings:get"),
     saveChatSettings: (body) => rpc("chat-settings:save", body),
@@ -174,16 +221,12 @@ export function installDesktopBridge() {
     cloudProvidersGetModelPools: () => rpc("cloud-providers:getModelPools"),
     cloudProvidersUpsertProvider: (body) => rpc("cloud-providers:upsertProvider", body),
     cloudProvidersDeleteProvider: (body) => rpc("cloud-providers:deleteProvider", body),
-    cloudProvidersSetCurrentProvider: (body) =>
-      rpc("cloud-providers:setCurrentProvider", body),
+    cloudProvidersSetCurrentProvider: (body) => rpc("cloud-providers:setCurrentProvider", body),
     cloudProvidersSyncWorkbench: () => rpc("cloud-providers:syncWorkbench"),
-    cloudProvidersRefreshCloudModels: (opts) =>
-      rpc("cloud-providers:refreshCloudModels", opts),
-    cloudProvidersProviderNeedsCcr: (opts) =>
-      rpc("cloud-providers:providerNeedsCcr", opts),
+    cloudProvidersRefreshCloudModels: (opts) => rpc("cloud-providers:refreshCloudModels", opts),
+    cloudProvidersProviderNeedsCcr: (opts) => rpc("cloud-providers:providerNeedsCcr", opts),
     cloudProvidersListKnownProviders: () => rpc("cloud-providers:listKnownProviders"),
-    cloudProvidersFetchProviderModels: (body) =>
-      rpc("cloud-providers:fetchProviderModels", body),
+    cloudProvidersFetchProviderModels: (body) => rpc("cloud-providers:fetchProviderModels", body),
     getDefaultModelPricing: () => rpc("default-model-pricing:get"),
     readReferenceFilesAsImageAttachments: (filePaths) =>
       rpc("reference-files:readAsImageAttachments", filePaths),
@@ -290,6 +333,7 @@ export function installDesktopBridge() {
     onAgentExecChanged: (fn) => onBridgeEvent("agent-exec:changed", fn),
     onChatSessionsChanged: (fn) => onBridgeEvent("chat-sessions:changed", fn),
     onChatSettingsChanged: (fn) => onBridgeEvent("chat-settings:changed", fn),
+    onMcpHealthChanged: (fn) => onBridgeEvent("mcp-health:changed", fn),
     onOrchestrationChainStatus: (fn) => onBridgeEvent("orchestration:chain-status", fn),
     getOpenclawGatewayToken: () =>
       Promise.resolve({ ok: false, error: "未配置", token: undefined }),

@@ -3,8 +3,8 @@
  * 空 / auto 表示底栏「通用」：按感觉词推断 Agent。
  */
 
-/** 通用 Agent（__general__）在 UI 中的展示名 */
-export const GENERAL_AGENT_DISPLAY_NAME = "Agent";
+/** 通用角色（__general__）在 UI 中的展示名；避免与交互模式「Agent」撞名 */
+export const GENERAL_AGENT_DISPLAY_NAME = "通用";
 
 export function isAutoAgentBasename(basename: string | undefined | null): boolean {
   const raw = typeof basename === "string" ? basename.trim().toLowerCase() : "";

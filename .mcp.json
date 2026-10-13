@@ -27,6 +27,12 @@
         "~/claudecode/server/mcp-sanshengliubu/server.mjs"
       ]
     },
+    "external-apps": {
+      "command": "node",
+      "args": [
+        "./server/mcp-external-apps/server.mjs"
+      ]
+    },
     "sequential-thinking": {
       "command": "npx",
       "args": [

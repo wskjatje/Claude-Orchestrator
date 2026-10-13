@@ -29,7 +29,9 @@ export function resolveClaudeModelForSelfLearning(
 }
 
 /**
- * 任务链全部执行完毕后，按 `~/.claude/skills/self_learning.md` 再发一轮 `claude -p`（与旧版 `renderer.js` 行为对齐）。
+ * 任务链结束后自动再跑一轮 self_learning。
+ * 产品默认关闭（实验能力）；角色页仍可手动「生成修订稿」。
+ * 需要启用时设 `localStorage['claude-orchestrator:auto-self-learning'] = '1'`。
  */
 export async function runAutomatedSelfLearningAfterChain(
   api: DesktopApi,
@@ -40,6 +42,13 @@ export async function runAutomatedSelfLearningAfterChain(
     requestId?: string;
   },
 ): Promise<{ diskMsgs: SelfLearningDiskMsg[] }> {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem("claude-orchestrator:auto-self-learning") !== "1") {
+      return { diskMsgs: [] };
+    }
+  } catch {
+    return { diskMsgs: [] };
+  }
   if (opts.orchestrationMode === "local-mcp") {
     return {
       diskMsgs: [

@@ -17,9 +17,10 @@ type Props = {
   onSelectHistorySession: (sessionId: string) => void;
   onDeleteHistorySession: (sessionId: string) => void;
   onHistoryOpen?: () => void;
+  onCollapsePanel?: () => void;
 };
 
-/** 会话标签顶栏（布局开关在应用顶栏 WorkbenchPanelToolbar，模型 / Agent 在输入框底部） */
+/** 会话标签顶栏（+ / 历史 / 更多 / 折叠；全局布局开关仍在 WorkbenchPanelToolbar） */
 export function ChatPanelToolbar(props: Props) {
   return <ChatSessionTabs {...props} />;
 }

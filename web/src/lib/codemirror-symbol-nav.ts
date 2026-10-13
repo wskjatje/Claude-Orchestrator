@@ -247,3 +247,81 @@ export function kindLabel(kind: SymbolKind): string {
       return "symbol";
   }
 }
+
+export type OutlineSymbol = {
+  name: string;
+  kind: SymbolKind;
+  line: number;
+  preview: string;
+};
+
+/** 当前文件大纲：扫描顶层/导出声明（Outline 常用条目） */
+const OUTLINE_LINE_RE =
+  /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function\s+\*?\s*|class\s+|interface\s+|type\s+|enum\s+|const\s+|let\s+|var\s+)([A-Za-z_$][\w$]*)/;
+
+const OUTLINE_METHOD_RE =
+  /^\s+(?:(?:public|private|protected|static|async|readonly|get|set)\s+)*([A-Za-z_$][\w$]*)\s*\(/;
+
+export function listFileOutline(text: string, maxItems = 400): OutlineSymbol[] {
+  if (!text) return [];
+  const lines = text.split("\n");
+  const out: OutlineSymbol[] = [];
+  let inBlockComment = false;
+
+  for (let i = 0; i < lines.length && out.length < maxItems; i++) {
+    let line = lines[i] ?? "";
+    if (inBlockComment) {
+      const end = line.indexOf("*/");
+      if (end < 0) continue;
+      line = line.slice(end + 2);
+      inBlockComment = false;
+    }
+    const blockStart = line.indexOf("/*");
+    if (blockStart >= 0) {
+      const blockEnd = line.indexOf("*/", blockStart + 2);
+      if (blockEnd < 0) {
+        inBlockComment = true;
+        line = line.slice(0, blockStart);
+      } else {
+        line = `${line.slice(0, blockStart)}${line.slice(blockEnd + 2)}`;
+      }
+    }
+    const trimmed = line.replace(/\/\/.*$/, "").trimEnd();
+    if (!trimmed.trim()) continue;
+
+    let m = OUTLINE_LINE_RE.exec(trimmed.trim());
+    let name = m?.[1];
+    let kind: SymbolKind = "unknown";
+    if (m) {
+      const head = trimmed.trim();
+      if (/\bfunction\b/.test(head)) kind = "function";
+      else if (/\bclass\b/.test(head)) kind = "class";
+      else if (/\binterface\b/.test(head)) kind = "interface";
+      else if (/\btype\b/.test(head)) kind = "type";
+      else if (/\benum\b/.test(head)) kind = "enum";
+      else kind = "variable";
+    } else {
+      // 类体内方法：缩进且非控制流关键字
+      if (/^\s{2,}/.test(line) && !/^\s*(if|for|while|switch|catch|else|return)\b/.test(trimmed)) {
+        m = OUTLINE_METHOD_RE.exec(line);
+        name = m?.[1];
+        if (
+          name &&
+          !/^(if|for|while|switch|catch|else|return|function|class|const|let|var)$/.test(name)
+        ) {
+          kind = "property";
+        } else {
+          name = undefined;
+        }
+      }
+    }
+    if (!name) continue;
+    out.push({
+      name,
+      kind,
+      line: i + 1,
+      preview: linePreview(trimmed),
+    });
+  }
+  return out;
+}

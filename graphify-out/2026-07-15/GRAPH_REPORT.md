@@ -5,7 +5,7 @@
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 8403 nodes · 11161 edges · 836 communities (734 shown, 102 thin omitted)
+- 8403 nodes · 11161 edges · 835 communities (733 shown, 102 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 153 edges (avg confidence: 0.73)
 - Token cost: 0 input · 0 output
 
@@ -825,7 +825,6 @@
 - [[_COMMUNITY_is-binary-file.ts|is-binary-file.ts]]
 - [[_COMMUNITY_card.tsx|card.tsx]]
 - [[_COMMUNITY_toggle-group.tsx|toggle-group.tsx]]
-- [[_COMMUNITY_codemirror-ide-handlers.ts|codemirror-ide-handlers.ts]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `Changelog` - 305 edges
@@ -855,7 +854,7 @@
 - 1-file cycle: `web/src/components/ui/sonner.tsx -> web/src/components/ui/sonner.tsx`
 - 1-file cycle: `web/src/components/ui/input-otp.tsx -> web/src/components/ui/input-otp.tsx`
 
-## Communities (836 total, 102 thin omitted)
+## Communities (835 total, 102 thin omitted)
 
 ### Community 0 - "Changelog"
 Cohesion: 0.01
@@ -922,8 +921,8 @@ Cohesion: 0.04
 Nodes (47): Agent Configuration, Agent Tool Access, Batching Requests, Caching Results, Calling Tools with Parameters, Common Patterns, Conclusion, Discovering Tool Names (+39 more)
 
 ### Community 16 - "store.mjs"
-Cohesion: 0.07
-Nodes (36): TerminalSessionPicker(), DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut() (+28 more)
+Cohesion: 0.08
+Nodes (35): TerminalSessionPicker(), DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut() (+27 more)
 
 ### Community 17 - "MCP Server Types: Deep Dive"
 Cohesion: 0.04
@@ -1026,8 +1025,8 @@ Cohesion: 0.06
 Nodes (33): agents, author, Best Practices, commands, Common Validation Errors, Complete Field Reference, Complete Plugin, Component Path Fields (+25 more)
 
 ### Community 42 - "Settings File Parsing Techniques"
-Cohesion: 0.08
-Nodes (33): capture_git_baseline(), consume_stop_state(), get_baseline_file_content(), load_baseline_sha(), Git-derived diff/review-state helpers for the security-guidance plugin.  Extract, Put consumed touched_paths back so the next Stop reviews them.      consume_stop, Get the content of a file at the baseline SHA. Returns None if unavailable., Capture a git ref representing the current working tree state.     Uses `git sta (+25 more)
+Cohesion: 0.09
+Nodes (32): _append_reviewed_shas(), consume_stop_state(), get_baseline_file_content(), load_baseline_sha(), _load_reviewed_shas(), Git-derived diff/review-state helpers for the security-guidance plugin.  Extract, Put consumed touched_paths back so the next Stop reviews them.      consume_stop, Get the content of a file at the baseline SHA. Returns None if unavailable. (+24 more)
 
 ### Community 43 - "with_locked_state"
 Cohesion: 0.06
@@ -1066,8 +1065,8 @@ Cohesion: 0.06
 Nodes (30): Agents, Auto-Discovery Mechanism, Best Practices, ${CLAUDE_PLUGIN_ROOT}, Commands, Common Patterns, Component Files, Component Organization (+22 more)
 
 ### Community 52 - "Plugin Development Toolkit"
-Cohesion: 0.06
-Nodes (38): compute_v2_review_set(), _list_untracked(), Repo-root-relative untracked (and not-ignored) path → mtime_ns, or {}     on err, v2 diff strategy: derive the review set from git state alone.      review_set =, _diff_pathspec(), extract_file_paths_from_diff(), filter_preexisting_from_diff(), _find_git_index() (+30 more)
+Cohesion: 0.08
+Nodes (30): compute_v2_review_set(), v2 diff strategy: derive the review set from git state alone.      review_set =, _diff_pathspec(), extract_file_paths_from_diff(), filter_preexisting_from_diff(), _find_git_index(), get_git_diff(), _git_diff_range() (+22 more)
 
 ### Community 53 - "Plugin Structure for Claude Code"
 Cohesion: 0.12
@@ -1086,12 +1085,12 @@ Cohesion: 0.07
 Nodes (29): Best Practices Summary, Beta Testing, Clear Onboarding, Command Discovery, Comprehensive Error Handling, Configurability, Design for Distribution, Distribution Best Practices (+21 more)
 
 ### Community 57 - "Feature Development Plugin"
-Cohesion: 0.14
-Nodes (23): debug_log(), Append debug message to log file with timestamp., _config_paths(), _glob_match(), guidance_block(), _has_redos_structure(), load_for_session(), _load_guidance() (+15 more)
+Cohesion: 0.11
+Nodes (28): debug_log(), Shared low-level helpers for the security-guidance hook modules.  This module ex, Snapshot the accumulator as metric keys. Returns {} when no API calls     were m, Append debug message to log file with timestamp., Encode plugin.json version "M.m.p" as M*10000 + m*100 + p so it fits the     boo, _read_plugin_version_int(), _usage_metrics(), _config_paths() (+20 more)
 
 ### Community 58 - "Marketplace Considerations for Commands"
-Cohesion: 0.11
-Nodes (34): _append_reviewed_shas(), _load_reviewed_shas(), Set of full 40-hex shas previously reviewed in this clone., Record that `shas` were reviewed. Best-effort; never raises.      Uses fcntl.flo, _reviewed_shas_path(), _prioritize_diff_files(), When `diff_files` exceeds `cap`, return the top-`cap` by security     relevance, _agentic_commit_review_enabled() (+26 more)
+Cohesion: 0.13
+Nodes (30): _prioritize_diff_files(), When `diff_files` exceeds `cap`, return the top-`cap` by security     relevance, _agentic_commit_review_enabled(), agentic_review(), analyze_code_security(), _dedup_against_state(), _finding_keys(), _format_vulns_guidance() (+22 more)
 
 ### Community 59 - "workbench-git-export.mjs"
 Cohesion: 0.11
@@ -1110,12 +1109,12 @@ Cohesion: 0.07
 Nodes (28): 1. comment-analyzer, 2. pr-test-analyzer, 3. silent-failure-hunter, 4. type-design-analyzer, 5. code-reviewer, 6. code-simplifier, Agent Analyzing Wrong Files, Agent Details (+20 more)
 
 ### Community 63 - "PR Review Toolkit"
-Cohesion: 0.11
-Nodes (26): _agentic_spawn_env(), analyze_security_concerns(), _anthropic_base_url(), _build_auth_headers(), _call_claude(), _call_claude_dual_or(), _call_claude_via_sdk(), _cap_files_for_prompt() (+18 more)
+Cohesion: 0.10
+Nodes (28): Accumulate one API response's token usage. `usage` is the Anthropic     `usage`, _record_usage(), _agentic_spawn_env(), analyze_security_concerns(), _anthropic_base_url(), _build_auth_headers(), _call_claude(), _call_claude_dual_or() (+20 more)
 
 ### Community 64 - "deploy-dialog.tsx"
 Cohesion: 0.07
-Nodes (35): IntEnum, _detect_main_branch(), Regex-based security pattern definitions for the security-guidance plugin.  Pure, Stable numeric IDs for SECURITY_PATTERNS rules, emitted via the PostToolUse, Pack a set of rule names into a bitmask. Bit N set means RuleId(N) matched., rule_names_to_mask(), RuleId, atomic_check_and_mark_warning() (+27 more)
+Nodes (28): _detect_main_branch(), atomic_check_and_mark_warning(), atomic_check_counter(), check_patterns(), _compute_push_sweep_base(), _detect_prev_upstream(), extract_content_from_input(), is_commit_review_enabled() (+20 more)
 
 ### Community 65 - "Plugin Creation Workflow"
 Cohesion: 0.08
@@ -1226,8 +1225,8 @@ Cohesion: 0.12
 Nodes (21): ExplorerTreeRow(), ProblemsView(), FileTabContent(), WorkbenchCenterEditor(), FileTreePanel(), GitGraphRow, GitGraphToolbar(), GitPanel() (+13 more)
 
 ### Community 92 - "AI-Assisted Agent Generation Template"
-Cohesion: 0.28
-Nodes (6): registerWorkbenchTerminalFocusTab(), registerWorkbenchTerminalRunHandlers(), runCommandInWorkbenchTerminalBridge(), TerminalRunHandlers, workbenchTerminalEnsureSession(), workbenchTerminalRunInActive()
+Cohesion: 0.14
+Nodes (14): capture_git_baseline(), _list_untracked(), Capture a git ref representing the current working tree state.     Uses `git sta, Repo-root-relative untracked (and not-ignored) path → mtime_ns, or {}     on err, _git_dir(), _git_rev_parse_head(), _git_toplevel(), Absolute repo root for `cwd`, or None if not in a work tree. (+6 more)
 
 ### Community 93 - "Command Frontmatter Reference"
 Cohesion: 0.20
@@ -1238,8 +1237,8 @@ Cohesion: 0.09
 Nodes (25): allSkillFilesForAgentStems(), dedupeSkillStems(), mergeAgentStepSkills(), resolveChainStepSkills(), skillFileStemsForAgent(), skillsUnionFromSteps(), suggestedSkillStemsForAgent(), CHAIN_TEMPLATE_CATEGORY_LABEL (+17 more)
 
 ### Community 95 - "components.json"
-Cohesion: 0.17
-Nodes (24): NewTerminalSplitButton(), setSkipCheckpointConfirm(), shouldSkipCheckpointConfirm(), getDesktop(), getDefaultTerminalShell(), resolveShellPath(), setDefaultTerminalShell(), TERMINAL_SHELL_PROFILES (+16 more)
+Cohesion: 0.16
+Nodes (25): NewTerminalSplitButton(), openPortInBrowser(), setSkipCheckpointConfirm(), shouldSkipCheckpointConfirm(), getDesktop(), getDefaultTerminalShell(), resolveShellPath(), setDefaultTerminalShell() (+17 more)
 
 ### Community 96 - "chat-composer-shell.tsx"
 Cohesion: 0.15
@@ -1294,12 +1293,12 @@ Cohesion: 0.11
 Nodes (25): broadcast(), subscribeEvent(), { attachTerminalToWebSocket }, HTTP_PORT, httpServer, logStartupMcpHealthResult(), require, runStartupMcpHealthCheckWithLog() (+17 more)
 
 ### Community 109 - "reports.tsx"
-Cohesion: 0.16
-Nodes (18): CodeEditor(), CodeEditorProps, EditorTab, CodemirrorWorkbench(), Props, Props, WorkbenchCodeEditor(), EditorViewMode (+10 more)
+Cohesion: 0.13
+Nodes (21): CodeEditor(), CodeEditorProps, EditorTab, CodemirrorWorkbench(), Props, Props, WorkbenchCodeEditor(), EditorViewMode (+13 more)
 
 ### Community 110 - "project-preview.ts"
-Cohesion: 0.10
-Nodes (20): TerminalSessionRail(), createSession(), newSessionId(), TerminalSession, TerminalSessionsHeaderState, TerminalSessionsView(), hostReadyForFit(), syncTerminalSize() (+12 more)
+Cohesion: 0.08
+Nodes (26): TerminalSessionRail(), createSession(), newSessionId(), TerminalSession, TerminalSessionsHeaderState, TerminalSessionsView(), hostReadyForFit(), syncTerminalSize() (+18 more)
 
 ### Community 111 - "Best practices"
 Cohesion: 0.10
@@ -1454,8 +1453,8 @@ Cohesion: 0.14
 Nodes (13): 1. Tool Overtriggering, 2. Over-Engineering Prevention, 3. Code Exploration, 4. Frontend Design, 5. Thinking Sensitivity, Migration Workflow, Model String Updates, Opus 4.5 Migration Guide (+5 more)
 
 ### Community 150 - "_base.py"
-Cohesion: 0.25
-Nodes (7): Shared low-level helpers for the security-guidance hook modules.  This module ex, Accumulate one API response's token usage. `usage` is the Anthropic     `usage`, Snapshot the accumulator as metric keys. Returns {} when no API calls     were m, Encode plugin.json version "M.m.p" as M*10000 + m*100 + p so it fits the     boo, _read_plugin_version_int(), _record_usage(), _usage_metrics()
+Cohesion: 0.29
+Nodes (6): IntEnum, Regex-based security pattern definitions for the security-guidance plugin.  Pure, Stable numeric IDs for SECURITY_PATTERNS rules, emitted via the PostToolUse, Pack a set of rule names into a bitmask. Bit N set means RuleId(N) matched., rule_names_to_mask(), RuleId
 
 ### Community 151 - "Plugin Structure Skill"
 Cohesion: 0.15
@@ -3688,10 +3687,6 @@ Nodes (6): Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle
 ### Community 834 - "toggle-group.tsx"
 Cohesion: 0.33
 Nodes (5): ToggleGroup, ToggleGroupContext, ToggleGroupItem, Toggle, toggleVariants
-
-### Community 835 - "codemirror-ide-handlers.ts"
-Cohesion: 0.50
-Nodes (3): current, EditorIdeHandlers, setEditorIdeHandlers()
 
 ## Knowledge Gaps
 - **4508 isolated node(s):** `$schema`, `name`, `version`, `description`, `name` (+4503 more)

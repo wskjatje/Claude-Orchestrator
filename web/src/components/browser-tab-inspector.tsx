@@ -346,7 +346,7 @@ function BrowserDevToolsPanel({
         <button
           type="button"
           onClick={onRefreshTree}
-          className="ml-auto text-[10px] text-muted-foreground hover:text-foreground"
+          className="ml-auto text-[11px] text-muted-foreground hover:text-foreground"
         >
           刷新 DOM
         </button>
@@ -357,7 +357,7 @@ function BrowserDevToolsPanel({
             <div className="min-h-0 overflow-auto rounded border border-border/60 bg-surface/40 p-1">
               <DomTreeList nodes={tree} depth={0} selectedSelector={selectedSelector} onSelect={onSelect} />
             </div>
-            <div className="min-h-0 overflow-auto rounded border border-border/60 bg-surface/40 p-2 font-mono text-[10px] text-muted-foreground">
+            <div className="min-h-0 overflow-auto rounded border border-border/60 bg-surface/40 p-2 font-mono text-[11px] text-muted-foreground">
               {selectedElement ? (
                 <pre className="whitespace-pre-wrap break-all">{selectedElement.outerHTML.slice(0, 2000)}</pre>
               ) : (
@@ -417,12 +417,12 @@ function BrowserComponentsPanel({
       <div className="shrink-0 border-t border-border/70 p-3">
         <div className="mb-2 text-[11px] font-medium text-foreground">Design</div>
         {selectedLabel ? (
-          <p className="mb-2 truncate font-mono text-[10px] text-muted-foreground">{selectedLabel}</p>
+          <p className="mb-2 truncate font-mono text-[11px] text-muted-foreground">{selectedLabel}</p>
         ) : (
-          <p className="mb-2 text-[10px] text-muted-foreground">选择组件查看尺寸</p>
+          <p className="mb-2 text-[11px] text-muted-foreground">选择组件查看尺寸</p>
         )}
         {metrics ? (
-          <dl className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+          <dl className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
             <dt>X</dt>
             <dd className="text-foreground">{metrics.x} px</dd>
             <dt>Y</dt>

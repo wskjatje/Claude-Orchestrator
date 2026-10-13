@@ -393,7 +393,7 @@ function PanelHeader({
               type="button"
               onClick={() => onTabChange(tab.id)}
               className={cn(
-                "shrink-0 px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wide transition",
+                "shrink-0 px-2.5 py-1.5 text-[12px] font-medium uppercase tracking-wide transition",
                 active
                   ? "border-b-2 border-primary text-foreground"
                   : "border-b-2 border-transparent text-muted-foreground hover:text-foreground",
@@ -404,7 +404,7 @@ function PanelHeader({
               {tab.id === "problems" && (errorCount > 0 || warningCount > 0) ? (
                 <span
                   className={cn(
-                    "ml-1.5 inline-flex min-w-[1.1rem] items-center justify-center rounded px-1 text-[10px] font-semibold tabular-nums",
+                    "ml-1.5 inline-flex min-w-[1.1rem] items-center justify-center rounded px-1 text-[12px] font-semibold tabular-nums",
                     errorCount > 0
                       ? "bg-destructive/90 text-destructive-foreground"
                       : "bg-amber-500/90 text-white",
@@ -561,7 +561,7 @@ function PanelHeader({
                   重启终端
                 </DropdownMenuItem>
                 {terminalHint ? (
-                  <DropdownMenuItem disabled className="max-w-[16rem] text-[11px] text-amber-700 dark:text-amber-300">
+                  <DropdownMenuItem disabled className="max-w-[16rem] text-[12px] text-amber-700 dark:text-amber-300">
                     {terminalHint}
                   </DropdownMenuItem>
                 ) : null}
@@ -630,7 +630,7 @@ function NewTerminalSplitButton({
               {profile.label}
             </DropdownMenuItem>
           ))}
-          <DropdownMenuItem disabled className="text-muted-foreground/70">
+          <DropdownMenuItem disabled className="text-muted-foreground">
             JavaScript Debug Terminal
           </DropdownMenuItem>
           <DropdownMenuSub>
@@ -829,7 +829,7 @@ function ProblemsView({
               <td className="px-2 py-1 align-top text-foreground/90">
                 <span className="line-clamp-2">{p.message}</span>
                 {p.rule ? (
-                  <span className="ml-1 font-mono text-[10.5px] text-muted-foreground/80">({p.rule})</span>
+                  <span className="ml-1 font-mono text-[11px] text-muted-foreground/80">({p.rule})</span>
                 ) : null}
               </td>
             </tr>

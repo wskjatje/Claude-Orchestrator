@@ -1,4 +1,5 @@
-import { TerminalSquare, X } from "lucide-react";
+import { X } from "lucide-react";
+import { SetiShellIcon } from "@/lib/seti/seti-file-icon";
 import { trimTerminalDisplay } from "@/lib/chat-terminal-paste";
 import {
   formatTerminalChipLabel,
@@ -33,7 +34,7 @@ export function ComposerTerminalAttachments({
             className="group/chip terminal-context-chip inline-flex max-w-full items-center gap-1 rounded-[5px] px-1.5 py-0.5 font-mono text-[12px] leading-none"
             title={preview}
           >
-            <TerminalSquare className="h-3 w-3 shrink-0 opacity-85" aria-hidden />
+            <SetiShellIcon className="text-[12px]" />
             <span className="truncate">{chipLabel}</span>
             <button
               type="button"

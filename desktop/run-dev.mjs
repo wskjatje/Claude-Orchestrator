@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { getWorkbenchHttpPort, getWorkbenchUiPort, getWorkbenchWsPort } from '../server/bridge-constants.mjs'
+import { getWorkbenchHttpPort, getWorkbenchUiPort, getWorkbenchWsPort } from './bridge-constants.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.join(__dirname, '..')
@@ -111,7 +111,18 @@ function ensureDeps() {
   if (!fs.existsSync(path.join(ROOT, 'server/vendor/cad/node_modules/@modelcontextprotocol'))) {
     execFileSync('npm', ['run', 'vendor:install'], { cwd: ROOT, stdio: 'inherit' })
   } else {
-    execFileSync('node', ['scripts/fix-vendor-native-modules.mjs'], { cwd: ROOT, stdio: 'inherit' })
+    try {
+      execFileSync('node', ['scripts/fix-vendor-native-modules.mjs'], { cwd: ROOT, stdio: 'inherit' })
+    } catch (err) {
+      // 旧版探针在错误 ABI 下会被 SIGKILL；强制按系统 Node 重建后再验一次
+      console.warn('[dev] fix-vendor-native 失败，尝试 npm rebuild better-sqlite3…', err?.signal || err?.status || err)
+      execFileSync(
+        process.platform === 'win32' ? 'npm.cmd' : 'npm',
+        ['rebuild', 'better-sqlite3', '--prefix', path.join(ROOT, 'server/vendor/cad')],
+        { cwd: ROOT, stdio: 'inherit' },
+      )
+      execFileSync('node', ['scripts/fix-vendor-native-modules.mjs'], { cwd: ROOT, stdio: 'inherit' })
+    }
   }
 }
 

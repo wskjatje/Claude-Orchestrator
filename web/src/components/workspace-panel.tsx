@@ -29,6 +29,7 @@ import {
   PREVIEW_STARTING,
   WORKSPACE_PANEL_OFFLINE,
 } from "@/lib/ui-copy";
+import { requestOpenWorkbenchFile } from "@/lib/workbench-open-file";
 
 type Tab = "files" | "shell" | "diff";
 
@@ -92,7 +93,7 @@ export function WorkspacePanel({
       const root = r.root?.trim() || "";
       setRootLabel(root ? shortenHomeInPath(root) : "（未选择工作区）");
       setTree(Array.isArray(r.tree) ? r.tree : []);
-      if (!root) setFilesErr("请先在「工作目录」中选择工作区。");
+      if (!root) setFilesErr("请先在「设置 → 工作目录」中选择工作区。");
     } catch (e) {
       setFilesErr(e instanceof Error ? e.message : String(e));
       setTree([]);
@@ -312,6 +313,8 @@ function FilesView({
       toast.error("当前环境无法读取工作区文件");
       return;
     }
+    // 与主工作台一致：优先打开中栏编辑器
+    requestOpenWorkbenchFile(relPath);
     setSelectedRelPath(relPath);
     setFileLoading(true);
     setFileErr(null);

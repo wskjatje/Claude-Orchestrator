@@ -561,7 +561,7 @@ function AgentsPage() {
             >
               <Plus className="h-3.5 w-3.5" /> 新建智能体
             </button>
-            <InfoHint side="left">{AGENTS_EDITOR_HINT}</InfoHint>
+            {AGENTS_EDITOR_HINT ? <InfoHint side="left">{AGENTS_EDITOR_HINT}</InfoHint> : null}
           </div>
         }
       />

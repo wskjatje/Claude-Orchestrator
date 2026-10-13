@@ -5,6 +5,7 @@ import { createRequire } from 'node:module'
 import { PROJECT_ROOT } from './paths.mjs'
 import { loadChatSettings } from './store.mjs'
 import {
+  bundledExternalAppsMcpServerPath,
   bundledSanshengliubuMcpServerPath,
   expandHome,
   normalizeMcpServerEntry,
@@ -67,8 +68,9 @@ function normalizeImportedMcpServer(name, cfg) {
   if (Array.isArray(next.args)) {
     next.args = next.args.map((a) => expandHome(String(a)))
   }
-  if (name === 'sanshengliubu' && String(next.command || '').trim() === 'node') {
-    next.args = [bundledSanshengliubuMcpServerPath()]
+  if (String(next.command || '').trim() === 'node') {
+    if (name === 'sanshengliubu') next.args = [bundledSanshengliubuMcpServerPath()]
+    else if (name === 'external-apps') next.args = [bundledExternalAppsMcpServerPath()]
   }
   return normalizeMcpServerEntry(next)
 }

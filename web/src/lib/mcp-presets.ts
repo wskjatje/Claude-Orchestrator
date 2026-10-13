@@ -11,6 +11,7 @@ export const MCP_PRESET_COMMAND_LINES: Record<string, string> = {
   slack: "npx -y @modelcontextprotocol/server-slack",
   sqlite: "uvx mcp-server-sqlite --db-path <path/to/db>",
   sanshengliubu: "node __BUNDLED_SANSHENGLIUBU__",
+  "external-apps": "node __BUNDLED_EXTERNAL_APPS__",
 };
 
 /** 检测未替换的尖括号占位符，如 `<path/to/db>`、`<connection-string>` */
@@ -99,6 +100,12 @@ export const MCP_PRESETS: McpPresetMeta[] = [
     desc: "编排底层工具：local_time、Agent 索引、治理顺序",
     commandLine: MCP_PRESET_COMMAND_LINES.sanshengliubu,
   },
+  {
+    name: "external-apps",
+    label: "外部应用",
+    desc: "打开 URL / 本机路径（系统默认应用）；标准 MCP，非 OpenClaw 渠道",
+    commandLine: MCP_PRESET_COMMAND_LINES["external-apps"],
+  },
 ];
 
 /** 用户已有的 MCP 是否与某个预设名称匹配（用于 UI 标记） */
@@ -145,10 +152,13 @@ export function resolveMcpCommandLine(
   return raw;
 }
 
+const BUNDLED_PLACEHOLDERS = new Set([
+  MCP_PRESET_COMMAND_LINES.sanshengliubu,
+  MCP_PRESET_COMMAND_LINES["external-apps"],
+]);
+
 export function presetCommandLine(name: string, bundledLines?: Record<string, string>): string | undefined {
-  if (name === "sanshengliubu" && bundledLines?.sanshengliubu) {
-    return bundledLines.sanshengliubu;
-  }
+  if (bundledLines?.[name]) return bundledLines[name];
   return MCP_PRESET_COMMAND_LINES[name];
 }
 
@@ -156,8 +166,8 @@ export function resolvePresetCommandLineForForm(
   name: string,
   bundledLines?: Record<string, string>,
 ): string {
-  const line = presetCommandLine(name, bundledLines);
-  if (line && line !== MCP_PRESET_COMMAND_LINES.sanshengliubu) return line;
-  if (name === "sanshengliubu" && bundledLines?.sanshengliubu) return bundledLines.sanshengliubu;
+  if (bundledLines?.[name]) return bundledLines[name]!;
+  const line = MCP_PRESET_COMMAND_LINES[name];
+  if (line && !BUNDLED_PLACEHOLDERS.has(line)) return line;
   return line ?? "";
 }

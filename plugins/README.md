@@ -1,5 +1,7 @@
 # Claude Code Plugins
 
+> **Not part of Claude Orchestrator product IA.** This tree is upstream Anthropic Claude Code **example plugins** for the CLI. The desktop/web app does not mount or navigate here; use `~/.claude/skills` / in-app Skill & Agent pages for product workflows.
+
 This directory contains some official Claude Code plugins that extend functionality through custom commands, agents, and workflows. These are examples of what's possible with the Claude Code plugin system—many more plugins are available through community marketplaces.
 
 ## What are Claude Code Plugins?

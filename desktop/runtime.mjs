@@ -9,7 +9,7 @@ import {
   getWorkbenchHttpPort,
   getWorkbenchUiPort,
   getBridgeHealthUrl,
-} from '../server/bridge-constants.mjs'
+} from './bridge-constants.mjs'
 
 /** @type {import('node:child_process').ChildProcess[]} */
 const children = []

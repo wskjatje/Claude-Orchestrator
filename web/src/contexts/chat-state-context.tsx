@@ -16,6 +16,21 @@ export type DiskMsg = {
   requestError?: boolean;
   billingSource?: "cloud" | "local";
   modelId?: string;
+  /** Agent 过程轨迹等（与 index DiskMsg.agentTurn 对齐） */
+  agentTurn?: {
+    writtenPaths?: string[];
+    verified?: boolean;
+    backend?: "cli" | "host" | "local";
+    mcpUsed?: boolean;
+    streamEvents?: Array<{
+      type: "thinking" | "tool" | "text";
+      name?: string;
+      arg?: string;
+      status?: "running" | "ok" | "fail";
+      path?: string;
+    }>;
+    summary?: string;
+  };
 };
 
 export type ChatSession = {
@@ -32,6 +47,9 @@ export type Msg = {
   content: string;
   ts?: number;
   name?: string;
+  requestError?: boolean;
+  historyIndex?: number;
+  agentTurn?: DiskMsg["agentTurn"];
 };
 
 // ---- Context ----

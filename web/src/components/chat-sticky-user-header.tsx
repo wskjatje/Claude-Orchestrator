@@ -12,7 +12,7 @@ type Props = {
   onWriteToWorkspace?: (content: string) => void;
   onGenerateChain?: (content: string) => void;
   onEditUserMessage?: (historyIndex: number) => void;
-  /** Parent shows Cursor checkpoint dialog before resend when needed. */
+  /** Parent shows checkpoint dialog before resend when needed. */
   onRequestResendUserMessage?: (historyIndex: number) => void;
 };
 

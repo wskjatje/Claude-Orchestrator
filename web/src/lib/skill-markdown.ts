@@ -58,6 +58,6 @@ export function serializeSkillMarkdown(meta: {
   const agentNote = meta.agentStem ? `\n\n## 关联 Agent\n\n\`${meta.agentStem}\`\n` : "";
   const body =
     meta.body?.trim() ||
-    `# ${name}\n\n## 职责\n\n- ${desc}${agentNote}\n\n## 步骤\n\n- （可在此补充操作步骤与验收标准）\n`;
+    `# ${name}\n\n## 职责\n\n- ${desc}${agentNote}\n\n## 步骤\n\n-（可在此补充操作步骤与验收标准）\n`;
   return `${fm}${body}\n`;
 }

@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { CodemirrorWorkbench } from "@/components/codemirror-workbench";
 import { WorkbenchEditorToolbar, type EditorViewMode } from "@/components/workbench-editor-toolbar";
 import { WorkbenchMarkdownPreview } from "@/components/workbench-markdown-preview";
+import { WorkbenchSvgPreview } from "@/components/workbench-svg-preview";
 import { useWorkbenchWorkspace } from "@/contexts/workbench-workspace-context";
 import { getDesktop } from "@/lib/desktop-api";
-import { isMarkdownPath } from "@/lib/editor-file-kind";
+import { inlinePreviewKind } from "@/lib/editor-file-kind";
 
 type Props = {
   content: string;
@@ -28,15 +29,15 @@ export function WorkbenchCodeEditor({
   toolbarExtras,
 }: Props) {
   const ws = useWorkbenchWorkspace();
-  const isMd = isMarkdownPath(relPath);
+  const previewKind = inlinePreviewKind(relPath);
   const [viewMode, setViewMode] = useState<EditorViewMode>("source");
 
   const readWorkspaceFile = useCallback(async (path: string) => {
-    const api = getDesktop();
-    if (!api?.readWorkspaceTextFile) return null;
+    const readFn = getDesktop()?.readWorkspaceTextFile;
+    if (!readFn) return null;
     const tryRead = async (p: string) => {
       try {
-        const r = await api.readWorkspaceTextFile(p);
+        const r = await readFn(p);
         if (!r.ok || r.binary) return null;
         return r.text ?? null;
       } catch {
@@ -62,20 +63,24 @@ export function WorkbenchCodeEditor({
     return () => window.removeEventListener("keydown", onKey);
   }, [readOnly, onSave, viewMode]);
 
+  const showPreview = Boolean(previewKind) && viewMode === "preview";
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--code-bg)]">
       <WorkbenchEditorToolbar
         relPath={relPath}
         dirty={dirty}
         saving={saving}
         readOnly={readOnly}
         onSave={onSave}
-        viewMode={isMd ? viewMode : undefined}
-        onViewModeChange={isMd ? setViewMode : undefined}
+        viewMode={previewKind ? viewMode : undefined}
+        onViewModeChange={previewKind ? setViewMode : undefined}
         extraActions={toolbarExtras}
       />
-      {isMd && viewMode === "preview" ? (
+      {showPreview && previewKind === "markdown" ? (
         <WorkbenchMarkdownPreview content={content} />
+      ) : showPreview && previewKind === "svg" ? (
+        <WorkbenchSvgPreview content={content} />
       ) : (
         <CodemirrorWorkbench
           value={content}

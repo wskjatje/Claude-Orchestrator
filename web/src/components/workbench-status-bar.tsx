@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, AlertTriangle, GitBranch } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getDesktop } from "@/lib/desktop-api";
 import { hasEmbeddedBrowserNative } from "@/lib/embedded-browser-native";
@@ -16,7 +17,17 @@ function workspaceFolderName(rootLabel: string): string {
   return parts[parts.length - 1] || "工作区";
 }
 
-/** 工作台底部状态栏：分支、工作区名、问题计数 */
+type LspLangStatus = {
+  id: string;
+  detected: boolean;
+  commandAvailable?: boolean;
+  serverHint: string | null;
+  installHint?: string | null;
+  running?: boolean;
+  lastError?: string | null;
+};
+
+/** 工作台底部状态栏：分支、工作区名、LSP 就绪、问题计数 */
 export function WorkbenchStatusBar({
   onOpenProblems,
 }: {
@@ -27,6 +38,9 @@ export function WorkbenchStatusBar({
   const { errorCount, warningCount } = useWorkbenchProblems();
   const [branch, setBranch] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [lspHint, setLspHint] = useState<string | null>(null);
+  const [lspInstallHint, setLspInstallHint] = useState<string | null>(null);
+  const [lspMissing, setLspMissing] = useState(false);
 
   const loadGitMeta = useCallback(async () => {
     const api = getDesktop();
@@ -47,9 +61,68 @@ export function WorkbenchStatusBar({
     setDirty(false);
   }, [ws.statusLine]);
 
+  const loadLspStatus = useCallback(async () => {
+    const api = getDesktop();
+    const fn = api?.workspaceExternalLspStatus || api?.workspaceDetectExternalLsp;
+    if (!fn) {
+      setLspHint(null);
+      setLspInstallHint(null);
+      setLspMissing(false);
+      return;
+    }
+    try {
+      const r = await fn();
+      if (!r?.ok || !r.languages?.length) {
+        setLspHint(null);
+        setLspInstallHint(null);
+        setLspMissing(false);
+        return;
+      }
+      const langs = r.languages as LspLangStatus[];
+      const missing = langs.filter((l) => l.detected && l.commandAvailable === false);
+      const errored = langs.filter((l) => l.lastError);
+      const running = langs.filter((l) => l.running);
+      if (missing.length) {
+        const first = missing[0]!;
+        setLspHint(`缺 ${first.serverHint || first.id}`);
+        setLspInstallHint(
+          first.installHint ||
+            (first.serverHint ? `请安装并加入 PATH：${first.serverHint}` : null),
+        );
+        setLspMissing(true);
+        return;
+      }
+      if (errored.length && !running.length) {
+        setLspHint(errored[0]!.lastError?.slice(0, 36) || "LSP 异常");
+        setLspInstallHint(null);
+        setLspMissing(false);
+        return;
+      }
+      if (running.length) {
+        setLspHint(running.map((l) => l.id).join("+"));
+        setLspInstallHint(null);
+        setLspMissing(false);
+        return;
+      }
+      setLspHint(null);
+      setLspInstallHint(null);
+      setLspMissing(false);
+    } catch {
+      setLspHint(null);
+      setLspInstallHint(null);
+      setLspMissing(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadGitMeta();
   }, [loadGitMeta, ws.rootLabel]);
+
+  useEffect(() => {
+    void loadLspStatus();
+    const t = setInterval(() => void loadLspStatus(), 20_000);
+    return () => clearInterval(t);
+  }, [loadLspStatus, ws.rootLabel]);
 
   useEffect(() => {
     if (ws.statusLine) {
@@ -87,7 +160,7 @@ export function WorkbenchStatusBar({
             <span className="workbench-status-bar__sep" aria-hidden />
             <span
               className={cn(
-                "workbench-status-bar__item text-[10px]",
+                "workbench-status-bar__item text-[12px]",
                 runtimeLabel === "Web 预览" && "text-muted-foreground",
               )}
               title={
@@ -98,6 +171,36 @@ export function WorkbenchStatusBar({
             >
               {runtimeLabel}
             </span>
+          </>
+        ) : null}
+        {lspHint ? (
+          <>
+            <span className="workbench-status-bar__sep" aria-hidden />
+            <button
+              type="button"
+              className={cn(
+                "workbench-status-bar__item text-[12px]",
+                /缺|异常|退出|未找到/.test(lspHint)
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-muted-foreground",
+              )}
+              title={
+                lspInstallHint
+                  ? `外部 LSP：${lspHint}\n安装：${lspInstallHint}`
+                  : `外部 LSP：${lspHint}`
+              }
+              onClick={() => {
+                if (lspMissing && lspInstallHint) {
+                  toast.message("安装语言服务", {
+                    description: lspInstallHint,
+                    duration: 12_000,
+                  });
+                }
+                openProblems();
+              }}
+            >
+              LSP · {lspHint}
+            </button>
           </>
         ) : null}
       </div>

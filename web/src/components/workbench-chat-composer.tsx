@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type RefObject } from "react";
+import { useMemo, useSyncExternalStore, type RefObject } from "react";
 import { ChatComposerShell, type ChatComposerShellProps } from "@/components/chat-composer-shell";
 import { ChainQuickTrigger, type QuickChainOption } from "@/components/chain-quick-trigger";
 import { cn } from "@/lib/utils";
@@ -6,11 +6,15 @@ import {
   getComposerFileBarState,
   subscribeComposerFileBar,
 } from "@/lib/workbench-composer-file-bar";
+import { useWorkbenchWorkspaceOptional } from "@/contexts/workbench-workspace-context";
+import { isFileTab } from "@/types/workbench-editor";
 
 export type WorkbenchChatComposerProps = ChatComposerShellProps & {
   dockRef: RefObject<HTMLDivElement | null>;
   chainStatusLabel: string;
   chainStatusTone: "active" | "paused" | "done" | "neutral" | "idle";
+  /** 进行中 / 暂停时停止链（复用 orchestrationStopChainRun） */
+  onStopChain?: () => void;
   /** 快速添加 / 触发任务链的回调 */
   onAddTask?: (chainId: string) => Promise<void>;
   /** 可选的任务链选项列表 */
@@ -22,6 +26,7 @@ export function WorkbenchChatComposer({
   dockRef,
   chainStatusLabel,
   chainStatusTone,
+  onStopChain,
   onAddTask,
   chainOptions,
   editHistoryActive,
@@ -33,6 +38,15 @@ export function WorkbenchChatComposer({
     getComposerFileBarState,
     getComposerFileBarState,
   );
+  const ws = useWorkbenchWorkspaceOptional();
+  const mentionPriorityPaths = useMemo(() => {
+    if (!ws?.editorTabs?.length) return [];
+    const paths = ws.editorTabs.filter(isFileTab).map((t) => t.relPath);
+    const active =
+      ws.activeEditorTab && isFileTab(ws.activeEditorTab) ? ws.activeEditorTab.relPath : null;
+    if (active) return [active, ...paths.filter((p) => p !== active)];
+    return paths;
+  }, [ws?.editorTabs, ws?.activeEditorTab]);
 
   return (
     <div ref={dockRef} className="chat-pane-composer border-t border-border/70 bg-card">
@@ -63,6 +77,7 @@ export function WorkbenchChatComposer({
         editHistoryActive={editHistoryActive}
         onCancelEdit={onCancelEdit}
         variant="dock"
+        mentionPriorityPaths={mentionPriorityPaths}
       />
 
       {chainStatusLabel &&
@@ -71,15 +86,13 @@ export function WorkbenchChatComposer({
         <div className="mt-1.5 flex items-center justify-between gap-2 px-0.5">
           <span
             className={cn(
-              "inline-flex max-w-full truncate rounded-full border px-2.5 py-0.5 text-[10.5px] font-medium",
+              "inline-flex max-w-full truncate rounded-full border px-2.5 py-0.5 text-[12px] font-medium",
               chainStatusTone === "active" &&
                 "border-emerald-400/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
               chainStatusTone === "idle" &&
                 "border-sky-400/40 bg-sky-500/10 text-sky-800 dark:text-sky-300",
               chainStatusTone === "paused" &&
                 "border-amber-400/45 bg-amber-500/12 text-amber-800 dark:text-amber-300",
-              chainStatusTone === "done" &&
-                "border-blue-400/40 bg-blue-500/10 text-blue-800 dark:text-blue-300",
               chainStatusTone === "neutral" &&
                 "border-border/70 bg-background/35 text-muted-foreground",
             )}
@@ -87,13 +100,25 @@ export function WorkbenchChatComposer({
           >
             {chainStatusLabel}
           </span>
-          {onAddTask && chainOptions && chainOptions.length > 0 ? (
-            <ChainQuickTrigger
-              disabled={Boolean(shellProps.disabled)}
-              chains={chainOptions}
-              onTriggerChain={onAddTask}
-            />
-          ) : null}
+          <div className="flex shrink-0 items-center gap-1">
+            {onStopChain ? (
+              <button
+                type="button"
+                className="rounded-md border border-border/70 px-2 py-0.5 text-[12px] text-muted-foreground transition hover:bg-secondary/70 hover:text-foreground"
+                onClick={onStopChain}
+                title="停止任务链"
+              >
+                停止
+              </button>
+            ) : null}
+            {onAddTask && chainOptions && chainOptions.length > 0 ? (
+              <ChainQuickTrigger
+                disabled={Boolean(shellProps.disabled)}
+                chains={chainOptions}
+                onTriggerChain={onAddTask}
+              />
+            ) : null}
+          </div>
         </div>
       ) : null}
       {!chainStatusLabel && onAddTask && chainOptions && chainOptions.length > 0 ? (

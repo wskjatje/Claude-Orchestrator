@@ -17,6 +17,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SetiFileIcon } from "@/lib/seti/seti-file-icon";
 
 type FileItem = {
   name: string;
@@ -75,18 +76,13 @@ const rightColumn: FileItem[] = [
 ];
 
 function fileIcon(item: FileItem) {
-  switch (item.type) {
-    case "folder":
-      return <Folder className="h-4 w-4 fill-[#7BB7F0] text-[#5BA3E8]" />;
-    case "zip":
-      return <FileArchive className="h-4 w-4 text-[#9B9B9B]" />;
-    case "code":
-      return <FileCode2 className="h-4 w-4 text-[#7BB7F0]" />;
-    case "doc":
-      return <FileText className="h-4 w-4 text-[#7BB7F0]" />;
-    default:
-      return <FileText className="h-4 w-4 text-muted-foreground" />;
+  if (item.type === "folder") {
+    return <Folder className="h-4 w-4 fill-info/40 text-info" />;
   }
+  if (item.type === "zip") {
+    return <FileArchive className="h-4 w-4 text-muted-foreground" />;
+  }
+  return <SetiFileIcon fileName={item.name} className="text-[14px]" />;
 }
 
 function Column({ items, showChevron }: { items: FileItem[]; showChevron?: boolean }) {
@@ -96,24 +92,29 @@ function Column({ items, showChevron }: { items: FileItem[]; showChevron?: boole
         <div
           key={i}
           className={cn(
-            "flex items-center justify-between gap-2 px-2.5 py-[3px] text-[13px]",
+            "mx-1 flex items-center justify-between gap-2 px-2.5 py-[3px] text-[13px]",
             item.selected
-              ? "rounded-md bg-[#0A6CFE] text-white mx-1"
+              ? "rounded-md bg-primary text-primary-foreground"
               : item.dimmed
-                ? "text-[#A8A8A8]"
-                : "text-[#1d1d1f] hover:bg-black/[0.04]",
+                ? "text-muted-foreground/70"
+                : "text-foreground hover:bg-accent/60",
           )}
         >
           <div className="flex min-w-0 items-center gap-1.5">
             {item.selected ? (
-              <Folder className="h-4 w-4 shrink-0 fill-white/90 text-white" />
+              <Folder className="h-4 w-4 shrink-0 fill-primary-foreground/90 text-primary-foreground" />
             ) : (
               <span className="shrink-0">{fileIcon(item)}</span>
             )}
             <span className="truncate">{item.name}</span>
           </div>
           {showChevron && item.hasChildren && (
-            <ChevronRight className={cn("h-3 w-3 shrink-0", item.selected ? "text-white" : "text-[#8A8A8A]")} />
+            <ChevronRight
+              className={cn(
+                "h-3 w-3 shrink-0",
+                item.selected ? "text-primary-foreground/80" : "text-muted-foreground",
+              )}
+            />
           )}
         </div>
       ))}
@@ -136,105 +137,112 @@ export function FinderDialog({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px] animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/25 backdrop-blur-[2px] animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "flex h-[640px] w-[920px] max-w-[94vw] flex-col overflow-hidden rounded-xl border border-black/10 bg-[#ECECEC] shadow-2xl",
+          "flex h-[640px] w-[920px] max-w-[94vw] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl",
           "transition-all duration-200",
           mounted ? "scale-100 opacity-100" : "scale-95 opacity-0",
         )}
-        style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif" }}
       >
-        {/* Title bar */}
-        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-black/10 bg-gradient-to-b from-[#E8E8E8] to-[#D9D9D9] px-3">
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-surface-elevated px-3">
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={onClose}
-              className="group flex h-3 w-3 items-center justify-center rounded-full bg-[#FF5F57] hover:bg-[#FF5F57]"
+              className="group flex h-3 w-3 items-center justify-center rounded-full bg-destructive/90"
+              aria-label="关闭"
             >
-              <X className="h-2 w-2 text-[#7d0007] opacity-0 group-hover:opacity-100" strokeWidth={3} />
+              <X className="h-2 w-2 text-destructive-foreground opacity-0 group-hover:opacity-100" strokeWidth={3} />
             </button>
-            <span className="h-3 w-3 rounded-full bg-[#FEBC2E]" />
-            <span className="h-3 w-3 rounded-full bg-[#28C840]" />
+            <span className="h-3 w-3 rounded-full bg-warning/80" />
+            <span className="h-3 w-3 rounded-full bg-success/80" />
           </div>
 
           <div className="ml-3 flex items-center gap-1">
-            <button className="flex h-6 w-7 items-center justify-center rounded-md text-[#8A8A8A] hover:bg-black/[0.06]">
+            <button
+              type="button"
+              className="flex h-6 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60"
+            >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-[#C4C4C4]">|</span>
-            <button className="flex h-6 w-7 items-center justify-center rounded-md text-[#8A8A8A] hover:bg-black/[0.06]">
+            <span className="text-border">|</span>
+            <button
+              type="button"
+              className="flex h-6 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60"
+            >
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="ml-2 flex items-center gap-1 rounded-md border border-black/10 bg-white px-1.5 py-0.5">
-            <Columns3 className="h-3.5 w-3.5 text-[#5A5A5A]" />
-            <ChevronDown className="h-3 w-3 text-[#8A8A8A]" />
+          <div className="ml-2 flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5">
+            <Columns3 className="h-3.5 w-3.5 text-muted-foreground" />
+            <ChevronDown className="h-3 w-3 text-muted-foreground" />
           </div>
-          <div className="flex items-center gap-1 rounded-md border border-black/10 bg-white px-1.5 py-0.5">
-            <LayoutGrid className="h-3.5 w-3.5 text-[#5A5A5A]" />
-            <ChevronDown className="h-3 w-3 text-[#8A8A8A]" />
+          <div className="flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5">
+            <LayoutGrid className="h-3.5 w-3.5 text-muted-foreground" />
+            <ChevronDown className="h-3 w-3 text-muted-foreground" />
           </div>
 
           <div className="ml-2 flex flex-1 items-center justify-center">
-            <div className="flex items-center gap-1.5 rounded-md border border-black/10 bg-white px-2 py-0.5 text-[13px] text-[#1d1d1f]">
-              <Folder className="h-3.5 w-3.5 fill-[#7BB7F0] text-[#5BA3E8]" />
+            <div className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 text-[13px] text-foreground">
+              <Folder className="h-3.5 w-3.5 fill-info/40 text-info" />
               <span className="font-medium">openclaw</span>
-              <ChevronDown className="h-3 w-3 text-[#8A8A8A]" />
+              <ChevronDown className="h-3 w-3 text-muted-foreground" />
             </div>
           </div>
 
-          <div className="flex items-center gap-1 rounded-md border border-black/10 bg-white px-2 py-0.5">
-            <Search className="h-3 w-3 text-[#8A8A8A]" />
+          <div className="flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5">
+            <Search className="h-3 w-3 text-muted-foreground" />
             <input
               placeholder="搜索"
-              className="w-32 bg-transparent text-[12.5px] text-[#1d1d1f] outline-none placeholder:text-[#A8A8A8]"
+              className="w-32 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>
         </div>
 
-        {/* Body */}
         <div className="flex min-h-0 flex-1">
-          {/* Sidebar */}
-          <aside className="w-[180px] shrink-0 overflow-y-auto scrollbar-thin border-r border-black/10 bg-[#E8E8E8] py-2">
-            <SidebarGroup
-              items={sidebarItems.filter((i, idx) => idx < 2)}
-            />
+          <aside className="w-[180px] shrink-0 overflow-y-auto scrollbar-thin border-r border-border bg-sidebar py-2">
+            <SidebarGroup items={sidebarItems.filter((_, idx) => idx < 2)} />
             <SidebarLabel label="个人收藏" />
-            <SidebarGroup items={sidebarItems.filter((i, idx) => idx >= 2 && idx < 10)} />
+            <SidebarGroup items={sidebarItems.filter((_, idx) => idx >= 2 && idx < 10)} />
             <SidebarLabel label="位置" />
-            <SidebarGroup items={sidebarItems.filter((i, idx) => idx >= 10)} />
+            <SidebarGroup items={sidebarItems.filter((_, idx) => idx >= 10)} />
           </aside>
 
-          {/* Columns */}
-          <div className="flex min-w-0 flex-1 bg-white">
-            <div className="flex flex-1 border-r border-black/10">
+          <div className="flex min-w-0 flex-1 bg-background">
+            <div className="flex flex-1 border-r border-border">
               <Column items={middleColumn} showChevron />
             </div>
-            <div className="flex flex-1 border-r border-black/10">
+            <div className="flex flex-1 border-r border-border">
               <Column items={rightColumn} />
             </div>
-            <div className="w-[150px] bg-white" />
+            <div className="w-[150px] bg-background" />
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex h-14 shrink-0 items-center justify-between border-t border-black/10 bg-[#ECECEC] px-4">
-          <button className="rounded-md border border-black/15 bg-white px-3 py-1 text-[12.5px] font-medium text-[#1d1d1f] shadow-[0_1px_0_rgba(0,0,0,0.04)] hover:bg-black/[0.03]">
+        <div className="flex h-14 shrink-0 items-center justify-between border-t border-border bg-surface px-4">
+          <button
+            type="button"
+            className="rounded-md border border-border bg-background px-3 py-1 text-[12.5px] font-medium text-foreground hover:bg-accent/50"
+          >
             显示选项
           </button>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={onClose}
-              className="rounded-md border border-black/15 bg-white px-4 py-1 text-[12.5px] font-medium text-[#1d1d1f] shadow-[0_1px_0_rgba(0,0,0,0.04)] hover:bg-black/[0.03]"
+              className="rounded-md border border-border bg-background px-4 py-1 text-[12.5px] font-medium text-foreground hover:bg-accent/50"
             >
               取消
             </button>
-            <button className="rounded-md border border-[#0A6CFE] bg-[#0A6CFE] px-4 py-1 text-[12.5px] font-medium text-white opacity-50 shadow-sm">
+            <button
+              type="button"
+              className="rounded-md border border-primary bg-primary px-4 py-1 text-[12.5px] font-medium text-primary-foreground opacity-50"
+            >
               打开
             </button>
           </div>
@@ -246,7 +254,7 @@ export function FinderDialog({ open, onClose }: { open: boolean; onClose: () => 
 
 function SidebarLabel({ label }: { label: string }) {
   return (
-    <div className="px-3 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-wider text-[#8A8A8A]">
+    <div className="px-3 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
       {label}
     </div>
   );
@@ -260,9 +268,9 @@ function SidebarGroup({ items }: { items: typeof sidebarItems }) {
         return (
           <li
             key={i}
-            className="flex cursor-default items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] text-[#1d1d1f] hover:bg-black/[0.05]"
+            className="flex cursor-default items-center gap-1.5 rounded-md px-2 py-1 text-[12.5px] text-sidebar-foreground hover:bg-sidebar-accent"
           >
-            <Icon className="h-3.5 w-3.5 text-[#5A5A5A]" />
+            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="truncate">{item.label}</span>
           </li>
         );

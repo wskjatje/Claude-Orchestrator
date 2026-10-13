@@ -536,7 +536,7 @@ function McpPage() {
               >
                 <Plus className="h-3.5 w-3.5" /> 添加
               </button>
-              <InfoHint side="left">{MCP_INFO_HINT}</InfoHint>
+              {MCP_INFO_HINT ? <InfoHint side="left">{MCP_INFO_HINT}</InfoHint> : null}
             </>
           }
         />

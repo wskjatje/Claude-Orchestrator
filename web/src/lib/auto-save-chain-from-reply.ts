@@ -19,7 +19,8 @@ export type AutoSaveChainResult =
   | { saved: false; reason: "empty" | "unparseable" | "no-api" | "save-failed"; error?: string };
 
 /**
- * 从助手正文解析 WBS / active-chain，写入 docs/wbs.md 并注册到任务链列表。
+ * 从助手正文解析 WBS / active-chain，写入 `.claudecode/wbs.md`（元数据区）并注册任务链。
+ * 不静默写项目 `docs/` 源码路径。
  */
 export async function autoSaveChainFromReply(
   api: DesktopApi | null | undefined,

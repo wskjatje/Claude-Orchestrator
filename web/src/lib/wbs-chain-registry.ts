@@ -3,7 +3,8 @@ import type { ActiveChainState } from "@/lib/parse-active-chain";
 import { parseActiveChainFromBubbleText } from "@/lib/parse-active-chain";
 import { MSG_API_NOT_READY } from "@/lib/ui-copy";
 
-export const DEFAULT_WBS_REL_PATH = "docs/wbs.md";
+/** 产品规则 A：自动落盘仅写元数据区，不静默改项目 docs/ 源码树 */
+export const DEFAULT_WBS_REL_PATH = ".claudecode/wbs.md";
 
 export const WBS_GENERATE_PM_PROMPT = `/agent project-manager 请为当前工作区项目输出完整 WBS，并确保可解析为任务链：
 1. 使用 Markdown 表格，列含：任务编号、工作摘要、执行 Agent、依赖任务、交付标准
@@ -19,7 +20,7 @@ export const WBS_GENERATE_PM_PROMPT = `/agent project-manager 请为当前工作
    - DevOps 工程师 → devops-engineer
    - 代码审查员 → code-reviewer
    - UI/UX 设计师 → design-ui-designer 或 ui-ux-designer
-4. 在回复中给出完整表格（系统将自动写入 ${DEFAULT_WBS_REL_PATH} 并注册到「任务链」列表）`;
+4. 在回复中给出完整表格（系统将写入 ${DEFAULT_WBS_REL_PATH} 元数据并注册到「任务链」列表；项目 docs/ 需用户 Accept 后再写）`;
 
 export function wbsChainNameFromPath(relPath: string): string {
   return `WBS · ${relPath.replace(/^\/+/, "")}`;
@@ -41,7 +42,7 @@ function escapeMdCell(s: string): string {
     .replace(/\r?\n/g, "<br>");
 }
 
-/** 由任务链步骤生成标准 WBS Markdown（落盘 docs/wbs.md） */
+/** 由任务链步骤生成标准 WBS Markdown（默认落盘 `.claudecode/wbs.md`） */
 export function buildWbsMarkdownFromChainState(
   state: ActiveChainState,
   opts?: { title?: string; sourceNote?: string },

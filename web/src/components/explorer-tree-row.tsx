@@ -20,7 +20,9 @@ export function ExplorerTreeRow({
   onToggleDir,
   gitStatusByPath,
   gitHasDecoration,
+  recentWrittenPaths,
   onOpenFile,
+  onPinFile,
 }: {
   node: WorkspacePanelTreeNode;
   depth: number;
@@ -30,7 +32,10 @@ export function ExplorerTreeRow({
   onToggleDir: (key: string) => void;
   gitStatusByPath: Map<string, string>;
   gitHasDecoration: Set<string>;
+  recentWrittenPaths?: Set<string>;
   onOpenFile: (relPath: string) => void;
+  /** 双击固定标签（非预览） */
+  onPinFile?: (relPath: string) => void;
 }) {
   const isDir = node.type === "dir";
   const key = pathKey ? `${pathKey}/${node.name}` : node.name;
@@ -39,6 +44,14 @@ export function ExplorerTreeRow({
   const statusLetter = gitStatusByPath.get(key);
   const gitTone = gitStatusTone(statusLetter);
   const showFolderDot = isDir && gitHasDecoration.has(key) && !statusLetter;
+  const recentWritten =
+    !isDir &&
+    Boolean(
+      recentWrittenPaths?.has(key) ||
+        [...(recentWrittenPaths || [])].some(
+          (p) => p === key || p.endsWith("/" + key) || key.endsWith("/" + p),
+        ),
+    );
   const hiddenName = isHiddenExplorerName(node.name);
   const gitLabelClass = statusLetter ? explorerGitLabelClass(gitTone) : "explorer-git-label-neutral";
 
@@ -50,12 +63,16 @@ export function ExplorerTreeRow({
           if (isDir) onToggleDir(key);
           else onOpenFile(key);
         }}
+        onDoubleClick={() => {
+          if (!isDir) (onPinFile || onOpenFile)(key);
+        }}
         className={cn(
           "explorer-tree-row group/row flex w-full items-center gap-0 pr-0 text-left",
           selected && "explorer-tree-row-active",
+          recentWritten && "explorer-tree-row-recent-write",
         )}
         style={{ paddingLeft: `${EXPLORER_TREE_BASE_PADDING_PX + depth * EXPLORER_TREE_INDENT_PX}px` }}
-        title={key}
+        title={recentWritten ? `${key} · 刚写入` : key}
       >
         {depth > 0 ? (
           <span className="explorer-tree-guides" aria-hidden>
@@ -128,7 +145,9 @@ export function ExplorerTreeRow({
               onToggleDir={onToggleDir}
               gitStatusByPath={gitStatusByPath}
               gitHasDecoration={gitHasDecoration}
+              recentWrittenPaths={recentWrittenPaths}
               onOpenFile={onOpenFile}
+              onPinFile={onPinFile}
             />
           ))}
         </ul>

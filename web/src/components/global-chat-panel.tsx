@@ -359,12 +359,12 @@ function MessageItem({ msg, modelLabel }: { msg: Msg; modelLabel: string }) {
     <div className="flex flex-col">
       <div className="max-w-full rounded-2xl rounded-bl-md bg-muted/20 px-3.5 py-2.5">
         {modelLabel ? (
-          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
+          <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50">
             {modelLabel}
           </div>
         ) : null}
         <div className="prose prose-sm max-w-none dark:prose-invert">
-          <ChatAssistantContent content={msg.content} />
+          <ChatAssistantContent content={msg.content} agentTurn={msg.agentTurn} />
         </div>
       </div>
     </div>

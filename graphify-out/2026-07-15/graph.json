@@ -3702,7 +3702,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_base",
-      "community": 150,
+      "community": 57,
       "norm_label": "_base.py"
     },
     {
@@ -3722,7 +3722,7 @@
       "source_location": "L70",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_base_read_plugin_version_int",
-      "community": 150,
+      "community": 57,
       "norm_label": "_read_plugin_version_int()"
     },
     {
@@ -3732,7 +3732,7 @@
       "source_location": "L109",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_base_record_usage",
-      "community": 150,
+      "community": 63,
       "norm_label": "_record_usage()"
     },
     {
@@ -3742,7 +3742,7 @@
       "source_location": "L142",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_base_usage_metrics",
-      "community": 150,
+      "community": 57,
       "norm_label": "_usage_metrics()"
     },
     {
@@ -3752,7 +3752,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_base_rationale_1",
-      "community": 150,
+      "community": 57,
       "norm_label": "shared low-level helpers for the security-guidance hook modules.  this module ex"
     },
     {
@@ -3772,7 +3772,7 @@
       "source_location": "L71",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_base_rationale_71",
-      "community": 150,
+      "community": 57,
       "norm_label": "encode plugin.json version \"m.m.p\" as m*10000 + m*100 + p so it fits the     boo"
     },
     {
@@ -3782,7 +3782,7 @@
       "source_location": "L110",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_base_rationale_110",
-      "community": 150,
+      "community": 63,
       "norm_label": "accumulate one api response's token usage. `usage` is the anthropic     `usage`"
     },
     {
@@ -3792,7 +3792,7 @@
       "source_location": "L143",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_base_rationale_143",
-      "community": 150,
+      "community": 57,
       "norm_label": "snapshot the accumulator as metric keys. returns {} when no api calls     were m"
     },
     {
@@ -3872,7 +3872,7 @@
       "source_location": "L163",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_diffstate_capture_git_baseline",
-      "community": 42,
+      "community": 92,
       "norm_label": "capture_git_baseline()"
     },
     {
@@ -3882,7 +3882,7 @@
       "source_location": "L245",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_diffstate_reviewed_shas_path",
-      "community": 58,
+      "community": 42,
       "norm_label": "_reviewed_shas_path()"
     },
     {
@@ -3892,7 +3892,7 @@
       "source_location": "L250",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_diffstate_load_reviewed_shas",
-      "community": 58,
+      "community": 42,
       "norm_label": "_load_reviewed_shas()"
     },
     {
@@ -3902,7 +3902,7 @@
       "source_location": "L267",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_diffstate_append_reviewed_shas",
-      "community": 58,
+      "community": 42,
       "norm_label": "_append_reviewed_shas()"
     },
     {
@@ -3912,7 +3912,7 @@
       "source_location": "L319",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_diffstate_list_untracked",
-      "community": 52,
+      "community": 92,
       "norm_label": "_list_untracked()"
     },
     {
@@ -4002,7 +4002,7 @@
       "source_location": "L164",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_diffstate_rationale_164",
-      "community": 42,
+      "community": 92,
       "norm_label": "capture a git ref representing the current working tree state.     uses `git sta"
     },
     {
@@ -4012,7 +4012,7 @@
       "source_location": "L251",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_diffstate_rationale_251",
-      "community": 58,
+      "community": 42,
       "norm_label": "set of full 40-hex shas previously reviewed in this clone."
     },
     {
@@ -4022,7 +4022,7 @@
       "source_location": "L268",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_diffstate_rationale_268",
-      "community": 58,
+      "community": 42,
       "norm_label": "record that `shas` were reviewed. best-effort; never raises.      uses fcntl.flo"
     },
     {
@@ -4032,7 +4032,7 @@
       "source_location": "L320",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_diffstate_rationale_320",
-      "community": 52,
+      "community": 92,
       "norm_label": "repo-root-relative untracked (and not-ignored) path \u2192 mtime_ns, or {}     on err"
     },
     {
@@ -4332,7 +4332,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_gitutil_git_rev_parse_head",
-      "community": 52,
+      "community": 92,
       "norm_label": "_git_rev_parse_head()"
     },
     {
@@ -4372,7 +4372,7 @@
       "source_location": "L144",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_gitutil_git_toplevel",
-      "community": 52,
+      "community": 92,
       "norm_label": "_git_toplevel()"
     },
     {
@@ -4382,7 +4382,7 @@
       "source_location": "L156",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_gitutil_git_dir",
-      "community": 52,
+      "community": 92,
       "norm_label": "_git_dir()"
     },
     {
@@ -4532,7 +4532,7 @@
       "source_location": "L33",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_gitutil_rationale_33",
-      "community": 52,
+      "community": 92,
       "norm_label": "return the current head sha, or none if not a git repo / no commits."
     },
     {
@@ -4572,7 +4572,7 @@
       "source_location": "L145",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_gitutil_rationale_145",
-      "community": 52,
+      "community": 92,
       "norm_label": "absolute repo root for `cwd`, or none if not in a work tree."
     },
     {
@@ -4582,7 +4582,7 @@
       "source_location": "L157",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_gitutil_rationale_157",
-      "community": 52,
+      "community": 92,
       "norm_label": "absolute shared `.git` directory for repo_root.      uses `rev-parse --git-commo"
     },
     {
@@ -5112,7 +5112,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_patterns",
-      "community": 64,
+      "community": 150,
       "norm_label": "patterns.py"
     },
     {
@@ -5122,7 +5122,7 @@
       "source_location": "L264",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_patterns_ruleid",
-      "community": 64,
+      "community": 150,
       "norm_label": "ruleid"
     },
     {
@@ -5132,7 +5132,7 @@
       "source_location": "",
       "_origin": "ast",
       "id": "intenum",
-      "community": 64,
+      "community": 150,
       "norm_label": "intenum"
     },
     {
@@ -5142,7 +5142,7 @@
       "source_location": "L337",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_patterns_rule_names_to_mask",
-      "community": 64,
+      "community": 150,
       "norm_label": "rule_names_to_mask()"
     },
     {
@@ -5152,7 +5152,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_patterns_rationale_1",
-      "community": 64,
+      "community": 150,
       "norm_label": "regex-based security pattern definitions for the security-guidance plugin.  pure"
     },
     {
@@ -5162,7 +5162,7 @@
       "source_location": "L265",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_patterns_rationale_265",
-      "community": 64,
+      "community": 150,
       "norm_label": "stable numeric ids for security_patterns rules, emitted via the posttooluse"
     },
     {
@@ -5172,7 +5172,7 @@
       "source_location": "L338",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_patterns_rationale_338",
-      "community": 64,
+      "community": 150,
       "norm_label": "pack a set of rule names into a bitmask. bit n set means ruleid(n) matched."
     },
     {
@@ -5342,7 +5342,7 @@
       "source_location": "L253",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_security_reminder_hook_atomic_check_counter",
-      "community": 42,
+      "community": 64,
       "norm_label": "atomic_check_counter()"
     },
     {
@@ -5372,7 +5372,7 @@
       "source_location": "L332",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_security_reminder_hook_sweep_pending_warnings",
-      "community": 42,
+      "community": 64,
       "norm_label": "sweep_pending_warnings()"
     },
     {
@@ -5402,7 +5402,7 @@
       "source_location": "L446",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_security_reminder_hook_handle_user_prompt_submit",
-      "community": 64,
+      "community": 92,
       "norm_label": "handle_user_prompt_submit()"
     },
     {
@@ -5422,7 +5422,7 @@
       "source_location": "L646",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_security_reminder_hook_claim_bash_hook_once",
-      "community": 64,
+      "community": 92,
       "norm_label": "_claim_bash_hook_once()"
     },
     {
@@ -5542,7 +5542,7 @@
       "source_location": "L2019",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_security_reminder_hook_main",
-      "community": 64,
+      "community": 58,
       "norm_label": "main()"
     },
     {
@@ -5572,7 +5572,7 @@
       "source_location": "L254",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_security_reminder_hook_rationale_254",
-      "community": 42,
+      "community": 64,
       "norm_label": "atomically check if a counter has reached its limit and increment if not.     re"
     },
     {
@@ -5602,7 +5602,7 @@
       "source_location": "L333",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_security_reminder_hook_rationale_333",
-      "community": 42,
+      "community": 64,
       "norm_label": "stop-hook final sweep. re-read every file in pending_warnings, re-check     patt"
     },
     {
@@ -5632,7 +5632,7 @@
       "source_location": "L447",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_security_reminder_hook_rationale_447",
-      "community": 64,
+      "community": 92,
       "norm_label": "handle userpromptsubmit \u2014 capture git baseline sha.     called on every user pro"
     },
     {
@@ -5652,7 +5652,7 @@
       "source_location": "L647",
       "_origin": "ast",
       "id": "plugins_security_guidance_hooks_security_reminder_hook_rationale_647",
-      "community": 64,
+      "community": 92,
       "norm_label": "de-dupe across hooks.json `if` matchers firing for the same bash call.      `git"
     },
     {
@@ -20316,7 +20316,7 @@
       "source_location": "L938",
       "_origin": "ast",
       "id": "web_src_components_workbench_bottom_panel_openportinbrowser",
-      "community": 16,
+      "community": 95,
       "norm_label": "openportinbrowser()"
     },
     {
@@ -25946,7 +25946,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "web_src_lib_codemirror_ide_handlers",
-      "community": 835,
+      "community": 109,
       "norm_label": "codemirror-ide-handlers.ts"
     },
     {
@@ -25956,7 +25956,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "web_src_lib_codemirror_ide_handlers_editoridehandlers",
-      "community": 835,
+      "community": 109,
       "norm_label": "editoridehandlers"
     },
     {
@@ -25966,7 +25966,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "web_src_lib_codemirror_ide_handlers_current",
-      "community": 835,
+      "community": 109,
       "norm_label": "current"
     },
     {
@@ -25976,7 +25976,7 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "web_src_lib_codemirror_ide_handlers_seteditoridehandlers",
-      "community": 835,
+      "community": 109,
       "norm_label": "seteditoridehandlers()"
     },
     {
@@ -31226,7 +31226,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "web_src_lib_workbench_terminal_run_bridge",
-      "community": 92,
+      "community": 110,
       "norm_label": "workbench-terminal-run-bridge.ts"
     },
     {
@@ -31236,7 +31236,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "web_src_lib_workbench_terminal_run_bridge_terminalrunhandlers",
-      "community": 92,
+      "community": 110,
       "norm_label": "terminalrunhandlers"
     },
     {
@@ -31246,7 +31246,7 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "web_src_lib_workbench_terminal_run_bridge_registerworkbenchterminalrunhandlers",
-      "community": 92,
+      "community": 110,
       "norm_label": "registerworkbenchterminalrunhandlers()"
     },
     {
@@ -31256,7 +31256,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "web_src_lib_workbench_terminal_run_bridge_registerworkbenchterminalfocustab",
-      "community": 92,
+      "community": 110,
       "norm_label": "registerworkbenchterminalfocustab()"
     },
     {
@@ -31266,7 +31266,7 @@
       "source_location": "L20",
       "_origin": "ast",
       "id": "web_src_lib_workbench_terminal_run_bridge_workbenchterminalfocustab",
-      "community": 92,
+      "community": 110,
       "norm_label": "workbenchterminalfocustab()"
     },
     {
@@ -31276,7 +31276,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "web_src_lib_workbench_terminal_run_bridge_workbenchterminalruninactive",
-      "community": 92,
+      "community": 110,
       "norm_label": "workbenchterminalruninactive()"
     },
     {
@@ -31286,7 +31286,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "web_src_lib_workbench_terminal_run_bridge_workbenchterminalensuresession",
-      "community": 92,
+      "community": 110,
       "norm_label": "workbenchterminalensuresession()"
     },
     {
@@ -31296,7 +31296,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "web_src_lib_workbench_terminal_run_bridge_workbenchterminalisready",
-      "community": 92,
+      "community": 110,
       "norm_label": "workbenchterminalisready()"
     },
     {
@@ -31306,7 +31306,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "web_src_lib_workbench_terminal_run_bridge_runcommandinworkbenchterminalbridge",
-      "community": 92,
+      "community": 110,
       "norm_label": "runcommandinworkbenchterminalbridge()"
     },
     {
@@ -91914,17 +91914,6 @@
       "confidence_score": 1.0
     },
     {
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "plugins/security-guidance/hooks/security_reminder_hook.py",
-      "source_location": "L87",
-      "weight": 1.0,
-      "source": "plugins_security_guidance_hooks_security_reminder_hook",
-      "target": "plugins_security_guidance_hooks_patterns",
-      "confidence_score": 1.0
-    },
-    {
       "relation": "rationale_for",
       "confidence": "EXTRACTED",
       "source_file": "plugins/security-guidance/hooks/patterns.py",
@@ -92139,6 +92128,17 @@
       "weight": 1.0,
       "source": "plugins_security_guidance_hooks_review_api_rationale_369",
       "target": "plugins_security_guidance_hooks_review_api_format_findings",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "plugins/security-guidance/hooks/security_reminder_hook.py",
+      "source_location": "L87",
+      "weight": 1.0,
+      "source": "plugins_security_guidance_hooks_security_reminder_hook",
+      "target": "plugins_plugin_dev_skills_hook_development_references_patterns",
       "confidence_score": 1.0
     },
     {

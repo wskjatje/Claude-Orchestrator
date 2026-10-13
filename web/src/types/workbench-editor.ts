@@ -17,6 +17,8 @@ export type WorkbenchFileTab = {
   /** 二进制预览（base64，最多约 256KB） */
   binaryBase64?: string | null;
   previewBytes?: number;
+  /** 单击预览标签（斜体）；双击/编辑/从对话打开则固定 */
+  preview?: boolean;
 };
 
 export type WorkbenchBrowserTab = {

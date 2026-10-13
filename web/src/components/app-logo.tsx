@@ -30,12 +30,18 @@ export function AppLogo({ className, variant = "full" }: AppLogoProps) {
   if (variant === "sidebar") {
     return (
       <div className={cn("flex min-w-0 items-center gap-2.5", className)}>
-        <LogoMark className="h-9 w-9 shrink-0" />
+        <LogoMark className="h-9 w-9 shrink-0 rounded-lg" />
         <div className="min-w-0 flex-1 leading-tight">
-          <div className="truncate text-[13px] font-semibold tracking-tight text-foreground" translate="no">
+          <div
+            className="truncate text-[13.5px] font-semibold tracking-tight text-sidebar-foreground"
+            translate="no"
+          >
             Claude
           </div>
-          <div className="truncate text-[11px] font-medium text-muted-foreground" translate="no">
+          <div
+            className="truncate text-[11px] font-medium text-sidebar-foreground/55"
+            translate="no"
+          >
             Orchestrator
           </div>
         </div>

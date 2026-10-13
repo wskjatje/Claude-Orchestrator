@@ -6,6 +6,7 @@ import { ChatUserMessageBody } from "@/components/chat-user-message-body";
 import { CopyTextButton } from "@/components/copy-text-button";
 import type { UserImageAttachment } from "@/lib/ollama-messages";
 import type { TerminalSelectionPayload } from "@/lib/terminal-selection-meta";
+import type { AgentTurnMeta } from "@/lib/agent-turn-meta";
 
 export type ChatBubbleMessage = {
   role: "user" | "assistant";
@@ -18,6 +19,7 @@ export type ChatBubbleMessage = {
   historyIndex?: number;
   /** API / 请求失败 */
   requestError?: boolean;
+  agentTurn?: AgentTurnMeta;
 };
 
 function UserMessageBody({
@@ -46,18 +48,13 @@ function UserMessageBody({
 
 function WaitingReply({ modelName }: { modelName: string }) {
   return (
-    <div className="chat-waiting flex flex-col gap-1.5 py-1 text-muted-foreground">
-      <div className="flex items-center gap-2">
-        <span className="thinking-dots" aria-hidden>
-          <span className="thinking-dot" />
-          <span className="thinking-dot" />
-          <span className="thinking-dot" />
-        </span>
-        <span className="text-[12px]">{modelName} 正在思考…</span>
-      </div>
-      <p className="text-[11.5px] leading-relaxed text-muted-foreground/80">
-        工具调用与回复将在此实时显示。
-      </p>
+    <div className="chat-waiting flex items-center gap-2 py-1 text-muted-foreground">
+      <span className="thinking-dots" aria-hidden>
+        <span className="thinking-dot" />
+        <span className="thinking-dot" />
+        <span className="thinking-dot" />
+      </span>
+      <span className="text-[12px]">{modelName}</span>
     </div>
   );
 }
@@ -68,12 +65,14 @@ function MessageBubbleInner({
   onWriteToWorkspace,
   onGenerateChain,
   onEditUserMessage,
+  onAssistantContentPatch,
 }: {
   m: ChatBubbleMessage;
   hasDesktopApi?: boolean;
   onWriteToWorkspace?: (content: string) => void;
   onGenerateChain?: (content: string) => void;
   onEditUserMessage?: (historyIndex: number) => void;
+  onAssistantContentPatch?: (historyIndex: number, nextContent: string) => void | Promise<void>;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -119,11 +118,41 @@ function MessageBubbleInner({
       onWriteToWorkspace={onWriteToWorkspace}
       onGenerateChain={onGenerateChain}
     >
-    <div ref={rowRef} className="chat-message-row chat-message-row--assistant">
+    <div
+      ref={rowRef}
+      className="chat-message-row chat-message-row--assistant"
+      data-history-index={m.historyIndex != null ? String(m.historyIndex) : undefined}
+    >
       <div className="group/bubble chat-message-col chat-message-col--wide">
         <div className="chat-message-meta">
           <span className="assistant-name font-mono">{m.name ?? "assistant"}</span>
           {m.time ? <span className="chat-message-time">{m.time}</span> : null}
+          {m.agentTurn?.backend ? (
+            <span
+              className="chat-backend-badge rounded px-1 py-0.5 text-[11px] font-medium text-muted-foreground"
+              title={
+                m.agentTurn.backend === "cli"
+                  ? "执行通道：Claude Code CLI"
+                  : m.agentTurn.backend === "local"
+                    ? "执行通道：本地 MCP 编排"
+                    : "执行通道：Host 工具环"
+              }
+            >
+              {m.agentTurn.backend === "cli"
+                ? "CLI"
+                : m.agentTurn.backend === "local"
+                  ? "本地MCP"
+                  : "Host"}
+            </span>
+          ) : null}
+          {m.agentTurn?.mcpUsed ? (
+            <span
+              className="chat-backend-badge rounded px-1 py-0.5 text-[11px] font-medium text-primary"
+              title="本轮轨迹中调用了 MCP 工具（mcp__…）"
+            >
+              MCP·用过
+            </span>
+          ) : null}
           {m.content !== "__WAITING__" ? (
             <CopyTextButton
               text={m.content}
@@ -138,7 +167,16 @@ function MessageBubbleInner({
           {m.content === "__WAITING__" ? (
             <WaitingReply modelName={m.name ?? "assistant"} />
           ) : (
-            <ChatAssistantContent content={m.content} />
+            <ChatAssistantContent
+              content={m.content}
+              agentTurn={m.agentTurn}
+              suppressFileEdits={Boolean(m.requestError)}
+              onContentPatch={
+                m.historyIndex != null && onAssistantContentPatch && !m.requestError
+                  ? (next) => onAssistantContentPatch(m.historyIndex!, next)
+                  : undefined
+              }
+            />
           )}
         </div>
       </div>
@@ -171,6 +209,20 @@ function terminalSnippetsEqual(
   );
 }
 
+function agentTurnEqual(a?: AgentTurnMeta, b?: AgentTurnMeta): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.backend === b.backend &&
+    a.mcpUsed === b.mcpUsed &&
+    a.verified === b.verified &&
+    a.summary === b.summary &&
+    (a.writtenPaths || []).join("\0") === (b.writtenPaths || []).join("\0") &&
+    (a.streamEvents?.length || 0) === (b.streamEvents?.length || 0) &&
+    JSON.stringify(a.streamEvents || []) === JSON.stringify(b.streamEvents || [])
+  );
+}
+
 export const MessageBubble = memo(MessageBubbleInner, (prev, next) => {
   return (
     prev.m.role === next.m.role &&
@@ -181,8 +233,10 @@ export const MessageBubble = memo(MessageBubbleInner, (prev, next) => {
     prev.onWriteToWorkspace === next.onWriteToWorkspace &&
     prev.onGenerateChain === next.onGenerateChain &&
     prev.onEditUserMessage === next.onEditUserMessage &&
+    prev.onAssistantContentPatch === next.onAssistantContentPatch &&
     prev.m.historyIndex === next.m.historyIndex &&
     prev.m.requestError === next.m.requestError &&
+    agentTurnEqual(prev.m.agentTurn, next.m.agentTurn) &&
     attachmentsEqual(prev.m.attachments, next.m.attachments) &&
     terminalSnippetsEqual(prev.m.terminalSnippets, next.m.terminalSnippets)
   );

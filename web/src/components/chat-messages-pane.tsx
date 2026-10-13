@@ -21,6 +21,7 @@ export type ChatMessagesPaneProps = {
   onGenerateChain?: (content: string) => void;
   onEditUserMessage?: (historyIndex: number) => void;
   onRequestResendUserMessage?: (historyIndex: number) => void;
+  onAssistantContentPatch?: (historyIndex: number, nextContent: string) => void | Promise<void>;
 };
 
 function chatMessagesPanePropsEqual(prev: ChatMessagesPaneProps, next: ChatMessagesPaneProps) {
@@ -37,7 +38,8 @@ function chatMessagesPanePropsEqual(prev: ChatMessagesPaneProps, next: ChatMessa
     prev.onWriteToWorkspace === next.onWriteToWorkspace &&
     prev.onGenerateChain === next.onGenerateChain &&
     prev.onEditUserMessage === next.onEditUserMessage &&
-    prev.onRequestResendUserMessage === next.onRequestResendUserMessage
+    prev.onRequestResendUserMessage === next.onRequestResendUserMessage &&
+    prev.onAssistantContentPatch === next.onAssistantContentPatch
   );
 }
 
@@ -55,6 +57,7 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
   onGenerateChain,
   onEditUserMessage,
   onRequestResendUserMessage,
+  onAssistantContentPatch,
 }: ChatMessagesPaneProps) {
   const isEditingSticky =
     editHistoryIndex != null && editingUserMessage != null && inlineComposer != null;
@@ -72,6 +75,7 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
         onWriteToWorkspace={onWriteToWorkspace}
         onGenerateChain={onGenerateChain}
         onEditUserMessage={onEditUserMessage}
+        onAssistantContentPatch={onAssistantContentPatch}
       />
     </div>
   );
@@ -84,6 +88,7 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
       onWriteToWorkspace={onWriteToWorkspace}
       onGenerateChain={onGenerateChain}
       onEditUserMessage={onEditUserMessage}
+      onAssistantContentPatch={onAssistantContentPatch}
     />
   );
 

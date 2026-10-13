@@ -1,4 +1,4 @@
-import type { Extension } from "@codemirror/state";
+import { EditorState, type Extension } from "@codemirror/state";
 import type { Language } from "@codemirror/language";
 import { StreamLanguage } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
@@ -13,6 +13,9 @@ import { standardSQL } from "@codemirror/legacy-modes/mode/sql";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { autocompletion } from "@codemirror/autocomplete";
 import { languageFromPath, inferLanguageFromContent } from "@/lib/code-language";
+import { aiCompletionSource } from "@/lib/codemirror-ai-completion";
+import { tsCompletionSource } from "@/lib/codemirror-ts-completion";
+import { getUiPrefsCache } from "@/lib/ui-prefs";
 
 function markdownFenceLanguage(info: string): Language | null {
   const name = info.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -91,5 +94,16 @@ export function codemirrorExtensionsForPath(
       ? inferLanguageFromContent(contentSample, relPath)
       : languageFromPath(relPath);
 
-  return [autocompletion(), ...languageExtension(lang, relPath)];
+  return [
+    autocompletion({ activateOnTyping: true, maxRenderedOptions: 12 }),
+    // LS 符号补全为主；AI 仅显式触发；幽灵文本管停顿续写（受 completionMode 控制）
+    EditorState.languageData.of(() => {
+      const mode = getUiPrefsCache().completionMode;
+      const sources = [];
+      if (mode !== "ghost") sources.push({ autocomplete: tsCompletionSource(relPath) });
+      if (mode !== "lsp") sources.push({ autocomplete: aiCompletionSource(relPath) });
+      return sources;
+    }),
+    ...languageExtension(lang, relPath),
+  ];
 }

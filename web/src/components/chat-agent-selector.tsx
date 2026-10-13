@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { Check, ChevronDown, Search } from "lucide-react";
 import {
   DropdownMenu,
@@ -178,13 +179,13 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/70" />
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索 Agent"
-              className="h-8 w-full rounded-md border-0 bg-secondary/50 pl-8 pr-2 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/70 focus:bg-secondary/80"
+              className="h-8 w-full rounded-md border-0 bg-secondary/50 pl-8 pr-2 text-[12px] text-foreground outline-none placeholder:text-muted-foreground focus:bg-secondary/80"
               onKeyDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             />
@@ -203,7 +204,7 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
             >
               <div className="min-w-0 flex-1">
                 <div className="font-medium">Auto</div>
-                <div className="text-[10.5px] text-muted-foreground">Auto 模式 · 不设角色限制</div>
+                <div className="text-[12px] text-muted-foreground">Auto 模式 · 不设角色限制</div>
               </div>
               {isAuto ? (
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={2.25} />
@@ -227,11 +228,11 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{agent.displayName}</div>
                     {agent.description ? (
-                      <div className="line-clamp-2 text-[10.5px] leading-snug text-muted-foreground">
+                      <div className="line-clamp-2 text-[12px] leading-snug text-muted-foreground">
                         {agent.description}
                       </div>
                     ) : (
-                      <div className="truncate font-mono text-[10px] text-muted-foreground">
+                      <div className="truncate font-mono text-[11px] text-muted-foreground">
                         {agent.stem}
                       </div>
                     )}
@@ -253,6 +254,15 @@ export function ChatAgentSelector({ agentBasename, onAgentChange, disabled }: Pr
               未扫描到 Agent 文件
             </p>
           )}
+        </div>
+        <div className="border-t border-border/60 px-2 py-1.5">
+          <Link
+            to="/agents"
+            className="block rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition hover:bg-secondary/70 hover:text-foreground"
+            onClick={() => setOpen(false)}
+          >
+            管理 Agent…
+          </Link>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

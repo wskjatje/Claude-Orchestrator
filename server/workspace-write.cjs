@@ -111,8 +111,14 @@ function applyWorkspaceWriteFenceItems(workspaceDir, items) {
       const line = `[${new Date().toISOString()}] ${written.join(', ')}\n`
       fs.appendFileSync(logPath, line, 'utf8')
     } catch (e) {
-      console.warn("[workspace-write] 写盘日志追加失败", e?.message || e);
+      console.warn('[workspace-write] 写盘日志追加失败', e?.message || e)
     }
+    // 写盘后失效 TS Language Service 缓冲（异步，不挡写盘返回）
+    void import('./workspace-tsservice.mjs')
+      .then((m) => m.invalidateTsSnapshotsForPaths(written))
+      .catch((e) => {
+        console.warn('[workspace-write] TS 快照失效失败', e?.message || e)
+      })
   }
   return { ok: written.length > 0, written, errors: errors.length ? errors : undefined }
 }
@@ -559,6 +565,8 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
   const taskId = typeof m.taskId === 'string' ? m.taskId.trim() : ''
   const ensureChainArtifact = Boolean(m.ensureChainArtifact)
   const ensureAgentArtifact = Boolean(m.ensureAgentArtifact)
+  // 产品规则 A：默认不自动落盘；仅显式 applyWrites:true（如用户点 Accept / IPC 主动 ingest）才写盘。
+  const applyWrites = m.applyWrites === true
   const autoWriteProject =
     typeof m.autoWriteProject === 'boolean'
       ? m.autoWriteProject
@@ -575,6 +583,18 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
   const fenceItems = parseWorkspaceWriteFences(body).filter(
     (it) => String(it?.content ?? '').trim().length > 0,
   )
+
+  if (!applyWrites) {
+    return {
+      ok: true,
+      deferred: true,
+      written: [],
+      pendingCount: fenceItems.length,
+      displayText: body,
+      error: null,
+    }
+  }
+
   if (fenceItems.length > 0) {
     const r = applyWorkspaceWriteFenceItems(workspaceDir, fenceItems)
     return {

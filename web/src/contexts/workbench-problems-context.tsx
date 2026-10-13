@@ -10,6 +10,7 @@ import {
 import { getDesktop } from "@/lib/desktop-api";
 import { registerWorkbenchLintHandler, type WorkbenchLintMode } from "@/lib/workbench-lint-bridge";
 import type { WorkbenchProblem } from "@/types/workbench-problems";
+import { setProblemsSnapshot } from "@/lib/problems-snapshot";
 
 type Ctx = {
   problems: WorkbenchProblem[];
@@ -67,6 +68,10 @@ export function WorkbenchProblemsProvider({ children }: { children: ReactNode })
     () => problems.filter((p) => p.severity === "warning").length,
     [problems],
   );
+
+  useEffect(() => {
+    setProblemsSnapshot(problems);
+  }, [problems]);
 
   const value = useMemo(
     () => ({

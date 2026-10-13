@@ -94,6 +94,10 @@ const shortcutGroups: CardGroup[] = [
     items: [
       { label: "切换终端", keys: "⌘` / Ctrl+`", desc: "显示或隐藏底部终端面板" },
       { label: "保存当前文件", keys: "⌘S / Ctrl+S", desc: "保存编辑器中的活动文件" },
+      { label: "Inline Edit", keys: "⌘K / Ctrl+K", desc: "选区改代码（Ask 只读 / Agent 写盘 / Plan 改缓冲后保存）" },
+      { label: "跳转到定义", keys: "F12", desc: "编辑器内符号跳转（本仓库静态解析）" },
+      { label: "Agent / Ask / Plan", desc: "Agent 直接改盘；Ask 只读；Plan 先方案 Accept 后落盘；Shift+Tab 切换" },
+      { label: "Diff Review", desc: "Plan 待审或写后对照；Git 面板可 Undo" },
     ],
   },
   {
@@ -128,12 +132,12 @@ const aboutGroups: CardGroup[] = [
     title: "版本与运行时",
     icon: Server,
     items: [
-      { label: "应用版本", value: APP_VERSION, desc: "当前桌面包版本（desktop/package.json）" },
-      { label: "Claude CLI", value: "≥ 1.0", desc: "建议保持 claude 命令为最新版" },
+      { label: "应用版本", value: APP_VERSION, desc: "当前桌面包版本" },
+      { label: "Claude CLI", value: "≥ 1.0", desc: "建议保持最新版" },
       {
         label: "本机服务",
-        value: "Bridge",
-        desc: "依赖本机 Bridge；Web 模式需 npm run web:dev:full（或桌面应用）",
+        value: "已连接时可用",
+        desc: "需启动桌面应用或本机服务",
       },
     ],
   },
@@ -215,6 +219,7 @@ const guideGroups: CardGroup[] = [
     items: [
       { label: "配置位置", desc: "~/.claude 或项目 .mcp.json" },
       { label: "管理能力", desc: "MCP 页添加预设、健康检查与启用" },
+      { label: "外部应用", desc: "模板「外部应用」：打开链接/本机路径；未启用不影响编码" },
       { label: "任务链", desc: "可为单步限定可用 MCP 工具集" },
     ],
   },
@@ -238,10 +243,7 @@ function HelpPage() {
           <CardGroupGrid groups={shortcutGroups} />
         </OverviewSection>
 
-        <OverviewSection
-          title="内嵌浏览器（Web 预览）"
-          description="代理预览局限；完整能力见桌面 WebContentsView"
-        >
+        <OverviewSection title="内嵌浏览器">
           <CardGroupGrid groups={browserGroups} />
         </OverviewSection>
 

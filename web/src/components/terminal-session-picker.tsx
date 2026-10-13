@@ -1,4 +1,4 @@
-import { ChevronDown, TerminalSquare } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -6,6 +6,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SetiShellIcon } from "@/lib/seti/seti-file-icon";
 import type { TerminalSession } from "@/components/terminal-sessions-view";
 
 /** 仅一个终端时，顶栏右侧显示 shell 下拉 */
@@ -31,7 +32,7 @@ export function TerminalSessionPicker({
           className="inline-flex max-w-[9rem] items-center gap-1 rounded px-1.5 py-1 font-mono text-[11px] text-muted-foreground transition hover:bg-secondary hover:text-foreground"
           title={`终端: ${active.label}`}
         >
-          <TerminalSquare className="h-3 w-3 shrink-0 opacity-70" />
+          <SetiShellIcon className="text-[12px]" />
           <span className="truncate">{active.label}</span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
         </button>

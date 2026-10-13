@@ -833,6 +833,5 @@
   "831": "navigation-menu.tsx",
   "832": "is-binary-file.ts",
   "833": "card.tsx",
-  "834": "toggle-group.tsx",
-  "835": "codemirror-ide-handlers.ts"
+  "834": "toggle-group.tsx"
 }

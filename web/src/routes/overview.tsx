@@ -43,8 +43,15 @@ function OverviewPage() {
   const [taskEnabled, setTaskEnabled] = useState(0);
   const [taskTotal, setTaskTotal] = useState(0);
   const { health: graphHealth, buildGraph, openGraphHtml, buildStatusViz, openGraphStatusHtml } = useGraphifyHealth();
-  const [nodeStatusCounts, setNodeStatusCounts] = useState<{ completed: number; inProgress: number; pending: number; optimizable: number; total: number } | null>(null);
-  const [showStatusDetail, setShowStatusDetail] = useState(false);
+  const [nodeStatusCounts, setNodeStatusCounts] = useState<{
+    completed: number;
+    inProgress: number;
+    pending: number;
+    optimizable: number;
+    total: number;
+  } | null>(null);
+  /** 节点状态图为实验能力：默认折叠，展开后再拉取 */
+  const [showNodeStatusLab, setShowNodeStatusLab] = useState(false);
   const graphCardRef = useRef<HTMLDivElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
 
@@ -59,24 +66,24 @@ function OverviewPage() {
     }
   }, { scope: graphCardRef });
 
-  // 获取节点状态统计
+  // 节点状态统计：仅实验区展开后拉取（不占首屏）
   useEffect(() => {
-    if (graphHealth.graphHtml) {
-      const api = getDesktop();
-      if (api?.nodeStatus) {
-        api.nodeStatus().then((r) => {
-          if (r?.ok && r.counts) setNodeStatusCounts(r.counts);
-        }).catch(() => {});
-      }
-    }
-  }, [graphHealth.graphHtml]);
+    if (!showNodeStatusLab || !graphHealth.graphHtml) return;
+    const api = getDesktop();
+    if (!api?.nodeStatus) return;
+    api
+      .nodeStatus()
+      .then((r) => {
+        if (r?.ok && r.counts) setNodeStatusCounts(r.counts);
+      })
+      .catch(() => {});
+  }, [showNodeStatusLab, graphHealth.graphHtml]);
 
-  // 详情面板展开动画
   useGSAP(() => {
-    if (showStatusDetail && detailRef.current) {
+    if (showNodeStatusLab && detailRef.current) {
       gsap.from(detailRef.current, { opacity: 0, height: 0, duration: 0.3, ease: "power2.out" });
     }
-  }, { scope: detailRef, dependencies: [showStatusDetail] });
+  }, { scope: detailRef, dependencies: [showNodeStatusLab] });
 
   const loadMeta = useCallback(async () => {
     const api = getDesktop();
@@ -287,8 +294,10 @@ function OverviewPage() {
     <AppShell>
       <PageHeader
         title="概览"
-        description={PAGE_DESC.overview}
-        actions={<InfoHint side="left">{OVERVIEW_INFO_HINT}</InfoHint>}
+        description={PAGE_DESC.overview || undefined}
+        actions={
+          OVERVIEW_INFO_HINT ? <InfoHint side="left">{OVERVIEW_INFO_HINT}</InfoHint> : undefined
+        }
       />
 
       <div className="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6 lg:px-7">
@@ -338,15 +347,17 @@ function OverviewPage() {
               <div className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">
                 {graphHealth.building
                   ? "正在后台提取代码结构并生成交互式图谱页面…"
-                  : graphHealth.graphHtml
-                    ? "点击右侧按钮在浏览器中查看交互式知识图谱"
-                    : graphHealth.graphJson
-                      ? "代码图谱已存在，可生成交互式 HTML 查看器页面"
-                      : graphHealth.graphJson === null
-                        ? "正在检测…"
-                        : graphHealth.buildError
-                          ? `构建失败：${graphHealth.buildError}`
-                          : "尚未生成，点击右侧按钮开始构建（仅代码结构，无需 LLM）"}
+                  : graphHealth.cli === false
+                    ? graphHealth.buildError || "未安装 graphify（Python≥3.10）"
+                    : graphHealth.needsUpdate
+                      ? "结构索引陈旧，请更新"
+                      : graphHealth.graphHtml
+                        ? "可打开交互式图谱"
+                        : graphHealth.graphJson
+                          ? "已有 graph.json，可导出 HTML"
+                          : graphHealth.graphJson === null
+                            ? "正在检测…"
+                            : graphHealth.buildError || "尚未生成结构索引"}
               </div>
               {graphHealth.buildError && (
                 <div className="mt-1 flex items-center gap-1 text-[11px] text-destructive">
@@ -395,39 +406,81 @@ function OverviewPage() {
           </div>
         </div>
 
-        {/* 节点状态详情（可展开） */}
-        {graphHealth.graphHtml && nodeStatusCounts && (
-          <>
+        <OverviewTodayKpis kpis={todayKpis} />
+        <UsageAnalyticsSection
+          id="usage"
+          range={analyticsRange}
+          onRangeChange={handleRangeChange}
+        />
+
+        {graphHealth.graphHtml ? (
+          <div className="mt-2">
             <button
               type="button"
-              onClick={() => setShowStatusDetail((v) => !v)}
-              className="flex w-full items-center justify-between rounded-lg border border-border/50 bg-muted/10 px-4 py-2 text-[12px] text-muted-foreground transition hover:bg-muted/20"
+              onClick={() => setShowNodeStatusLab((v) => !v)}
+              className="flex w-full items-center justify-between rounded-lg border border-border/40 bg-muted/5 px-4 py-2 text-[12px] text-muted-foreground transition hover:bg-muted/15"
             >
               <span className="flex items-center gap-2">
                 <BarChart3 className="h-3.5 w-3.5" />
-                节点状态统计
-                <span className="text-[11px] text-muted-foreground/60">（{nodeStatusCounts.total} 个节点）</span>
+                实验 · 节点状态图
+                {nodeStatusCounts ? (
+                  <span className="text-[11px] text-muted-foreground/60">
+（{nodeStatusCounts.total} 个节点）
+                  </span>
+                ) : null}
               </span>
-              {showStatusDetail ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {showNodeStatusLab ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
             </button>
-            {showStatusDetail && (
-              <div ref={detailRef} className="overflow-hidden rounded-lg border border-border/40 bg-muted/5 p-3">
+            {showNodeStatusLab && nodeStatusCounts ? (
+              <div
+                ref={detailRef}
+                className="mt-2 overflow-hidden rounded-lg border border-border/40 bg-muted/5 p-3"
+              >
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {[
-                    { label: "已完成", color: "bg-emerald-500", count: nodeStatusCounts.completed, hash: "completed" },
-                    { label: "进行中", color: "bg-blue-500", count: nodeStatusCounts.inProgress, hash: "in-progress" },
-                    { label: "可优化", color: "bg-orange-500", count: nodeStatusCounts.optimizable, hash: "optimizable" },
-                    { label: "待处理", color: "bg-gray-400", count: nodeStatusCounts.total - nodeStatusCounts.completed - nodeStatusCounts.inProgress - nodeStatusCounts.optimizable, hash: "pending" },
+                    {
+                      label: "已完成",
+                      color: "bg-emerald-500",
+                      count: nodeStatusCounts.completed,
+                      hash: "completed",
+                    },
+                    {
+                      label: "进行中",
+                      color: "bg-blue-500",
+                      count: nodeStatusCounts.inProgress,
+                      hash: "in-progress",
+                    },
+                    {
+                      label: "可优化",
+                      color: "bg-orange-500",
+                      count: nodeStatusCounts.optimizable,
+                      hash: "optimizable",
+                    },
+                    {
+                      label: "待处理",
+                      color: "bg-gray-400",
+                      count:
+                        nodeStatusCounts.total -
+                        nodeStatusCounts.completed -
+                        nodeStatusCounts.inProgress -
+                        nodeStatusCounts.optimizable,
+                      hash: "pending",
+                    },
                   ].map((item) => (
-                    <a
+                    <button
                       key={item.hash}
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
+                      type="button"
+                      onClick={() => {
                         openGraphStatusHtml();
-                        // 延迟后加 hash（浏览器打开后生效）
                         setTimeout(() => {
-                          window.open(`graphify-out/graph-status.html#status=${item.hash}`, "_blank");
+                          window.open(
+                            `graphify-out/graph-status.html#status=${item.hash}`,
+                            "_blank",
+                          );
                         }, 500);
                       }}
                       className="flex flex-col items-center gap-1 rounded-lg border border-border/30 bg-background/50 p-3 transition hover:bg-accent/20"
@@ -435,13 +488,16 @@ function OverviewPage() {
                       <div className={`h-2.5 w-2.5 rounded-full ${item.color}`} />
                       <span className="text-lg font-semibold">{item.count}</span>
                       <span className="text-[11px] text-muted-foreground">{item.label}</span>
-                    </a>
+                    </button>
                   ))}
                 </div>
-                <div className="mt-2 flex items-center justify-end gap-2">
+                <div className="mt-2 flex items-center justify-end">
                   <button
                     type="button"
-                    onClick={() => { buildStatusViz(); openGraphStatusHtml(); }}
+                    onClick={() => {
+                      buildStatusViz();
+                      openGraphStatusHtml();
+                    }}
                     className="inline-flex items-center gap-1 rounded-md border border-border/40 bg-muted/20 px-2.5 py-1 text-[11px] text-muted-foreground transition hover:bg-muted/30"
                   >
                     <ExternalLink className="h-3 w-3" />
@@ -449,16 +505,9 @@ function OverviewPage() {
                   </button>
                 </div>
               </div>
-            )}
-          </>
-        )}
-
-        <OverviewTodayKpis kpis={todayKpis} />
-        <UsageAnalyticsSection
-          id="usage"
-          range={analyticsRange}
-          onRangeChange={handleRangeChange}
-        />
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </AppShell>
   );

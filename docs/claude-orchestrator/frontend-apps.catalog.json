@@ -3,10 +3,10 @@
   "tagline": "本机优先的 AI 编排工作台 Web 前端：React + TanStack Router，Electron 桌面壳，经 Bridge 连接 Claude Code CLI 与本机数据。",
   "stack": "React 19 · TanStack Router · Vite · Tailwind · shadcn/ui · react-resizable-panels · Electron",
   "uiOverview": [
-    "顶栏：品牌、全局搜索（⌘K）、主题切换",
-    "侧栏：分组导航 + 连接状态 / 任务链徽章",
+    "顶栏：品牌、主题切换（⌘K 为编辑器 Inline Edit，非全局搜索）",
+    "侧栏：聊天 · 应用设置 · 帮助；连接状态在侧栏底部",
     "聊天页：可拖拽三栏工作台（文件 · 编辑预览 · 对话）",
-    "列表页：统一 PageHeader + 统计卡片 + 搜索筛选 + 卡片网格"
+    "编排/运维页：设置 → 高级；定时/日报归入实验分组"
   ],
   "groups": [
     {
@@ -160,11 +160,11 @@
           "route": "/settings",
           "name": "应用设置",
           "summary": "模型、同步与偏好",
-          "description": "通用 / 模型与连接 / 编排与高级 三个 Tab。",
+          "description": "基础设置 / 高级 两个页签。",
           "features": [
-            "通用：一键确认写入默认路径",
-            "模型与连接：云 API 供应商、本地 Ollama、同步到 Claude CLI",
-            "编排与高级：GitHub 个人仓库 push/pull、官方 upstream 同步",
+            "基础设置：用户偏好（每轮注入）、云 API、本地 Ollama、同步到 Claude CLI",
+            "高级：编排入口、GitHub 个人仓库 push/pull、官方 upstream 同步",
+            "实验分组：定时任务、执行日报（非编码主路径）",
             "推送时自动生成本文档并写入提交说明"
           ]
         },

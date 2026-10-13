@@ -192,6 +192,12 @@ export type DesktopApi = {
     onlyImages?: boolean;
     title?: string;
   }) => Promise<{ canceled: boolean; filePaths: string[] }>;
+  /** 读取本机绝对路径文本文件（附件注入） */
+  readReferenceTextFiles?: (filePaths: string[]) => Promise<{
+    ok: boolean;
+    items?: { path: string; name: string; content: string }[];
+    errors?: string[];
+  }>;
   clearWorkspace: () => Promise<null>;
   workspaceApplyWriteFence: (items: unknown) => Promise<{
     ok: boolean;
@@ -199,21 +205,25 @@ export type DesktopApi = {
     written?: string[];
     errors?: string[];
   }>;
-  /** 解析助手全文并写盘；ensureChainArtifact → docs/chain-steps/；ensureAgentArtifact → Agent 专属路径 */
+  /** 解析助手全文；默认不落盘（deferred）。须 applyWrites:true 才写盘（用户 Accept / 主动 ingest） */
   workspaceIngestFromAssistantText?: (payload: {
     text: string;
     agentName?: string;
     taskId?: string;
     ensureChainArtifact?: boolean;
     ensureAgentArtifact?: boolean;
-    /** 实现类 Agent：自动从 workspace-write / 代码块落盘到项目路径 */
+    /** 仅 applyWrites:true 时：从围栏/代码块启发式落盘 */
     autoWriteProject?: boolean;
+    /** Plan 模式：显式 true 才落盘；Agent 默认自动落盘 */
+    applyWrites?: boolean;
   }) => Promise<{
     ok: boolean;
     error?: string;
     written?: string[];
     errors?: string[];
     displayText?: string;
+    deferred?: boolean;
+    pendingCount?: number;
   }>;
   /** 扫描多条助手回复，合并代码块/workspace-write 后批量落盘 */
   workspaceBulkIngestFromHistory?: (payload: { texts: string[]; agentName?: string }) => Promise<{
@@ -308,6 +318,453 @@ export type DesktopApi = {
     }[];
     error?: string;
   }>;
+  /** 项目规则文件列表（含 .cursor/rules 目录） */
+  listWorkspaceProjectRules?: () => Promise<{
+    ok: boolean;
+    files?: { relPath: string; mtimeMs: number; size: number }[];
+    error?: string;
+  }>;
+  /** TS Language Service：跳转到定义 */
+  workspaceTsDefinition?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    definition?: {
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+      name?: string | null;
+      kind?: string | null;
+    } | null;
+    error?: string;
+  }>;
+  /** TS Language Service：悬停类型信息 */
+  workspaceTsHover?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    hover?: {
+      display: string;
+      documentation?: string | null;
+      kind?: string | null;
+      fromLine: number;
+      fromCol: number;
+      toLine: number;
+      toCol: number;
+    } | null;
+    error?: string;
+  }>;
+  workspaceTsTypeDefinition?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    definition?: {
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+      name?: string | null;
+      kind?: string | null;
+    } | null;
+    error?: string;
+  }>;
+  workspaceTsImplementation?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    definition?: {
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+      name?: string | null;
+      kind?: string | null;
+    } | null;
+    error?: string;
+  }>;
+  workspaceTsCompletions?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    completions?: {
+      label: string;
+      kind: string;
+      detail?: string | null;
+      insertText?: string;
+      sortText?: string;
+    }[];
+    fromLine?: number;
+    fromCol?: number;
+    error?: string;
+  }>;
+  workspaceTsReferences?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    references?: {
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+    }[];
+    error?: string;
+  }>;
+  workspaceTsRename?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    canRename?: boolean;
+    displayName?: string | null;
+    fullDisplayName?: string | null;
+    locations?: {
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+      prefixText?: string | null;
+      suffixText?: string | null;
+    }[];
+    error?: string | null;
+  }>;
+  workspaceTsSignatureHelp?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    signatureHelp?: {
+      activeSignature: number;
+      activeParameter: number;
+      items: { label: string; documentation?: string | null }[];
+    } | null;
+    error?: string;
+  }>;
+  workspaceTsOrganizeImports?: (payload: {
+    relPath: string;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    content?: string | null;
+    changed?: boolean;
+    error?: string;
+  }>;
+  /** 工作区内 ripgrep 内容检索（@codebase） */
+  workspaceRipgrep?: (payload: {
+    query: string;
+    maxResults?: number;
+    boostPaths?: string[];
+    caseSensitive?: boolean;
+    regex?: boolean;
+    includeGlob?: string;
+    excludeGlob?: string;
+  }) => Promise<{
+    ok: boolean;
+    hits?: { relPath: string; line: number; text: string }[];
+    error?: string;
+  }>;
+  workspaceGraphifyQuery?: (payload: {
+    query: string;
+    budget?: number;
+  }) => Promise<{
+    ok: boolean;
+    markdown?: string;
+    files?: string[];
+    source?: "json";
+    needsUpdate?: boolean;
+    error?: string;
+  }>;
+  graphifyStatus?: () => Promise<{
+    ok: boolean;
+    graphJson?: boolean;
+    graphHtml?: boolean;
+    needsUpdate?: boolean;
+    cli?: boolean;
+    cliKind?: "bin" | "python" | null;
+    cliError?: string | null;
+    graphMtimeMs?: number;
+    error?: string;
+  }>;
+  graphifyUpdateFiles?: (payload: {
+    paths: string[];
+  }) => Promise<{ ok: boolean; flagged?: boolean; skipped?: boolean; error?: string }>;
+  /** 本地语义索引构建（BM25 + 可选 Ollama embeddings） */
+  workspaceCodeIndexBuild?: (payload?: {
+    embed?: boolean;
+    embedModel?: string;
+  }) => Promise<{
+    ok: boolean;
+    chunkCount?: number;
+    fileCount?: number;
+    hybrid?: boolean;
+    error?: string;
+  }>;
+  workspaceCodeIndexSearch?: (payload: {
+    query: string;
+    maxResults?: number;
+    boostPaths?: string[];
+  }) => Promise<{
+    ok: boolean;
+    hits?: {
+      relPath: string;
+      line: number;
+      endLine?: number;
+      text: string;
+      snippet?: string;
+      score?: number;
+    }[];
+    hybrid?: boolean;
+    chunkCount?: number;
+    error?: string;
+  }>;
+  workspaceCodeIndexStatus?: () => Promise<{
+    ok: boolean;
+    ready?: boolean;
+    hybrid?: boolean;
+    chunkCount?: number;
+    error?: string;
+  }>;
+  workspaceCodeIndexUpdateFiles?: (payload: {
+    paths: string[];
+  }) => Promise<{ ok: boolean; updated?: number; hybrid?: boolean; error?: string }>;
+  /** 启动 Ollama（如需）+ 拉取嵌入模型 + 重建 hybrid 索引 */
+  workspaceCodeIndexEnsureHybrid?: (payload?: {
+    embedModel?: string;
+    ollamaBase?: string;
+  }) => Promise<{
+    ok: boolean;
+    hybrid?: boolean;
+    chunkCount?: number;
+    embedModel?: string;
+    ollamaStarted?: boolean;
+    modelPulled?: boolean;
+    error?: string;
+  }>;
+  /**
+   * Host 侧 Agent 工具环（search/read/search_replace/write/run_command/run_tests/diagnostics/git_status）。
+   * 写盘受 Agent/Ask/Plan 约束；requestId 用于流式轨迹与中止。
+   */
+  hostAgentPrompt?: (payload: {
+    userLine: string;
+    priorMessages?: { role: string; content: string }[];
+    model?: string;
+    orchestratorModel?: string;
+    maxTurns?: number;
+    requestId?: string;
+    /** 打开文件 / Problems 等短上下文（非占位） */
+    contextAppendix?: string;
+  }) => Promise<{
+    ok: boolean;
+    content?: string;
+    error?: string | null;
+    aborted?: boolean;
+    deferredWrites?: { path: string; content: string }[];
+    writtenPaths?: string[];
+    verified?: boolean;
+    toolTrace?: {
+      tool: string;
+      detail?: string;
+      path?: string;
+      args?: Record<string, unknown>;
+      ok?: boolean;
+    }[];
+    mode?: string;
+    model?: string;
+    backend?: string;
+  }>;
+  hostAgentAbort?: (requestId: string) => Promise<{ ok: boolean }>;
+  /** npm 全局安装并探测 Claude Code CLI */
+  claudeCodeEnsureCli?: () => Promise<{
+    ok: boolean;
+    claudePath?: string;
+    versionLine?: string;
+    installed?: boolean;
+    error?: string;
+    hint?: string;
+    message?: string;
+  }>;
+  workspaceTsCodeFixes?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    endLine?: number;
+    endColumn?: number;
+    content?: string;
+    errorCodes?: number[];
+  }) => Promise<{
+    ok: boolean;
+    fixes?: {
+      id: string;
+      description: string;
+      fixName?: string | null;
+      changes: {
+        fileName: string;
+        textChanges: { start: number; length: number; newText: string }[];
+      }[];
+    }[];
+    error?: string;
+  }>;
+  workspaceTsApplyCodeFix?: (payload: {
+    relPath: string;
+    content?: string;
+    fix: {
+      changes: {
+        fileName: string;
+        textChanges: { start: number; length: number; newText: string }[];
+      }[];
+    };
+  }) => Promise<{
+    ok: boolean;
+    content?: string;
+    files?: { path: string; content: string }[];
+    changed?: boolean;
+    error?: string;
+  }>;
+  /** 探测多语言外部 LSP 候选 */
+  workspaceDetectExternalLsp?: () => Promise<{
+    ok: boolean;
+    languages?: {
+      id: string;
+      detected: boolean;
+      commandAvailable?: boolean;
+      serverHint: string | null;
+      running?: boolean;
+      lastError?: string | null;
+    }[];
+    error?: string;
+  }>;
+  workspaceExternalLspStatus?: () => Promise<{
+    ok: boolean;
+    languages?: {
+      id: string;
+      detected: boolean;
+      commandAvailable?: boolean;
+      serverHint: string | null;
+      installHint?: string | null;
+      running?: boolean;
+      lastError?: string | null;
+    }[];
+    error?: string;
+  }>;
+  workspacePythonDefinition?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    definition?: {
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+    } | null;
+    error?: string;
+  }>;
+  workspacePythonHover?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    hover?: {
+      display: string;
+      documentation?: string | null;
+      kind?: string | null;
+      fromLine: number;
+      fromCol: number;
+      toLine: number;
+      toCol: number;
+    } | null;
+    error?: string;
+  }>;
+  workspacePythonCompletions?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    completions?: {
+      label: string;
+      kind: string;
+      detail?: string | null;
+      insertText?: string;
+      sortText?: string;
+    }[];
+    fromLine?: number;
+    fromCol?: number;
+    error?: string;
+  }>;
+  workspacePythonReferences?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    references?: {
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+    }[];
+    error?: string;
+  }>;
+  workspacePythonRename?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+    newName?: string;
+  }) => Promise<{
+    ok: boolean;
+    canRename?: boolean;
+    displayName?: string | null;
+    locations?: {
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+    }[];
+    error?: string | null;
+  }>;
+  workspaceExternalLspDefinition?: DesktopApi["workspacePythonDefinition"];
+  workspaceExternalLspHover?: DesktopApi["workspacePythonHover"];
+  workspaceExternalLspCompletions?: DesktopApi["workspacePythonCompletions"];
+  workspaceExternalLspReferences?: DesktopApi["workspacePythonReferences"];
+  workspaceExternalLspRename?: DesktopApi["workspacePythonRename"];
   listWorkspaceMarkdownFiles?: () => Promise<{
     ok: boolean;
     files?: { relPath: string; mtimeMs: number; size: number }[];
@@ -343,6 +800,13 @@ export type DesktopApi = {
     statusLine?: string;
     error?: string | null;
   }>;
+  /** Agent 写盘后：仅这些路径的 `git diff HEAD -- paths` */
+  workspaceGetGitDiffPaths?: (payload: { paths: string[] }) => Promise<{
+    ok: boolean;
+    diff?: string;
+    paths?: string[];
+    error?: string | null;
+  }>;
   workspaceGetGitDiffVsBase?: (payload?: { base?: string }) => Promise<{
     ok: boolean;
     diff?: string;
@@ -353,11 +817,22 @@ export type DesktopApi = {
     message: string;
     stageAll?: boolean;
   }) => Promise<{ ok: boolean; output?: string | null; error?: string | null }>;
+  /** 撤销单个已跟踪文件的未提交改动 */
+  workspaceGitDiscardFile?: (payload: {
+    path: string;
+  }) => Promise<{ ok: boolean; path?: string; error?: string | null }>;
   workspaceGitRemoteSync?: (payload: {
     action: "fetch" | "pull" | "push";
   }) => Promise<{ ok: boolean; output?: string | null; error?: string | null }>;
   /** 工作区目录变更（选择 / 清除）后由主进程广播 */
   onWorkspaceChanged?: (fn: (detail: { workspace: string | null }) => void) => () => void;
+  /** `.cursor/rules` / 根规则文件变更（热更新） */
+  onWorkspaceRulesChanged?: (
+    fn: (detail: {
+      workspace: string | null;
+      files?: { relPath: string; mtimeMs: number; size: number }[];
+    }) => void,
+  ) => () => void;
   /** 轻量级文件存在性检查（仅 stat，不读内容） */
   fileStat?: (relPath: string) => Promise<{
     ok: boolean;
@@ -483,6 +958,8 @@ export type DesktopApi = {
       layoutStorage?: Record<string, string>;
       skipCheckpointConfirm?: boolean;
       defaultTerminalShell?: "bash" | "zsh";
+      ghostTextEnabled?: boolean;
+      completionMode?: "ghost" | "lsp" | "both";
     };
     error?: string;
   }>;
@@ -494,6 +971,8 @@ export type DesktopApi = {
     layoutStorage?: Record<string, string>;
     skipCheckpointConfirm?: boolean;
     defaultTerminalShell?: "bash" | "zsh";
+    ghostTextEnabled?: boolean;
+    completionMode?: "ghost" | "lsp" | "both";
   }) => Promise<{
     ok: boolean;
     prefs?: {
@@ -504,6 +983,8 @@ export type DesktopApi = {
       layoutStorage?: Record<string, string>;
       skipCheckpointConfirm?: boolean;
       defaultTerminalShell?: "bash" | "zsh";
+      ghostTextEnabled?: boolean;
+      completionMode?: "ghost" | "lsp" | "both";
     };
     error?: string;
   }>;
@@ -693,6 +1174,8 @@ export type DesktopApi = {
     isNewClaudeSession?: boolean;
     attachmentCount?: number;
     timeoutMs?: number;
+    /** Ask/Plan→plan；Agent→acceptEdits（） */
+    permissionMode?: "plan" | "default" | "acceptEdits" | "auto";
     attachments?: { kind: "image"; name?: string; mime?: string; dataUrl: string }[];
   }) => Promise<{
     ok: boolean;
@@ -1110,6 +1593,8 @@ export type DesktopApi = {
   memoryAppendEvent: (payload: Record<string, unknown>) => Promise<unknown>;
   onChatSessionsChanged: (fn: (detail: Record<string, unknown>) => void) => () => void;
   onChatSettingsChanged?: (fn: () => void) => () => void;
+  /** MCP 健康快照变更（启动探活 / 手动检查后） */
+  onMcpHealthChanged?: (fn: () => void) => () => void;
   onSchedulerToast: (fn: (data: { title?: string; body?: string }) => void) => () => void;
   onScheduledTasksChanged: (fn: (data: { tasks?: ScheduledTask[] }) => void) => () => void;
   onAgentExecChanged: (

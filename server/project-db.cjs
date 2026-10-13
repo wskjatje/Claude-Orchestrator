@@ -57,8 +57,26 @@ function closeDb() {
   }
 }
 
+/** @type {WeakMap<object, { get: import('better-sqlite3').Statement, set: import('better-sqlite3').Statement }>} */
+const kvStmtCache = new WeakMap()
+
+function kvStatements(db) {
+  let cached = kvStmtCache.get(db)
+  if (!cached) {
+    cached = {
+      get: db.prepare('SELECT value FROM kv WHERE key = ?'),
+      set: db.prepare(
+        `INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      ),
+    }
+    kvStmtCache.set(db, cached)
+  }
+  return cached
+}
+
 function dbGet(db, key) {
-  const row = db.prepare('SELECT value FROM kv WHERE key = ?').get(key)
+  const row = kvStatements(db).get.get(key)
   if (!row?.value) return null
   try {
     return JSON.parse(row.value)
@@ -69,10 +87,7 @@ function dbGet(db, key) {
 
 function dbSet(db, key, value) {
   const payload = JSON.stringify(value)
-  db.prepare(
-    `INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-  ).run(key, payload, Date.now())
+  kvStatements(db).set.run(key, payload, Date.now())
 }
 
 function readJsonFileIfExists(filePath) {

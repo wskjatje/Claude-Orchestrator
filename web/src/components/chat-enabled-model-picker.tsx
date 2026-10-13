@@ -73,7 +73,7 @@ function ModelPickerRows({
           >
             <span className="min-w-0 flex-1 truncate font-medium">{opt.label}</span>
             {opt.hint ? (
-              <span className="shrink-0 text-[10.5px] text-muted-foreground">{opt.hint}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">{opt.hint}</span>
             ) : null}
             {active ? <Check className="h-4 w-4 shrink-0 text-primary" strokeWidth={2.25} /> : null}
           </button>

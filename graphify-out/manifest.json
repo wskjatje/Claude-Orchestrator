@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   ".mcp.json": {
-    "mtime": 1784075571.8406239,
-    "ast_hash": "6e01fa3dd6f53637b7e603d469a1fbb4",
+    "mtime": 1784077231.472266,
+    "ast_hash": "445a115e733da3ffcddb352ca880d489",
     "semantic_hash": ""
   },
   ".vscode/extensions.json": {
@@ -64,109 +64,104 @@
     "ast_hash": "2761e8053555064e03708b2d25fd966b",
     "semantic_hash": ""
   },
-  "docs/chains/chain-mr1hql7f-bz7u8.json": {
-    "mtime": 1783060533.8830934,
-    "ast_hash": "ac3af9bd9e054f523662d3ddf8bb8ddc",
-    "semantic_hash": ""
-  },
   "docs/chains/index.json": {
-    "mtime": 1783060533.886212,
-    "ast_hash": "6f979eeb5af57dfa7d7abbae8d88e1d9",
+    "mtime": 1784077231.4718413,
+    "ast_hash": "91fbf3d1ef0eb62f9f609489a9196751",
     "semantic_hash": ""
   },
   "docs/chains/official-pipeline-agent-self-learning.json": {
-    "mtime": 1783060533.8836832,
-    "ast_hash": "1f4914067d50cd1e4c718d16ea64b276",
+    "mtime": 1784077231.4689658,
+    "ast_hash": "8d12a0a28237329803fac11af1e2052f",
     "semantic_hash": ""
   },
   "docs/chains/official-pipeline-frontend-ui.json": {
-    "mtime": 1783060533.8838751,
-    "ast_hash": "a6a7f8c4090febc2bb4f446cc341ae9b",
+    "mtime": 1784077231.469148,
+    "ast_hash": "0d49dcb63d1e41f93bdf8753c798f2fd",
     "semantic_hash": ""
   },
   "docs/chains/official-pipeline-release.json": {
-    "mtime": 1783060533.884033,
-    "ast_hash": "ceff68b32e8ca337ad06e8b55eaff380",
+    "mtime": 1784077231.4692898,
+    "ast_hash": "e925fa0c798ecc5ef2db62992866ec8b",
     "semantic_hash": ""
   },
   "docs/chains/official-pipeline-review-fix.json": {
-    "mtime": 1783060533.8841672,
-    "ast_hash": "cc75735125769588d93293397e3ceb2d",
+    "mtime": 1784077231.4694278,
+    "ast_hash": "d7301614e505e64f6a54b1c53744f849",
     "semantic_hash": ""
   },
   "docs/chains/official-sanshengliubu-dev-wbs.json": {
-    "mtime": 1783060533.8843281,
-    "ast_hash": "b139e94853b9e000afca4c68b85e7e89",
+    "mtime": 1784077231.4695811,
+    "ast_hash": "000d462cce3fc6cbb9e58e228d663191",
     "semantic_hash": ""
   },
   "docs/chains/official-sanshengliubu-orchestration.json": {
-    "mtime": 1783060533.8845537,
-    "ast_hash": "67defee9c83576a3386e6a7a7b7dfe48",
+    "mtime": 1784077231.4698215,
+    "ast_hash": "abee479064e91197de210cb793eaa576",
     "semantic_hash": ""
   },
   "docs/chains/official-sanshengliubu-pm-wbs.json": {
-    "mtime": 1783060533.8846974,
-    "ast_hash": "a3752aa437c5c6575e99025934d5f062",
+    "mtime": 1784077231.469953,
+    "ast_hash": "c5e7cc6ec969116f4578bf441f20ee1a",
     "semantic_hash": ""
   },
   "docs/chains/official-single-backend-engineer.json": {
-    "mtime": 1783060533.884817,
-    "ast_hash": "56aacd9f3522f6cec77cee3c6f54de64",
+    "mtime": 1784077231.4700725,
+    "ast_hash": "f7a41e2a1925013cd2c84928a7dc3ba7",
     "semantic_hash": ""
   },
   "docs/chains/official-single-code-reviewer.json": {
-    "mtime": 1783060533.8849316,
-    "ast_hash": "5bcdcb8a7deecc09226cbeb94e79d2ef",
+    "mtime": 1784077231.470179,
+    "ast_hash": "11269a66d8d0ce211c6390ae9e9af229",
     "semantic_hash": ""
   },
   "docs/chains/official-single-design-ui-designer.json": {
-    "mtime": 1783060533.8850477,
-    "ast_hash": "268ccf2faaad80473133101006c62ddd",
+    "mtime": 1784077231.4703043,
+    "ast_hash": "1f2a33dd80c11af648326861e151bf16",
     "semantic_hash": ""
   },
   "docs/chains/official-single-design-ux-architect.json": {
-    "mtime": 1783060533.88516,
-    "ast_hash": "477617e3daee52921b23f72f536cc188",
+    "mtime": 1784077231.470431,
+    "ast_hash": "c2acfeb53837c6aaa9dace7c5c25db3d",
     "semantic_hash": ""
   },
   "docs/chains/official-single-devops-engineer.json": {
-    "mtime": 1783060533.8852603,
-    "ast_hash": "b91dd5603ffe1a528ab49bffacd280a1",
+    "mtime": 1784077231.470563,
+    "ast_hash": "059b782afc79e0714baca0ca8365cc1e",
     "semantic_hash": ""
   },
   "docs/chains/official-single-frontend-engineer.json": {
-    "mtime": 1783060533.8853586,
-    "ast_hash": "3b74f6e0ab5ce34c8a21135922c08e8b",
+    "mtime": 1784077231.470694,
+    "ast_hash": "65f644b97dff180a10084f30ca6e198e",
     "semantic_hash": ""
   },
   "docs/chains/official-single-product-manager.json": {
-    "mtime": 1783060533.885467,
-    "ast_hash": "4d1ca5ba9d4e488edfc845882b4df7de",
+    "mtime": 1784077231.4707956,
+    "ast_hash": "1f756ef3976b045fb1a07a7a340b8393",
     "semantic_hash": ""
   },
   "docs/chains/official-single-project-manager.json": {
-    "mtime": 1783060533.8855748,
-    "ast_hash": "9b0d8f5af0e6f9d03aeef80cccbed5c1",
+    "mtime": 1784077231.470892,
+    "ast_hash": "f5f4c3d3e44691c8aa3477ecfddf69c1",
     "semantic_hash": ""
   },
   "docs/chains/official-single-qa-engineer.json": {
-    "mtime": 1783060533.885674,
-    "ast_hash": "e514e2a31b60b95eedff42dffd22fa0c",
+    "mtime": 1784077231.4712076,
+    "ast_hash": "8db2f6a47398d10e4d1271d9195d6811",
     "semantic_hash": ""
   },
   "docs/chains/official-single-software-architect.json": {
-    "mtime": 1783060533.8857865,
-    "ast_hash": "4f04e881ca0864f57c13e803fcd45049",
+    "mtime": 1784077231.4713545,
+    "ast_hash": "cd0fcdd5372b1571caefa1d5862f69e4",
     "semantic_hash": ""
   },
   "docs/chains/official-single-sprint-prioritizer.json": {
-    "mtime": 1783060533.8858986,
-    "ast_hash": "99caa19d33f7de7a4ad4b82b31d2f40d",
+    "mtime": 1784077231.4714704,
+    "ast_hash": "c4d257213ea4c4342f75c71793dc1060",
     "semantic_hash": ""
   },
   "docs/chains/official-single-ui-ux-designer.json": {
-    "mtime": 1783060533.8860042,
-    "ast_hash": "9c684b4634ac88ffa625f269fa4b45e5",
+    "mtime": 1784077231.4715865,
+    "ast_hash": "cf73e0eb6824d5b69976090ce8e9d08a",
     "semantic_hash": ""
   },
   "docs/claude-orchestrator/frontend-apps.catalog.json": {
@@ -2480,1077 +2475,1077 @@
     "semantic_hash": ""
   },
   "docs/agents/academic-anthropologist.md": {
-    "mtime": 1783060533.8195882,
+    "mtime": 1784077231.4032974,
     "ast_hash": "b1200987d52aff81a260b6bd3b798324",
     "semantic_hash": ""
   },
   "docs/agents/academic-geographer.md": {
-    "mtime": 1783060533.8197517,
+    "mtime": 1784077231.4035063,
     "ast_hash": "1fdac0cd399caf2d24a46911e47c9b79",
     "semantic_hash": ""
   },
   "docs/agents/academic-historian.md": {
-    "mtime": 1783060533.8198938,
+    "mtime": 1784077231.4036317,
     "ast_hash": "5b1ed1c13e8c4025db392134f2d4e1c3",
     "semantic_hash": ""
   },
   "docs/agents/academic-narratologist.md": {
-    "mtime": 1783060533.8200536,
+    "mtime": 1784077231.4038079,
     "ast_hash": "521c49a7b9f5a7497950c661aa6706f9",
     "semantic_hash": ""
   },
   "docs/agents/academic-psychologist.md": {
-    "mtime": 1783060533.8201697,
+    "mtime": 1784077231.4039292,
     "ast_hash": "b46e0c22d796399dc41c685cb62d995d",
     "semantic_hash": ""
   },
   "docs/agents/accounts-payable-agent.md": {
-    "mtime": 1783060533.8202858,
+    "mtime": 1784077231.4040372,
     "ast_hash": "70c12c118fd99dde5070b6dbac16c448",
     "semantic_hash": ""
   },
   "docs/agents/agentic-identity-trust.md": {
-    "mtime": 1783060533.8204072,
+    "mtime": 1784077231.4041476,
     "ast_hash": "d279d1dd21364b86f066145d6274595e",
     "semantic_hash": ""
   },
   "docs/agents/agents-orchestrator.md": {
-    "mtime": 1783060533.8205392,
+    "mtime": 1784077231.404274,
     "ast_hash": "8edef99633e34e44d2ba5de2f7e6bdd4",
     "semantic_hash": ""
   },
   "docs/agents/automation-governance-architect.md": {
-    "mtime": 1783060533.8206592,
+    "mtime": 1784077231.404393,
     "ast_hash": "5ae6b2bece5b0a2c7ad7ea61f46754fc",
     "semantic_hash": ""
   },
   "docs/agents/backend-engineer.md": {
-    "mtime": 1783060533.8207686,
+    "mtime": 1784077231.4045,
     "ast_hash": "f2bd2d983b0657d63c1f1bd034a7fbe5",
     "semantic_hash": ""
   },
   "docs/agents/blender-addon-engineer.md": {
-    "mtime": 1783060533.820879,
+    "mtime": 1784077231.4046063,
     "ast_hash": "004d5f131d7f652bb669236351e7619e",
     "semantic_hash": ""
   },
   "docs/agents/blockchain-security-auditor.md": {
-    "mtime": 1783060533.8209891,
+    "mtime": 1784077231.404706,
     "ast_hash": "1e5309dca03cf5b2eb35214cda1d7472",
     "semantic_hash": ""
   },
   "docs/agents/business-strategist.md": {
-    "mtime": 1783060533.8211021,
+    "mtime": 1784077231.4048984,
     "ast_hash": "614caa4fc4f2e81494b9fb8d9e155f65",
     "semantic_hash": ""
   },
   "docs/agents/change-management-consultant.md": {
-    "mtime": 1783060533.8212092,
+    "mtime": 1784077231.4050105,
     "ast_hash": "6dd8adddd707561824a3077963603a49",
     "semantic_hash": ""
   },
   "docs/agents/code-reviewer.md": {
-    "mtime": 1783060533.821314,
+    "mtime": 1784077231.4051182,
     "ast_hash": "c9d74f48e58782a1701b55aed9822230",
     "semantic_hash": ""
   },
   "docs/agents/compliance-auditor.md": {
-    "mtime": 1783060533.8214264,
+    "mtime": 1784077231.4052215,
     "ast_hash": "9dca01f77b17abf3866e413032189278",
     "semantic_hash": ""
   },
   "docs/agents/corporate-training-designer.md": {
-    "mtime": 1783060533.8215668,
+    "mtime": 1784077231.4053266,
     "ast_hash": "baa123da29cd7e3ae0efa270e8b7988e",
     "semantic_hash": ""
   },
   "docs/agents/customer-service.md": {
-    "mtime": 1783060533.821682,
+    "mtime": 1784077231.4054377,
     "ast_hash": "1e01f304c57220382aaa47e772796c67",
     "semantic_hash": ""
   },
   "docs/agents/customer-success-manager.md": {
-    "mtime": 1783060533.8217995,
+    "mtime": 1784077231.4055479,
     "ast_hash": "ad824cc3f0f1c0c97709fbd286f045a1",
     "semantic_hash": ""
   },
   "docs/agents/data-consolidation-agent.md": {
-    "mtime": 1783060533.8219323,
+    "mtime": 1784077231.4056475,
     "ast_hash": "a3077a4933442288d6b315269b3cfe47",
     "semantic_hash": ""
   },
   "docs/agents/design-brand-guardian.md": {
-    "mtime": 1783060533.8220484,
+    "mtime": 1784077231.405756,
     "ast_hash": "0c323fccf81954beea5584a3b45c6948",
     "semantic_hash": ""
   },
   "docs/agents/design-image-prompt-engineer.md": {
-    "mtime": 1783060533.8221626,
+    "mtime": 1784077231.4058862,
     "ast_hash": "9438801947128139771847b67dff9e1e",
     "semantic_hash": ""
   },
   "docs/agents/design-inclusive-visuals-specialist.md": {
-    "mtime": 1783060533.822275,
+    "mtime": 1784077231.406015,
     "ast_hash": "0c2bd13527ffc193b2680afd64a2404d",
     "semantic_hash": ""
   },
   "docs/agents/design-persona-walkthrough.md": {
-    "mtime": 1783060533.8223855,
+    "mtime": 1784077231.4061284,
     "ast_hash": "c5215029308431337145cba2db69eada",
     "semantic_hash": ""
   },
   "docs/agents/design-ui-designer.md": {
-    "mtime": 1783060533.822504,
+    "mtime": 1784077231.4062564,
     "ast_hash": "571379924f3f79bda2b4d8103b3d98b3",
     "semantic_hash": ""
   },
   "docs/agents/design-ux-architect.md": {
-    "mtime": 1783060533.822622,
+    "mtime": 1784077231.4063804,
     "ast_hash": "25a8a6af3f2cf3f815ec0e0c56787b5e",
     "semantic_hash": ""
   },
   "docs/agents/design-ux-researcher.md": {
-    "mtime": 1783060533.8227344,
+    "mtime": 1784077231.406503,
     "ast_hash": "baed2dbbbeedd5be76cac93ed47246ea",
     "semantic_hash": ""
   },
   "docs/agents/design-visual-storyteller.md": {
-    "mtime": 1783060533.822843,
+    "mtime": 1784077231.4066112,
     "ast_hash": "8cdaeba2b11850034c131bd18f3253ac",
     "semantic_hash": ""
   },
   "docs/agents/design-whimsy-injector.md": {
-    "mtime": 1783060533.8229508,
+    "mtime": 1784077231.4067142,
     "ast_hash": "646e53bfb4554bb7edcc75922f954912",
     "semantic_hash": ""
   },
   "docs/agents/devops-engineer.md": {
-    "mtime": 1783060533.8230627,
+    "mtime": 1784077231.4068134,
     "ast_hash": "bd95226e3349d4033280706f3dc6f82f",
     "semantic_hash": ""
   },
   "docs/agents/engineering-ai-data-remediation-engineer.md": {
-    "mtime": 1783060533.823171,
+    "mtime": 1784077231.4069211,
     "ast_hash": "15b3975263f25cf806bf9e1a0f798c52",
     "semantic_hash": ""
   },
   "docs/agents/engineering-ai-engineer.md": {
-    "mtime": 1783060533.8232806,
+    "mtime": 1784077231.407031,
     "ast_hash": "1f4cfe151ec515e860076dbdb5222a25",
     "semantic_hash": ""
   },
   "docs/agents/engineering-autonomous-optimization-architect.md": {
-    "mtime": 1783060533.8233955,
+    "mtime": 1784077231.407137,
     "ast_hash": "c19673924ed6ceb79a7efc1b42af45bc",
     "semantic_hash": ""
   },
   "docs/agents/engineering-backend-architect.md": {
-    "mtime": 1783060533.8235016,
+    "mtime": 1784077231.407236,
     "ast_hash": "0194415470f62abba1aa86cc09eb156d",
     "semantic_hash": ""
   },
   "docs/agents/engineering-cms-developer.md": {
-    "mtime": 1783060533.8236082,
+    "mtime": 1784077231.4073348,
     "ast_hash": "2e1bfb9510d0f1b15b2b1c011521a11a",
     "semantic_hash": ""
   },
   "docs/agents/engineering-code-reviewer.md": {
-    "mtime": 1783060533.8237157,
+    "mtime": 1784077231.407453,
     "ast_hash": "f1f053ad1c85556a6ff5db411ea2bbac",
     "semantic_hash": ""
   },
   "docs/agents/engineering-codebase-onboarding-engineer.md": {
-    "mtime": 1783060533.82383,
+    "mtime": 1784077231.4075627,
     "ast_hash": "ec1fe9b0588dba46e6a3ce505162801e",
     "semantic_hash": ""
   },
   "docs/agents/engineering-data-engineer.md": {
-    "mtime": 1783060533.8239393,
+    "mtime": 1784077231.4076633,
     "ast_hash": "c00812550086d53f38125ecb487590d7",
     "semantic_hash": ""
   },
   "docs/agents/engineering-database-optimizer.md": {
-    "mtime": 1783060533.8240485,
+    "mtime": 1784077231.4077795,
     "ast_hash": "c987bab0e4ee4426ebe9ac06aabe5992",
     "semantic_hash": ""
   },
   "docs/agents/engineering-devops-automator.md": {
-    "mtime": 1783060533.8241584,
+    "mtime": 1784077231.4078927,
     "ast_hash": "346d7984ed8d25493c4272871a2a6423",
     "semantic_hash": ""
   },
   "docs/agents/engineering-email-intelligence-engineer.md": {
-    "mtime": 1783060533.8242652,
+    "mtime": 1784077231.408001,
     "ast_hash": "b6cf0c8fa6b8a70e65d37243bc5db990",
     "semantic_hash": ""
   },
   "docs/agents/engineering-embedded-firmware-engineer.md": {
-    "mtime": 1783060533.8243732,
+    "mtime": 1784077231.4081123,
     "ast_hash": "78fce301e66078919766f65a0ca44bfc",
     "semantic_hash": ""
   },
   "docs/agents/engineering-feishu-integration-developer.md": {
-    "mtime": 1783060533.8244839,
+    "mtime": 1784077231.4082127,
     "ast_hash": "1614d8247311788aafc4c63353fd77d4",
     "semantic_hash": ""
   },
   "docs/agents/engineering-filament-optimization-specialist.md": {
-    "mtime": 1783060533.82459,
+    "mtime": 1784077231.4083142,
     "ast_hash": "fc4ac49863bd0776da0e73eff31fb65a",
     "semantic_hash": ""
   },
   "docs/agents/engineering-frontend-developer.md": {
-    "mtime": 1783060533.8246963,
+    "mtime": 1784077231.4084136,
     "ast_hash": "aae81eb16781095c197d6146b3237b55",
     "semantic_hash": ""
   },
   "docs/agents/engineering-git-workflow-master.md": {
-    "mtime": 1783060533.8248007,
+    "mtime": 1784077231.4085102,
     "ast_hash": "55b32b1df8125d5675f1de96c1ac5819",
     "semantic_hash": ""
   },
   "docs/agents/engineering-incident-response-commander.md": {
-    "mtime": 1783060533.824918,
+    "mtime": 1784077231.4086113,
     "ast_hash": "464ee61f1b4661c528c9875401c69fbd",
     "semantic_hash": ""
   },
   "docs/agents/engineering-it-service-manager.md": {
-    "mtime": 1783060533.8250241,
+    "mtime": 1784077231.4087086,
     "ast_hash": "b1646cd37c46304833e1ace7206c996e",
     "semantic_hash": ""
   },
   "docs/agents/engineering-minimal-change-engineer.md": {
-    "mtime": 1783060533.825163,
+    "mtime": 1784077231.4088032,
     "ast_hash": "c8536028b57379debcea75669ee9ceab",
     "semantic_hash": ""
   },
   "docs/agents/engineering-mobile-app-builder.md": {
-    "mtime": 1783060533.8253326,
+    "mtime": 1784077231.408902,
     "ast_hash": "b19e05283e12ca6fcf8a90d3347c9e33",
     "semantic_hash": ""
   },
   "docs/agents/engineering-orgscript-engineer.md": {
-    "mtime": 1783060533.8254616,
+    "mtime": 1784077231.4090068,
     "ast_hash": "47a065741be1b3b2c71f74d9722e4c09",
     "semantic_hash": ""
   },
   "docs/agents/engineering-prompt-engineer.md": {
-    "mtime": 1783060533.8255866,
+    "mtime": 1784077231.4091036,
     "ast_hash": "c463751396b25ec5deaf0c183c475455",
     "semantic_hash": ""
   },
   "docs/agents/engineering-rapid-prototyper.md": {
-    "mtime": 1783060533.8257103,
+    "mtime": 1784077231.4092066,
     "ast_hash": "13a490ad4a2f222ebf76fa453fe5126b",
     "semantic_hash": ""
   },
   "docs/agents/engineering-security-engineer.md": {
-    "mtime": 1783060533.8258424,
+    "mtime": 1784077231.4093308,
     "ast_hash": "67133f0f5c77e4c0c0e5e3db48d1114d",
     "semantic_hash": ""
   },
   "docs/agents/engineering-senior-developer.md": {
-    "mtime": 1783060533.825983,
+    "mtime": 1784077231.4094348,
     "ast_hash": "c7277920a0dc7478e00b435bdacfa513",
     "semantic_hash": ""
   },
   "docs/agents/engineering-software-architect.md": {
-    "mtime": 1783060533.8261325,
+    "mtime": 1784077231.409531,
     "ast_hash": "199d61465c26d6c157617bcfe1b6dd28",
     "semantic_hash": ""
   },
   "docs/agents/engineering-solidity-smart-contract-engineer.md": {
-    "mtime": 1783060533.826291,
+    "mtime": 1784077231.4097698,
     "ast_hash": "9ae324ac539f7013878bffaf8375c9af",
     "semantic_hash": ""
   },
   "docs/agents/engineering-sre.md": {
-    "mtime": 1783060533.8264427,
+    "mtime": 1784077231.4099023,
     "ast_hash": "e7ee833eff16ba5fb2af36f9511208a8",
     "semantic_hash": ""
   },
   "docs/agents/engineering-technical-writer.md": {
-    "mtime": 1783060533.8265789,
+    "mtime": 1784077231.4100165,
     "ast_hash": "26c099c65949c81439f7b6ddc1188a77",
     "semantic_hash": ""
   },
   "docs/agents/engineering-threat-detection-engineer.md": {
-    "mtime": 1783060533.8267272,
+    "mtime": 1784077231.4101217,
     "ast_hash": "ad86a74354f506c2feb1af2dbf0cbdcf",
     "semantic_hash": ""
   },
   "docs/agents/engineering-voice-ai-integration-engineer.md": {
-    "mtime": 1783060533.8268747,
+    "mtime": 1784077231.4102252,
     "ast_hash": "d14cda7524487413c380eb5565032221",
     "semantic_hash": ""
   },
   "docs/agents/engineering-wechat-mini-program-developer.md": {
-    "mtime": 1783060533.8270266,
+    "mtime": 1784077231.410344,
     "ast_hash": "8af00165cd9ec9c0a8be739293f772b4",
     "semantic_hash": ""
   },
   "docs/agents/finance-bookkeeper-controller.md": {
-    "mtime": 1783060533.8271482,
+    "mtime": 1784077231.4104505,
     "ast_hash": "80d1ea98d6717d2e893291c2c1e8e7f7",
     "semantic_hash": ""
   },
   "docs/agents/finance-financial-analyst.md": {
-    "mtime": 1783060533.8272738,
+    "mtime": 1784077231.4105494,
     "ast_hash": "f6db901a9df3ea2f6026e47964bb06cc",
     "semantic_hash": ""
   },
   "docs/agents/finance-fpa-analyst.md": {
-    "mtime": 1783060533.8274086,
+    "mtime": 1784077231.4106493,
     "ast_hash": "b4bdf25c506a73dd4d28996105b3880e",
     "semantic_hash": ""
   },
   "docs/agents/finance-investment-researcher.md": {
-    "mtime": 1783060533.8275237,
+    "mtime": 1784077231.4107435,
     "ast_hash": "a299ad4fe8eb540a7834e6b7cc0c6d42",
     "semantic_hash": ""
   },
   "docs/agents/finance-tax-strategist.md": {
-    "mtime": 1783060533.8276477,
+    "mtime": 1784077231.4108372,
     "ast_hash": "8286db78a6d4effc15322196417168e6",
     "semantic_hash": ""
   },
   "docs/agents/frontend-engineer.md": {
-    "mtime": 1783060533.8277822,
+    "mtime": 1784077231.4109414,
     "ast_hash": "3ad71d8e715a85efc5bc97a308ef2591",
     "semantic_hash": ""
   },
   "docs/agents/game-audio-engineer.md": {
-    "mtime": 1783060533.8278966,
+    "mtime": 1784077231.4110453,
     "ast_hash": "f8a141f7eb2846761dad8fe06b015c56",
     "semantic_hash": ""
   },
   "docs/agents/game-designer.md": {
-    "mtime": 1783060533.8280065,
+    "mtime": 1784077231.4111495,
     "ast_hash": "dec1f3230032ea9e1d7362fc1eb9e79d",
     "semantic_hash": ""
   },
   "docs/agents/godot-gameplay-scripter.md": {
-    "mtime": 1783060533.8281114,
+    "mtime": 1784077231.4112506,
     "ast_hash": "684d4fdd1e04509ad65b1cc5523d0512",
     "semantic_hash": ""
   },
   "docs/agents/godot-multiplayer-engineer.md": {
-    "mtime": 1783060533.8282235,
+    "mtime": 1784077231.4113572,
     "ast_hash": "784e1e2f6a5632b8e396d6708e6a633d",
     "semantic_hash": ""
   },
   "docs/agents/godot-shader-developer.md": {
-    "mtime": 1783060533.828331,
+    "mtime": 1784077231.411457,
     "ast_hash": "71dbb793b4d986e14458ab1c82a53092",
     "semantic_hash": ""
   },
   "docs/agents/government-digital-presales-consultant.md": {
-    "mtime": 1783060533.8284376,
+    "mtime": 1784077231.4115582,
     "ast_hash": "9c7dbec89c940fc9414ba030d3add3de",
     "semantic_hash": ""
   },
   "docs/agents/grant-writer.md": {
-    "mtime": 1783060533.8285456,
+    "mtime": 1784077231.4116576,
     "ast_hash": "7a175588d787b18e8dc6bcddb825a617",
     "semantic_hash": ""
   },
   "docs/agents/healthcare-customer-service.md": {
-    "mtime": 1783060533.8286529,
+    "mtime": 1784077231.411762,
     "ast_hash": "6d90a43fcde17c49263e307d83f84743",
     "semantic_hash": ""
   },
   "docs/agents/healthcare-marketing-compliance.md": {
-    "mtime": 1783060533.8287787,
+    "mtime": 1784077231.4118679,
     "ast_hash": "6c4d803ca0dfe2d83ca34dd5b496a74f",
     "semantic_hash": ""
   },
   "docs/agents/historian.md": {
-    "mtime": 1783060533.8289082,
+    "mtime": 1784077231.411969,
     "ast_hash": "5b47f6943fbb263c68d982c9dabf5403",
     "semantic_hash": ""
   },
   "docs/agents/hospitality-guest-services.md": {
-    "mtime": 1783060533.8290622,
+    "mtime": 1784077231.4120843,
     "ast_hash": "137abf65b6f9288719468dcbfcf831e5",
     "semantic_hash": ""
   },
   "docs/agents/hr-onboarding.md": {
-    "mtime": 1783060533.829204,
+    "mtime": 1784077231.412185,
     "ast_hash": "61a4966e25ee8f77845085cedab38c1b",
     "semantic_hash": ""
   },
   "docs/agents/identity-graph-operator.md": {
-    "mtime": 1783060533.8293176,
+    "mtime": 1784077231.4122915,
     "ast_hash": "a013d838ca70aca97936dd04b6bf3b87",
     "semantic_hash": ""
   },
   "docs/agents/language-translator.md": {
-    "mtime": 1783060533.8294234,
+    "mtime": 1784077231.4124,
     "ast_hash": "5e1a19483febc5e7576a5a3d322284f5",
     "semantic_hash": ""
   },
   "docs/agents/legal-billing-time-tracking.md": {
-    "mtime": 1783060533.829528,
+    "mtime": 1784077231.412513,
     "ast_hash": "b9f12645ffe181c340635e08707d2b2a",
     "semantic_hash": ""
   },
   "docs/agents/legal-client-intake.md": {
-    "mtime": 1783060533.8296518,
+    "mtime": 1784077231.4126163,
     "ast_hash": "0f45f8337926635e20c5b5f08b93082a",
     "semantic_hash": ""
   },
   "docs/agents/legal-document-review.md": {
-    "mtime": 1783060533.829757,
+    "mtime": 1784077231.4127195,
     "ast_hash": "9f6595d7fbc956bcf78d44ac25010802",
     "semantic_hash": ""
   },
   "docs/agents/level-designer.md": {
-    "mtime": 1783060533.8298583,
+    "mtime": 1784077231.412816,
     "ast_hash": "0c61d5fe18efbe6762d0421165892b01",
     "semantic_hash": ""
   },
   "docs/agents/literature-scholar.md": {
-    "mtime": 1783060533.8299646,
+    "mtime": 1784077231.412915,
     "ast_hash": "7b5269652bbd10db5ad9ab321fd26c78",
     "semantic_hash": ""
   },
   "docs/agents/loan-officer-assistant.md": {
-    "mtime": 1783060533.8300812,
+    "mtime": 1784077231.413011,
     "ast_hash": "eb6b7d487eb0cef66dbc15c7ea899494",
     "semantic_hash": ""
   },
   "docs/agents/lsp-index-engineer.md": {
-    "mtime": 1783060533.8301904,
+    "mtime": 1784077231.4131038,
     "ast_hash": "31883251b6ca7770a5d98fffb4028f99",
     "semantic_hash": ""
   },
   "docs/agents/macos-spatial-metal-engineer.md": {
-    "mtime": 1783060533.8302915,
+    "mtime": 1784077231.4132044,
     "ast_hash": "b3344fe5082a55ef1f5b41370e537f4d",
     "semantic_hash": ""
   },
   "docs/agents/marketing-aeo-foundations.md": {
-    "mtime": 1783060533.8304186,
+    "mtime": 1784077231.4133055,
     "ast_hash": "96dfad5f3524f12d849ef2aed79a6b82",
     "semantic_hash": ""
   },
   "docs/agents/marketing-agentic-search-optimizer.md": {
-    "mtime": 1783060533.830537,
+    "mtime": 1784077231.4134042,
     "ast_hash": "3b4f434c41ee27483e32f3da7a3ed2dd",
     "semantic_hash": ""
   },
   "docs/agents/marketing-ai-citation-strategist.md": {
-    "mtime": 1783060533.8306515,
+    "mtime": 1784077231.4134984,
     "ast_hash": "970771393927c5058151f13714bbab4b",
     "semantic_hash": ""
   },
   "docs/agents/marketing-app-store-optimizer.md": {
-    "mtime": 1783060533.830756,
+    "mtime": 1784077231.4136026,
     "ast_hash": "c087d868d3d0fc0ea2e3478bc47bc75b",
     "semantic_hash": ""
   },
   "docs/agents/marketing-baidu-seo-specialist.md": {
-    "mtime": 1783060533.830865,
+    "mtime": 1784077231.4137342,
     "ast_hash": "49a6f78ff7f020ad2d6903f33ca52c19",
     "semantic_hash": ""
   },
   "docs/agents/marketing-bilibili-content-strategist.md": {
-    "mtime": 1783060533.8309684,
+    "mtime": 1784077231.4138532,
     "ast_hash": "f275846d3d3144ec3952dcab2a09b828",
     "semantic_hash": ""
   },
   "docs/agents/marketing-book-co-author.md": {
-    "mtime": 1783060533.8310769,
+    "mtime": 1784077231.414256,
     "ast_hash": "e6fcfd780ab401b3bbecbc423b3a6b03",
     "semantic_hash": ""
   },
   "docs/agents/marketing-carousel-growth-engine.md": {
-    "mtime": 1783060533.831183,
+    "mtime": 1784077231.414359,
     "ast_hash": "d4411a40b445fc9ebf4e9cf165e1c313",
     "semantic_hash": ""
   },
   "docs/agents/marketing-china-ecommerce-operator.md": {
-    "mtime": 1783060533.831297,
+    "mtime": 1784077231.414473,
     "ast_hash": "b09640ae5ff8cf68e83fba88efead853",
     "semantic_hash": ""
   },
   "docs/agents/marketing-china-market-localization-strategist.md": {
-    "mtime": 1783060533.831414,
+    "mtime": 1784077231.4145777,
     "ast_hash": "6fc16e5f0b150f0066b5a708954f441f",
     "semantic_hash": ""
   },
   "docs/agents/marketing-content-creator.md": {
-    "mtime": 1783060533.8315246,
+    "mtime": 1784077231.4146774,
     "ast_hash": "3268b5b5e0e3ee78197d0dbb13864f83",
     "semantic_hash": ""
   },
   "docs/agents/marketing-cross-border-ecommerce.md": {
-    "mtime": 1783060533.8316338,
+    "mtime": 1784077231.414774,
     "ast_hash": "9fb9a65d5c96976fe9dac73f35944ec9",
     "semantic_hash": ""
   },
   "docs/agents/marketing-douyin-strategist.md": {
-    "mtime": 1783060533.8317382,
+    "mtime": 1784077231.41487,
     "ast_hash": "d4f832d52f27f610fe85a1d60a1f1770",
     "semantic_hash": ""
   },
   "docs/agents/marketing-email-strategist.md": {
-    "mtime": 1783060533.8318396,
+    "mtime": 1784077231.4149702,
     "ast_hash": "352bc36ec67fca2378f958b463212a41",
     "semantic_hash": ""
   },
   "docs/agents/marketing-global-podcast-strategist.md": {
-    "mtime": 1783060533.8319414,
+    "mtime": 1784077231.4150705,
     "ast_hash": "1d3e683859ae8c335875df612bf7742c",
     "semantic_hash": ""
   },
   "docs/agents/marketing-growth-hacker.md": {
-    "mtime": 1783060533.8320673,
+    "mtime": 1784077231.415166,
     "ast_hash": "b709c13c224c607eb7f46de191c514fe",
     "semantic_hash": ""
   },
   "docs/agents/marketing-instagram-curator.md": {
-    "mtime": 1783060533.832181,
+    "mtime": 1784077231.4152615,
     "ast_hash": "7def2288de37be58e7d073e58ac81ebb",
     "semantic_hash": ""
   },
   "docs/agents/marketing-kuaishou-strategist.md": {
-    "mtime": 1783060533.832283,
+    "mtime": 1784077231.4153562,
     "ast_hash": "f7bf5885d0c4e03566cd8575511a103f",
     "semantic_hash": ""
   },
   "docs/agents/marketing-linkedin-content-creator.md": {
-    "mtime": 1783060533.8324113,
+    "mtime": 1784077231.4154608,
     "ast_hash": "b37ce4a1ec3babcbf23fbafda409de5a",
     "semantic_hash": ""
   },
   "docs/agents/marketing-livestream-commerce-coach.md": {
-    "mtime": 1783060533.832524,
+    "mtime": 1784077231.4155583,
     "ast_hash": "2cf5207dc1ef030a5854d0d367217b99",
     "semantic_hash": ""
   },
   "docs/agents/marketing-multi-platform-publisher.md": {
-    "mtime": 1783060533.8326287,
+    "mtime": 1784077231.415662,
     "ast_hash": "86a723e9c89572654caa36d27f4905c5",
     "semantic_hash": ""
   },
   "docs/agents/marketing-podcast-strategist.md": {
-    "mtime": 1783060533.832732,
+    "mtime": 1784077231.4157593,
     "ast_hash": "9b72fa0c14bfdd56d7c70c3db7e402d7",
     "semantic_hash": ""
   },
   "docs/agents/marketing-pr-communications-manager.md": {
-    "mtime": 1783060533.832832,
+    "mtime": 1784077231.4158587,
     "ast_hash": "15561b38be84ee99059306ba131ceaa3",
     "semantic_hash": ""
   },
   "docs/agents/marketing-private-domain-operator.md": {
-    "mtime": 1783060533.8329344,
+    "mtime": 1784077231.4159632,
     "ast_hash": "14c1e8efddb691ede2a2200d84e56815",
     "semantic_hash": ""
   },
   "docs/agents/marketing-reddit-community-builder.md": {
-    "mtime": 1783060533.8330398,
+    "mtime": 1784077231.4160597,
     "ast_hash": "fe53b3bfba3fc8d0f74cdb31082b545f",
     "semantic_hash": ""
   },
   "docs/agents/marketing-seo-specialist.md": {
-    "mtime": 1783060533.833148,
+    "mtime": 1784077231.4161546,
     "ast_hash": "4c0e67100e67188312a15104a2b80b6d",
     "semantic_hash": ""
   },
   "docs/agents/marketing-short-video-editing-coach.md": {
-    "mtime": 1783060533.8332496,
+    "mtime": 1784077231.4162512,
     "ast_hash": "338e02905ff19145325ca9c1408b3278",
     "semantic_hash": ""
   },
   "docs/agents/marketing-social-media-strategist.md": {
-    "mtime": 1783060533.8333712,
+    "mtime": 1784077231.4163525,
     "ast_hash": "249095b7ae3f015e02081344782155ef",
     "semantic_hash": ""
   },
   "docs/agents/marketing-tiktok-strategist.md": {
-    "mtime": 1783060533.8335109,
+    "mtime": 1784077231.4164486,
     "ast_hash": "0efa8797309582c05ae498441b3cebcb",
     "semantic_hash": ""
   },
   "docs/agents/marketing-twitter-engager.md": {
-    "mtime": 1783060533.8336344,
+    "mtime": 1784077231.4165456,
     "ast_hash": "357a5e23559f0b69e3f5c212b1745488",
     "semantic_hash": ""
   },
   "docs/agents/marketing-video-optimization-specialist.md": {
-    "mtime": 1783060533.8338318,
+    "mtime": 1784077231.4166431,
     "ast_hash": "ccb124c20f654003e50240b0bf42f5bc",
     "semantic_hash": ""
   },
   "docs/agents/marketing-wechat-official-account.md": {
-    "mtime": 1783060533.8340294,
+    "mtime": 1784077231.4167392,
     "ast_hash": "74ab6e1ae662ebc983c74a10677af75a",
     "semantic_hash": ""
   },
   "docs/agents/marketing-weibo-strategist.md": {
-    "mtime": 1783060533.834158,
+    "mtime": 1784077231.4168413,
     "ast_hash": "72322eacc5f411a72114b47c3e16f61c",
     "semantic_hash": ""
   },
   "docs/agents/marketing-x-twitter-intelligence-analyst.md": {
-    "mtime": 1783060533.834286,
+    "mtime": 1784077231.416937,
     "ast_hash": "535998bcbe780065c4d5c5b24105fae5",
     "semantic_hash": ""
   },
   "docs/agents/marketing-xiaohongshu-specialist.md": {
-    "mtime": 1783060533.8344038,
+    "mtime": 1784077231.4170313,
     "ast_hash": "b92d87eddc278dfa39e990bbb3758c21",
     "semantic_hash": ""
   },
   "docs/agents/marketing-zhihu-strategist.md": {
-    "mtime": 1783060533.8345172,
+    "mtime": 1784077231.4171286,
     "ast_hash": "8f5e99d84e718a153522b16540059fda",
     "semantic_hash": ""
   },
   "docs/agents/medical-billing-coding-specialist.md": {
-    "mtime": 1783060533.8346572,
+    "mtime": 1784077231.4172297,
     "ast_hash": "bc93fcf27ed368bbbef999e2a79c3bac",
     "semantic_hash": ""
   },
   "docs/agents/narrative-designer.md": {
-    "mtime": 1783060533.8347902,
+    "mtime": 1784077231.4173267,
     "ast_hash": "165f8a69d4be3495fa73917ff44c9d84",
     "semantic_hash": ""
   },
   "docs/agents/paid-media-auditor.md": {
-    "mtime": 1783060533.8349094,
+    "mtime": 1784077231.4174283,
     "ast_hash": "e57fac6371eda5bcd07ea849d989d72b",
     "semantic_hash": ""
   },
   "docs/agents/paid-media-creative-strategist.md": {
-    "mtime": 1783060533.835023,
+    "mtime": 1784077231.4175243,
     "ast_hash": "214fa91a0ac362e6153d38a8e922c312",
     "semantic_hash": ""
   },
   "docs/agents/paid-media-paid-social-strategist.md": {
-    "mtime": 1783060533.8351326,
+    "mtime": 1784077231.4176192,
     "ast_hash": "896e950ad44e07391145e19fd0309399",
     "semantic_hash": ""
   },
   "docs/agents/paid-media-ppc-strategist.md": {
-    "mtime": 1783060533.8352454,
+    "mtime": 1784077231.417722,
     "ast_hash": "04cff6b810465b3092b657217c7fe7c5",
     "semantic_hash": ""
   },
   "docs/agents/paid-media-programmatic-buyer.md": {
-    "mtime": 1783060533.8354425,
+    "mtime": 1784077231.4178202,
     "ast_hash": "9b3070795502674fe9c9d2bc2d2d1be6",
     "semantic_hash": ""
   },
   "docs/agents/paid-media-search-query-analyst.md": {
-    "mtime": 1783060533.8355947,
+    "mtime": 1784077231.4179235,
     "ast_hash": "0d09d8ebd15ca888f1279f51a1438439",
     "semantic_hash": ""
   },
   "docs/agents/paid-media-tracking-specialist.md": {
-    "mtime": 1783060533.8357248,
+    "mtime": 1784077231.418021,
     "ast_hash": "ef4e2df35a723f4d698919b3623c092c",
     "semantic_hash": ""
   },
   "docs/agents/personal-growth-mentor.md": {
-    "mtime": 1783060533.8358665,
+    "mtime": 1784077231.418122,
     "ast_hash": "f63249334eae968ba69a10658cea9e57",
     "semantic_hash": ""
   },
   "docs/agents/product-behavioral-nudge-engine.md": {
-    "mtime": 1783060533.8359916,
+    "mtime": 1784077231.4183636,
     "ast_hash": "fe4cb338e4ce87e285b6e49a6ba5031a",
     "semantic_hash": ""
   },
   "docs/agents/product-feedback-synthesizer.md": {
-    "mtime": 1783060533.8363338,
+    "mtime": 1784077231.418458,
     "ast_hash": "5a90d8a3c34aaa737931f43c56527c5c",
     "semantic_hash": ""
   },
   "docs/agents/product-manager.md": {
-    "mtime": 1783060533.8364546,
+    "mtime": 1784077231.418556,
     "ast_hash": "3ea5627b3173c55d56d7674f89dbd896",
     "semantic_hash": ""
   },
   "docs/agents/product-sprint-prioritizer.md": {
-    "mtime": 1783060533.8365684,
+    "mtime": 1784077231.4186537,
     "ast_hash": "a26cdc44ae529ddfa4b926baf96c791d",
     "semantic_hash": ""
   },
   "docs/agents/product-trend-researcher.md": {
-    "mtime": 1783060533.8366947,
+    "mtime": 1784077231.4187553,
     "ast_hash": "b9248789aeb5a46a346458b724a2f59d",
     "semantic_hash": ""
   },
   "docs/agents/project-management-experiment-tracker.md": {
-    "mtime": 1783060533.8368149,
+    "mtime": 1784077231.4188535,
     "ast_hash": "d4adba44ccac14c74dbaf25a1c50ecc6",
     "semantic_hash": ""
   },
   "docs/agents/project-management-jira-workflow-steward.md": {
-    "mtime": 1783060533.8369372,
+    "mtime": 1784077231.4189517,
     "ast_hash": "8b5fe6a95e73738cae5e4ed986d4ac00",
     "semantic_hash": ""
   },
   "docs/agents/project-management-meeting-notes-specialist.md": {
-    "mtime": 1783060533.837059,
+    "mtime": 1784077231.4190881,
     "ast_hash": "7cd91f44b1f6482a7a1391e588584c48",
     "semantic_hash": ""
   },
   "docs/agents/project-management-project-shepherd.md": {
-    "mtime": 1783060533.8371732,
+    "mtime": 1784077231.419226,
     "ast_hash": "19f8d2ca13d8725337dd09ea95bf123d",
     "semantic_hash": ""
   },
   "docs/agents/project-management-studio-operations.md": {
-    "mtime": 1783060533.8372788,
+    "mtime": 1784077231.419332,
     "ast_hash": "84c063da50f7dbff560aa51aaead2b40",
     "semantic_hash": ""
   },
   "docs/agents/project-management-studio-producer.md": {
-    "mtime": 1783060533.8373837,
+    "mtime": 1784077231.4194303,
     "ast_hash": "61641e6bc4aedd07c050b60975e696c1",
     "semantic_hash": ""
   },
   "docs/agents/project-manager-senior.md": {
-    "mtime": 1783060533.8374915,
+    "mtime": 1784077231.4195294,
     "ast_hash": "a75b6817f639fcf57013baccea02ad31",
     "semantic_hash": ""
   },
   "docs/agents/project-manager.md": {
-    "mtime": 1783060533.837596,
+    "mtime": 1784077231.4196312,
     "ast_hash": "113e1ffd51a66287b9ca00bdaa107b9d",
     "semantic_hash": ""
   },
   "docs/agents/qa-engineer.md": {
-    "mtime": 1783060533.8376994,
+    "mtime": 1784077231.4197302,
     "ast_hash": "4aeb1fc491da1b807bab14e6d42c5fe9",
     "semantic_hash": ""
   },
   "docs/agents/real-estate-buyer-seller.md": {
-    "mtime": 1783060533.8378108,
+    "mtime": 1784077231.419831,
     "ast_hash": "415a7d07b885d7a4ec9367ea27d1d0dc",
     "semantic_hash": ""
   },
   "docs/agents/recruitment-specialist.md": {
-    "mtime": 1783060533.8379364,
+    "mtime": 1784077231.4199307,
     "ast_hash": "ecc58084f48ddf9566608032aba7e4c3",
     "semantic_hash": ""
   },
   "docs/agents/report-distribution-agent.md": {
-    "mtime": 1783060533.8380628,
+    "mtime": 1784077231.420034,
     "ast_hash": "69137dcd8b7e1695f97fa100cc0cb26c",
     "semantic_hash": ""
   },
   "docs/agents/retail-customer-returns.md": {
-    "mtime": 1783060533.8381796,
+    "mtime": 1784077231.4201376,
     "ast_hash": "ee7232e8a8c539dc974314c349677e95",
     "semantic_hash": ""
   },
   "docs/agents/roblox-avatar-creator.md": {
-    "mtime": 1783060533.8382921,
+    "mtime": 1784077231.4202354,
     "ast_hash": "236e40df1b8243598535a69b7323cff2",
     "semantic_hash": ""
   },
   "docs/agents/roblox-experience-designer.md": {
-    "mtime": 1783060533.8384025,
+    "mtime": 1784077231.4203296,
     "ast_hash": "aac9c4f5c87dd3ecf168c420a1b34d14",
     "semantic_hash": ""
   },
   "docs/agents/roblox-systems-scripter.md": {
-    "mtime": 1783060533.838514,
+    "mtime": 1784077231.4204285,
     "ast_hash": "6c9caa3d41bf8d746f8d9c21e3956398",
     "semantic_hash": ""
   },
   "docs/agents/sales-account-strategist.md": {
-    "mtime": 1783060533.8386204,
+    "mtime": 1784077231.4205241,
     "ast_hash": "820965ca54b0c1b0ebadd4671f2dec28",
     "semantic_hash": ""
   },
   "docs/agents/sales-coach.md": {
-    "mtime": 1783060533.8387365,
+    "mtime": 1784077231.420624,
     "ast_hash": "f0858ceec0a752a302325f8f6ea2f753",
     "semantic_hash": ""
   },
   "docs/agents/sales-data-extraction-agent.md": {
-    "mtime": 1783060533.8388438,
+    "mtime": 1784077231.4207199,
     "ast_hash": "c6d4ae777c15f7c5132967f1afef5136",
     "semantic_hash": ""
   },
   "docs/agents/sales-deal-strategist.md": {
-    "mtime": 1783060533.8389733,
+    "mtime": 1784077231.4208171,
     "ast_hash": "1f0c796b44bbf3c693f0d42451bcba12",
     "semantic_hash": ""
   },
   "docs/agents/sales-discovery-coach.md": {
-    "mtime": 1783060533.8390834,
+    "mtime": 1784077231.4210672,
     "ast_hash": "3f0ae746b6e6888e416b42d2495f5fd0",
     "semantic_hash": ""
   },
   "docs/agents/sales-engineer.md": {
-    "mtime": 1783060533.8392065,
+    "mtime": 1784077231.4211679,
     "ast_hash": "429005422e85d39bdb7f4185af1b832e",
     "semantic_hash": ""
   },
   "docs/agents/sales-offer-lead-gen-strategist.md": {
-    "mtime": 1783060533.8393326,
+    "mtime": 1784077231.4212666,
     "ast_hash": "d051154a64228cd49800a9f9cbcf21c9",
     "semantic_hash": ""
   },
   "docs/agents/sales-outbound-strategist.md": {
-    "mtime": 1783060533.83946,
+    "mtime": 1784077231.42136,
     "ast_hash": "d2f7dd70068b9e5f92edc789ac3f3c84",
     "semantic_hash": ""
   },
   "docs/agents/sales-outreach.md": {
-    "mtime": 1783060533.839577,
+    "mtime": 1784077231.4214585,
     "ast_hash": "c054bdfb50b414b187357d0fd7bd6e17",
     "semantic_hash": ""
   },
   "docs/agents/sales-pipeline-analyst.md": {
-    "mtime": 1783060533.8396966,
+    "mtime": 1784077231.421554,
     "ast_hash": "1044f958abb18a0976eff325bb4d20aa",
     "semantic_hash": ""
   },
   "docs/agents/sales-proposal-strategist.md": {
-    "mtime": 1783060533.8398108,
+    "mtime": 1784077231.4216542,
     "ast_hash": "b7c5f0177578936147d6cd043a2dc0c8",
     "semantic_hash": ""
   },
   "docs/agents/software-architect.md": {
-    "mtime": 1783060533.8399136,
+    "mtime": 1784077231.421749,
     "ast_hash": "640b5f622c7f9596efcf9b8d76f55c11",
     "semantic_hash": ""
   },
   "docs/agents/specialized-chief-of-staff.md": {
-    "mtime": 1783060533.8400404,
+    "mtime": 1784077231.421872,
     "ast_hash": "463aa6c2d208b92f6868f7dba4cca039",
     "semantic_hash": ""
   },
   "docs/agents/specialized-civil-engineer.md": {
-    "mtime": 1783060533.8402293,
+    "mtime": 1784077231.422008,
     "ast_hash": "bf2ecd54495ace2b4769c1e2090d7b2d",
     "semantic_hash": ""
   },
   "docs/agents/specialized-cultural-intelligence-strategist.md": {
-    "mtime": 1783060533.8403533,
+    "mtime": 1784077231.422118,
     "ast_hash": "c6b633280c3918c6404b2739f1060547",
     "semantic_hash": ""
   },
   "docs/agents/specialized-developer-advocate.md": {
-    "mtime": 1783060533.8404577,
+    "mtime": 1784077231.4222155,
     "ast_hash": "b8e50787a851618c979509092f55eec1",
     "semantic_hash": ""
   },
   "docs/agents/specialized-document-generator.md": {
-    "mtime": 1783060533.8405614,
+    "mtime": 1784077231.422314,
     "ast_hash": "04ee9e399e5115ac9772b90670557c52",
     "semantic_hash": ""
   },
   "docs/agents/specialized-french-consulting-market.md": {
-    "mtime": 1783060533.840669,
+    "mtime": 1784077231.4224176,
     "ast_hash": "38cf761a68b839a13593dc9bd8373ced",
     "semantic_hash": ""
   },
   "docs/agents/specialized-korean-business-navigator.md": {
-    "mtime": 1783060533.840782,
+    "mtime": 1784077231.422579,
     "ast_hash": "67deab1770090eea7ef48fa6fe9472b2",
     "semantic_hash": ""
   },
   "docs/agents/specialized-mcp-builder.md": {
-    "mtime": 1783060533.840895,
+    "mtime": 1784077231.4227028,
     "ast_hash": "fe9ef55d57f5e1e3753b1d68e4460e8e",
     "semantic_hash": ""
   },
   "docs/agents/specialized-model-qa.md": {
-    "mtime": 1783060533.841001,
+    "mtime": 1784077231.4228294,
     "ast_hash": "495fc55598cb9d079a73d2271ab7598d",
     "semantic_hash": ""
   },
   "docs/agents/specialized-pricing-analyst.md": {
-    "mtime": 1783060533.8411074,
+    "mtime": 1784077231.4229596,
     "ast_hash": "60b18971adf6c45ea78d0cf26697dee0",
     "semantic_hash": ""
   },
   "docs/agents/specialized-salesforce-architect.md": {
-    "mtime": 1783060533.8412259,
+    "mtime": 1784077231.4230657,
     "ast_hash": "048877dceca8f9ba2482977b380ff519",
     "semantic_hash": ""
   },
   "docs/agents/specialized-workflow-architect.md": {
-    "mtime": 1783060533.8413496,
+    "mtime": 1784077231.4231927,
     "ast_hash": "2e098038952bd6255aecb2f432896896",
     "semantic_hash": ""
   },
   "docs/agents/study-abroad-advisor.md": {
-    "mtime": 1783060533.841605,
+    "mtime": 1784077231.4233015,
     "ast_hash": "d47f1757674c2b17ce6344fdb0890ebc",
     "semantic_hash": ""
   },
   "docs/agents/supply-chain-strategist.md": {
-    "mtime": 1783060533.8417094,
+    "mtime": 1784077231.4234264,
     "ast_hash": "9a07f8c4d6258ef1bfaa87a4de98a7f9",
     "semantic_hash": ""
   },
   "docs/agents/support-analytics-reporter.md": {
-    "mtime": 1783060533.8418124,
+    "mtime": 1784077231.4235373,
     "ast_hash": "bccdd38e912397092bb3176a9bbe90c6",
     "semantic_hash": ""
   },
   "docs/agents/support-executive-summary-generator.md": {
-    "mtime": 1783060533.8419185,
+    "mtime": 1784077231.4236329,
     "ast_hash": "7d9e8e32abbcc305a743ea34bc0fdb28",
     "semantic_hash": ""
   },
   "docs/agents/support-finance-tracker.md": {
-    "mtime": 1783060533.8420312,
+    "mtime": 1784077231.423727,
     "ast_hash": "3391feb2d2b6ae3a73ce4dba5b2d8da9",
     "semantic_hash": ""
   },
   "docs/agents/support-infrastructure-maintainer.md": {
-    "mtime": 1783060533.8421304,
+    "mtime": 1784077231.4238226,
     "ast_hash": "39fd925a268cb1bc425a45318eed5c3b",
     "semantic_hash": ""
   },
   "docs/agents/support-legal-compliance-checker.md": {
-    "mtime": 1783060533.8422296,
+    "mtime": 1784077231.4239256,
     "ast_hash": "4414cbcf1ade4d2f3af81fb71cd3f071",
     "semantic_hash": ""
   },
   "docs/agents/support-support-responder.md": {
-    "mtime": 1783060533.8423357,
+    "mtime": 1784077231.4240289,
     "ast_hash": "d7ff38191641dd6159a99b2014aa4471",
     "semantic_hash": ""
   },
   "docs/agents/technical-artist.md": {
-    "mtime": 1783060533.8424387,
+    "mtime": 1784077231.4241245,
     "ast_hash": "a90e09512b9cbc5f561afd18b53134c6",
     "semantic_hash": ""
   },
   "docs/agents/terminal-integration-specialist.md": {
-    "mtime": 1783060533.842538,
+    "mtime": 1784077231.4242198,
     "ast_hash": "3d547d02f911768da763e0245d059cd2",
     "semantic_hash": ""
   },
   "docs/agents/testing-accessibility-auditor.md": {
-    "mtime": 1783060533.8426406,
+    "mtime": 1784077231.4243293,
     "ast_hash": "479712e2af030b6ec55c50dcda42fad6",
     "semantic_hash": ""
   },
   "docs/agents/testing-api-tester.md": {
-    "mtime": 1783060533.8427525,
+    "mtime": 1784077231.4244323,
     "ast_hash": "b08d6c03d302e1a0285deeb2aecd72b6",
     "semantic_hash": ""
   },
   "docs/agents/testing-evidence-collector.md": {
-    "mtime": 1783060533.8428738,
+    "mtime": 1784077231.4245362,
     "ast_hash": "22bedd48d8d2fed2b48560fb2a125780",
     "semantic_hash": ""
   },
   "docs/agents/testing-performance-benchmarker.md": {
-    "mtime": 1783060533.842998,
+    "mtime": 1784077231.4246397,
     "ast_hash": "1cec8fe4a38f795d0138c88029b55cc8",
     "semantic_hash": ""
   },
   "docs/agents/testing-reality-checker.md": {
-    "mtime": 1783060533.843134,
+    "mtime": 1784077231.4247572,
     "ast_hash": "03bbaceeb1de01ec0074ae393844dbac",
     "semantic_hash": ""
   },
   "docs/agents/testing-test-results-analyzer.md": {
-    "mtime": 1783060533.8432648,
+    "mtime": 1784077231.424874,
     "ast_hash": "61ffd0696689b82344bb5fa9d698ebb1",
     "semantic_hash": ""
   },
   "docs/agents/testing-tool-evaluator.md": {
-    "mtime": 1783060533.8434021,
+    "mtime": 1784077231.4249833,
     "ast_hash": "081f93928114ad75425652d8a832b64b",
     "semantic_hash": ""
   },
   "docs/agents/testing-workflow-optimizer.md": {
-    "mtime": 1783060533.8435245,
+    "mtime": 1784077231.4250932,
     "ast_hash": "a7729bdd04410144f2d5dabc4a95e8d5",
     "semantic_hash": ""
   },
   "docs/agents/ui-ux-designer.md": {
-    "mtime": 1783060533.843639,
+    "mtime": 1784077231.425194,
     "ast_hash": "fd3eeec5047e9691adc5c38770229be7",
     "semantic_hash": ""
   },
   "docs/agents/unity-architect.md": {
-    "mtime": 1783060533.8438108,
+    "mtime": 1784077231.42534,
     "ast_hash": "1ee36bd239235372352e99556d4d50ae",
     "semantic_hash": ""
   },
   "docs/agents/unity-editor-tool-developer.md": {
-    "mtime": 1783060533.8439496,
+    "mtime": 1784077231.4254396,
     "ast_hash": "548b1e26d4af4de811c07b7d8b2446a4",
     "semantic_hash": ""
   },
   "docs/agents/unity-multiplayer-engineer.md": {
-    "mtime": 1783060533.8440664,
+    "mtime": 1784077231.4255373,
     "ast_hash": "fc9f932c3aca396c90bf172e6a6beeb2",
     "semantic_hash": ""
   },
   "docs/agents/unity-shader-graph-artist.md": {
-    "mtime": 1783060533.8441815,
+    "mtime": 1784077231.4256425,
     "ast_hash": "9d4d45f47444e188f0bb60aa953349b4",
     "semantic_hash": ""
   },
   "docs/agents/unreal-multiplayer-architect.md": {
-    "mtime": 1783060533.8443115,
+    "mtime": 1784077231.4257417,
     "ast_hash": "c0e3dc915ed710d1fb577ed242fa5bf3",
     "semantic_hash": ""
   },
   "docs/agents/unreal-systems-engineer.md": {
-    "mtime": 1783060533.8444433,
+    "mtime": 1784077231.4258413,
     "ast_hash": "783308a5f5cbc1241bc5cb2f3ae7deed",
     "semantic_hash": ""
   },
   "docs/agents/unreal-technical-artist.md": {
-    "mtime": 1783060533.844563,
+    "mtime": 1784077231.4259546,
     "ast_hash": "cf14fcf67dcfac69ebed93e7a739d639",
     "semantic_hash": ""
   },
   "docs/agents/unreal-world-builder.md": {
-    "mtime": 1783060533.8446782,
+    "mtime": 1784077231.4260623,
     "ast_hash": "4c8634dc25fc3938386fe49cf9e10bd6",
     "semantic_hash": ""
   },
   "docs/agents/visionos-spatial-engineer.md": {
-    "mtime": 1783060533.8447833,
+    "mtime": 1784077231.426168,
     "ast_hash": "d2cab39261f1b97fed7dc156fd87441a",
     "semantic_hash": ""
   },
   "docs/agents/xr-cockpit-interaction-specialist.md": {
-    "mtime": 1783060533.8448908,
+    "mtime": 1784077231.4264135,
     "ast_hash": "7c6a0ef4edeb4e9a21c2c5cf3789343b",
     "semantic_hash": ""
   },
   "docs/agents/xr-immersive-developer.md": {
-    "mtime": 1783060533.8450003,
+    "mtime": 1784077231.4265227,
     "ast_hash": "0c7447e3002c754d57e0f3f26c129eaf",
     "semantic_hash": ""
   },
   "docs/agents/xr-interface-architect.md": {
-    "mtime": 1783060533.8451064,
+    "mtime": 1784077231.4266224,
     "ast_hash": "3b7188e519202fbfbc0ec04166689df1",
     "semantic_hash": ""
   },
   "docs/agents/zk-steward.md": {
-    "mtime": 1783060533.8452117,
+    "mtime": 1784077231.4267228,
     "ast_hash": "ed8653392c98a54ee56bbb371a8720bf",
     "semantic_hash": ""
   },
   "docs/agents/\u9879\u76ee\u7ecf\u7406.md": {
-    "mtime": 1783060533.8453374,
-    "ast_hash": "c851f9baf5140845d1a7d887a204e0fd",
+    "mtime": 1784077231.4269042,
+    "ast_hash": "7966b2f1cf2f2a94b97d84db1c1b6bb0",
     "semantic_hash": ""
   },
   "docs/claude-orchestrator-apps.md": {
-    "mtime": 1783060533.8868341,
+    "mtime": 1784077231.472729,
     "ast_hash": "e44b32310c449a75a4e8014e847c5209",
     "semantic_hash": ""
   },
@@ -3560,1307 +3555,1307 @@
     "semantic_hash": ""
   },
   "docs/skills/_\u5355\u901a\u9053\u63a8\u8350\u6280\u80fd\u7d22\u5f15.md": {
-    "mtime": 1783060533.8458624,
+    "mtime": 1784077231.4272702,
     "ast_hash": "29dfb154c562bb8ea668e58c7fd3f8ab",
     "semantic_hash": ""
   },
   "docs/skills/academic-anthropologist.md": {
-    "mtime": 1783060533.8459697,
+    "mtime": 1784077231.427382,
     "ast_hash": "24c34e5a44529af70599f1270cff8903",
     "semantic_hash": ""
   },
   "docs/skills/academic-geographer.md": {
-    "mtime": 1783060533.8460765,
+    "mtime": 1784077231.4274833,
     "ast_hash": "e6d3770826cdda87fd1ff95efe9227a2",
     "semantic_hash": ""
   },
   "docs/skills/academic-historian.md": {
-    "mtime": 1783060533.846183,
+    "mtime": 1784077231.427584,
     "ast_hash": "4fb9de8b1770efc34488901cb976fd47",
     "semantic_hash": ""
   },
   "docs/skills/academic-narratologist.md": {
-    "mtime": 1783060533.8462884,
+    "mtime": 1784077231.4276836,
     "ast_hash": "1f4c55c427ec736a7c93e59698261f8b",
     "semantic_hash": ""
   },
   "docs/skills/academic-psychologist.md": {
-    "mtime": 1783060533.8464015,
+    "mtime": 1784077231.4277873,
     "ast_hash": "b8a61c1b450827cdfe29521732429f82",
     "semantic_hash": ""
   },
   "docs/skills/accessibility-baseline.md": {
-    "mtime": 1783060533.8465035,
+    "mtime": 1784077231.427893,
     "ast_hash": "6a58a17705bf7f950cc076bf53ab27a0",
     "semantic_hash": ""
   },
   "docs/skills/accounts-payable-agent.md": {
-    "mtime": 1783060533.846612,
+    "mtime": 1784077231.4280248,
     "ast_hash": "61b4cfdc75c62dc231d6bd702b089b41",
     "semantic_hash": ""
   },
   "docs/skills/agentic-identity-trust.md": {
-    "mtime": 1783060533.8467097,
+    "mtime": 1784077231.4281309,
     "ast_hash": "20226b2b390bf41b78f5edaa1b1a5d50",
     "semantic_hash": ""
   },
   "docs/skills/agents-orchestrator.md": {
-    "mtime": 1783060533.846812,
+    "mtime": 1784077231.428232,
     "ast_hash": "09aadce13a0865d0062f6cd870a050ac",
     "semantic_hash": ""
   },
   "docs/skills/api-contract-design.md": {
-    "mtime": 1783060533.8469117,
+    "mtime": 1784077231.4283335,
     "ast_hash": "fb48eaf904a3eb55bdf89ed2e5d48acc",
     "semantic_hash": ""
   },
   "docs/skills/arch-boundary-definition.md": {
-    "mtime": 1783060533.8470213,
+    "mtime": 1784077231.4284337,
     "ast_hash": "feef26b157329c3227c30212e1aee0e7",
     "semantic_hash": ""
   },
   "docs/skills/automated-test-cases.md": {
-    "mtime": 1783060533.8471231,
+    "mtime": 1784077231.4285433,
     "ast_hash": "170825dea755a8a821022b86c3775b94",
     "semantic_hash": ""
   },
   "docs/skills/automation-governance-architect.md": {
-    "mtime": 1783060533.8472216,
+    "mtime": 1784077231.4288003,
     "ast_hash": "f76659521e518dac2d44ce4f4455ced1",
     "semantic_hash": ""
   },
   "docs/skills/backend-implementation.md": {
-    "mtime": 1783060533.8473256,
+    "mtime": 1784077231.429164,
     "ast_hash": "0ec0ba9d73d11c0511ed55afc9706ebc",
     "semantic_hash": ""
   },
   "docs/skills/blender-addon-engineer.md": {
-    "mtime": 1783060533.847561,
+    "mtime": 1784077231.4294374,
     "ast_hash": "7abcaae01ac33a174ee25b95e32652d2",
     "semantic_hash": ""
   },
   "docs/skills/blockchain-security-auditor.md": {
-    "mtime": 1783060533.8476613,
+    "mtime": 1784077231.429577,
     "ast_hash": "1bcfc5b34d5d06ad19f661db06484a16",
     "semantic_hash": ""
   },
   "docs/skills/brand-guidelines.md": {
-    "mtime": 1783060533.847974,
+    "mtime": 1784077231.4298384,
     "ast_hash": "7d64365c95b318c7f1ef3875e4184036",
     "semantic_hash": ""
   },
   "docs/skills/business-strategist.md": {
-    "mtime": 1783060533.8482518,
+    "mtime": 1784077231.4300978,
     "ast_hash": "eb724b06d7bcc5d24d6b65cd3bbe9d59",
     "semantic_hash": ""
   },
   "docs/skills/canvas-design.md": {
-    "mtime": 1783060533.848506,
+    "mtime": 1784077231.430261,
     "ast_hash": "5dc54fd8fccc721c7f2b41566bded709",
     "semantic_hash": ""
   },
   "docs/skills/capacity-dependencies.md": {
-    "mtime": 1783060533.8486376,
+    "mtime": 1784077231.4304626,
     "ast_hash": "c0ab9cdc75ab3a9c3370430b455383d7",
     "semantic_hash": ""
   },
   "docs/skills/change-management-consultant.md": {
-    "mtime": 1783060533.8488834,
+    "mtime": 1784077231.430812,
     "ast_hash": "7cd91a32e407f162be7321f5981cb818",
     "semantic_hash": ""
   },
   "docs/skills/cicd-workflow.md": {
-    "mtime": 1783060533.8492079,
+    "mtime": 1784077231.4309492,
     "ast_hash": "babf102f862d892f5ebbb2642dbccef7",
     "semantic_hash": ""
   },
   "docs/skills/compliance-auditor.md": {
-    "mtime": 1783060533.8493092,
+    "mtime": 1784077231.4310749,
     "ast_hash": "d79c139111be0478787eb1d337ff1027",
     "semantic_hash": ""
   },
   "docs/skills/component-a11y-baseline.md": {
-    "mtime": 1783060533.849415,
+    "mtime": 1784077231.4311984,
     "ast_hash": "9faf3e146ead872841bd58f0e7ba4893",
     "semantic_hash": ""
   },
   "docs/skills/corporate-training-designer.md": {
-    "mtime": 1783060533.8495374,
+    "mtime": 1784077231.4313138,
     "ast_hash": "64d6e3cebbc4137de3d057d1debb1f27",
     "semantic_hash": ""
   },
   "docs/skills/correctness-review.md": {
-    "mtime": 1783060533.849642,
+    "mtime": 1784077231.431439,
     "ast_hash": "7f14699eb8b2971458aa6e3dcfc10816",
     "semantic_hash": ""
   },
   "docs/skills/customer-service.md": {
-    "mtime": 1783060533.849744,
+    "mtime": 1784077231.4315658,
     "ast_hash": "90b04cc5e2aa02b4eb6f8f9ff424cf95",
     "semantic_hash": ""
   },
   "docs/skills/customer-success-manager.md": {
-    "mtime": 1783060533.8498535,
+    "mtime": 1784077231.4318235,
     "ast_hash": "75005c3bdadb391f6cdca2f851e2bd61",
     "semantic_hash": ""
   },
   "docs/skills/data-consolidation-agent.md": {
-    "mtime": 1783060533.8501039,
+    "mtime": 1784077231.431956,
     "ast_hash": "5f273ef245c3ea8f4edb8465bd0ae4d3",
     "semantic_hash": ""
   },
   "docs/skills/data-layer-design.md": {
-    "mtime": 1783060533.8502347,
+    "mtime": 1784077231.432129,
     "ast_hash": "2827380438df1e32b915fc3bc952a85c",
     "semantic_hash": ""
   },
   "docs/skills/defect-closure.md": {
-    "mtime": 1783060533.8505142,
+    "mtime": 1784077231.4322584,
     "ast_hash": "95f7514984c11b781e7ec79f0a192cf0",
     "semantic_hash": ""
   },
   "docs/skills/dependency-orchestration.md": {
-    "mtime": 1783060533.8506613,
+    "mtime": 1784077231.4323938,
     "ast_hash": "735e3d580faf6b85e141972a828b246e",
     "semantic_hash": ""
   },
   "docs/skills/design-brand-guardian.md": {
-    "mtime": 1783060533.8508291,
+    "mtime": 1784077231.4325967,
     "ast_hash": "915ef075cdaeaa0478884913bcf414c3",
     "semantic_hash": ""
   },
   "docs/skills/design-image-prompt-engineer.md": {
-    "mtime": 1783060533.8511987,
+    "mtime": 1784077231.4327989,
     "ast_hash": "32919a1adc95fb1ff654502e7d0fdd74",
     "semantic_hash": ""
   },
   "docs/skills/design-inclusive-visuals-specialist.md": {
-    "mtime": 1783060533.8515532,
+    "mtime": 1784077231.4329324,
     "ast_hash": "c35aab9de2a8202bfc8f4d15058a03dd",
     "semantic_hash": ""
   },
   "docs/skills/design-persona-walkthrough.md": {
-    "mtime": 1783060533.851699,
+    "mtime": 1784077231.433193,
     "ast_hash": "dc83cea807ec8d8429e70a1eba7ef00d",
     "semantic_hash": ""
   },
   "docs/skills/design-ux-researcher.md": {
-    "mtime": 1783060533.8519797,
+    "mtime": 1784077231.4335132,
     "ast_hash": "c7ef8e50e70ef3e06fc8a1227c05aa1e",
     "semantic_hash": ""
   },
   "docs/skills/design-visual-storyteller.md": {
-    "mtime": 1783060533.8522594,
+    "mtime": 1784077231.4336586,
     "ast_hash": "e3e055a46725206f66c7d40ab7089429",
     "semantic_hash": ""
   },
   "docs/skills/design-whimsy-injector.md": {
-    "mtime": 1783060533.8523984,
+    "mtime": 1784077231.433804,
     "ast_hash": "c3c4629b3d9e7dfe635315b5694eb56f",
     "semantic_hash": ""
   },
   "docs/skills/engineering-ai-data-remediation-engineer.md": {
-    "mtime": 1783060533.8525329,
+    "mtime": 1784077231.4339345,
     "ast_hash": "3117c700a4925311ba21a6fdff0e62e9",
     "semantic_hash": ""
   },
   "docs/skills/engineering-ai-engineer.md": {
-    "mtime": 1783060533.8526628,
+    "mtime": 1784077231.4340732,
     "ast_hash": "e9fb05551155a7f0c64d6d3c86f918b4",
     "semantic_hash": ""
   },
   "docs/skills/engineering-autonomous-optimization-architect.md": {
-    "mtime": 1783060533.8527875,
+    "mtime": 1784077231.4341998,
     "ast_hash": "577fe0d9c1d77759d6614f9755ec95a5",
     "semantic_hash": ""
   },
   "docs/skills/engineering-backend-architect.md": {
-    "mtime": 1783060533.8529172,
+    "mtime": 1784077231.4343312,
     "ast_hash": "2d840dbc68a8d91a34a645a06b23a538",
     "semantic_hash": ""
   },
   "docs/skills/engineering-cms-developer.md": {
-    "mtime": 1783060533.8530426,
+    "mtime": 1784077231.4344537,
     "ast_hash": "e5ed5cac6a139232d77144046999d0f7",
     "semantic_hash": ""
   },
   "docs/skills/engineering-code-reviewer.md": {
-    "mtime": 1783060533.8531692,
+    "mtime": 1784077231.434626,
     "ast_hash": "981b13038a383726f25e23c9e87990fb",
     "semantic_hash": ""
   },
   "docs/skills/engineering-codebase-onboarding-engineer.md": {
-    "mtime": 1783060533.8534105,
+    "mtime": 1784077231.4347491,
     "ast_hash": "9b2c9edac4a50547ebd5ad1367d6d37f",
     "semantic_hash": ""
   },
   "docs/skills/engineering-data-engineer.md": {
-    "mtime": 1783060533.853536,
+    "mtime": 1784077231.434867,
     "ast_hash": "8b549255fdbaab83076ecb4dcf2459f2",
     "semantic_hash": ""
   },
   "docs/skills/engineering-database-optimizer.md": {
-    "mtime": 1783060533.8536701,
+    "mtime": 1784077231.4349976,
     "ast_hash": "5d3357158ed99b500c261a9a3b6eeac2",
     "semantic_hash": ""
   },
   "docs/skills/engineering-devops-automator.md": {
-    "mtime": 1783060533.853802,
+    "mtime": 1784077231.4351273,
     "ast_hash": "175122c6485706631c403966518cbddc",
     "semantic_hash": ""
   },
   "docs/skills/engineering-email-intelligence-engineer.md": {
-    "mtime": 1783060533.85393,
+    "mtime": 1784077231.4352486,
     "ast_hash": "b430c6084d6e9a0f195240762cb3d7e5",
     "semantic_hash": ""
   },
   "docs/skills/engineering-embedded-firmware-engineer.md": {
-    "mtime": 1783060533.8540387,
+    "mtime": 1784077231.4355042,
     "ast_hash": "157423801bf9c2137698dd643cb0fa58",
     "semantic_hash": ""
   },
   "docs/skills/engineering-feishu-integration-developer.md": {
-    "mtime": 1783060533.8542857,
+    "mtime": 1784077231.4356277,
     "ast_hash": "97aba3ae8b7eb6e58929411c05c9a92f",
     "semantic_hash": ""
   },
   "docs/skills/engineering-filament-optimization-specialist.md": {
-    "mtime": 1783060533.854409,
+    "mtime": 1784077231.4357717,
     "ast_hash": "bd63883354559ea5f123c51720fb1aa2",
     "semantic_hash": ""
   },
   "docs/skills/engineering-frontend-developer.md": {
-    "mtime": 1783060533.854523,
+    "mtime": 1784077231.4359229,
     "ast_hash": "bc78aa9590e881fead8ba3458f1ca247",
     "semantic_hash": ""
   },
   "docs/skills/engineering-git-workflow-master.md": {
-    "mtime": 1783060533.8546393,
+    "mtime": 1784077231.4360566,
     "ast_hash": "5e64a2680ba2b58d0556774adca0905f",
     "semantic_hash": ""
   },
   "docs/skills/engineering-incident-response-commander.md": {
-    "mtime": 1783060533.854867,
+    "mtime": 1784077231.43618,
     "ast_hash": "03157b2198fd68e43ced2efce1b67640",
     "semantic_hash": ""
   },
   "docs/skills/engineering-it-service-manager.md": {
-    "mtime": 1783060533.8550496,
+    "mtime": 1784077231.436291,
     "ast_hash": "e0563342f6a8f1b825930dcf08060c8d",
     "semantic_hash": ""
   },
   "docs/skills/engineering-minimal-change-engineer.md": {
-    "mtime": 1783060533.855202,
+    "mtime": 1784077231.4363956,
     "ast_hash": "d742c1646f46d1f9321081a11cf7efbe",
     "semantic_hash": ""
   },
   "docs/skills/engineering-mobile-app-builder.md": {
-    "mtime": 1783060533.855352,
+    "mtime": 1784077231.436691,
     "ast_hash": "c10d9080fb0b8001b7fe512f590e3827",
     "semantic_hash": ""
   },
   "docs/skills/engineering-orgscript-engineer.md": {
-    "mtime": 1783060533.8556812,
+    "mtime": 1784077231.436852,
     "ast_hash": "010b2ca26fb9fde3242e18ebefd7c761",
     "semantic_hash": ""
   },
   "docs/skills/engineering-prompt-engineer.md": {
-    "mtime": 1783060533.855863,
+    "mtime": 1784077231.437051,
     "ast_hash": "1ca3b84e52d62fbf7eed071a2989d8ee",
     "semantic_hash": ""
   },
   "docs/skills/engineering-rapid-prototyper.md": {
-    "mtime": 1783060533.8561192,
+    "mtime": 1784077231.4371953,
     "ast_hash": "ee08237da9f0ff597c372c5b5a3ed118",
     "semantic_hash": ""
   },
   "docs/skills/engineering-security-engineer.md": {
-    "mtime": 1783060533.8563697,
+    "mtime": 1784077231.437346,
     "ast_hash": "37dc5e9a734c6d8a2a44a39e9647c226",
     "semantic_hash": ""
   },
   "docs/skills/engineering-senior-developer.md": {
-    "mtime": 1783060533.8565793,
+    "mtime": 1784077231.4374442,
     "ast_hash": "ab71e2a6c1a36595a4bbaf6ce60c3c6c",
     "semantic_hash": ""
   },
   "docs/skills/engineering-software-architect.md": {
-    "mtime": 1783060533.8567197,
+    "mtime": 1784077231.437568,
     "ast_hash": "a5c311770dc031999b186cb4ed4ecb55",
     "semantic_hash": ""
   },
   "docs/skills/engineering-solidity-smart-contract-engineer.md": {
-    "mtime": 1783060533.856956,
+    "mtime": 1784077231.4376652,
     "ast_hash": "396f3de2f0c07249095d95d98b9795b5",
     "semantic_hash": ""
   },
   "docs/skills/engineering-sre.md": {
-    "mtime": 1783060533.857067,
+    "mtime": 1784077231.4378202,
     "ast_hash": "9e5da33460bcff6c7349085af727af74",
     "semantic_hash": ""
   },
   "docs/skills/engineering-technical-writer.md": {
-    "mtime": 1783060533.857286,
+    "mtime": 1784077231.4379392,
     "ast_hash": "8edda889bcd3828251e00fe1ce49d8d3",
     "semantic_hash": ""
   },
   "docs/skills/engineering-threat-detection-engineer.md": {
-    "mtime": 1783060533.8574014,
+    "mtime": 1784077231.4380715,
     "ast_hash": "21ab1735af6e42bec3ccde02b8d9115a",
     "semantic_hash": ""
   },
   "docs/skills/engineering-voice-ai-integration-engineer.md": {
-    "mtime": 1783060533.8576307,
+    "mtime": 1784077231.4382746,
     "ast_hash": "287304e3c93feb398db056176f6720c6",
     "semantic_hash": ""
   },
   "docs/skills/engineering-wechat-mini-program-developer.md": {
-    "mtime": 1783060533.8578684,
+    "mtime": 1784077231.438389,
     "ast_hash": "26b7d1c5f4c9c144d5641efb793d31a4",
     "semantic_hash": ""
   },
   "docs/skills/figma-implement-design.md": {
-    "mtime": 1783060533.8579712,
+    "mtime": 1784077231.438493,
     "ast_hash": "ccb7521bd1cfbcfe996b4dce23a44b14",
     "semantic_hash": ""
   },
   "docs/skills/finance-bookkeeper-controller.md": {
-    "mtime": 1783060533.8580804,
+    "mtime": 1784077231.4387133,
     "ast_hash": "9cb347295326ad02a178487a32b31680",
     "semantic_hash": ""
   },
   "docs/skills/finance-financial-analyst.md": {
-    "mtime": 1783060533.8582952,
+    "mtime": 1784077231.4388626,
     "ast_hash": "74c8c32baccf6db3a9b61547c9d9810e",
     "semantic_hash": ""
   },
   "docs/skills/finance-fpa-analyst.md": {
-    "mtime": 1783060533.8585632,
+    "mtime": 1784077231.4389622,
     "ast_hash": "2b1d93bd9b7d7b9b1387a20f426f0212",
     "semantic_hash": ""
   },
   "docs/skills/finance-investment-researcher.md": {
-    "mtime": 1783060533.8586822,
+    "mtime": 1784077231.439068,
     "ast_hash": "78691c98abfaf0e8a6f225ec80f2a0ca",
     "semantic_hash": ""
   },
   "docs/skills/finance-tax-strategist.md": {
-    "mtime": 1783060533.8587916,
+    "mtime": 1784077231.4391649,
     "ast_hash": "d009406297f1034094c221d1006c9e9d",
     "semantic_hash": ""
   },
   "docs/skills/frontend-design.md": {
-    "mtime": 1783060533.8589356,
+    "mtime": 1784077231.4392738,
     "ast_hash": "31c633612585bf2dd4e6d1103afc9f33",
     "semantic_hash": ""
   },
   "docs/skills/frontend-implementation.md": {
-    "mtime": 1783060533.859076,
+    "mtime": 1784077231.439413,
     "ast_hash": "f585dd1e2ea2fb9fec026390f020c014",
     "semantic_hash": ""
   },
   "docs/skills/frontend-skill.md": {
-    "mtime": 1783060533.8591824,
+    "mtime": 1784077231.4395328,
     "ast_hash": "e0242c16c8d0076d6a5c01d4d943c460",
     "semantic_hash": ""
   },
   "docs/skills/game-audio-engineer.md": {
-    "mtime": 1783060533.8593082,
+    "mtime": 1784077231.4396374,
     "ast_hash": "ae1a535b1c9f201bf118812ae31c644a",
     "semantic_hash": ""
   },
   "docs/skills/game-designer.md": {
-    "mtime": 1783060533.8594315,
+    "mtime": 1784077231.439735,
     "ast_hash": "580adcadcb761863e9ed4c98a1d86252",
     "semantic_hash": ""
   },
   "docs/skills/gepeto/SKILL.md": {
-    "mtime": 1783060533.8596792,
+    "mtime": 1784077231.4404166,
     "ast_hash": "37107330ab1db56b5fb0466a4d5e25f3",
     "semantic_hash": ""
   },
   "docs/skills/godot-gameplay-scripter.md": {
-    "mtime": 1783060533.8598335,
+    "mtime": 1784077231.440642,
     "ast_hash": "8688112fea9cf46bd0e6c0ae4069a6a9",
     "semantic_hash": ""
   },
   "docs/skills/godot-multiplayer-engineer.md": {
-    "mtime": 1783060533.860146,
+    "mtime": 1784077231.4407392,
     "ast_hash": "7aa132b7d5566c69af5d0dd92f6876dc",
     "semantic_hash": ""
   },
   "docs/skills/godot-shader-developer.md": {
-    "mtime": 1783060533.8602676,
+    "mtime": 1784077231.4408376,
     "ast_hash": "1e94384415b66bbe958e894af328e325",
     "semantic_hash": ""
   },
   "docs/skills/government-digital-presales-consultant.md": {
-    "mtime": 1783060533.8603735,
+    "mtime": 1784077231.440937,
     "ast_hash": "220602ec2f42ef2a7a307cf9a95027fe",
     "semantic_hash": ""
   },
   "docs/skills/grant-writer.md": {
-    "mtime": 1783060533.8604784,
+    "mtime": 1784077231.4410496,
     "ast_hash": "3fc886cba4e0f5cfb758070ba66f8e98",
     "semantic_hash": ""
   },
   "docs/skills/gsap-core/SKILL.md": {
-    "mtime": 1783060533.8606737,
+    "mtime": 1784077231.4413521,
     "ast_hash": "e14974bb48ddfe9e0da3406562b8f18f",
     "semantic_hash": ""
   },
   "docs/skills/gsap-frameworks/SKILL.md": {
-    "mtime": 1783060533.8608942,
+    "mtime": 1784077231.4418013,
     "ast_hash": "8b067a9a32a69b11732678bcf09f5b4a",
     "semantic_hash": ""
   },
   "docs/skills/gsap-performance/SKILL.md": {
-    "mtime": 1783060533.8610625,
+    "mtime": 1784077231.4422102,
     "ast_hash": "f6b97aae273b24930d77e634dcf1c62e",
     "semantic_hash": ""
   },
   "docs/skills/gsap-plugins/SKILL.md": {
-    "mtime": 1783060533.8612463,
+    "mtime": 1784077231.442836,
     "ast_hash": "694d28e8efac50b29b33905ffa62ec4f",
     "semantic_hash": ""
   },
   "docs/skills/gsap-react/SKILL.md": {
-    "mtime": 1783060533.861435,
+    "mtime": 1784077231.4430766,
     "ast_hash": "9fc3789feebbe444032cee2ade44f5b4",
     "semantic_hash": ""
   },
   "docs/skills/gsap-scrolltrigger/SKILL.md": {
-    "mtime": 1783060533.8616283,
+    "mtime": 1784077231.443764,
     "ast_hash": "4082bbc747d61f4241b2f0c5f2cfbeca",
     "semantic_hash": ""
   },
   "docs/skills/gsap-timeline/SKILL.md": {
-    "mtime": 1783060533.861805,
+    "mtime": 1784077231.4442933,
     "ast_hash": "3dfefe09dc41a59f2322734a7694b810",
     "semantic_hash": ""
   },
   "docs/skills/gsap-utils/SKILL.md": {
-    "mtime": 1783060533.8619492,
+    "mtime": 1784077231.4446697,
     "ast_hash": "6a9b883f5a4ce55430fd7463176a2004",
     "semantic_hash": ""
   },
   "docs/skills/healthcare-customer-service.md": {
-    "mtime": 1783060533.8620832,
+    "mtime": 1784077231.4448056,
     "ast_hash": "3b7d67ef40a6df8d28bca1bdbdc78aa1",
     "semantic_hash": ""
   },
   "docs/skills/healthcare-marketing-compliance.md": {
-    "mtime": 1783060533.8622043,
+    "mtime": 1784077231.4449494,
     "ast_hash": "d834e8fdfd59dac72c7e231d7e7b5584",
     "semantic_hash": ""
   },
   "docs/skills/historian.md": {
-    "mtime": 1783060533.862323,
+    "mtime": 1784077231.4450712,
     "ast_hash": "2246ac9091313e1f63aea274bf141221",
     "semantic_hash": ""
   },
   "docs/skills/hospitality-guest-services.md": {
-    "mtime": 1783060533.8624244,
+    "mtime": 1784077231.4451816,
     "ast_hash": "d600a7125510660582611f9742251919",
     "semantic_hash": ""
   },
   "docs/skills/hr-onboarding.md": {
-    "mtime": 1783060533.8625298,
+    "mtime": 1784077231.445311,
     "ast_hash": "d608702fb3bb5115a023f7daaff59450",
     "semantic_hash": ""
   },
   "docs/skills/html-css-skeleton.md": {
-    "mtime": 1783060533.8626535,
+    "mtime": 1784077231.445417,
     "ast_hash": "5ff7fef6d5842c19cc59225083c805c2",
     "semantic_hash": ""
   },
   "docs/skills/identity-graph-operator.md": {
-    "mtime": 1783060533.8627737,
+    "mtime": 1784077231.4456651,
     "ast_hash": "47f1e5ab944f7ed0a149e52b3308145c",
     "semantic_hash": ""
   },
   "docs/skills/information-architecture.md": {
-    "mtime": 1783060533.8630357,
+    "mtime": 1784077231.4459066,
     "ast_hash": "7abbbb380d20e212ada6e7600d7e4dea",
     "semantic_hash": ""
   },
   "docs/skills/interaction-flow.md": {
-    "mtime": 1783060533.8631647,
+    "mtime": 1784077231.4460528,
     "ast_hash": "d59142c815c541e51ea9221208a9beac",
     "semantic_hash": ""
   },
   "docs/skills/language-translator.md": {
-    "mtime": 1783060533.8632812,
+    "mtime": 1784077231.4461572,
     "ast_hash": "3b113756dbbcb9d7761b507876d6a4a8",
     "semantic_hash": ""
   },
   "docs/skills/layout-css-system.md": {
-    "mtime": 1783060533.863388,
+    "mtime": 1784077231.4462576,
     "ast_hash": "41060c2121761aa19d17d9f26680e445",
     "semantic_hash": ""
   },
   "docs/skills/legal-billing-time-tracking.md": {
-    "mtime": 1783060533.8634999,
+    "mtime": 1784077231.4463592,
     "ast_hash": "33821c45a78f375b1f23494716f3dc4b",
     "semantic_hash": ""
   },
   "docs/skills/legal-client-intake.md": {
-    "mtime": 1783060533.8636153,
+    "mtime": 1784077231.4464586,
     "ast_hash": "bb0e19bc4f32e6c52c54b64e7ee71dd5",
     "semantic_hash": ""
   },
   "docs/skills/legal-document-review.md": {
-    "mtime": 1783060533.8637443,
+    "mtime": 1784077231.4465601,
     "ast_hash": "d8b49a411ec0e060af56860e60508598",
     "semantic_hash": ""
   },
   "docs/skills/level-designer.md": {
-    "mtime": 1783060533.86387,
+    "mtime": 1784077231.4466574,
     "ast_hash": "f9b2538dcdb7e42335ca0b8498226f40",
     "semantic_hash": ""
   },
   "docs/skills/literature-scholar.md": {
-    "mtime": 1783060533.8639848,
+    "mtime": 1784077231.4467645,
     "ast_hash": "bac7dc33d658368353f0a119106b5231",
     "semantic_hash": ""
   },
   "docs/skills/loan-officer-assistant.md": {
-    "mtime": 1783060533.864115,
+    "mtime": 1784077231.446882,
     "ast_hash": "87dbfb8af729333cf7dc0553de998c4f",
     "semantic_hash": ""
   },
   "docs/skills/lsp-index-engineer.md": {
-    "mtime": 1783060533.8642287,
+    "mtime": 1784077231.447003,
     "ast_hash": "b2466e37cc9c6299c4b477c8fee5e7fc",
     "semantic_hash": ""
   },
   "docs/skills/macos-spatial-metal-engineer.md": {
-    "mtime": 1783060533.864336,
+    "mtime": 1784077231.4472523,
     "ast_hash": "ec810d219ce376d462328622de801e2b",
     "semantic_hash": ""
   },
   "docs/skills/maintainability-review.md": {
-    "mtime": 1783060533.8646135,
+    "mtime": 1784077231.4473965,
     "ast_hash": "7da82b4ea9844ec8a2a09447b9045c43",
     "semantic_hash": ""
   },
   "docs/skills/marketing-aeo-foundations.md": {
-    "mtime": 1783060533.8647213,
+    "mtime": 1784077231.4475079,
     "ast_hash": "6dab374304131c0edd6f2319f974b0ac",
     "semantic_hash": ""
   },
   "docs/skills/marketing-agentic-search-optimizer.md": {
-    "mtime": 1783060533.864825,
+    "mtime": 1784077231.4476278,
     "ast_hash": "855ea322da0eab8e925c534de3896f46",
     "semantic_hash": ""
   },
   "docs/skills/marketing-ai-citation-strategist.md": {
-    "mtime": 1783060533.864933,
+    "mtime": 1784077231.4477355,
     "ast_hash": "af1b30808163f5a6fedeb103cd01182d",
     "semantic_hash": ""
   },
   "docs/skills/marketing-app-store-optimizer.md": {
-    "mtime": 1783060533.865041,
+    "mtime": 1784077231.4478364,
     "ast_hash": "856cfda851ae8afcbedb1e7d76c13a7b",
     "semantic_hash": ""
   },
   "docs/skills/marketing-baidu-seo-specialist.md": {
-    "mtime": 1783060533.865141,
+    "mtime": 1784077231.4479623,
     "ast_hash": "065650101a9ebca533904bbca4729c4d",
     "semantic_hash": ""
   },
   "docs/skills/marketing-bilibili-content-strategist.md": {
-    "mtime": 1783060533.865264,
+    "mtime": 1784077231.4480875,
     "ast_hash": "17e76d5d78afee2fa9780fde935d5101",
     "semantic_hash": ""
   },
   "docs/skills/marketing-book-co-author.md": {
-    "mtime": 1783060533.8653831,
+    "mtime": 1784077231.4482281,
     "ast_hash": "6058b160b7599ba0e8b922ce88fda94d",
     "semantic_hash": ""
   },
   "docs/skills/marketing-carousel-growth-engine.md": {
-    "mtime": 1783060533.8655,
+    "mtime": 1784077231.4483628,
     "ast_hash": "2ac8947e8ec1baa37ab6b1171d8860d1",
     "semantic_hash": ""
   },
   "docs/skills/marketing-china-ecommerce-operator.md": {
-    "mtime": 1783060533.8656085,
+    "mtime": 1784077231.4484873,
     "ast_hash": "4c11c14ca2090b965cf5e56980e6adac",
     "semantic_hash": ""
   },
   "docs/skills/marketing-china-market-localization-strategist.md": {
-    "mtime": 1783060533.8657131,
+    "mtime": 1784077231.448601,
     "ast_hash": "17f97d2dbb464989aa58a1f0e5d44fb3",
     "semantic_hash": ""
   },
   "docs/skills/marketing-content-creator.md": {
-    "mtime": 1783060533.8658154,
+    "mtime": 1784077231.448721,
     "ast_hash": "38178fa0859e89f92dc30e73aea987a8",
     "semantic_hash": ""
   },
   "docs/skills/marketing-cross-border-ecommerce.md": {
-    "mtime": 1783060533.865925,
+    "mtime": 1784077231.448836,
     "ast_hash": "10b9e644d22f9b9326752609eb182e1a",
     "semantic_hash": ""
   },
   "docs/skills/marketing-douyin-strategist.md": {
-    "mtime": 1783060533.8660274,
+    "mtime": 1784077231.448955,
     "ast_hash": "3c1d13de0193ff99c7846fa6c92a6899",
     "semantic_hash": ""
   },
   "docs/skills/marketing-email-strategist.md": {
-    "mtime": 1783060533.8661454,
+    "mtime": 1784077231.4491038,
     "ast_hash": "b5ca25c08079673c944d823125f86760",
     "semantic_hash": ""
   },
   "docs/skills/marketing-global-podcast-strategist.md": {
-    "mtime": 1783060533.8662474,
+    "mtime": 1784077231.4492242,
     "ast_hash": "d5495285597cce007a774c71bcb10c6e",
     "semantic_hash": ""
   },
   "docs/skills/marketing-growth-hacker.md": {
-    "mtime": 1783060533.8663828,
+    "mtime": 1784077231.449349,
     "ast_hash": "6c8796bd99c0839d1f9d92791ab3ba2c",
     "semantic_hash": ""
   },
   "docs/skills/marketing-instagram-curator.md": {
-    "mtime": 1783060533.8665006,
+    "mtime": 1784077231.4494615,
     "ast_hash": "fe3117499397b7b1303d694420a5c583",
     "semantic_hash": ""
   },
   "docs/skills/marketing-kuaishou-strategist.md": {
-    "mtime": 1783060533.866626,
+    "mtime": 1784077231.4495628,
     "ast_hash": "fbef8fb4b079722cef22b741efacac0d",
     "semantic_hash": ""
   },
   "docs/skills/marketing-linkedin-content-creator.md": {
-    "mtime": 1783060533.8667305,
+    "mtime": 1784077231.4496658,
     "ast_hash": "9bc3cdc17050bf9f6eb4a53f4fcec65f",
     "semantic_hash": ""
   },
   "docs/skills/marketing-livestream-commerce-coach.md": {
-    "mtime": 1783060533.8668294,
+    "mtime": 1784077231.449784,
     "ast_hash": "90bd9b14b838803a15f6bd944488fa19",
     "semantic_hash": ""
   },
   "docs/skills/marketing-multi-platform-publisher.md": {
-    "mtime": 1783060533.8669357,
+    "mtime": 1784077231.4498982,
     "ast_hash": "f1eac3d9ff7834c294197e65d61173b3",
     "semantic_hash": ""
   },
   "docs/skills/marketing-podcast-strategist.md": {
-    "mtime": 1783060533.8670392,
+    "mtime": 1784077231.4500122,
     "ast_hash": "a2434b316a30aefd1dc46c2e8c91de80",
     "semantic_hash": ""
   },
   "docs/skills/marketing-pr-communications-manager.md": {
-    "mtime": 1783060533.867143,
+    "mtime": 1784077231.4502192,
     "ast_hash": "115e079f07bc35be96d1f39c57e0fb96",
     "semantic_hash": ""
   },
   "docs/skills/marketing-private-domain-operator.md": {
-    "mtime": 1783060533.867378,
+    "mtime": 1784077231.4503756,
     "ast_hash": "ddd0bb9b6a4e4b8c88c017428840ce6d",
     "semantic_hash": ""
   },
   "docs/skills/marketing-reddit-community-builder.md": {
-    "mtime": 1783060533.8675005,
+    "mtime": 1784077231.4504833,
     "ast_hash": "6348995f12d95404dafedf057cdddb66",
     "semantic_hash": ""
   },
   "docs/skills/marketing-seo-specialist.md": {
-    "mtime": 1783060533.8676124,
+    "mtime": 1784077231.4505847,
     "ast_hash": "4d5b8a6356f9b8356c6b40deeffeba82",
     "semantic_hash": ""
   },
   "docs/skills/marketing-short-video-editing-coach.md": {
-    "mtime": 1783060533.8677173,
+    "mtime": 1784077231.4506898,
     "ast_hash": "780f6f104cfd3ceec7a737c5a687b9a4",
     "semantic_hash": ""
   },
   "docs/skills/marketing-social-media-strategist.md": {
-    "mtime": 1783060533.8678265,
+    "mtime": 1784077231.4508147,
     "ast_hash": "e62bf2bb70984d4e70b81c8064aed272",
     "semantic_hash": ""
   },
   "docs/skills/marketing-tiktok-strategist.md": {
-    "mtime": 1783060533.8679283,
+    "mtime": 1784077231.4509218,
     "ast_hash": "e25cbec5201190c559207fe9f5cb29c9",
     "semantic_hash": ""
   },
   "docs/skills/marketing-twitter-engager.md": {
-    "mtime": 1783060533.8680313,
+    "mtime": 1784077231.4510264,
     "ast_hash": "3a5752487cddec0c350c9ef9b5fad76a",
     "semantic_hash": ""
   },
   "docs/skills/marketing-video-optimization-specialist.md": {
-    "mtime": 1783060533.8681355,
+    "mtime": 1784077231.4514253,
     "ast_hash": "85c23274c915e95204191f88c1350ae6",
     "semantic_hash": ""
   },
   "docs/skills/marketing-wechat-official-account.md": {
-    "mtime": 1783060533.868235,
+    "mtime": 1784077231.4515452,
     "ast_hash": "5fd5a323ae7600096ab55b0d705e0fd5",
     "semantic_hash": ""
   },
   "docs/skills/marketing-weibo-strategist.md": {
-    "mtime": 1783060533.8683457,
+    "mtime": 1784077231.4516726,
     "ast_hash": "16cea09da3d0eb68a4a140fe902c3a51",
     "semantic_hash": ""
   },
   "docs/skills/marketing-x-twitter-intelligence-analyst.md": {
-    "mtime": 1783060533.8684587,
+    "mtime": 1784077231.451782,
     "ast_hash": "9a0fa0829b1842632f216dff1ae1fb1e",
     "semantic_hash": ""
   },
   "docs/skills/marketing-xiaohongshu-specialist.md": {
-    "mtime": 1783060533.8685682,
+    "mtime": 1784077231.4518883,
     "ast_hash": "0540d205575f493873ae6d5fc14c7d6c",
     "semantic_hash": ""
   },
   "docs/skills/marketing-zhihu-strategist.md": {
-    "mtime": 1783060533.8686998,
+    "mtime": 1784077231.4519904,
     "ast_hash": "f0795f732a635fffd094573058b97d8e",
     "semantic_hash": ""
   },
   "docs/skills/medical-billing-coding-specialist.md": {
-    "mtime": 1783060533.868808,
+    "mtime": 1784077231.4520936,
     "ast_hash": "fcf9bc79e8fdb4de506481ec222311df",
     "semantic_hash": ""
   },
   "docs/skills/milestone-risk-mgmt.md": {
-    "mtime": 1783060533.868916,
+    "mtime": 1784077231.4522421,
     "ast_hash": "5cf34212f51fc8d2c8c36bc7f35e0404",
     "semantic_hash": ""
   },
   "docs/skills/narrative-designer.md": {
-    "mtime": 1783060533.8690238,
+    "mtime": 1784077231.4523535,
     "ast_hash": "7091489ef6de51295cac5e7f9097f124",
     "semantic_hash": ""
   },
   "docs/skills/observability-governance.md": {
-    "mtime": 1783060533.8691244,
+    "mtime": 1784077231.4524796,
     "ast_hash": "53d777a551a1b8e1d6b17129f8f6eda7",
     "semantic_hash": ""
   },
   "docs/skills/paid-media-auditor.md": {
-    "mtime": 1783060533.8692288,
+    "mtime": 1784077231.452671,
     "ast_hash": "65ba9473f6b9d8219b561dee2c20be88",
     "semantic_hash": ""
   },
   "docs/skills/paid-media-creative-strategist.md": {
-    "mtime": 1783060533.8694615,
+    "mtime": 1784077231.4527812,
     "ast_hash": "034bf8c5c87368141cfe26146c9ea3b2",
     "semantic_hash": ""
   },
   "docs/skills/paid-media-paid-social-strategist.md": {
-    "mtime": 1783060533.8695848,
+    "mtime": 1784077231.452892,
     "ast_hash": "7430f4f45f342dfe3fc1bcc93b4f5da8",
     "semantic_hash": ""
   },
   "docs/skills/paid-media-ppc-strategist.md": {
-    "mtime": 1783060533.869699,
+    "mtime": 1784077231.4529943,
     "ast_hash": "2b2d4e03cab002f83719d6d60332c8ef",
     "semantic_hash": ""
   },
   "docs/skills/paid-media-programmatic-buyer.md": {
-    "mtime": 1783060533.8698084,
+    "mtime": 1784077231.4531229,
     "ast_hash": "b209bcd2fefc930436c87d0324387424",
     "semantic_hash": ""
   },
   "docs/skills/paid-media-search-query-analyst.md": {
-    "mtime": 1783060533.8699112,
+    "mtime": 1784077231.4532566,
     "ast_hash": "613cadb565d41f7c4fa640f27c6389f4",
     "semantic_hash": ""
   },
   "docs/skills/paid-media-tracking-specialist.md": {
-    "mtime": 1783060533.8700168,
+    "mtime": 1784077231.4533665,
     "ast_hash": "f8b70091f3e0b210cebfa877f3abd319",
     "semantic_hash": ""
   },
   "docs/skills/personal-growth-mentor.md": {
-    "mtime": 1783060533.8701212,
+    "mtime": 1784077231.4534774,
     "ast_hash": "95803a274d1f6895b64ff0d96a4695e9",
     "semantic_hash": ""
   },
   "docs/skills/pinokio/SKILL.md": {
-    "mtime": 1783060533.8702877,
+    "mtime": 1784077231.4540713,
     "ast_hash": "d68e6db528830322b22c2df9ebe7cd03",
     "semantic_hash": ""
   },
   "docs/skills/pixel-perfect-ui.md": {
-    "mtime": 1783060533.87041,
+    "mtime": 1784077231.454233,
     "ast_hash": "640bd3a552335c236cd7cd2e79efa36e",
     "semantic_hash": ""
   },
   "docs/skills/product-acceptance-criteria.md": {
-    "mtime": 1783060533.870538,
+    "mtime": 1784077231.454339,
     "ast_hash": "eec028c186b7ec9007383c85e241d3b2",
     "semantic_hash": ""
   },
   "docs/skills/product-behavioral-nudge-engine.md": {
-    "mtime": 1783060533.870647,
+    "mtime": 1784077231.4544477,
     "ast_hash": "e910b46eafb5edb570189302a8cdc61c",
     "semantic_hash": ""
   },
   "docs/skills/product-feedback-synthesizer.md": {
-    "mtime": 1783060533.8707495,
+    "mtime": 1784077231.4545467,
     "ast_hash": "88aa4edb7392a492acab379c9e55232c",
     "semantic_hash": ""
   },
   "docs/skills/product-req-clarify.md": {
-    "mtime": 1783060533.8708508,
+    "mtime": 1784077231.4546638,
     "ast_hash": "1d3606a620ca001acbb8591c8c035c0d",
     "semantic_hash": ""
   },
   "docs/skills/product-scope-mgmt.md": {
-    "mtime": 1783060533.870963,
+    "mtime": 1784077231.4547715,
     "ast_hash": "0e3d7671b5d1393e128d5f3044f51eae",
     "semantic_hash": ""
   },
   "docs/skills/product-trend-researcher.md": {
-    "mtime": 1783060533.8710694,
+    "mtime": 1784077231.4548798,
     "ast_hash": "b61d67f2c0874a46dab320c479e0f9e9",
     "semantic_hash": ""
   },
   "docs/skills/project-management-experiment-tracker.md": {
-    "mtime": 1783060533.8712213,
+    "mtime": 1784077231.45499,
     "ast_hash": "ffe1045b2ff9ed6a88b28e6f5d3294d8",
     "semantic_hash": ""
   },
   "docs/skills/project-management-jira-workflow-steward.md": {
-    "mtime": 1783060533.8713567,
+    "mtime": 1784077231.4551513,
     "ast_hash": "10d3482a1136a29f511a90a6b2d6ba85",
     "semantic_hash": ""
   },
   "docs/skills/project-management-meeting-notes-specialist.md": {
-    "mtime": 1783060533.8714778,
+    "mtime": 1784077231.4552703,
     "ast_hash": "d0825321ceb7357d4eb5f2259c2d94aa",
     "semantic_hash": ""
   },
   "docs/skills/project-management-project-shepherd.md": {
-    "mtime": 1783060533.8716102,
+    "mtime": 1784077231.4553716,
     "ast_hash": "e6a27b5ee347eff57d198eb2bd990a94",
     "semantic_hash": ""
   },
   "docs/skills/project-management-studio-operations.md": {
-    "mtime": 1783060533.8717191,
+    "mtime": 1784077231.4554708,
     "ast_hash": "7ce2503f537bc2068161c49ff820cd0c",
     "semantic_hash": ""
   },
   "docs/skills/project-management-studio-producer.md": {
-    "mtime": 1783060533.871833,
+    "mtime": 1784077231.4555826,
     "ast_hash": "585d09653192d7ba58c0e3351dbe2c48",
     "semantic_hash": ""
   },
   "docs/skills/project-manager-senior.md": {
-    "mtime": 1783060533.8719454,
+    "mtime": 1784077231.4556842,
     "ast_hash": "8fb87c497e5ccf52a71c4cd83cf82f6b",
     "semantic_hash": ""
   },
   "docs/skills/react-best-practices.md": {
-    "mtime": 1783060533.872046,
+    "mtime": 1784077231.4557838,
     "ast_hash": "3f0c8bdce4faf98cc58de22d00758b5f",
     "semantic_hash": ""
   },
   "docs/skills/real-estate-buyer-seller.md": {
-    "mtime": 1783060533.8721452,
+    "mtime": 1784077231.4559371,
     "ast_hash": "2f1fc27a5040ec5d6776299bd482883e",
     "semantic_hash": ""
   },
   "docs/skills/recruitment-specialist.md": {
-    "mtime": 1783060533.8723724,
+    "mtime": 1784077231.456067,
     "ast_hash": "edc39a00f714fe1e565847e8fe2600e9",
     "semantic_hash": ""
   },
   "docs/skills/release-rollback.md": {
-    "mtime": 1783060533.8724804,
+    "mtime": 1784077231.4561903,
     "ast_hash": "5b4bf693203fe9e143e6ad5cb5ae1176",
     "semantic_hash": ""
   },
   "docs/skills/report-distribution-agent.md": {
-    "mtime": 1783060533.8725796,
+    "mtime": 1784077231.4562979,
     "ast_hash": "734c1d64747ae46f3a4a364c826520ce",
     "semantic_hash": ""
   },
   "docs/skills/retail-customer-returns.md": {
-    "mtime": 1783060533.8726807,
+    "mtime": 1784077231.4563968,
     "ast_hash": "6e103d6b56169ce64626fbc0f7e72e89",
     "semantic_hash": ""
   },
   "docs/skills/rice-moscow-prioritization.md": {
-    "mtime": 1783060533.8728006,
+    "mtime": 1784077231.456495,
     "ast_hash": "3dcc0b5cc6e1b491c12170c8c04d8152",
     "semantic_hash": ""
   },
   "docs/skills/roblox-avatar-creator.md": {
-    "mtime": 1783060533.8729112,
+    "mtime": 1784077231.4566133,
     "ast_hash": "b871dc8572b4483ba16e3eb8923884e8",
     "semantic_hash": ""
   },
   "docs/skills/roblox-experience-designer.md": {
-    "mtime": 1783060533.873018,
+    "mtime": 1784077231.4567204,
     "ast_hash": "1b41aa72d0c78d0e3ef7bd80a16373ca",
     "semantic_hash": ""
   },
   "docs/skills/roblox-systems-scripter.md": {
-    "mtime": 1783060533.873116,
+    "mtime": 1784077231.4568224,
     "ast_hash": "7cfb4886faa8e502d5aaad60037cb5af",
     "semantic_hash": ""
   },
   "docs/skills/sales-account-strategist.md": {
-    "mtime": 1783060533.8732188,
+    "mtime": 1784077231.4569259,
     "ast_hash": "e427a24e2df170fa976bd1059e243241",
     "semantic_hash": ""
   },
   "docs/skills/sales-coach.md": {
-    "mtime": 1783060533.8733182,
+    "mtime": 1784077231.4570298,
     "ast_hash": "2073f53bafcd6bf7f9603e03ea5cc69c",
     "semantic_hash": ""
   },
   "docs/skills/sales-data-extraction-agent.md": {
-    "mtime": 1783060533.873424,
+    "mtime": 1784077231.457142,
     "ast_hash": "0f9746e828f49c7c7267130ee39b146f",
     "semantic_hash": ""
   },
   "docs/skills/sales-deal-strategist.md": {
-    "mtime": 1783060533.8735254,
+    "mtime": 1784077231.4572482,
     "ast_hash": "50f158f3bb6f97930a44e007d307cbd4",
     "semantic_hash": ""
   },
   "docs/skills/sales-discovery-coach.md": {
-    "mtime": 1783060533.8736212,
+    "mtime": 1784077231.4573464,
     "ast_hash": "9227e7d0fb1ef4725cd2860daf809e65",
     "semantic_hash": ""
   },
   "docs/skills/sales-engineer.md": {
-    "mtime": 1783060533.8737164,
+    "mtime": 1784077231.4574451,
     "ast_hash": "239de457d643f4b3f19d411d0e15b3ba",
     "semantic_hash": ""
   },
   "docs/skills/sales-offer-lead-gen-strategist.md": {
-    "mtime": 1783060533.8738186,
+    "mtime": 1784077231.4575489,
     "ast_hash": "7dae7ba439e0eb967424e780784dc91a",
     "semantic_hash": ""
   },
   "docs/skills/sales-outbound-strategist.md": {
-    "mtime": 1783060533.873923,
+    "mtime": 1784077231.4576578,
     "ast_hash": "b20401872944443c3989dfbcf7aef7e5",
     "semantic_hash": ""
   },
   "docs/skills/sales-outreach.md": {
-    "mtime": 1783060533.8740196,
+    "mtime": 1784077231.4577572,
     "ast_hash": "ca52109f8b523a9e3bef7cf666dc56d3",
     "semantic_hash": ""
   },
   "docs/skills/sales-pipeline-analyst.md": {
-    "mtime": 1783060533.8741171,
+    "mtime": 1784077231.4578564,
     "ast_hash": "7c78e99502675271c3f97d530dda5a14",
     "semantic_hash": ""
   },
   "docs/skills/sales-proposal-strategist.md": {
-    "mtime": 1783060533.8742146,
+    "mtime": 1784077231.457957,
     "ast_hash": "eeb472425a733694622eb7e65f8357f3",
     "semantic_hash": ""
   },
   "docs/skills/security-review.md": {
-    "mtime": 1783060533.8743234,
+    "mtime": 1784077231.458059,
     "ast_hash": "9933bd4e1370dbc80c6741fcef97571c",
     "semantic_hash": ""
   },
   "docs/skills/self-learning.md": {
-    "mtime": 1783060533.8744316,
+    "mtime": 1784077231.4583051,
     "ast_hash": "55ee497d1de57754583f4e0fb9493efb",
     "semantic_hash": ""
   },
   "docs/skills/self_learning.md": {
-    "mtime": 1783060533.8746705,
+    "mtime": 1784077231.4584155,
     "ast_hash": "78a06b96d826f3fd37c780b7dccd25a8",
     "semantic_hash": ""
   },
   "docs/skills/specialized-chief-of-staff.md": {
-    "mtime": 1783060533.8747754,
+    "mtime": 1784077231.4585488,
     "ast_hash": "3904116ad856861c393aaa6f899ae167",
     "semantic_hash": ""
   },
   "docs/skills/specialized-civil-engineer.md": {
-    "mtime": 1783060533.874888,
+    "mtime": 1784077231.4586492,
     "ast_hash": "ecb387adeefed5e206b2d71407c150bf",
     "semantic_hash": ""
   },
   "docs/skills/specialized-cultural-intelligence-strategist.md": {
-    "mtime": 1783060533.8749995,
+    "mtime": 1784077231.4587505,
     "ast_hash": "6eff02507079d80b0b77cbf062cd7c99",
     "semantic_hash": ""
   },
   "docs/skills/specialized-developer-advocate.md": {
-    "mtime": 1783060533.875104,
+    "mtime": 1784077231.4588463,
     "ast_hash": "35498eb5557037fe015a122f99edab11",
     "semantic_hash": ""
   },
   "docs/skills/specialized-document-generator.md": {
-    "mtime": 1783060533.8752022,
+    "mtime": 1784077231.458946,
     "ast_hash": "db2f153de35a9b8ef4c3017b96c26d70",
     "semantic_hash": ""
   },
   "docs/skills/specialized-french-consulting-market.md": {
-    "mtime": 1783060533.8753023,
+    "mtime": 1784077231.459046,
     "ast_hash": "89c97b021656a4d357d72aafc56ced9c",
     "semantic_hash": ""
   },
   "docs/skills/specialized-korean-business-navigator.md": {
-    "mtime": 1783060533.8754132,
+    "mtime": 1784077231.4591465,
     "ast_hash": "79c22b2ba3a52f248f98de01ff716be4",
     "semantic_hash": ""
   },
   "docs/skills/specialized-mcp-builder.md": {
-    "mtime": 1783060533.87551,
+    "mtime": 1784077231.4592426,
     "ast_hash": "93a979f94aae74cde3c86497421dfee4",
     "semantic_hash": ""
   },
   "docs/skills/specialized-model-qa.md": {
-    "mtime": 1783060533.875605,
+    "mtime": 1784077231.4593418,
     "ast_hash": "8301de3094916488b7611e046618de70",
     "semantic_hash": ""
   },
   "docs/skills/specialized-pricing-analyst.md": {
-    "mtime": 1783060533.875704,
+    "mtime": 1784077231.4594417,
     "ast_hash": "ed77a8e34c0e240cb3e75cf61d6e1e4d",
     "semantic_hash": ""
   },
   "docs/skills/specialized-salesforce-architect.md": {
-    "mtime": 1783060533.8758051,
+    "mtime": 1784077231.4595451,
     "ast_hash": "ae39c4d8d504ee5b7ccd2c79666178e0",
     "semantic_hash": ""
   },
   "docs/skills/specialized-workflow-architect.md": {
-    "mtime": 1783060533.8759062,
+    "mtime": 1784077231.459644,
     "ast_hash": "353dd35ff8971e6f369202d0405cc6de",
     "semantic_hash": ""
   },
   "docs/skills/sprint-prioritization.md": {
-    "mtime": 1783060533.876007,
+    "mtime": 1784077231.4597437,
     "ast_hash": "7134856886c1779a29104efacc876dfe",
     "semantic_hash": ""
   },
   "docs/skills/study-abroad-advisor.md": {
-    "mtime": 1783060533.876124,
+    "mtime": 1784077231.459841,
     "ast_hash": "cecf8e3399901ac3a897f6b18343a168",
     "semantic_hash": ""
   },
   "docs/skills/supply-chain-strategist.md": {
-    "mtime": 1783060533.8762493,
+    "mtime": 1784077231.4599369,
     "ast_hash": "67020b922c9e81546c560a3f9c413839",
     "semantic_hash": ""
   },
   "docs/skills/support-analytics-reporter.md": {
-    "mtime": 1783060533.8763583,
+    "mtime": 1784077231.4600368,
     "ast_hash": "cce46e60ed87e0e540b039024c1c38db",
     "semantic_hash": ""
   },
   "docs/skills/support-executive-summary-generator.md": {
-    "mtime": 1783060533.8764906,
+    "mtime": 1784077231.4601872,
     "ast_hash": "22135b048d40d775fa2c489341f71c78",
     "semantic_hash": ""
   },
   "docs/skills/support-finance-tracker.md": {
-    "mtime": 1783060533.876751,
+    "mtime": 1784077231.4602976,
     "ast_hash": "c36f4508f42e1db80334e60016a6fcf5",
     "semantic_hash": ""
   },
   "docs/skills/support-infrastructure-maintainer.md": {
-    "mtime": 1783060533.876856,
+    "mtime": 1784077231.4604046,
     "ast_hash": "1da19400871253f2687395e22554d594",
     "semantic_hash": ""
   },
   "docs/skills/support-legal-compliance-checker.md": {
-    "mtime": 1783060533.8769696,
+    "mtime": 1784077231.4605062,
     "ast_hash": "d5226d423f9697bceb4a74b92afd4fbf",
     "semantic_hash": ""
   },
   "docs/skills/support-support-responder.md": {
-    "mtime": 1783060533.877072,
+    "mtime": 1784077231.460609,
     "ast_hash": "b7cd519d450dbcbb8a02d56b7335c3e2",
     "semantic_hash": ""
   },
   "docs/skills/tech-selection-eval.md": {
-    "mtime": 1783060533.877177,
+    "mtime": 1784077231.4608977,
     "ast_hash": "c535a849e5c5bb60c8e963b2c819463d",
     "semantic_hash": ""
   },
   "docs/skills/technical-artist.md": {
-    "mtime": 1783060533.877304,
+    "mtime": 1784077231.4610395,
     "ast_hash": "cb2e2eb7aaeeb4e899c1a64e26cc957d",
     "semantic_hash": ""
   },
   "docs/skills/terminal-integration-specialist.md": {
-    "mtime": 1783060533.8774135,
+    "mtime": 1784077231.4612198,
     "ast_hash": "853f0a7cd75d678fd83ba8208f27d31b",
     "semantic_hash": ""
   },
   "docs/skills/test-strategy.md": {
-    "mtime": 1783060533.8776383,
+    "mtime": 1784077231.4613557,
     "ast_hash": "6ebd713ac43d7e7da2de811888280e7d",
     "semantic_hash": ""
   },
   "docs/skills/testing-accessibility-auditor.md": {
-    "mtime": 1783060533.8777463,
+    "mtime": 1784077231.4614837,
     "ast_hash": "b5105ac94ee78ba26d40eb3e49545ee1",
     "semantic_hash": ""
   },
   "docs/skills/testing-api-tester.md": {
-    "mtime": 1783060533.8778422,
+    "mtime": 1784077231.461586,
     "ast_hash": "d2f9218b3296300616274dd234db9315",
     "semantic_hash": ""
   },
   "docs/skills/testing-evidence-collector.md": {
-    "mtime": 1783060533.8779411,
+    "mtime": 1784077231.461691,
     "ast_hash": "0e193ce25969a96831e3bb57431db8c8",
     "semantic_hash": ""
   },
   "docs/skills/testing-performance-benchmarker.md": {
-    "mtime": 1783060533.8780456,
+    "mtime": 1784077231.4617949,
     "ast_hash": "08274399382edadfb7627da75117f15d",
     "semantic_hash": ""
   },
   "docs/skills/testing-reality-checker.md": {
-    "mtime": 1783060533.878142,
+    "mtime": 1784077231.4618976,
     "ast_hash": "33bccc3d7c3e08d123b067131a9c8ece",
     "semantic_hash": ""
   },
   "docs/skills/testing-test-results-analyzer.md": {
-    "mtime": 1783060533.8782458,
+    "mtime": 1784077231.4621315,
     "ast_hash": "0bbf8bb18b0fc5dff851d5924e36ef26",
     "semantic_hash": ""
   },
   "docs/skills/testing-tool-evaluator.md": {
-    "mtime": 1783060533.8784757,
+    "mtime": 1784077231.462279,
     "ast_hash": "ac04e30becfbc2a4585781ca7548d6d1",
     "semantic_hash": ""
   },
   "docs/skills/testing-workflow-optimizer.md": {
-    "mtime": 1783060533.8785827,
+    "mtime": 1784077231.4624,
     "ast_hash": "64dc38efe99a7406aee6c103786b83b3",
     "semantic_hash": ""
   },
   "docs/skills/transaction-security-baseline.md": {
-    "mtime": 1783060533.8786843,
+    "mtime": 1784077231.462527,
     "ast_hash": "b9c4fe50c113c709a20caec6c5ea5d13",
     "semantic_hash": ""
   },
   "docs/skills/ui-interaction-optimization.md": {
-    "mtime": 1783060533.878793,
+    "mtime": 1784077231.4626522,
     "ast_hash": "8c9aa8edcb0dd26a4d699ceb3a583989",
     "semantic_hash": ""
   },
   "docs/skills/unity-architect.md": {
-    "mtime": 1783060533.878899,
+    "mtime": 1784077231.46291,
     "ast_hash": "d2723fc653d566bbc0865bf532462ef5",
     "semantic_hash": ""
   },
   "docs/skills/unity-editor-tool-developer.md": {
-    "mtime": 1783060533.8791127,
+    "mtime": 1784077231.4630513,
     "ast_hash": "1382b228f6627fbcbaa6bdd8c4e41780",
     "semantic_hash": ""
   },
   "docs/skills/unity-multiplayer-engineer.md": {
-    "mtime": 1783060533.8792205,
+    "mtime": 1784077231.4631772,
     "ast_hash": "8bcceeeb4afd9a90f8d3ffe259b0d56c",
     "semantic_hash": ""
   },
   "docs/skills/unity-shader-graph-artist.md": {
-    "mtime": 1783060533.8793283,
+    "mtime": 1784077231.4633145,
     "ast_hash": "135bfea2f785739ab71a035446b72d11",
     "semantic_hash": ""
   },
   "docs/skills/unreal-multiplayer-architect.md": {
-    "mtime": 1783060533.879437,
+    "mtime": 1784077231.4634383,
     "ast_hash": "e68d2b677b9d75687f4fd28ac43feccf",
     "semantic_hash": ""
   },
   "docs/skills/unreal-systems-engineer.md": {
-    "mtime": 1783060533.8795605,
+    "mtime": 1784077231.46357,
     "ast_hash": "ee5776271fc91edfacea7e39987c77ef",
     "semantic_hash": ""
   },
   "docs/skills/unreal-technical-artist.md": {
-    "mtime": 1783060533.8796813,
+    "mtime": 1784077231.463703,
     "ast_hash": "a5dfb8e078cbd81263027635054b9053",
     "semantic_hash": ""
   },
   "docs/skills/unreal-world-builder.md": {
-    "mtime": 1783060533.8797848,
+    "mtime": 1784077231.4638329,
     "ast_hash": "44d5753f44e786a6a1ff792243d04e61",
     "semantic_hash": ""
   },
   "docs/skills/user-story-split.md": {
-    "mtime": 1783060533.8798811,
+    "mtime": 1784077231.4639745,
     "ast_hash": "7d8d9d21560cf1eebe1a952cefef882e",
     "semantic_hash": ""
   },
   "docs/skills/ux-structure-spec.md": {
-    "mtime": 1783060533.8799772,
+    "mtime": 1784077231.4641113,
     "ast_hash": "35699fd6e84fb1678b57c88bb02e8672",
     "semantic_hash": ""
   },
   "docs/skills/vercel-deploy-claimable.md": {
-    "mtime": 1783060533.8800728,
+    "mtime": 1784077231.4642365,
     "ast_hash": "38be45fd8ccf46ae7c38636c1536b42e",
     "semantic_hash": ""
   },
   "docs/skills/visionos-spatial-engineer.md": {
-    "mtime": 1783060533.8801732,
+    "mtime": 1784077231.4643633,
     "ast_hash": "1333f2efcf477bc7de12bebcb8e751db",
     "semantic_hash": ""
   },
   "docs/skills/visual-design-system.md": {
-    "mtime": 1783060533.8802652,
+    "mtime": 1784077231.464483,
     "ast_hash": "fba494a91d08a5e14538aada79f892fa",
     "semantic_hash": ""
   },
   "docs/skills/visual-spec.md": {
-    "mtime": 1783060533.8803573,
+    "mtime": 1784077231.4646046,
     "ast_hash": "c3604f2d07770943daee2876a88a2b9a",
     "semantic_hash": ""
   },
   "docs/skills/wbs-decompose.md": {
-    "mtime": 1783060533.8804684,
+    "mtime": 1784077231.4647205,
     "ast_hash": "b1630785f63cd4f8f810a23b0a850882",
     "semantic_hash": ""
   },
   "docs/skills/web-design-guidelines.md": {
-    "mtime": 1783060533.8805668,
+    "mtime": 1784077231.464823,
     "ast_hash": "568721cb465d81258d58a8e4e8516397",
     "semantic_hash": ""
   },
   "docs/skills/webapp-testing.md": {
-    "mtime": 1783060533.880663,
-    "ast_hash": "e5f9b93f70fad422171117555ea46267",
+    "mtime": 1784077231.4649744,
+    "ast_hash": "d48adceed2a61ad55c800c7d9ef4e5af",
     "semantic_hash": ""
   },
   "docs/skills/xr-cockpit-interaction-specialist.md": {
-    "mtime": 1783060533.880767,
+    "mtime": 1784077231.4651086,
     "ast_hash": "e484fcdf48f42a32db0327114dd78a74",
     "semantic_hash": ""
   },
   "docs/skills/xr-immersive-developer.md": {
-    "mtime": 1783060533.8808718,
+    "mtime": 1784077231.4652486,
     "ast_hash": "a5e66fd867727181d529ceb468ea0226",
     "semantic_hash": ""
   },
   "docs/skills/xr-interface-architect.md": {
-    "mtime": 1783060533.8810825,
+    "mtime": 1784077231.4656112,
     "ast_hash": "a47f985689ad25f0053022f876d27db8",
     "semantic_hash": ""
   },
   "docs/skills/zk-steward.md": {
-    "mtime": 1783060533.8813066,
+    "mtime": 1784077231.465753,
     "ast_hash": "8598d15279e9fd81818db2ebe1d7a2d4",
     "semantic_hash": ""
   },
   "docs/skills/\u9879\u76ee\u7ecf\u7406.md": {
-    "mtime": 1783060533.881411,
+    "mtime": 1784077231.4658878,
     "ast_hash": "139d465c825ffa0324a5d15477514974",
     "semantic_hash": ""
   },
@@ -5632,6 +5627,31 @@
   "web/src/components/workbench-main-layout.tsx": {
     "mtime": 1784075493.9033298,
     "ast_hash": "0af9f96496ad32b35fee84ba03f012be",
+    "semantic_hash": ""
+  },
+  "docs/skills/gsap-core.md": {
+    "mtime": 1784077231.4415417,
+    "ast_hash": "38fa9ca862833a41ea417ca787bc6f4a",
+    "semantic_hash": ""
+  },
+  "docs/skills/gsap-performance.md": {
+    "mtime": 1784077231.4423435,
+    "ast_hash": "85b5a59efac5217982b5cbe68ced99a0",
+    "semantic_hash": ""
+  },
+  "docs/skills/gsap-react.md": {
+    "mtime": 1784077231.443215,
+    "ast_hash": "07ab35f7d9e3587b5dd0d8b436d4563b",
+    "semantic_hash": ""
+  },
+  "docs/skills/gsap-scrolltrigger.md": {
+    "mtime": 1784077231.4439137,
+    "ast_hash": "64d70d44e59be67add2b0bf22f62c8d3",
+    "semantic_hash": ""
+  },
+  "docs/skills/gsap-timeline.md": {
+    "mtime": 1784077231.444411,
+    "ast_hash": "6c5c79c95d5dd1114620b9f619aee9c9",
     "semantic_hash": ""
   }
 }

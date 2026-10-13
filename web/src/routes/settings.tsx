@@ -1,11 +1,21 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
-import { Save, Download, Upload, RefreshCw, GitBranch, Settings, X, FolderInput } from "lucide-react";
+import {
+  Save,
+  Download,
+  Upload,
+  RefreshCw,
+  GitBranch,
+  Settings,
+  X,
+  FolderInput,
+} from "lucide-react";
 import { toast } from "sonner";
 import { InfoHint } from "@/components/info-hint";
 import { RequiredMark } from "@/components/required-mark";
 import { ModelsConnectionsPanel } from "@/components/models-connections-panel";
+import { UserPreferencesPanel } from "@/components/user-preferences-panel";
 import { DeployDialog } from "@/components/deploy-dialog";
 import { PageRoot, SettingsLayout, SettingsNavItem } from "@/components/page-layout";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
@@ -19,6 +29,8 @@ import {
   GIT_PUSH_REASON_PLACEHOLDER,
   GIT_PUSH_REASON_REQUIRED,
   PAGE_DESC,
+  SETTINGS_ADVANCED_LINKS,
+  SETTINGS_EXPERIMENTAL_LINKS,
 } from "@/lib/ui-copy";
 import { formatGitErrorMessage } from "@/lib/git-error-message";
 
@@ -58,28 +70,42 @@ function SettingsOverview({
   orchestrationMode: "claude-code" | "local-mcp";
   modelLabel: string;
 }) {
-  const wsShort =
-    workspacePath.length > 48 ? `…${workspacePath.slice(-44)}` : workspacePath;
+  const wsShort = workspacePath.length > 48 ? `…${workspacePath.slice(-44)}` : workspacePath;
 
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
       <div className="rounded-xl border border-border bg-surface-elevated px-3 py-2.5 shadow-xs">
-        <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">工作区</div>
-        <div className="mt-0.5 truncate font-mono text-[11.5px] text-foreground" title={workspacePath}>
+        <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+          工作区
+        </div>
+        <div
+          className="mt-0.5 truncate font-mono text-[11.5px] text-foreground"
+          title={workspacePath}
+        >
           {wsShort}
         </div>
-        <div className="mt-1 text-[10.5px] text-muted-foreground">侧栏 · 工作目录</div>
+        <div className="mt-1 text-[10.5px] text-muted-foreground">
+          <Link to="/workspaces" className="underline hover:no-underline">
+            更换工作目录
+          </Link>
+        </div>
       </div>
       <div className="rounded-xl border border-border bg-surface-elevated px-3 py-2.5 shadow-xs">
-        <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">编排</div>
+        <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+          运行模式
+        </div>
         <div className="mt-0.5 text-[13px] font-semibold text-foreground">
           {orchestrationMode === "local-mcp" ? "本地 Ollama + MCP" : "Claude Code"}
         </div>
         <div className="mt-1 text-[10.5px] text-muted-foreground">聊天页切换</div>
       </div>
       <div className="rounded-xl border border-border bg-surface-elevated px-3 py-2.5 shadow-xs">
-        <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">默认模型</div>
-        <div className="mt-0.5 truncate font-mono text-[12px] font-semibold text-foreground">{modelLabel}</div>
+        <div className="text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+          默认模型
+        </div>
+        <div className="mt-0.5 truncate font-mono text-[12px] font-semibold text-foreground">
+          {modelLabel}
+        </div>
         <div className="mt-1 text-[10.5px] text-muted-foreground">模型配置</div>
       </div>
     </div>
@@ -90,9 +116,9 @@ function SettingsPage() {
   const desktop = useHasDesktop();
   const [workspacePath, setWorkspacePath] = useState("(未载入)");
   const [modelSelect, setModelSelect] = useState("");
-  const [orchestrationModeSelect, setOrchestrationModeSelect] = useState<"claude-code" | "local-mcp">(
-    "claude-code",
-  );
+  const [orchestrationModeSelect, setOrchestrationModeSelect] = useState<
+    "claude-code" | "local-mcp"
+  >("claude-code");
   const [settingsTab, setSettingsTab] = useState<"basic" | "advanced">("basic");
 
   const refreshWorkspace = useCallback(async () => {
@@ -138,18 +164,22 @@ function SettingsPage() {
         <PageHeader
           title="应用设置"
           description={
-            settingsTab === "basic"
-              ? PAGE_DESC.settings.basic
-              : PAGE_DESC.settings.advanced
+            settingsTab === "basic" ? PAGE_DESC.settings.basic : PAGE_DESC.settings.advanced
           }
         />
         <SettingsLayout
           nav={
             <>
-              <SettingsNavItem active={settingsTab === "basic"} onClick={() => setSettingsTab("basic")}>
+              <SettingsNavItem
+                active={settingsTab === "basic"}
+                onClick={() => setSettingsTab("basic")}
+              >
                 基础设置
               </SettingsNavItem>
-              <SettingsNavItem active={settingsTab === "advanced"} onClick={() => setSettingsTab("advanced")}>
+              <SettingsNavItem
+                active={settingsTab === "advanced"}
+                onClick={() => setSettingsTab("advanced")}
+              >
                 高级
               </SettingsNavItem>
             </>
@@ -162,6 +192,7 @@ function SettingsPage() {
                 orchestrationMode={orchestrationModeSelect}
                 modelLabel={modelSelect || "—"}
               />
+              <UserPreferencesPanel disabled={!desktop} />
               <ModelsConnectionsPanel onSettingsUpdated={() => void refreshSettingsSummary()} />
             </div>
           ) : null}
@@ -188,10 +219,21 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
   const [personalGithubRepo, setPersonalGithubRepo] = useState("");
   const [gitUserName, setGitUserName] = useState("");
   const [gitUserEmail, setGitUserEmail] = useState("");
-  const [upstreamGithubRepo, setUpstreamGithubRepo] = useState("https://github.com/anthropics/claude-code.git");
+  const [upstreamGithubRepo, setUpstreamGithubRepo] = useState(
+    "https://github.com/anthropics/claude-code.git",
+  );
   const [pushReason, setPushReason] = useState("");
   const [workspacePath, setWorkspacePath] = useState("");
-  const [gitBusy, setGitBusy] = useState<"pull" | "pullPersonal" | "deployPersonal" | "push" | "commitBranch" | "save" | "checkUpstream" | null>(null);
+  const [gitBusy, setGitBusy] = useState<
+    | "pull"
+    | "pullPersonal"
+    | "deployPersonal"
+    | "push"
+    | "commitBranch"
+    | "save"
+    | "checkUpstream"
+    | null
+  >(null);
   const [gitStatus, setGitStatus] = useState<Awaited<
     ReturnType<NonNullable<ReturnType<typeof getDesktop>>["workbenchGitStatus"]>
   > | null>(null);
@@ -355,7 +397,10 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
     setGitBusy("deployPersonal");
     try {
       const r = await api.workbenchGitDeployPersonal();
-      gitToast(r.ok ? r.summary || "已部署到本地。" : briefGitError(r.error, "部署失败"), r.ok ? "success" : "error");
+      gitToast(
+        r.ok ? r.summary || "已部署到本地。" : briefGitError(r.error, "部署失败"),
+        r.ok ? "success" : "error",
+      );
     } finally {
       setGitBusy(null);
     }
@@ -367,7 +412,10 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
     setGitBusy("deployPersonal");
     try {
       const r = await api.workbenchGitDeployPersonal();
-      gitToast(r.ok ? r.summary || "已部署到本地。" : briefGitError(r.error, "部署失败"), r.ok ? "success" : "error");
+      gitToast(
+        r.ok ? r.summary || "已部署到本地。" : briefGitError(r.error, "部署失败"),
+        r.ok ? "success" : "error",
+      );
     } finally {
       setGitBusy(null);
     }
@@ -441,11 +489,39 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
     }
   };
 
-  const personalRepoShort = personalGithubRepo.trim().replace(/^https:\/\/github\.com\//, "") || "未配置";
+  const personalRepoShort =
+    personalGithubRepo.trim().replace(/^https:\/\/github\.com\//, "") || "未配置";
 
   return (
     <>
       <div className="max-w-2xl space-y-5">
+        <Section title="编排与运维">
+          <div className="flex flex-wrap gap-1.5">
+            {SETTINGS_ADVANCED_LINKS.map((item) =>
+              item.to === "/chains" ? (
+                <Link key={item.to} to="/chains" search={{ q: "" }} className="btn-row">
+                  {item.label}
+                </Link>
+              ) : (
+                <Link key={item.to} to={item.to} className="btn-row">
+                  {item.label}
+                </Link>
+              ),
+            )}
+          </div>
+        </Section>
+
+        <Section title="实验">
+          <p className="mb-2 text-[12px] text-muted-foreground">非编码主路径，按需使用。</p>
+          <div className="flex flex-wrap gap-1.5">
+            {SETTINGS_EXPERIMENTAL_LINKS.map((item) => (
+              <Link key={item.to} to={item.to} className="btn-row">
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </Section>
+
         {/* ── 仓库摘要 ── */}
         <Section title="GitHub 同步">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -461,7 +537,7 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
                   {gitStatus?.ok && (
                     <div className="mt-0.5 flex items-center gap-2">
                       <span className="font-mono text-[10px] text-muted-foreground">
-                        {(gitStatus.personalBranch || gitStatus.branch || "—")}
+                        {gitStatus.personalBranch || gitStatus.branch || "—"}
                       </span>
                       <span className="text-[9px] text-muted-foreground/40">·</span>
                       <span className="text-[10px] text-muted-foreground">
@@ -501,7 +577,9 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
               onClick={() => void checkUpstreamUpdates()}
               className="btn-row"
             >
-              <RefreshCw className={cn("h-3.5 w-3.5", gitBusy === "checkUpstream" && "animate-spin")} />
+              <RefreshCw
+                className={cn("h-3.5 w-3.5", gitBusy === "checkUpstream" && "animate-spin")}
+              />
               {gitBusy === "checkUpstream" ? "检测中…" : "检测更新"}
             </button>
             <button
@@ -519,7 +597,10 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
         {/* ── 个人仓库 ── */}
         <Section title="个人仓库">
           {workspacePath ? (
-            <p className="mb-3 truncate font-mono text-[11px] text-muted-foreground" title={workspacePath}>
+            <p
+              className="mb-3 truncate font-mono text-[11px] text-muted-foreground"
+              title={workspacePath}
+            >
               工作区：{workspacePath}
             </p>
           ) : (
@@ -551,7 +632,9 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
               onClick={() => void deployFromRepo()}
               className="btn-row"
             >
-              <FolderInput className={cn("h-3.5 w-3.5", gitBusy === "deployPersonal" && "animate-pulse")} />
+              <FolderInput
+                className={cn("h-3.5 w-3.5", gitBusy === "deployPersonal" && "animate-pulse")}
+              />
               {gitBusy === "deployPersonal" ? "部署中…" : "部署到本地"}
             </button>
             <button
@@ -560,16 +643,26 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
               onClick={() => void commitBranch()}
               className="btn-row"
             >
-              <GitBranch className={cn("h-3.5 w-3.5", gitBusy === "commitBranch" && "animate-pulse")} />
+              <GitBranch
+                className={cn("h-3.5 w-3.5", gitBusy === "commitBranch" && "animate-pulse")}
+              />
               {gitBusy === "commitBranch" ? "提交中…" : "提交分支"}
             </button>
             <button
               type="button"
-              disabled={!desktop || gitBusy !== null || !personalGithubRepo.trim() || !gitUserName.trim() || !gitUserEmail.trim()}
+              disabled={
+                !desktop ||
+                gitBusy !== null ||
+                !personalGithubRepo.trim() ||
+                !gitUserName.trim() ||
+                !gitUserEmail.trim()
+              }
               onClick={() => void pullFromPersonal()}
               className="btn-row"
             >
-              <Download className={cn("h-3.5 w-3.5", gitBusy === "pullPersonal" && "animate-pulse")} />
+              <Download
+                className={cn("h-3.5 w-3.5", gitBusy === "pullPersonal" && "animate-pulse")}
+              />
               {gitBusy === "pullPersonal" ? "拉取中…" : "拉取"}
             </button>
             <button
@@ -590,7 +683,9 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
           </div>
 
           <div className="mt-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-            <p>{GIT_PUSH_HINT} {GIT_DEPLOY_HINT}</p>
+            <p>
+              {GIT_PUSH_HINT} {GIT_DEPLOY_HINT}
+            </p>
             <p className="mt-1 text-[10.5px] text-muted-foreground/60">{GIT_PUSH_HINT_DETAIL}</p>
           </div>
         </Section>
@@ -614,7 +709,11 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
         />
       ) : null}
 
-      <DeployDialog open={deployDialogOpen} onOpenChange={setDeployDialogOpen} onReady={deployFromRepoSilent} />
+      <DeployDialog
+        open={deployDialogOpen}
+        onOpenChange={setDeployDialogOpen}
+        onReady={deployFromRepoSilent}
+      />
     </>
   );
 }
@@ -640,7 +739,9 @@ function GitHubConfigDrawer({
   gitUserEmail: string;
   personalGithubRepo: string;
   upstreamGithubRepo: string;
-  gitStatus: Awaited<ReturnType<NonNullable<ReturnType<typeof getDesktop>>["workbenchGitStatus"]>> | null;
+  gitStatus: Awaited<
+    ReturnType<NonNullable<ReturnType<typeof getDesktop>>["workbenchGitStatus"]>
+  > | null;
   onClose: () => void;
   onGitUserNameChange: (v: string) => void;
   onGitUserEmailChange: (v: string) => void;
@@ -677,7 +778,9 @@ function GitHubConfigDrawer({
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <div className="grid gap-3 sm:grid-cols-1">
             <label className="block">
-              <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">Git 用户名</span>
+              <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">
+                Git 用户名
+              </span>
               <input
                 value={gitUserName}
                 onChange={(e) => onGitUserNameChange(e.target.value)}
@@ -688,7 +791,9 @@ function GitHubConfigDrawer({
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">Git 邮箱</span>
+              <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">
+                Git 邮箱
+              </span>
               <input
                 value={gitUserEmail}
                 onChange={(e) => onGitUserEmailChange(e.target.value)}
@@ -700,7 +805,9 @@ function GitHubConfigDrawer({
             </label>
           </div>
           <label className="block">
-            <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">个人仓库 URL</span>
+            <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">
+              个人仓库 URL
+            </span>
             <input
               value={personalGithubRepo}
               onChange={(e) => onPersonalGithubRepoChange(e.target.value)}
@@ -711,7 +818,9 @@ function GitHubConfigDrawer({
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">上游仓库 URL（官方同步源）</span>
+            <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">
+              上游仓库 URL（官方同步源）
+            </span>
             <input
               value={upstreamGithubRepo}
               onChange={(e) => onUpstreamGithubRepoChange(e.target.value)}

@@ -50,32 +50,15 @@ async function execSimple(cmd, extraEnv = {}) {
 }
 
 export async function resolveClaudePath() {
-  const settings = loadChatSettings()
-  const manual = settings.claudeCliPath?.trim()
-  if (manual) {
-    const resolved = path.resolve(expandUser(manual))
-    if (!fs.existsSync(resolved)) {
-      return { claudePath: resolved, resolveError: '手动路径不存在' }
-    }
-    const safe = resolved.includes(' ') ? `"${resolved}"` : resolved
-    const ver = await execSimple(`${safe} --version`)
-    return {
-      claudePath: resolved,
-      versionLine: (ver.stdout || ver.stderr).trim(),
-      resolveError: ver.ok ? '' : ver.stderr || '无法执行 --version',
-    }
+  const { resolveClaudeCliDetailed } = await import('./ensure-claude-cli.mjs')
+  const d = await resolveClaudeCliDetailed()
+  if (!d.ok || !d.claudePath) {
+    return { claudePath: '', resolveError: d.hint || 'PATH 中未找到 claude' }
   }
-  const which = await execSimple('command -v claude')
-  const claudePath = which.stdout.trim()
-  if (!claudePath) {
-    return { claudePath: '', resolveError: 'PATH 中未找到 claude' }
-  }
-  const safe = claudePath.includes(' ') ? `"${claudePath}"` : claudePath
-  const ver = await execSimple(`${safe} --version`)
   return {
-    claudePath,
-    versionLine: (ver.stdout || ver.stderr).trim(),
-    resolveError: ver.ok ? '' : ver.stderr || '',
+    claudePath: d.claudePath,
+    versionLine: d.versionLine || '',
+    resolveError: '',
   }
 }
 
@@ -603,6 +586,8 @@ export async function runClaudeCodePrint({
   claudeSessionId,
   sessionName,
   isNewClaudeSession,
+  /** 前端传入：ask/manual→plan，agent→acceptEdits（） */
+  permissionMode: permissionModeArg,
   onDelta,
 }) {
   if (!prompt?.trim()) {
@@ -745,9 +730,19 @@ export async function runClaudeCodePrint({
     }
   }
 
+  // Agent→acceptEdits 可直接写盘；Ask/Manual→plan。
+  // 优先级：请求体 permissionMode > WORKBENCH_PERMISSION_MODE > acceptEdits（产品默认）。
+  const permissionMode = (() => {
+    const allowed = new Set(['plan', 'default', 'acceptEdits', 'auto'])
+    const fromArg = String(permissionModeArg || '').trim().toLowerCase()
+    if (allowed.has(fromArg)) return fromArg
+    const fromEnv = String(process.env.WORKBENCH_PERMISSION_MODE || '').trim().toLowerCase()
+    if (allowed.has(fromEnv)) return fromEnv
+    return 'acceptEdits'
+  })()
   const args = useMultimodalInput
-    ? ['-p', '--permission-mode', 'auto', '--input-format', 'stream-json']
-    : ['-p', prompt.trim(), '--permission-mode', 'auto']
+    ? ['-p', '--permission-mode', permissionMode, '--input-format', 'stream-json']
+    : ['-p', prompt.trim(), '--permission-mode', permissionMode]
   if (cliModel) args.push('--model', cliModel)
   const useBare =
     process.env.WORKBENCH_CLAUDE_BARE === '1' ||
@@ -962,19 +957,17 @@ export function abortClaudeCode(requestId) {
 }
 
 export async function claudeCliStatus() {
+  const { resolveClaudeCliDetailed } = await import('./ensure-claude-cli.mjs')
+  const d = await resolveClaudeCliDetailed()
   const settings = loadChatSettings()
-  const snap = await resolveClaudePath()
-  let hint = snap.resolveError
-  if (!hint && !snap.claudePath) {
-    hint = '未检测到 claude，请在设置中配置 claude 可执行文件路径'
-  }
   return {
-    ok: true,
+    ok: Boolean(d.ok && d.claudePath),
     configuredPath: settings.claudeCliPath || '',
-    claudePath: snap.claudePath,
-    versionLine: snap.versionLine,
-    detectionSource: settings.claudeCliPath?.trim() ? 'manual' : 'path',
-    hint: hint || '',
+    claudePath: d.claudePath || '',
+    versionLine: d.versionLine || '',
+    detectionSource: d.detectionSource || 'none',
+    hint: d.ok ? '' : d.hint || '未检测到 claude，请执行 ensureCli 安装',
+    clearedStale: Boolean(d.clearedStale),
   }
 }
 

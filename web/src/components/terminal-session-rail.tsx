@@ -1,5 +1,6 @@
-import { SplitSquareHorizontal, TerminalSquare, Trash2 } from "lucide-react";
+import { SplitSquareHorizontal, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SetiShellIcon } from "@/lib/seti/seti-file-icon";
 import type { TerminalSession } from "@/components/terminal-sessions-view";
 
 /** 多终端时在面板右侧竖向列表 */
@@ -43,7 +44,7 @@ export function TerminalSessionRail({
                   )}
                   title={session.label}
                 >
-                  <TerminalSquare className="h-3 w-3 shrink-0 opacity-60" />
+                  <SetiShellIcon className="text-[12px]" />
                   <span className="truncate">{session.label}</span>
                 </button>
                 <div

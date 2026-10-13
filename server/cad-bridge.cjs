@@ -737,7 +737,8 @@ async function orchestrationChainLoop() {
 const CHAIN_REPLY_HINT =
   '\n\n【任务链·可见回复】面向对话窗口的输出须为简体中文短要点（代码/路径/API 名除外）；' +
   '禁止英文 Implementation Plan / Execution 等长篇计划标题；' +
-  '写盘完成后勿在正文整段粘贴 ```json``` 形式的 workspace-write 工具负载（界面会折叠大段 JSON）。'
+  'Agent 模式可直接 Edit/Write 或输出 ```workspace-write```（将自动落盘）；Manual 模式须围栏待 Accept；' +
+  '勿在正文整段粘贴 ```json``` 形式的工具负载（界面会折叠大段 JSON）。'
 
 function init(dependencies) {
   deps = dependencies
@@ -929,20 +930,78 @@ function orchestrationFile() {
   return { primary, legacy }
 }
 
-function applyWritesInWorkspace(items) {
-  const workspaceDir = loadWorkspace()
-  if (!workspaceDir || !fs.existsSync(workspaceDir)) {
-    return { ok: false, error: '未选择工作区', written: [], errors: ['未选择工作区'] }
+/** 读取工作区交互模式（前端写入 .claudecode/interaction-mode.json）；默认 agent */
+function readWorkspaceInteractionMode() {
+  try {
+    const root = loadWorkspace()
+    if (!root) return 'agent'
+    const fs = require('fs')
+    const path = require('path')
+    const p = path.join(root, '.claudecode', 'interaction-mode.json')
+    if (!fs.existsSync(p)) return 'agent'
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'))
+    const m = String(j?.mode || '').trim()
+    if (m === 'ask' || m === 'propose' || m === 'agent') return m
+  } catch {
+    /* ignore */
   }
-  return applyWorkspaceWriteFenceItems(workspaceDir, items)
+  return 'agent'
 }
 
-function createTrackingWorkspaceWriter(sessionWritten) {
+/**
+ * 编排内 workspace-write：
+ * - Agent（默认，）：立即落盘
+ * - Manual(propose)/Ask：deferred，供 UI Accept
+ */
+function applyWritesInWorkspace(items) {
+  const list = Array.isArray(items) ? items : []
+  const mode = readWorkspaceInteractionMode()
+  if (mode === 'agent') {
+    const workspaceDir = loadWorkspace()
+    if (workspaceDir && typeof applyWorkspaceWriteFenceItems === 'function') {
+      return applyWorkspaceWriteFenceItems(workspaceDir, list)
+    }
+  }
+  const pending = []
+  for (const it of list) {
+    const p = String(it?.path || it?.file || '')
+      .trim()
+      .replace(/\\/g, '/')
+    if (!p || p.includes('..')) continue
+    const content = it?.content != null ? String(it.content) : ''
+    if (!content.trim()) continue
+    pending.push({ path: p, content })
+  }
+  return {
+    ok: true,
+    deferred: true,
+    written: [],
+    pending,
+    pendingPaths: pending.map((x) => x.path),
+    error: null,
+    message: '未落盘：已排队待用户 Accept（Manual/Ask）',
+  }
+}
+
+function appendDeferredWriteFences(content, pendingItems) {
+  const list = Array.isArray(pendingItems) ? pendingItems : []
+  if (!list.length) return content
+  const fences = list
+    .map((it) => '```workspace-write\n' + JSON.stringify({ path: it.path, content: it.content }) + '\n```')
+    .join('\n\n')
+  const base = String(content || '').trimEnd()
+  return base ? `${base}\n\n${fences}` : fences
+}
+
+function createTrackingWorkspaceWriter(sessionPending) {
   return (items) => {
     const r = applyWritesInWorkspace(items)
-    if (Array.isArray(r?.written)) {
-      for (const p of r.written) {
-        if (p && !sessionWritten.includes(p)) sessionWritten.push(p)
+    if (Array.isArray(r?.pending)) {
+      for (const it of r.pending) {
+        if (!it?.path) continue
+        const i = sessionPending.findIndex((x) => x.path === it.path)
+        if (i >= 0) sessionPending[i] = it
+        else sessionPending.push(it)
       }
     }
     return r
@@ -982,7 +1041,8 @@ async function runLocalOrch(payload) {
   const allowedMcpServers = Array.isArray(payload?.allowedMcpServers)
     ? payload.allowedMcpServers.map((x) => String(x ?? '').trim()).filter(Boolean)
     : undefined
-  const toolWritten = []
+  /** @type {Array<{ path: string; content: string }>} */
+  const toolPending = []
 
   const enriched = await chatImages.enrichUserLineForImages({
     ollamaBase: settings.ollamaBase,
@@ -1016,15 +1076,17 @@ async function runLocalOrch(payload) {
       defaultOllamaModelHint: settings.localOllamaModel || '',
       devMcpOrchDebug: Boolean(settings.devMcpOrchDebug),
       shouldAbort: () => state.cancelled,
-      applyWorkspaceWriteItems: createTrackingWorkspaceWriter(toolWritten),
+      applyWorkspaceWriteItems: createTrackingWorkspaceWriter(toolPending),
     })
+    const content = appendDeferredWriteFences(r.content ?? '', toolPending)
     return {
       ok: r.ok,
-      content: r.content ?? '',
+      content,
       error: r.error ?? null,
       aborted: Boolean(r.aborted),
       orchestrationHints: Array.isArray(r.orchestrationHints) ? r.orchestrationHints : undefined,
-      toolWrittenPaths: toolWritten,
+      toolWrittenPaths: [],
+      deferredWritePaths: toolPending.map((x) => x.path),
     }
   } finally {
     if (requestId) activeLocalOrchestrationRequests.delete(requestId)
@@ -1057,12 +1119,14 @@ function createHandlers() {
       const text = typeof payload.text === 'string' ? payload.text : ''
       const workspaceDir = loadWorkspace()
       if (!workspaceDir) return { ok: false, error: '未选择工作区', written: [] }
+      // 仅当调用方显式 applyWrites:true（如用户 Accept / 主动 ingest）才落盘；默认 deferred。
       return ingestTextAndApplyWorkspaceWrite(text, workspaceDir, {
         agentName: payload.agentName,
         taskId: payload.taskId,
         ensureChainArtifact: Boolean(payload.ensureChainArtifact),
         ensureAgentArtifact: Boolean(payload.ensureAgentArtifact),
         autoWriteProject: payload.autoWriteProject,
+        applyWrites: payload.applyWrites === true,
       })
     },
 
@@ -1348,6 +1412,7 @@ function createHandlers() {
           const requestId = `delegation-${Date.now()}-${i}`
           activeLocalOrchestrationRequests.set(requestId, state)
           try {
+            const stepPending = []
             const r = await runLocalMcpOrchestration({
               bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
               workspaceRoot: loadWorkspace() || undefined,
@@ -1362,9 +1427,9 @@ function createHandlers() {
               defaultOllamaModelHint: settings.localOllamaModel || '',
               devMcpOrchDebug: Boolean(settings.devMcpOrchDebug),
               shouldAbort: () => state.cancelled,
-              applyWorkspaceWriteItems: applyWritesInWorkspace,
+              applyWorkspaceWriteItems: createTrackingWorkspaceWriter(stepPending),
             })
-            const out = String(r.content || '').trim()
+            const out = appendDeferredWriteFences(String(r.content || '').trim(), stepPending)
             let displayOutput = out
             if (r.ok) {
               const workspaceDir = loadWorkspace()
@@ -1434,6 +1499,7 @@ function createHandlers() {
           const state = { cancelled: false }
           activeLocalOrchestrationRequests.set(requestId, state)
           try {
+            const synthPending = []
             const r = await runLocalMcpOrchestration({
               bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
               workspaceRoot: loadWorkspace() || undefined,
@@ -1448,12 +1514,12 @@ function createHandlers() {
               defaultOllamaModelHint: settings.localOllamaModel || '',
               devMcpOrchDebug: Boolean(settings.devMcpOrchDebug),
               shouldAbort: () => state.cancelled,
-              applyWorkspaceWriteItems: applyWritesInWorkspace,
+              applyWorkspaceWriteItems: createTrackingWorkspaceWriter(synthPending),
             })
             synthesis = {
               ok: Boolean(r.ok),
               agentName: stem,
-              output: String(r.content || '').trim(),
+              output: appendDeferredWriteFences(String(r.content || '').trim(), synthPending),
               error: r.ok ? null : r.error || null,
             }
           } finally {
@@ -1714,7 +1780,7 @@ category: 通用
 
 ## 职责
 
-- （待填）
+-（待填）
 `
       fs.writeFileSync(target, template, 'utf8')
       execFile('open', ['-R', target])

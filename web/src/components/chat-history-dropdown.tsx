@@ -55,7 +55,7 @@ function HistoryRow({
         <span className="min-w-0 flex-1">
           <span className="block truncate text-left text-[12px] leading-snug">{item.title}</span>
           {showWorkspace ? (
-            <span className="mt-0.5 block truncate text-left text-[10px] text-muted-foreground">
+            <span className="mt-0.5 block truncate text-left text-[11px] text-muted-foreground">
               {shortenWorkspaceLabel(workspaceSessionKey(item.workspacePath))}
             </span>
           ) : null}
@@ -108,7 +108,7 @@ export function ChatHistoryDropdown({
           <button
             type="button"
             className={cn(
-              "flex-1 rounded-[5px] px-2 py-1 text-[10px] font-medium transition",
+              "flex-1 rounded-[5px] px-2 py-1 text-[12px] font-medium transition",
               scope === "project"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -120,7 +120,7 @@ export function ChatHistoryDropdown({
           <button
             type="button"
             className={cn(
-              "flex-1 rounded-[5px] px-2 py-1 text-[10px] font-medium transition",
+              "flex-1 rounded-[5px] px-2 py-1 text-[12px] font-medium transition",
               scope === "all"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -134,13 +134,13 @@ export function ChatHistoryDropdown({
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 py-1.5 scrollbar-thin">
         {!filtered.length ? (
-          <div className="px-2 py-6 text-center text-[11px] text-muted-foreground">
+          <div className="px-2 py-6 text-center text-[12px] text-muted-foreground">
             {query.trim() ? "没有匹配的对话" : "暂无聊天记录"}
           </div>
         ) : scope === "project" ? (
           dateGroups.map((group) => (
             <section key={group.label} className="mb-2">
-              <div className="px-2 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="px-2 pb-0.5 text-[12px] font-medium uppercase tracking-wide text-muted-foreground">
                 {group.label}
               </div>
               <div className="space-y-0.5">
@@ -161,7 +161,7 @@ export function ChatHistoryDropdown({
         ) : (
           workspaceGroups.map((group) => (
             <section key={group.workspaceKey || "__none__"} className="mb-2">
-              <div className="px-2 pb-0.5 text-[10px] font-semibold text-muted-foreground">
+              <div className="px-2 pb-0.5 text-[12px] font-semibold text-muted-foreground">
                 {group.workspaceLabel}
               </div>
               <div className="space-y-0.5">

@@ -7,7 +7,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { RefreshCw, TerminalSquare } from "lucide-react";
+import { RefreshCw } from "lucide-react";
+import { SetiShellIcon } from "@/lib/seti/seti-file-icon";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import { cn } from "@/lib/utils";
@@ -17,8 +18,8 @@ import { useTheme } from "@/hooks/use-theme";
 import { buildXtermTheme } from "@/lib/terminal-theme";
 import {
   WORKBENCH_MONO_FONT,
-  WORKBENCH_TERMINAL_FONT_SIZE,
   WORKBENCH_TERMINAL_LINE_HEIGHT,
+  readWorkbenchCodeFontSizePx,
 } from "@/lib/workbench-fonts";
 import {
   connectWorkspaceTerminal,
@@ -322,7 +323,7 @@ export const WorkspaceTerminal = forwardRef<
       cursorBlink: true,
       cursorStyle: "block",
       cursorWidth: 1,
-      fontSize: WORKBENCH_TERMINAL_FONT_SIZE,
+      fontSize: readWorkbenchCodeFontSizePx(),
       lineHeight: WORKBENCH_TERMINAL_LINE_HEIGHT,
       fontFamily: WORKBENCH_MONO_FONT,
       letterSpacing: 0,
@@ -588,7 +589,7 @@ export const WorkspaceTerminal = forwardRef<
       {variant === "sidebar" ? (
         <>
           <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
-            <TerminalSquare className="h-3.5 w-3.5 text-primary" />
+            <SetiShellIcon className="h-3.5 w-3.5 text-[16px] leading-none" />
             <span
               className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground"
               title={cwdLabel}
@@ -597,7 +598,7 @@ export const WorkspaceTerminal = forwardRef<
             </span>
             <span
               className={cn(
-                "text-[10px]",
+                "text-[11px]",
                 status === "ready"
                   ? "text-emerald-600 dark:text-emerald-400"
                   : "text-muted-foreground",
@@ -622,14 +623,14 @@ export const WorkspaceTerminal = forwardRef<
             </button>
           </div>
           {hint ? (
-            <div className="shrink-0 border-b border-border px-2 py-1 text-[10.5px] text-amber-700 dark:text-amber-300">
+            <div className="shrink-0 border-b border-border px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300">
               {hint}
             </div>
           ) : null}
         </>
       ) : null}
       {variant === "bottom" && hint ? (
-        <div className="shrink-0 border-b border-border px-2 py-1 text-[10px] text-amber-700 dark:text-amber-300">
+        <div className="shrink-0 border-b border-border px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300">
           {hint}
         </div>
       ) : null}

@@ -4,8 +4,10 @@ import { cn } from "@/lib/utils";
 export type PendingFileEntry = {
   id: string;
   name: string;
-  /** 文件路径或空（浏览器拖入时仅 name） */
+  /** 本机绝对路径（可选） */
   path?: string;
+  /** 已读入的正文；无 content 的附件不得发送进模型 */
+  content?: string;
 };
 
 export function ComposerFileAttachments({

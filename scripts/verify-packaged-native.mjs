@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * 校验 .app 内 better-sqlite3 是否能在 Electron 内嵌 Node 下加载（ABI 133 等）。
- * 在 electron-builder 之后、restore-dev-native 之前调用，避免把开发 ABI 打进安装包。
+ * 校验 .app 内 better-sqlite3（≥13 N-API）是否能在 Electron 内嵌 Node 下加载。
+ * 在 electron-builder 之后、restore-dev-native 之前调用。
  */
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -48,8 +48,11 @@ function probeSqlite(appPath) {
   const sqliteRel = './vendor/cad/node_modules/better-sqlite3'
   const script = `
     const D = require(${JSON.stringify(sqliteRel)});
+    const ver = require(${JSON.stringify(sqliteRel + '/package.json')}).version;
+    const major = Number(String(ver).split('.')[0]);
+    if (!(major >= 13)) throw new Error('need better-sqlite3>=13, got ' + ver);
     const db = new D(':memory:');
-    db.prepare('select 1 as ok').get();
+    for (let i = 0; i < 300; i++) db.prepare('select ? as n').get(i);
     db.close();
     console.log('packaged-native-ok');
   `
@@ -71,9 +74,9 @@ if (!appPath) {
 console.log(`[verify-packaged-native] 校验 ${appPath}`)
 const result = probeSqlite(appPath)
 if (!result.ok) {
-  console.error('[verify-packaged-native] 失败：better-sqlite3 与 Electron ABI 不匹配或未正确打包。')
+  console.error('[verify-packaged-native] 失败：better-sqlite3 无法在 Electron 内加载（需 ≥13 N-API）。')
   console.error(result.out.trim().slice(-2000) || '(无输出)')
-  console.error('\n请确认打包前已执行 scripts/rebuild-native-for-electron.mjs（会将 bin/*-133 复制到 build/Release），且未在 builder 之前运行 restore-dev-native。')
+  console.error('\n请确认 server/vendor/cad 已安装 better-sqlite3@^13.0.3，并已执行 scripts/rebuild-native-for-electron.mjs。')
   process.exit(1)
 }
 

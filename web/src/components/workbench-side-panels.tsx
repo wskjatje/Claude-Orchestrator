@@ -1,4 +1,5 @@
-import { forwardRef, useEffect, useRef, useState, type ComponentType } from "react";
+import { forwardRef, useEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -10,10 +11,13 @@ import {
   CircleHelp,
   Download,
   Files,
+  FolderOpen,
   GitBranch,
-  GitGraph,
+  ListTree,
   RefreshCw,
   ScanSearch,
+  Search,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -21,6 +25,8 @@ import { getDesktop } from "@/lib/desktop-api";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
 import { useWorkbenchWorkspace } from "@/contexts/workbench-workspace-context";
 import { WorkbenchCenterEditor } from "@/components/workbench-center-editor";
+import { WorkbenchSearchPanel } from "@/components/workbench-search-panel";
+import { WorkbenchOutlinePanel } from "@/components/workbench-outline-panel";
 import { ExplorerTreeRow } from "@/components/explorer-tree-row";
 import {
   DropdownMenu,
@@ -32,12 +38,26 @@ import { gitBranchFromStatusLine } from "@/lib/explorer-git-decor";
 import { explorerGitStatusClass, gitStatusTone } from "@/lib/explorer-tree-theme";
 import { runScmDiffCodeReview } from "@/lib/scm-run-code-review";
 import { MSG_API_NOT_READY, WORKBENCH_SIDEPANEL_OFFLINE } from "@/lib/ui-copy";
+import {
+  getPendingWritesState,
+  subscribePendingWrites,
+} from "@/lib/workbench-pending-writes";
+import {
+  subscribeWorkbenchSideTab,
+  type WorkbenchSideTabId,
+} from "@/lib/workbench-side-tab";
+import {
+  getRecentlyWrittenPaths,
+  subscribeRecentlyWrittenPaths,
+} from "@/lib/recent-written-paths";
 
-type SideTab = "files" | "git";
+type SideTab = WorkbenchSideTabId;
 
 const SIDE_TABS: { id: SideTab; icon: typeof Files; label: string }[] = [
   { id: "files", icon: Files, label: "资源管理器" },
-  { id: "git", icon: GitGraph, label: "源代码管理" },
+  { id: "search", icon: Search, label: "搜索" },
+  { id: "git", icon: GitBranch, label: "源代码管理" },
+  { id: "outline", icon: ListTree, label: "大纲" },
 ];
 
 export function WorkbenchLeftSidebar() {
@@ -54,12 +74,21 @@ export function WorkbenchLeftSidebar() {
     }
   };
 
+  useEffect(() => {
+    return subscribeWorkbenchSideTab((next) => {
+      selectTab(next);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载订阅；selectTab 读最新 ws
+  }, []);
+
   return (
     <div className="workbench-explorer-sidebar flex h-full min-h-0 flex-col border-r border-[var(--explorer-border)] bg-[var(--explorer-bg)]">
       <SidePanelTabBar tab={tab} onSelect={selectTab} />
       <div className="workbench-side-panel min-h-0 flex-1 overflow-hidden">
         {tab === "files" && <FileTreePanel />}
+        {tab === "search" && <WorkbenchSearchPanel />}
         {tab === "git" && <GitPanel />}
+        {tab === "outline" && <WorkbenchOutlinePanel />}
       </div>
     </div>
   );
@@ -67,7 +96,10 @@ export function WorkbenchLeftSidebar() {
 
 function SidePanelTabBar({ tab, onSelect }: { tab: SideTab; onSelect: (t: SideTab) => void }) {
   return (
-    <div className="workbench-side-tabs shrink-0 border-b border-[var(--explorer-border)]" role="tablist">
+    <div
+      className="workbench-side-tabs shrink-0 border-b border-[var(--explorer-border)]"
+      role="tablist"
+    >
       {SIDE_TABS.map(({ id, icon: Icon, label }) => {
         const active = tab === id;
         return (
@@ -94,6 +126,11 @@ function FileTreePanel() {
   const ws = useWorkbenchWorkspace();
   const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set());
+  const recentWrittenPaths = useSyncExternalStore(
+    subscribeRecentlyWrittenPaths,
+    getRecentlyWrittenPaths,
+    getRecentlyWrittenPaths,
+  );
 
   const workspaceName = workspaceFolderName(ws.rootLabel);
 
@@ -130,20 +167,28 @@ function FileTreePanel() {
     <div className="sc-panel flex h-full min-h-0 flex-col overflow-y-auto scrollbar-thin">
       <div className="sc-panel-title-row">
         <span className="sc-panel-title">资源管理器</span>
-        <button
-          type="button"
-          className="workbench-icon-btn workbench-icon-btn--sm"
-          title="刷新"
-          aria-label="刷新文件树"
-          onClick={() => void ws.refreshFiles()}
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", ws.loadingFiles && "animate-spin")} />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <Link
+            to="/workspaces"
+            className="workbench-icon-btn workbench-icon-btn--sm"
+            title="工作目录"
+            aria-label="打开工作目录"
+          >
+            <FolderOpen className="h-3.5 w-3.5" />
+          </Link>
+          <button
+            type="button"
+            className="workbench-icon-btn workbench-icon-btn--sm"
+            title="刷新"
+            aria-label="刷新文件树"
+            onClick={() => void ws.refreshFiles()}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", ws.loadingFiles && "animate-spin")} />
+          </button>
+        </div>
       </div>
 
-      {ws.filesErr ? (
-        <p className="px-3 py-2 text-[11px] text-destructive">{ws.filesErr}</p>
-      ) : null}
+      {ws.filesErr ? <p className="px-3 py-2 text-[11px] text-destructive">{ws.filesErr}</p> : null}
       {ws.loadingFiles && !ws.tree.length ? (
         <p className="px-3 py-2 text-[11px] text-muted-foreground">加载中…</p>
       ) : null}
@@ -168,7 +213,9 @@ function FileTreePanel() {
                 onToggleDir={toggleDir}
                 gitStatusByPath={ws.gitStatusByPath}
                 gitHasDecoration={ws.gitHasDecoration}
-                onOpenFile={(p) => void ws.openFile(p)}
+                recentWrittenPaths={recentWrittenPaths}
+                onOpenFile={(p) => void ws.openFile(p, { preview: true })}
+                onPinFile={(p) => void ws.openFile(p, { pin: true })}
               />
             ))}
           </ul>
@@ -180,6 +227,8 @@ function FileTreePanel() {
 
 function GitPanel() {
   const ws = useWorkbenchWorkspace();
+  const pending = useSyncExternalStore(subscribePendingWrites, getPendingWritesState, getPendingWritesState);
+  const [pendingExpanded, setPendingExpanded] = useState(true);
   const [changesExpanded, setChangesExpanded] = useState(true);
   const [reviewExpanded, setReviewExpanded] = useState(true);
   const [graphExpanded, setGraphExpanded] = useState(true);
@@ -191,7 +240,9 @@ function GitPanel() {
   const graphScrollRef = useRef<HTMLDivElement>(null);
   const graphHeadRef = useRef<HTMLLIElement>(null);
   const branch = gitBranchFromStatusLine(ws.statusLine);
-  const changedPaths = Array.from(ws.gitStatusByPath.entries()).sort(([a], [b]) => a.localeCompare(b));
+  const changedPaths = Array.from(ws.gitStatusByPath.entries()).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
 
   useEffect(() => {
     if (!graphAutoRefresh) return;
@@ -301,6 +352,85 @@ function GitPanel() {
       />
 
       <div className="sc-panel-scroll-regions">
+        {pending.items.length > 0 ? (
+          <ScSection
+            title="待确认写入"
+            badge={pending.items.length}
+            expanded={pendingExpanded}
+            onToggle={() => setPendingExpanded((v) => !v)}
+            scrollable
+          >
+            <div className="sc-section-actions mb-1.5 flex flex-wrap gap-1 px-1">
+              {pending.applyAll ? (
+                <button
+                  type="button"
+                  className="btn-row text-[11px]"
+                  onClick={() => void pending.applyAll?.()}
+                >
+                  <Check className="h-3 w-3" /> 全部接受
+                </button>
+              ) : null}
+              {pending.rejectAll ? (
+                <button
+                  type="button"
+                  className="btn-row text-[11px]"
+                  onClick={() => pending.rejectAll?.()}
+                >
+                  <X className="h-3 w-3" /> 全部拒绝
+                </button>
+              ) : null}
+            </div>
+            <ul className="git-changes-list">
+              {pending.items.map((item) => {
+                const name = item.path.split("/").pop() || item.path;
+                const dir = item.path.includes("/")
+                  ? item.path.slice(0, item.path.lastIndexOf("/"))
+                  : "";
+                return (
+                  <li key={`${item.historyIndex}:${item.path}`}>
+                    <div className="git-changes-row flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => {
+                          pending.focusHistoryIndex?.(item.historyIndex);
+                          void ws.openFile(item.path);
+                        }}
+                        title={item.path}
+                      >
+                        <span className="git-changes-name truncate">{name}</span>
+                        {dir ? <span className="git-changes-dir truncate">{dir}</span> : null}
+                      </button>
+                      {pending.applyOne ? (
+                        <button
+                          type="button"
+                          className="workbench-icon-btn workbench-icon-btn--sm"
+                          title="接受"
+                          aria-label={`接受 ${item.path}`}
+                          onClick={() => void pending.applyOne?.(item)}
+                        >
+                          <Check className="h-3 w-3" />
+                        </button>
+                      ) : null}
+                      {pending.rejectOne ? (
+                        <button
+                          type="button"
+                          className="workbench-icon-btn workbench-icon-btn--sm"
+                          title="拒绝"
+                          aria-label={`拒绝 ${item.path}`}
+                          onClick={() => pending.rejectOne?.(item)}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </ScSection>
+        ) : null}
+
         <ScSection
           title="更改"
           badge={changedPaths.length}
@@ -318,10 +448,17 @@ function GitPanel() {
                 const name = path.split("/").pop() || path;
                 return (
                   <li key={path}>
-                    <button type="button" className="git-changes-row" onClick={() => void ws.openFile(path)} title={path}>
+                    <button
+                      type="button"
+                      className="git-changes-row"
+                      onClick={() => void ws.openFile(path)}
+                      title={path}
+                    >
                       <span className="git-changes-name truncate">{name}</span>
                       {dir ? <span className="git-changes-dir truncate">{dir}</span> : null}
-                      <span className={cn("git-changes-letter", explorerGitStatusClass(tone))}>{letter}</span>
+                      <span className={cn("git-changes-letter", explorerGitStatusClass(tone))}>
+                        {letter}
+                      </span>
                     </button>
                   </li>
                 );
@@ -374,7 +511,9 @@ function GitPanel() {
           }
         >
           {ws.gitLogErr ? <p className="sc-empty-hint text-destructive">{ws.gitLogErr}</p> : null}
-          {ws.loadingGitLog && !ws.gitCommits.length ? <p className="sc-empty-hint">加载中…</p> : null}
+          {ws.loadingGitLog && !ws.gitCommits.length ? (
+            <p className="sc-empty-hint">加载中…</p>
+          ) : null}
           {!ws.loadingGitLog && !ws.gitCommits.length && !ws.gitLogErr ? (
             <p className="sc-empty-hint">（暂无提交）</p>
           ) : null}
@@ -553,7 +692,13 @@ function GitGraphToolbar({
         <GitBranch className="h-3 w-3 shrink-0" />
         <span>自动</span>
       </button>
-      <button type="button" className="sc-graph-toolbar-btn" title="定位 HEAD" aria-label="定位 HEAD" onClick={onFocusHead}>
+      <button
+        type="button"
+        className="sc-graph-toolbar-btn"
+        title="定位 HEAD"
+        aria-label="定位 HEAD"
+        onClick={onFocusHead}
+      >
         <Crosshair className="h-3.5 w-3.5" />
       </button>
       <button
@@ -684,7 +829,9 @@ function ExplorerSection({
             <ChevronRight className="h-4 w-4 shrink-0 opacity-80" />
           )}
           <span className="min-w-0 truncate">{title}</span>
-          {badge != null && badge > 0 ? <span className="sc-section-badge ml-1">{badge}</span> : null}
+          {badge != null && badge > 0 ? (
+            <span className="sc-section-badge ml-1">{badge}</span>
+          ) : null}
         </button>
         <div className="explorer-section-actions flex shrink-0 items-center">
           {onCollapseAll ? (

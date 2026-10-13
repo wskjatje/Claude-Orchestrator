@@ -16,33 +16,87 @@ import { getDesktop } from "@/lib/desktop-api";
 import {
   AUTO_MODEL_ID,
   chatModelPoolCombined,
-  chatSettingsPreservePayload,
   isAutoModelSelection,
   loadChatModelPools,
   loadConfiguredModelPools,
-  normalizeChatModelSelection,
   resolveModelForExecution,
 } from "@/lib/model-catalog";
 import { useHasDesktop } from "@/hooks/use-desktop-ready";
-import { GENERAL_AGENT_DISPLAY_NAME, isAutoAgentBasename } from "@/lib/agent-basename";
+import { isAutoAgentBasename } from "@/lib/agent-basename";
 import {
   useOrchestrationExecution,
   useChatSessionRevision,
 } from "@/hooks/use-orchestration-execution";
 import { buildClaudeCodePrompt } from "@/lib/claude-prompt";
 import {
+  collectAtSkillStems,
+  loadComposerSkillSnippet,
+  prependSkillSnippet,
+} from "@/lib/composer-skill-inject";
+import { dedupeSkillStems } from "@/lib/agent-skill-defaults";
+import { expandAtMentionsInUserLine } from "@/lib/composer-at-mention";
+import { getEditorSelectionSnapshot } from "@/lib/editor-selection-snapshot";
+import { autoAcceptPendingFromAssistantReply } from "@/lib/agent-auto-accept-pending";
+import { toastMcpHealthIfDegraded } from "@/lib/mcp-health-hint";
+import {
+  agentForceContinueInstruction,
+  hasAgentWriteEvidence,
+  looksLikeAgentAskingConfirmation,
+} from "@/lib/agent-no-confirm";
+import {
+  formatAgentTurnMetaAppendix,
+  lastAgentTurnMeta,
+} from "@/lib/agent-turn-meta";
+import {
+  cliPermissionModeForInteraction,
+  getWorkbenchInteractionMode,
+} from "@/lib/workbench-interaction-mode";
+import { toast } from "sonner";
+import { toastWorkspaceWriteSuccess } from "@/lib/toast-workspace-write";
+import {
+  buildShortAgentSummary,
+  extractStreamEventsFromContent,
+  extractWrittenPathsFromAgentContent,
+  isPlausibleWorkspaceRelPath,
+  mergeStreamEvents,
+  looksLikeAgentTurnReport,
+  shapeAgentTurnDisplay,
+  toolTraceToStreamEvents,
+} from "@/lib/compress-agent-display";
+import {
   collectPriorUserAttachments,
   mergeInlineAttachments,
   modelSupportsChatVision,
   normalizePendingImageFiles,
   visionRequiredError,
-} from "@/lib/chat-image-cursor";
+} from "@/lib/chat-image-attach";
 import { type PriorTurn, type UserImageAttachment } from "@/lib/ollama-messages";
 import {
+  applyPendingWorkspaceWrite,
+  collapseAcceptedWorkspaceWriteForHistory,
+  collapseWorkspaceWriteForHistory,
   ingestWorkspaceWritesAndCollapseDisplay,
   ingestChainStepWorkspaceWrites,
   stripLargeAssistantArtifacts,
 } from "@/lib/assistant-reply";
+import { parseChatFileEdits } from "@/lib/parse-chat-file-edits";
+import { stripStreamEventsBlock } from "@/lib/stream-agent-events";
+import {
+  clearPendingWritesState,
+  setPendingWritesState,
+  type PendingWriteItem,
+} from "@/lib/workbench-pending-writes";
+import {
+  clearRejectedWorkspaceWrite,
+  rejectWorkspaceWrite,
+} from "@/lib/rejected-workspace-writes";
+import { resolveWorkspaceEditContent } from "@/lib/resolve-workspace-edit-content";
+import { stashWorkspaceWriteCheckpoint } from "@/lib/workspace-write-checkpoint";
+import {
+  clearSessionHistoryCheckpoint,
+  loadSessionHistoryCheckpoint,
+  saveSessionHistoryCheckpoint,
+} from "@/lib/session-history-checkpoint";
 import { parseActiveChainFromBubbleText } from "@/lib/parse-active-chain";
 import {
   autoSaveChainFromReply,
@@ -89,16 +143,8 @@ import {
 } from "@/lib/expand-user-line-workspace-files";
 import { buildAgentRoutedInstruction } from "@/lib/agent-skill-routing";
 import { buildSubagentUserLine, parseAgentCommand } from "@/lib/parse-agent-command";
-import { toast } from "sonner";
 import {
   Plus,
-  Zap,
-  PenLine,
-  Code2,
-  Image as ImageIcon,
-  Presentation,
-  Play,
-  MoreHorizontal,
   Send,
   X,
   Check,
@@ -117,6 +163,7 @@ import { type PendingFileEntry } from "@/components/composer-file-attachments";
 import { ChatMessagesPane } from "@/components/chat-messages-pane";
 import { useChatScroll } from "@/hooks/use-chat-scroll";
 import { useChatStream } from "@/hooks/use-chat-stream";
+import { useChatSend } from "@/hooks/use-chat-send";
 import { WorkbenchPanelToolbar } from "@/components/workbench-panel-toolbar";
 import { focusBottomPanel } from "@/lib/workbench-panel-init";
 import { ChatPanelToolbar } from "@/components/chat-panel-toolbar";
@@ -153,33 +200,34 @@ import {
   syncExplicitEmptyInCache,
 } from "@/lib/chat-sessions-store";
 import { type PendingTerminalSnippet } from "@/components/composer-terminal-attachments";
-import {
-  formatDomElementContext,
-  type DomElementPayload,
-  type PendingDomElement,
-} from "@/lib/dom-element-meta";
-import { trimTerminalDisplay } from "@/lib/chat-terminal-paste";
+import { type DomElementPayload, type PendingDomElement } from "@/lib/dom-element-meta";
 import type { TerminalSelectionPayload } from "@/lib/terminal-selection-meta";
 import { chatRouteSearch, EMPTY_CHAT_SEARCH } from "@/lib/chat-route-search";
 import type { DesktopApi } from "@/types/desktop";
-
-type OrchMode = "claude-code" | "local-mcp";
-
-function fullChatSettingsPayload(
-  s: Awaited<ReturnType<DesktopApi["getChatSettings"]>>,
-): Parameters<DesktopApi["saveChatSettings"]>[0] {
-  return chatSettingsPreservePayload(s);
-}
-
-/** ingest 阶段解析/虚构落盘等提示（已停用） */
-function toastIngestWorkspaceHint(_msg: string) {
-  // 不再弹出 info 提示
-}
-
-/** 本地 MCP 编排返回的 orchestrationHints（已停用） */
-function toastIfLocalOrchestrationHints(_res: unknown) {
-  // 不再弹出 info 提示
-}
+import {
+  assistantBubbleName,
+  buildComposerUserLine,
+  buildPlainChatPrompt,
+  countUserMessages,
+  diskToDisplay,
+  extractPreviewUrlFromText,
+  formatAssistantFailure,
+  fullChatSettingsPayload,
+  genSessionId,
+  lastAgentStemFromHistory,
+  mergeSessionsPreferLongerHistory,
+  needsCheckpointConfirm,
+  newLocalId,
+  pickOrchestratorModel,
+  priorTurnsToOrchestrationMessages,
+  toastIfLocalOrchestrationHints,
+  toastIngestWorkspaceHint,
+  userMessageForHistoryIndex,
+  type ChatSession,
+  type DiskMsg,
+  type Msg,
+  type OrchMode,
+} from "@/lib/chat-send-helpers";
 
 export const Route = createFileRoute("/")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -197,322 +245,7 @@ export const Route = createFileRoute("/")({
   component: ChatPage,
 });
 
-type DiskMsg = {
-  role: "user" | "assistant";
-  content: string;
-  ts?: number;
-  attachments?: UserImageAttachment[];
-  terminalSnippets?: TerminalSelectionPayload[];
-  /** 本轮若由 /agent 或底部 Agent pill 触发，记录 stem 便于气泡展示 */
-  agentStem?: string;
-  /** 界面展示用中文 Agent 名（与 agentStem 对应，不影响执行） */
-  agentLabel?: string;
-  /** Ollama /v1/chat/completions 返回的 usage，assistant 且模型上报时有值 */
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-    costUsd?: number;
-  };
-  latencyMs?: number;
-  requestError?: boolean;
-  billingSource?: "cloud" | "local";
-  modelId?: string;
-};
-
-type ChatSession = {
-  id: string;
-  title: string;
-  modelId: string;
-  history: DiskMsg[];
-  workspacePath?: string | null;
-  /** Claude Code CLI --resume / --session-id */
-  claudeSessionId?: string | null;
-};
-
-function needsCheckpointConfirm(sess: ChatSession | undefined, historyIndex: number): boolean {
-  if (!sess) return false;
-  return historyIndex < sess.history.length - 1;
-}
-
-function countUserMessages(hist: DiskMsg[]): number {
-  return hist.filter((m) => m.role === "user").length;
-}
-
-function lastUserMessageTs(hist: DiskMsg[]): number {
-  for (let i = hist.length - 1; i >= 0; i--) {
-    const m = hist[i];
-    if (m?.role === "user") return m.ts ?? 0;
-  }
-  return 0;
-}
-
-/** 磁盘同步时保留内存里更完整的 history，避免 save→reload 竞态清空当前 tab */
-function mergeSessionsPreferLongerHistory(
-  local: ChatSession[],
-  disk: ChatSession[],
-  sendingById: Record<string, boolean>,
-): ChatSession[] {
-  const localById = new Map(local.map((s) => [s.id, s]));
-  const merged: ChatSession[] = [];
-  for (const d of disk) {
-    const l = localById.get(d.id);
-    if (!l) {
-      // 磁盘中有而本地没有的会话，全部保留（磁盘是持久化真相源）
-      merged.push(d);
-      continue;
-    }
-    const keepLocal =
-      l.history.length > d.history.length ||
-      Boolean(sendingById[l.id]) ||
-      countUserMessages(l.history) > countUserMessages(d.history) ||
-      (l.history.length === d.history.length &&
-        lastUserMessageTs(l.history) >= lastUserMessageTs(d.history));
-    merged.push(
-      keepLocal
-        ? {
-            ...l,
-            title: l.title || d.title,
-            modelId: d.modelId || l.modelId,
-            workspacePath: l.workspacePath || d.workspacePath,
-          }
-        : {
-            ...d,
-            title: d.title || l.title,
-            modelId: d.modelId || l.modelId,
-            workspacePath: d.workspacePath || l.workspacePath,
-          },
-    );
-    localById.delete(d.id);
-  }
-  for (const l of localById.values()) merged.push(l);
-  return merged;
-}
-
 const EMPTY_SESSION_WELCOME = "新对话已开始。";
-
-type Msg = {
-  role: "user" | "assistant";
-  name?: string;
-  time?: string;
-  content: string;
-  attachments?: UserImageAttachment[];
-  terminalSnippets?: TerminalSelectionPayload[];
-  historyIndex?: number;
-  requestError?: boolean;
-};
-
-/** 旧版任务链写入的超长「用户」气泡，在列表中折叠为摘要（不改磁盘时可逆：仅展示层）。 */
-function shortenLegacyChainUserBubbleForDisplay(raw: string): string {
-  const t = raw.trim();
-  if (t.length < 480) return raw;
-  const hasVerboseHints =
-    t.includes("【任务上下文】") ||
-    t.includes("【自动路由】") ||
-    t.includes("【执行约束】") ||
-    /^\/agent\s+\S+/i.test(t) ||
-    t.includes("【任务链 Agent 路由】");
-  if (!hasVerboseHints) return raw;
-  if (t.includes("【任务上下文】")) {
-    const head = t.slice(0, 900);
-    const ag = head.match(/\bagent\s*=\s*([^；\s\n]+)/i);
-    const tid = head.match(/\btaskId\s*=\s*([^；\s\n]+)/i);
-    if (ag && tid) {
-      const snip = t
-        .split("\n")
-        .find((l) => {
-          const s = l.trim();
-          return (
-            s.length > 0 &&
-            !/^【任务上下文】/.test(s) &&
-            !/^【执行约束】/.test(s) &&
-            !/^【自动路由】/.test(s)
-          );
-        })
-        ?.replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 140);
-      return `【任务链】${ag[1]} · ${tid[1]}${snip ? `\n${snip}${snip.length >= 140 ? "…" : ""}` : ""}`;
-    }
-  }
-  const claude = t.match(/【任务链 Agent 路由】global:\/\/(\S+)（任务\s*([^）]+)）/);
-  if (claude) {
-    const line = t
-      .split("\n")
-      .find((l) => l.trim().startsWith("【任务】"))
-      ?.trim()
-      .slice(0, 120);
-    return `【任务链】${claude[1]} · ${claude[2].trim()}${line ? `\n${line}${line.length >= 120 ? "…" : ""}` : ""}`;
-  }
-  const local = t.match(/^\/agent\s+(\S+)\s*（任务\s*([^）]+)）/);
-  if (local) {
-    const rest = t.slice(local[0].length).trim();
-    const first = rest.split("\n").find((l) => l.trim().length > 0) ?? "";
-    const snip = first.replace(/\s+/g, " ").slice(0, 140);
-    return `【任务链】${local[1]} · ${local[2].trim()}${snip ? `\n${snip}${first.length > 140 ? "…" : ""}` : ""}`;
-  }
-  return raw;
-}
-
-function lastAgentStemFromHistory(hist: DiskMsg[]): string | undefined {
-  for (let i = hist.length - 1; i >= 0; i--) {
-    const m = hist[i];
-    if (m.role === "assistant" && m.agentStem) return m.agentStem;
-    if (m.role === "user") {
-      const cmd = parseAgentCommand(m.content);
-      if (cmd.matched) return cmd.stem;
-    }
-  }
-  return undefined;
-}
-
-function assistantBubbleName(
-  m: Pick<DiskMsg, "agentStem" | "agentLabel" | "modelId">,
-  modelLabel: string,
-): string {
-  const rawModel = m.modelId?.trim();
-  const displayModel = rawModel && rawModel !== "auto" ? rawModel : modelLabel;
-  if (m.agentStem) {
-    const label = m.agentLabel?.trim() || m.agentStem;
-    const displayName = m.agentStem === "__general__" ? GENERAL_AGENT_DISPLAY_NAME : label;
-    return `@${displayName} · ${displayModel}`;
-  }
-  return displayModel;
-}
-
-function diskToDisplay(list: DiskMsg[], modelLabel: string): Msg[] {
-  return list.map((m, historyIndex) => ({
-    role: m.role,
-    content:
-      m.role === "user"
-        ? shortenLegacyChainUserBubbleForDisplay(m.content)
-        : stripLargeAssistantArtifacts(m.content),
-    name: m.role === "assistant" ? assistantBubbleName(m, modelLabel) : undefined,
-    time: m.ts ? new Date(m.ts).toLocaleString() : undefined,
-    attachments: m.role === "user" && m.attachments?.length ? m.attachments : undefined,
-    terminalSnippets:
-      m.role === "user" && m.terminalSnippets?.length ? m.terminalSnippets : undefined,
-    historyIndex: m.role === "user" ? historyIndex : undefined,
-    requestError: m.role === "assistant" && m.requestError === true ? true : undefined,
-  }));
-}
-
-/** Auto 模式：纯对话 prompt，不含 Agent/工具指令，仅带基本工作区上下文 */
-function buildPlainChatPrompt(
-  priorHistory: PriorTurn[],
-  userLine: string,
-  workspaceDir: string | null,
-): string {
-  const preamble: string[] = [];
-  if (workspaceDir) {
-    preamble.push(`【工作区】${workspaceDir}`);
-  }
-  preamble.push("【语言】zh_CN（代码/路径除外）。");
-  preamble.push(
-    "【注意】你是普通聊天助手，不是 Agent，没有工具可用，不能读取文件、不能调用终端。请直接回答用户问题。不要输出 XML 工具调用标签。",
-  );
-  const preambleText = preamble.join("\n");
-  const blocks: string[] = [preambleText];
-  for (const m of priorHistory) {
-    if (m.role !== "user" && m.role !== "assistant") continue;
-    const tag = m.role === "user" ? "用户" : "助手";
-    blocks.push(`${tag}：${m.content}`);
-  }
-  blocks.push(`用户：${userLine}`);
-  return blocks.join("\n\n");
-}
-
-function userMessageForHistoryIndex(
-  history: DiskMsg[],
-  historyIndex: number,
-  modelLabel: string,
-): Msg | null {
-  const msg = history[historyIndex];
-  if (!msg || msg.role !== "user") return null;
-  const users = diskToDisplay(history.slice(0, historyIndex + 1), modelLabel).filter(
-    (m) => m.role === "user",
-  );
-  return users[users.length - 1] ?? null;
-}
-
-function newLocalId() {
-  return typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function buildComposerUserLine(
-  text: string,
-  terminalSnippets: PendingTerminalSnippet[],
-  domElements: PendingDomElement[] = [],
-): string {
-  const parts: string[] = [];
-  if (text) parts.push(text);
-  for (const el of domElements) {
-    parts.push(formatDomElementContext(el));
-  }
-  const terminalPart = terminalSnippets
-    .map((s) => trimTerminalDisplay(s.text))
-    .filter(Boolean)
-    .join("\n\n");
-  if (terminalPart) parts.push(terminalPart);
-  return parts.join("\n\n");
-}
-
-/** 按编排模式从池中选取会话 modelId；Auto / inherit 保留为 auto 哨兵值 */
-function pickOrchestratorModel(raw: string | undefined, pool: string[], mode: OrchMode): string {
-  const t = normalizeChatModelSelection(raw);
-  if (isAutoModelSelection(t)) return AUTO_MODEL_ID;
-  const list = pool.filter(Boolean);
-  if (t && list.includes(t)) return t;
-  if (mode === "claude-code" && /^(sonnet|opus|haiku|claude-)/i.test(t)) return t;
-  return AUTO_MODEL_ID;
-}
-
-function extractPreviewUrlFromText(text: string): string | null {
-  const t = String(text || "");
-  const m = t.match(/\bhttps?:\/\/[^\s)]+/i);
-  if (m?.[0]) return m[0];
-  const m2 = t.match(/\blocalhost:\d{2,5}\b/i);
-  if (m2?.[0]) return `http://${m2[0]}`;
-  const m3 = t.match(/\b127\.0\.0\.1:\d{2,5}\b/i);
-  if (m3?.[0]) return `http://${m3[0]}`;
-  return null;
-}
-
-function priorTurnsToOrchestrationMessages(prior: PriorTurn[]): PriorTurn[] {
-  return prior.map((m) => ({
-    role: m.role === "assistant" ? "assistant" : "user",
-    content: m.content,
-    ...(m.attachments?.length ? { attachments: m.attachments } : {}),
-  }));
-}
-
-/** 将 RPC 失败映射为聊天区可见文案（超时/429 须展示具体原因，勿一律「生成已停止」） */
-function formatAssistantFailure(res: { aborted?: boolean; error?: string | null }): string {
-  const err = String(res.error || "").trim();
-  if (res.aborted || res.error === "请求已取消") {
-    if (err && /超时|429|配额|模型配置|deepseek|API Key|连接失败/i.test(err)) {
-      return `请求失败：${err}`;
-    }
-    if (err && /已取消|已中止|生成已停止/i.test(err)) {
-      return "（生成已停止）";
-    }
-    if (err && err.length > 24) {
-      return `请求失败：${err}`;
-    }
-    return "（生成已停止）";
-  }
-  return `请求失败：${err || "未知错误"}`;
-}
-
-function genSessionId() {
-  try {
-    return `s${crypto.randomUUID()}`;
-  } catch {
-    return `s${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  }
-}
 
 function ChatPage() {
   const hasDesktopApi = useHasDesktop();
@@ -550,7 +283,6 @@ function ChatPage() {
   const [parallelDialogDefaultTask, setParallelDialogDefaultTask] = useState<string | undefined>(
     undefined,
   );
-  const [activeSkill, setActiveSkill] = useState<string>("快速");
   /** 「图像生成」内 图像/视频 分段：选「视频」时工具栏与独立「视频生成」技能一致 */
   const [imageVideoSegment, setImageVideoSegment] = useState<"图像" | "视频">("图像");
   const [speedOpen, setSpeedOpen] = useState(false);
@@ -584,6 +316,8 @@ function ChatPage() {
     [],
   );
   const [pendingDomElements, setPendingDomElements] = useState<PendingDomElement[]>([]);
+  /** Composer 本轮可选 Skill（空 = 发送路径与改前一致） */
+  const [selectedSkillStems, setSelectedSkillStems] = useState<string[]>([]);
   const [editHistoryIndex, setEditHistoryIndex] = useState<number | null>(null);
   const editHistoryIndexRef = useRef<number | null>(null);
 
@@ -629,6 +363,15 @@ function ChatPage() {
   const chainRunningRef = useRef(false);
   const chainDocsInjectedRef = useRef(false);
   const expandInjectedPathsRef = useRef<string[]>([]);
+  const runWorkflowFromWbsRef = useRef<
+    ((opts?: {
+      preferredPath?: string;
+      quietPickToast?: boolean;
+      wbsOnly?: boolean;
+      autoRun?: boolean;
+      recordUserLine?: string;
+    }) => Promise<WbsChainSyncResult | null>) | null
+  >(null);
   const composerDraftsRef = useRef<
     Record<
       string,
@@ -698,11 +441,23 @@ function ChatPage() {
         }
         return;
       }
-      // 非纯图片 → 文件 chip
-      const fileEntries: PendingFileEntry[] = r.filePaths.map((p) => {
-        const name = p.split(/[/\\]/).pop() || p;
-        return { id: newLocalId(), name, path: p };
-      });
+      // 非纯图片 → 读入正文后再挂附件（无正文则不挂）
+      if (!api.readReferenceTextFiles) {
+        toast.error("无法读取附件");
+        return;
+      }
+      const read = await api.readReferenceTextFiles(r.filePaths);
+      const items = read?.items ?? [];
+      if (!items.length) {
+        toast.error(read?.errors?.[0] || "无法读取附件");
+        return;
+      }
+      const fileEntries: PendingFileEntry[] = items.map((it) => ({
+        id: newLocalId(),
+        name: it.name,
+        path: it.path,
+        content: it.content,
+      }));
       setPendingFiles((p) => [...p, ...fileEntries]);
       return;
     }
@@ -738,12 +493,26 @@ function ChatPage() {
         e.target.value = "";
         return;
       }
-      // 非图片文件 → chip
-      const entries: PendingFileEntry[] = list.map((f) => ({
-        id: newLocalId(),
-        name: f.name,
-      }));
+      // 非图片：读 File 正文；过大/失败则跳过
+      void (async () => {
+        const MAX = 200 * 1024;
+        const entries: PendingFileEntry[] = [];
+        for (const f of list) {
+          if (f.size > MAX) continue;
+          try {
+            const content = await f.text();
+            if (!content || content.includes("\u0000")) continue;
+            entries.push({ id: newLocalId(), name: f.name, content });
+          } catch {
+            /* skip */
+          }
+        }
+        if (!entries.length) {
+          toast.error("无法读取附件");
+          return;
+        }
       setPendingFiles((p) => [...p, ...entries]);
+      })();
       e.target.value = "";
     },
     [appendComposerImageFiles],
@@ -1150,9 +919,29 @@ function ChatPage() {
           const summary =
             `【一键写入】已将内容写入当前工作区：${pathNote}\n` +
             written.map((p) => `- \`${p}\``).join("\n");
+          const writtenSet = new Set(written.map((p) => p.replace(/\\/g, "/")));
+          const hist = sess.history.map((m) => {
+            if (m.role !== "assistant") return m;
+            // 仅折叠：正文完全等于本条气泡，或围栏 path 命中本次写入列表
+            if (m.content.trim() === trimmed) {
+              return { ...m, content: collapseWorkspaceWriteForHistory(m.content, written) };
+            }
+            if (!m.content.includes("```workspace-write")) return m;
+            const hit = [...writtenSet].some(
+              (p) =>
+                m.content.includes(`"path":"${p}"`) ||
+                m.content.includes(`"path": "${p}"`) ||
+                m.content.includes(`\`${p}\``),
+            );
+            if (!hit) return m;
+            return {
+              ...m,
+              content: collapseWorkspaceWriteForHistory(m.content, written),
+            };
+          });
           const userLine: DiskMsg = { role: "user", content: userLineContent, ts: Date.now() };
           const asstLine: DiskMsg = { role: "assistant", content: summary, ts: Date.now() };
-          const hist = [...sess.history, userLine, asstLine];
+          hist.push(userLine, asstLine);
           const modelLabel = sess.modelId?.trim() || settings.model || "模型";
           const nextSessions = sessions.map((s) =>
             s.id === activeId ? { ...s, history: hist } : s,
@@ -1160,7 +949,9 @@ function ChatPage() {
           setSessions(nextSessions);
           setMessages(diskToDisplay(hist, modelLabel));
           await persist(nextSessions, activeId);
-          toast.success(`已写入 ${written.length} 个文件`);
+          toastWorkspaceWriteSuccess(`已写入 ${written.length} 个文件`, {
+            writtenPaths: written,
+          });
         } else if (res?.error) {
           toast.error(`未能写入：${res.error}`);
         } else if (res?.errors?.length) {
@@ -1198,6 +989,119 @@ function ChatPage() {
     [navigate],
   );
 
+  /** Accept workspace-write 后折叠围栏并写回会话历史 */
+  const handleAssistantContentPatch = useCallback(
+    async (historyIndex: number, nextContent: string) => {
+      const sid = activeIdRef.current;
+      if (!sid || historyIndex < 0) return;
+      const nextSessions = await patchSession(sid, (s) => {
+        const msg = s.history[historyIndex];
+        if (!msg || msg.role !== "assistant") return s;
+        const hist = s.history.slice();
+        hist[historyIndex] = { ...msg, content: nextContent };
+        return { ...s, history: hist };
+      });
+      const sess = nextSessions.find((s) => s.id === sid);
+      if (!sess || sid !== activeIdRef.current) return;
+      const ml = sess.modelId?.trim() || globalModel || "模型";
+      const display = diskToDisplay(sess.history, ml);
+      setMessages(display);
+      chatCtx.syncMessages(display);
+      chatCtx.syncSessionMessages(sid, display);
+    },
+    [patchSession, globalModel, chatCtx],
+  );
+
+  /** 侧栏「待确认写入」与聊天卡共享队列 */
+  useEffect(() => {
+    const items: PendingWriteItem[] = [];
+    for (const m of messages) {
+      if (m.role !== "assistant" || m.historyIndex == null) continue;
+      if (!m.content || m.content === "__WAITING__") continue;
+      const { edits } = parseChatFileEdits(stripStreamEventsBlock(m.content));
+      for (const e of edits) {
+        if (e.summaryOnly) continue;
+        if (e.writeContent == null) continue;
+        if (e.status === "rejected" || e.status === "applied") continue;
+        items.push({
+          path: e.path,
+          content: e.writeContent,
+          historyIndex: m.historyIndex,
+          source: e.source,
+          diffBody: e.diffBody,
+        });
+      }
+    }
+
+    const applyOne = async (item: PendingWriteItem) => {
+      const api = getDesktop();
+      if (!api) return;
+      const resolved = await resolveWorkspaceEditContent({
+        path: item.path,
+        content: item.content,
+        source: item.source,
+        diffBody: item.diffBody,
+        readFile: api.readWorkspaceTextFile
+          ? (p) => api.readWorkspaceTextFile!(p)
+          : undefined,
+      });
+      if (!resolved.ok) {
+        toast.error(resolved.error);
+        return;
+      }
+      stashWorkspaceWriteCheckpoint(item.path, resolved.previous);
+      const r = await applyPendingWorkspaceWrite(api, {
+        path: item.path,
+        content: resolved.text,
+      });
+      if (!r.ok) {
+        toast.error(r.error || "写入失败");
+        return;
+      }
+      clearRejectedWorkspaceWrite(item.path, item.diffBody || item.content);
+      const sess = sessionsRef.current.find((s) => s.id === activeIdRef.current);
+      const msg = sess?.history[item.historyIndex];
+      if (msg?.role === "assistant") {
+        const next = collapseAcceptedWorkspaceWriteForHistory(msg.content, item.path);
+        await handleAssistantContentPatch(item.historyIndex, next);
+      }
+    };
+
+    const rejectOne = (item: PendingWriteItem) => {
+      rejectWorkspaceWrite(item.path, item.content);
+      setMessages((prev) => prev.map((m) => ({ ...m })));
+    };
+
+    const applyAll = async () => {
+      for (const item of items) await applyOne(item);
+    };
+    const rejectAll = () => {
+      for (const item of items) rejectWorkspaceWrite(item.path, item.content);
+      setMessages((prev) => prev.map((m) => ({ ...m })));
+    };
+
+    const focusHistoryIndex = (historyIndex: number) => {
+      const root = scrollAreaRef.current;
+      if (!root) return;
+      const el = root.querySelector(`[data-history-index="${historyIndex}"]`);
+      if (el instanceof HTMLElement) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        el.classList.add("chat-message-row--flash");
+        window.setTimeout(() => el.classList.remove("chat-message-row--flash"), 1200);
+      }
+    };
+
+    setPendingWritesState({
+      items,
+      applyOne,
+      rejectOne,
+      applyAll,
+      rejectAll,
+      focusHistoryIndex,
+    });
+    return () => clearPendingWritesState();
+  }, [messages, handleAssistantContentPatch]);
+
   const performBulkWriteProject = useCallback(
     async (userLineContent: string) => {
       const api = getDesktop();
@@ -1208,26 +1112,34 @@ function ChatPage() {
       setSessionSending(activeId, true);
       try {
         const res = await performBulkWriteFromHistory(api, sess.history);
+        const written = res.written ?? [];
+        let hist = sess.history.slice();
+        if (res.ok && written.length > 0) {
+          hist = hist.map((m) => {
+            if (m.role !== "assistant" || !m.content.includes("```workspace-write")) return m;
+            return { ...m, content: collapseWorkspaceWriteForHistory(m.content, written) };
+          });
+        }
         const userLine: DiskMsg = { role: "user", content: userLineContent, ts: Date.now() };
         const asstLine: DiskMsg = {
           role: "assistant",
           content:
             res.displayText ||
             (res.ok
-              ? `【批量落盘】已写入 ${res.written.length} 个文件。`
+              ? `【批量落盘】已写入 ${written.length} 个文件。`
               : res.error || "批量落盘未写入任何文件。"),
           ts: Date.now(),
           ...(res.ok ? {} : { requestError: true }),
         };
-        const hist = [...sess.history, userLine, asstLine];
+        hist = [...hist, userLine, asstLine];
         const settings = await getCachedSettings(api);
         const modelLabel = sess.modelId?.trim() || settings.model || "模型";
         const nextSessions = sessions.map((s) => (s.id === activeId ? { ...s, history: hist } : s));
         setSessions(nextSessions);
         setMessages(diskToDisplay(hist, modelLabel));
         await persist(nextSessions, activeId);
-        if (res.ok && res.written.length > 0) {
-          toast.success(`已从 ${res.scanned ?? "?"} 条历史回复写入 ${res.written.length} 个文件`);
+        if (res.ok && written.length > 0) {
+          toast.success(`已从 ${res.scanned ?? "?"} 条历史回复写入 ${written.length} 个文件`);
         } else {
           toast.warning(res.error || "未找到可落盘的代码块");
         }
@@ -2196,49 +2108,6 @@ function ChatPage() {
     [globalModel, saveComposerDraft, loadComposerDraft],
   );
 
-  const skills = [
-    { icon: Zap, label: "快速" },
-    { icon: PenLine, label: "帮我写作" },
-    { icon: Code2, label: "编程" },
-    { icon: ImageIcon, label: "图像生成" },
-    { icon: Presentation, label: "PPT 生成" },
-    { icon: Play, label: "视频生成" },
-    { icon: MoreHorizontal, label: "更多" },
-  ];
-
-  const skillConfig: Record<
-    string,
-    { placeholder: string; chipIcon: typeof Zap; chipColor: string }
-  > = {
-    快速: {
-      placeholder: "发送消息或输入 '/' 选择技能",
-      chipIcon: Zap,
-      chipColor: "text-amber-500",
-    },
-    帮我写作: { placeholder: "输入主题和写作要求…", chipIcon: PenLine, chipColor: "text-primary" },
-    编程: {
-      placeholder: "输入「@」唤起常用语，或粘贴代码快速提问…",
-      chipIcon: Code2,
-      chipColor: "text-primary",
-    },
-    图像生成: {
-      placeholder: "描述你想要的图片，可附参考图…",
-      chipIcon: ImageIcon,
-      chipColor: "text-primary",
-    },
-    "PPT 生成": {
-      placeholder: "输入主题，添加具体要求和参考…",
-      chipIcon: Presentation,
-      chipColor: "text-primary",
-    },
-    /** 技能横条中的独立「视频生成」入口（与「图像生成 → 视频」分段不同） */
-    视频生成: {
-      placeholder: "添加照片，描述你想生成的视频…",
-      chipIcon: Play,
-      chipColor: "text-primary",
-    },
-  };
-
   const composerPlaceholder = COMPOSER_PLACEHOLDER;
 
   const appendEditComposerImageFiles = useCallback(
@@ -2258,19 +2127,30 @@ function ChatPage() {
     [editComposer?.pendingImages.length],
   );
 
-  /** 拖拽统一处理：图片 → 缩略图；非图片 → 文件 chip */
+  /** 拖拽：图片 → 缩略图；非图片 → 读正文后挂附件 */
   const handleComposerDropFiles = useCallback(
     async (files: File[], _cursor?: number) => {
       const imgFiles = files.filter((f) => f.type.startsWith("image/"));
       const otherFiles = files.filter((f) => !f.type.startsWith("image/"));
       if (imgFiles.length) void appendComposerImageFiles(imgFiles);
-      if (otherFiles.length) {
-        const entries: PendingFileEntry[] = otherFiles.map((f) => ({
-          id: newLocalId(),
-          name: f.name,
-        }));
-        setPendingFiles((p) => [...p, ...entries]);
+      if (!otherFiles.length) return;
+      const MAX = 200 * 1024;
+      const entries: PendingFileEntry[] = [];
+      for (const f of otherFiles) {
+        if (f.size > MAX) continue;
+        try {
+          const content = await f.text();
+          if (!content || content.includes("\u0000")) continue;
+          entries.push({ id: newLocalId(), name: f.name, content });
+        } catch {
+          /* skip */
+        }
       }
+      if (!entries.length) {
+        toast.error("无法读取附件");
+        return;
+      }
+      setPendingFiles((p) => [...p, ...entries]);
     },
     [appendComposerImageFiles],
   );
@@ -2280,15 +2160,26 @@ function ChatPage() {
       const imgFiles = files.filter((f) => f.type.startsWith("image/"));
       const otherFiles = files.filter((f) => !f.type.startsWith("image/"));
       if (imgFiles.length) void appendEditComposerImageFiles(imgFiles);
-      if (otherFiles.length) {
-        const entries: PendingFileEntry[] = otherFiles.map((f) => ({
-          id: newLocalId(),
-          name: f.name,
-        }));
+      if (!otherFiles.length) return;
+      const MAX = 200 * 1024;
+      const entries: PendingFileEntry[] = [];
+      for (const f of otherFiles) {
+        if (f.size > MAX) continue;
+        try {
+          const content = await f.text();
+          if (!content || content.includes("\u0000")) continue;
+          entries.push({ id: newLocalId(), name: f.name, content });
+        } catch {
+          /* skip */
+        }
+      }
+      if (!entries.length) {
+        toast.error("无法读取附件");
+        return;
+      }
         setEditComposer((prev) =>
           prev ? { ...prev, pendingFiles: [...prev.pendingFiles, ...entries] } : prev,
         );
-      }
     },
     [appendEditComposerImageFiles],
   );
@@ -2640,6 +2531,7 @@ function ChatPage() {
     const api = getDesktop();
     if (reqId && api?.claudeCodeAbort) void api.claudeCodeAbort(reqId);
     if (reqId && api?.localOrchestrationAbort) void api.localOrchestrationAbort(reqId);
+    if (reqId && api?.hostAgentAbort) void api.hostAgentAbort(reqId);
     chatCtx.activeRequestIdsRef.current.delete(id);
     setSessionSending(id, false);
     delete composerDraftsRef.current[id];
@@ -2685,17 +2577,6 @@ function ChatPage() {
     if (api) await persist(pruned, aid || activeIdRef.current);
     closingSessionTargetRef.current = null;
   };
-
-  const stopChat = useCallback(() => {
-    setStopRequested(true);
-    if (chainRunning) {
-      stopChainExecution();
-    }
-    const id = chatCtx.activeRequestIdsRef.current.get(activeId);
-    const api = getDesktop();
-    if (id && api?.claudeCodeAbort) void api.claudeCodeAbort(id);
-    if (id && api?.localOrchestrationAbort) void api.localOrchestrationAbort(id);
-  }, [activeId, chainRunning, stopChainExecution]);
 
   const runPmDelegationRuntime = useCallback(async () => {
     const api = getDesktop();
@@ -2895,753 +2776,114 @@ function ChatPage() {
     [activeId, persist, sessions],
   );
 
-  const sendChat = async () => {
-    const override = sendPayloadOverrideRef.current;
-    if (override) sendPayloadOverrideRef.current = null;
-
-    const editDraft = editComposerRef.current;
-    const editingFromInline = !override && editHistoryIndexRef.current != null && editDraft != null;
-
-    const text = (override?.text ?? (editingFromInline ? editDraft.input : input)).trim();
-    const activePendingImages =
-      override?.pendingImages ?? (editingFromInline ? editDraft.pendingImages : pendingImages);
-    const activePendingFiles =
-      override?.pendingFiles ?? (editingFromInline ? editDraft.pendingFiles : pendingFiles);
-    const activePendingTerminal =
-      override?.pendingTerminalSnippets ??
-      (editingFromInline ? editDraft.pendingTerminalSnippets : pendingTerminalSnippets);
-    const activePendingDom =
-      override?.pendingDomElements ??
-      (editingFromInline ? editDraft.pendingDomElements : pendingDomElements);
-    const presetEditCutoff = override?.editCutoff;
-
-    const hasTerminal = activePendingTerminal.length > 0;
-    const hasDom = activePendingDom.length > 0;
-    const hasFiles = activePendingFiles.length > 0;
-    const sendSessionId = activeIdRef.current;
-    if (
-      (!text && !activePendingImages.length && !activePendingFiles.length && !hasTerminal && !hasDom) ||
-      sendingSessionsRef.current[sendSessionId]
-    )
-      return;
-    const wsKeySend = workspaceSessionKey(workspacePathRef.current);
-    if (wsKeySend) {
-      activeByWorkspaceRef.current = {
-        ...activeByWorkspaceRef.current,
-        [wsKeySend]: sendSessionId,
-      };
-    }
-    setChatSessionsCache({
-      sessions: sessionsRef.current,
-      activeId: sendSessionId,
-      activeByWorkspace: activeByWorkspaceRef.current,
-      workspacePath: workspacePathRef.current,
-      composerDrafts: composerDraftsRef.current,
-      explicitEmptySessionId: getChatSessionsCache()?.explicitEmptySessionId ?? null,
-      localAgentBasename: getChatSessionsCache()?.localAgentBasename,
-    });
-    const api = getDesktop();
-    if (!api) {
-      setMessages((m) => [...m, { role: "assistant", content: BROWSER_MODE_CHAT_MESSAGE }]);
-      return;
-    }
-    const sess = sessionsRef.current.find((s) => s.id === sendSessionId);
-    if (!sess) return;
-
-    if (text === "/delegation-run") {
-      setInput("");
-      await runPmDelegationRuntime();
-      return;
-    }
-
-    const wbsIntent = parseWbsChainIntent(text);
-    if (wbsIntent.matched && activePendingImages.length === 0 && !hasTerminal && !hasFiles) {
-      setInput("");
-      if (wbsIntent.action === "generate-wbs") {
-        sendPayloadOverrideRef.current = {
-          text: WBS_GENERATE_PM_PROMPT,
-          pendingImages: [],
-          pendingFiles: [],
-          pendingTerminalSnippets: [],
-          editCutoff: 0,
-        };
-        await sendChat();
-        return;
-      }
-      const syncResult = await runWorkflowFromWbs({
-        quietPickToast: true,
-        autoRun: wbsIntent.autoRun,
-        recordUserLine: text,
-      });
-      if (syncResult && !syncResult.ok) {
-        // 未找到现有 WBS 时自动降级为生成流程，保留用户原文作为上下文
-        sendPayloadOverrideRef.current = {
-          text: `${text}\n\n${WBS_GENERATE_PM_PROMPT}`,
-          pendingImages: [],
-          pendingFiles: [],
-          pendingTerminalSnippets: [],
-          editCutoff: 0,
-        };
-        await sendChat();
-        return;
-      }
-      return;
-    }
-
-    const parallelIntent = parseParallelIntent(text);
-    if (parallelIntent.matched) {
-      setInput("");
-      if (
-        parallelIntent.targetAgents.length >= 2 &&
-        activePendingImages.length === 0 &&
-        !hasTerminal &&
-        !hasFiles
-      ) {
-        // 有明确的多 Agent 目标 → 直接弹对话框确认后执行
-        setParallelDialogPreset(parallelIntent.targetAgents);
-        setParallelDialogDefaultTask(parallelIntent.rawTask || undefined);
-        setParallelDialogOpen(true);
-      } else if (text.startsWith("/parallel")) {
-        // 空 /parallel → 弹出选人对话框
-        setParallelDialogPreset(undefined);
-        setParallelDialogDefaultTask(undefined);
-        setParallelDialogOpen(true);
-      }
-      // 自然语言但 Agent 不足 2 个 → 忽略并行意图，走正常对话
-      return;
-    }
-
-    if (
-      text &&
-      activePendingImages.length === 0 &&
-      !hasTerminal &&
-      !hasFiles &&
-      parseChainCommand(text).matched
-    ) {
-      setInput("");
-      const route = resolveAgentForTurn(text, localAgentBasename);
-      let chainTitle = sess.title;
-      if (sess.history.length === 0) {
-        const t = text.trim();
-        chainTitle = t.length > 28 ? `${t.slice(0, 28)}…` : t;
-      }
-      const hist = [...sess.history, { role: "user" as const, content: text, ts: Date.now() }];
-      const settings = await getCachedSettings(api);
-      const modelLabel = sess.modelId?.trim() || settings.model || "模型";
-      const nextSessions = sessionsRef.current.map((s) =>
-        s.id === sendSessionId ? { ...s, title: chainTitle, history: hist } : s,
-      );
-      setSessions(nextSessions);
-      sessionsRef.current = nextSessions;
-      setMessages(diskToDisplay(hist, modelLabel));
-      chatCtx.syncSessions(nextSessions);
-      await persist(nextSessions, sendSessionId);
-      clearExplicitEmptyChatSessionIf(sendSessionId);
-      chatCtx.syncExplicitEmptySessionId(null);
-      await pruneWorkspaceSessions(sendSessionId);
-      const chainResult = await handleChainChatCommand(text, route.stem, (opts) =>
-        runOrchestrationChain({ ...opts, pinnedSessionId: sendSessionId }),
-      );
-      if (!chainResult.handled) return;
-      const histWithReply = [
-        ...hist,
-        {
-          role: "assistant" as const,
-          content: chainResult.assistantText,
-          ts: Date.now(),
-          name: "系统",
-        },
-      ];
-      const finalSessions = sessionsRef.current.map((s) =>
-        s.id === sendSessionId ? { ...s, history: histWithReply, title: chainTitle } : s,
-      );
-      setSessions(finalSessions);
-      sessionsRef.current = finalSessions;
-      setMessages(diskToDisplay(histWithReply, modelLabel));
-      await persist(finalSessions, sendSessionId);
-      return;
-    }
-
-    if (
-      text &&
-      activePendingImages.length === 0 &&
-      !hasTerminal &&
-      !hasFiles &&
-      isBulkWriteProjectMessage(text)
-    ) {
-      setInput("");
-      await performBulkWriteProject(text);
-      return;
-    }
-
-    if (
-      text &&
-      activePendingImages.length === 0 &&
-      !hasTerminal &&
-      !hasFiles &&
-      isStopPreviewMessage(text)
-    ) {
-      setInput("");
-      const api = getDesktop();
-      if (api) {
-        const summary = await performStopPreview(api);
-        await appendLocalChatExchange(activeId, text, summary);
-      }
-      return;
-    }
-
-    if (
-      text &&
-      activePendingImages.length === 0 &&
-      !hasTerminal &&
-      !hasFiles &&
-      isOpenTerminalMessage(text)
-    ) {
-      setInput("");
-      setTerminalOpen(true);
-      await appendLocalChatExchange(activeId, text, "已在底部打开终端面板，工作目录为当前项目根。");
-      return;
-    }
-
-    if (
-      text &&
-      activePendingImages.length === 0 &&
-      !hasTerminal &&
-      !hasFiles &&
-      isProjectPreviewMessage(text)
-    ) {
-      setInput("");
-      await runProjectPreview(text);
-      return;
-    }
-
-    const settings = await getCachedSettings(api);
-
-    resetScrollFollow();
-
-    let attachmentsToSave: UserImageAttachment[] | undefined =
-      activePendingImages.length > 0
-        ? activePendingImages.map(({ id: _id, ...rest }) => rest)
-        : undefined;
-    const baseText = text || (attachmentsToSave?.length ? "请结合附图回答。" : "");
-    const filePrefix = activePendingFiles.length
-      ? activePendingFiles.map((f) => `[文件: ${f.name}]`).join("\n") + "\n\n"
-      : "";
-    const displayLine = buildComposerUserLine(
-      filePrefix + baseText,
-      activePendingTerminal,
-      activePendingDom,
-    );
-
-    const route = resolveAgentForTurn(displayLine, localAgentBasename);
-    // 自动模式（底栏显示「通用」/ 未选择 Agent）：不走 Agent 路由，保持普通聊天
-    const isAgentMode =
-      !isAutoAgentBasename(localAgentBasename) ||
-      route.source === "slash" ||
-      route.stem === "__general__";
-    // cmd.stem 在非 Agent 模式下使用无害的标记值 "__auto__"，确保下游代码不报错
-    const cmd = isAgentMode
-      ? ({ matched: true as const, stem: route.stem, body: route.body } as const)
-      : ({ matched: true as const, stem: "__auto__", body: displayLine } as const);
-    const turnAgent = isAgentMode ? stemAgentMeta(route.stem) : { agentStem: "", agentLabel: "" };
-
-    let localUserLineFinal = displayLine;
-    let cloudUserLineFinal = displayLine;
-    let chainCatalogSnippet = "";
-
-    const resolvedExec = resolveModelForExecution({
-      selectedModel: sess.modelId || settings.model,
-      cloudModels: orchestratorModels,
-      localModels: localOllamaTags,
-      allCloudModels: configuredPoolsRef.current.cloudModels,
-      allLocalModels: configuredPoolsRef.current.localModels,
-      // 不传 agentModel，聊天消息始终用聊天底部选择的模型，忽略 Agent frontmatter 中的 model
-      preferredMode: orchMode,
-    });
-    if (!resolvedExec) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          content:
-            "请先在「设置 → 模型配置」通过「添加云模型」或「配置本地模型」添加至少一个模型。",
-          name: "系统",
-        },
-      ]);
-      return;
-    }
-    const mode: OrchMode = resolvedExec.mode;
-    const modelId = resolvedExec.modelId;
-
-    const editCutoff =
-      presetEditCutoff !== undefined
-        ? presetEditCutoff
-        : editingFromInline
-          ? editHistoryIndexRef.current
-          : null;
-    const historyBefore = editCutoff != null ? sess.history.slice(0, editCutoff) : sess.history;
-    const priorForApi: PriorTurn[] = historyBefore
-      .filter((m) => {
-        // Auto 模式：过滤掉携带 Agent 标签的旧助手回复（避免跨模式污染）
-        if (isAgentMode) return true;
-        return m.role === "user" || !m.agentStem;
-      })
-      .map((m) => {
-        if (m.role === "user") {
-          const t: PriorTurn = { role: "user", content: m.content };
-          if (m.attachments?.length) t.attachments = m.attachments;
-          return t;
-        }
-        return { role: "assistant", content: m.content };
-      })
-      // __general__ 模式：滤除含 workspace-write fence 的旧助手回复，防止历史污染驱动重复写盘
-      .filter((m): m is PriorTurn => {
-        if (route.stem !== "__general__" || m.role === "user") return true;
-        return !/```workspace-write\b[\s\S]*?```/i.test(m.content);
-      });
-
-    let visionEnrichedNote: string | undefined;
-    if (
-      (attachmentsToSave?.length ||
-        (!sess?.claudeSessionId && collectPriorUserAttachments(priorForApi).length)) &&
-      !modelSupportsChatVision({ orchMode: mode, modelId })
-    ) {
-      if (api.enrichChatUserLineForImages) {
-        try {
-          const enriched = await api.enrichChatUserLineForImages({
-            userLine: displayLine,
-            userAttachments: attachmentsToSave || [],
-            orchestratorModel: modelId,
-          });
-          attachmentsToSave = undefined;
-          // 提取 enrichment 追加的描述段（后端已 append 到 userLine 末尾）
-          if (enriched.userLine && enriched.userLine !== displayLine) {
-            const idx = enriched.userLine.indexOf("\n\n【系统·附图");
-            if (idx >= 0) visionEnrichedNote = enriched.userLine.slice(idx);
-            else visionEnrichedNote = enriched.userLine.slice(displayLine.length);
-          }
-        } catch (e) {
-          toast.error(visionRequiredError(modelId), { duration: 8000 });
-          return;
-        }
-      } else {
-        toast.error(visionRequiredError(modelId), { duration: 8000 });
-        return;
-      }
-    }
-
-    if (mode === "local-mcp") {
-      if (!api.localOrchestrationPrompt) {
-        setMessages((m) => [
-          ...m,
-          {
-            role: "assistant",
-            content: "当前预加载脚本未暴露本地 MCP 编排接口，请完全退出并重启桌面应用。",
-            name: "系统",
-          },
-        ]);
-        return;
-      }
-    } else if (!api.claudeCodePrompt) {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: "Claude Code 接口不可用，请重启应用后重试。", name: "系统" },
-      ]);
-      return;
-    }
-
-    // 非 Agent 模式下仍需要拼接图片描述
-    if (!isAgentMode && visionEnrichedNote) {
-      localUserLineFinal += `\n${visionEnrichedNote}`;
-      cloudUserLineFinal = localUserLineFinal;
-    }
-
-    if (isAgentMode) {
-      if (api.readClaudeAgentMarkdown) {
-        try {
-          await api.readClaudeAgentMarkdown(`${route.stem}.md`);
-        } catch {
-          /* ignore */
-        }
-      }
-
-      const baseForExpand = route.body;
-      const { expanded: expandedBase, injectedPaths: expandInjectedPaths } =
-        await expandUserLineWithWorkspaceFiles(api, baseForExpand, {
-          settings,
-          cmd,
-          displayLine,
-          chainRunning: chainRunningRef.current,
-        });
-      expandInjectedPathsRef.current = expandInjectedPaths || [];
-      const routedBase = buildAgentRoutedInstruction(route.stem, expandedBase, mode, {
-        mcpChatToolName: settings.mcpChatToolName || undefined,
-        mcpListModelsToolName: settings.mcpListModelsToolName || undefined,
-      });
-      await syncOfficialGenericChains();
-      const chainListR = await api.orchestrationListChains?.();
-      chainCatalogSnippet = buildAgentChainCatalogMarkdown(
-        route.stem,
-        chainListR?.ok ? (chainListR.items ?? []) : [],
-        [],
-      );
-      // 链模式：追加真实 docs/ 文件清单（每链第一轮注入一次，避免后续追问重复注入）
-      if (chainRunningRef.current && !chainDocsInjectedRef.current) {
-        const docsHint = await buildDocsFileListHint(api);
-        if (docsHint) {
-          chainCatalogSnippet += docsHint;
-          chainDocsInjectedRef.current = true;
-        }
-      }
-      localUserLineFinal = visionEnrichedNote
-        ? `${chainCatalogSnippet ? `${routedBase}\n\n${chainCatalogSnippet}` : routedBase}\n${visionEnrichedNote}`
-        : chainCatalogSnippet
-          ? `${routedBase}\n\n${chainCatalogSnippet}`
-          : routedBase;
-      cloudUserLineFinal = buildSubagentUserLine(route.stem, localUserLineFinal);
-    }
-
-    setStopRequested(false);
-    setSessionSending(sendSessionId, true);
-    if (editingFromInline) {
-      setEditComposer(null);
-    }
-    const terminalSnippetsToSave = activePendingTerminal.map(({ id: _id, ...rest }) => rest);
-    if (editCutoff != null) {
-      setEditHistoryIndex(null);
-      editHistoryIndexRef.current = null;
-      setEditComposer(null);
-    }
-    delete composerDraftsRef.current[sendSessionId];
-    const userMsg: DiskMsg = {
-      role: "user",
-      content: displayLine,
-      ts: Date.now(),
-      ...(attachmentsToSave ? { attachments: attachmentsToSave } : {}),
-      ...(terminalSnippetsToSave.length ? { terminalSnippets: terminalSnippetsToSave } : {}),
-    };
-    let title = sess.title;
-    if (historyBefore.length === 0) {
-      const t = displayLine || "图片";
-      title = t.length > 28 ? `${t.slice(0, 28)}…` : t;
-      // 立即更新 React 会话状态，让页签立刻显示新标题
-      setSessions((prev) => {
-        const next = prev.map((s) => (s.id === sendSessionId ? { ...s, title } : s));
-        sessionsRef.current = next;
-        return next;
-      });
-      chatCtx.syncSessions(sessionsRef.current);
-      // 异步调用 AI 生成更智能的标题
-      const _api = getDesktop();
-      if (_api?.claudeCodePrompt) {
-        const _sid = sendSessionId;
-        const _model = modelId;
-        const _userLine = displayLine;
-        _api
-          .claudeCodePrompt({
-            prompt: `为这个编程对话生成一个简洁的标题（3-8个字）。标题要准确反映用户的请求意图。
-要求：
-- 使用中文
-- 只返回标题本身，不要任何额外内容、引号或标点
-
-用户的第一条消息：${_userLine.trim().slice(0, 500)}`,
-            model: _model,
-            timeoutMs: 15000,
-          })
-          .then((r) => {
-            if (r.ok && r.content?.trim()) {
-              let nt = r.content
-                .trim()
-                .replace(/^["'「」『』\s]|["'「」『』\s]$/g, "")
-                .slice(0, 40);
-              if (nt) {
-                void patchSession(_sid, (s) => ({ ...s, title: nt }));
-              }
-            }
-          })
-          .catch(() => {
-            /* 保留临时标题 */
-          });
-      }
-    }
-    let hist: DiskMsg[] = [...historyBefore, userMsg];
-    const wsKey = workspaceSessionKey(workspacePathRef.current) || null;
-    await patchSession(sendSessionId, (s) =>
-      stampSessionWorkspaceIfMissing({ ...s, title, history: hist }, workspacePathRef.current),
-    );
-    clearExplicitEmptyChatSessionIf(sendSessionId);
-    chatCtx.syncExplicitEmptySessionId(null);
-    if (historyBefore.length === 0) {
-      await pruneWorkspaceSessions(sendSessionId);
-    }
-    if (!editingFromInline) {
-      setInput("");
-      setPendingImages([]);
-      setPendingFiles([]);
-      setPendingTerminalSnippets([]);
-      setPendingDomElements([]);
-    }
-    if (sendSessionId === activeIdRef.current) {
-      const waitingMsgs: any[] = [
-        ...diskToDisplay(hist, modelId),
-        {
-          role: "assistant",
-          name: assistantBubbleName(turnAgent, modelId),
-          content: "__WAITING__",
-        },
-      ];
-      setMessages(waitingMsgs);
-      chatCtx.syncMessages(waitingMsgs as any);
-      chatCtx.syncSessionMessages(sendSessionId, waitingMsgs as any);
-      queueMicrotask(() => resetScrollFollow());
-    }
-
-    const reqId = newLocalId();
-    chatCtx.activeRequestIdsRef.current.set(sendSessionId, reqId);
-    streamContextRef.current = { sessionId: sendSessionId, requestId: reqId };
-    activeStreamRequestIdRef.current = reqId;
-    setActiveStreamRequestId(reqId);
-    chatCtx.syncActiveStreamRequestId(reqId);
-
-    try {
-      const sendStarted = Date.now();
-      let res: {
-        ok: boolean;
-        content?: string;
-        error?: string | null;
-        aborted?: boolean;
-        claudeSessionId?: string;
-        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-      };
-      const basenameOverride = `${cmd.stem}.md`;
-      if (isAgentMode) {
-        await appendAgentExecEvent({
-          agent: cmd.stem,
-          mode,
-          source: "chat_command",
-          phase: "start",
-          instruction: route.body || displayLine,
-          modelId,
-        });
-      }
-
-      if (mode === "local-mcp") {
-        res = await api.localOrchestrationPrompt({
-          priorMessages: priorTurnsToOrchestrationMessages(priorForApi),
-          userLine: localUserLineFinal,
-          userAttachments: attachmentsToSave,
-          orchestratorModel: modelId,
-          requestId: reqId,
-          agentBasenameOverride: isAgentMode ? basenameOverride : undefined,
-        });
-      } else {
-        const workspaceDir = await api.getWorkspace();
-        const claudeSessionResume = Boolean(sess?.claudeSessionId);
-        let savedImagePaths: string[] | undefined;
-        let inlineAttachments = attachmentsToSave;
-        if (!claudeSessionResume) {
-          const priorImages = collectPriorUserAttachments(priorForApi);
-          if (priorImages.length || attachmentsToSave?.length) {
-            const merged = mergeInlineAttachments(priorImages, attachmentsToSave);
-            inlineAttachments = merged.attachments.length ? merged.attachments : undefined;
-          }
-        }
-        const useInlineVision = Boolean(inlineAttachments?.length);
-        if (!useInlineVision && attachmentsToSave?.length && api.saveChatImageAttachments) {
-          const saved = await api.saveChatImageAttachments(attachmentsToSave);
-          if (saved.ok && saved.paths?.length) savedImagePaths = saved.paths;
-        }
-        let prompt: string;
-        if (isAgentMode) {
-          prompt = await buildClaudeCodePrompt(api, {
-            workspaceDir,
-            priorHistory: priorForApi,
-            userLine: cloudUserLineFinal,
-            userAttachments: useInlineVision ? undefined : attachmentsToSave,
-            savedImagePaths: useInlineVision ? undefined : savedImagePaths,
-            inlineVision: useInlineVision,
-            sessionResume: claudeSessionResume,
-            localAgentBasename: basenameOverride,
-            skipDefaultRoleBlock: true,
-            chainCatalogSnippet,
-            mcpChatToolName: settings.mcpChatToolName || undefined,
-            mcpListModelsToolName: settings.mcpListModelsToolName || undefined,
-            orchestration: {
-              orchestratorModel: modelId,
-              localOllamaModel: settings.localOllamaModel,
-              ollamaBase: settings.ollamaBase,
-            },
-          });
-        } else {
-          // Auto 模式：纯对话提示，不含 Agent/工具指令，仅带基本工作区上下文
-          prompt = buildPlainChatPrompt(priorForApi, cloudUserLineFinal, workspaceDir);
-        }
-        // 优先尝试直接云 API 调用（绕过 Claude CLI，适用于未安装 Claude Code 的场景）
-        if (api.cloudDirectPrompt) {
-          let finalPrompt = prompt;
-          // 非 Agent 模式下不预读文件（避免注入 WBS 等 Agent 产物）
-          if (isAgentMode) {
-            const preReadAppendix = await preReadInstructedWorkspaceFiles(
-              api,
-              prompt,
-              expandInjectedPathsRef.current,
-            ).catch(() => "");
-            if (preReadAppendix) {
-              finalPrompt = `${preReadAppendix}\n\n---\n\n${prompt}`;
-            }
-          }
-          res = await api.cloudDirectPrompt({
-            prompt: finalPrompt,
-            model: modelId,
-            requestId: reqId,
-          });
-        } else {
-          res = await api.claudeCodePrompt({
-            prompt,
-            model: modelId,
-            requestId: reqId,
-            claudeSessionId: sess?.claudeSessionId ?? undefined,
-            isNewClaudeSession: !sess?.claudeSessionId,
-            attachmentCount: inlineAttachments?.length ?? attachmentsToSave?.length ?? 0,
-            attachments: useInlineVision ? inlineAttachments : attachmentsToSave,
-          });
-        }
-      }
-      toastIfLocalOrchestrationHints(res);
-      if (!res.ok) {
-        const line = formatAssistantFailure(res);
-        hist = [
-          ...hist,
-          {
-            role: "assistant",
-            content: line,
-            ts: Date.now(),
-            requestError: true,
-            billingSource: mode === "local-mcp" ? "local" : "cloud",
-            modelId,
-            ...turnAgent,
-          },
-        ];
-      } else {
-        const reply = res.content || "";
-        maybeToastMissingWorkspaceWrite(reply);
-        const agentStemForIngest = isAgentMode ? cmd.stem : undefined;
-        const displayContent =
-          stripLargeAssistantArtifacts(
-            await ingestWorkspaceWritesAndCollapseDisplay(api, reply, toastIngestWorkspaceHint, {
-              ...(agentStemForIngest
-                ? { agentStem: agentStemForIngest, autoWriteProject: true }
-                : { autoWriteProject: true }),
-            }),
-          ) || "（助手未返回可见正文）";
-        const am: DiskMsg = {
-          role: "assistant",
-          content: displayContent,
-          ts: Date.now(),
-          latencyMs: Math.max(0, Date.now() - sendStarted),
-          billingSource: mode === "local-mcp" ? "local" : "cloud",
-          modelId,
-          ...(res.usage ? { usage: res.usage } : {}),
-          ...turnAgent,
-        };
-        hist = [...hist, am];
-        void autoSaveChainFromReply(api, reply).then((r) => {
-          if (r.saved) {
-            notifyAutoSavedChain(
-              { stepCount: r.stepCount, chainName: r.chainName, wbsPath: r.wbsPath },
-              () => navigate({ to: "/chains", search: { q: "WBS" } }),
-            );
-          }
-        });
-      }
-      await patchSession(sendSessionId, (s) => ({
-        ...s,
-        history: hist,
-        modelId,
-        ...(res.claudeSessionId ? { claudeSessionId: res.claudeSessionId } : {}),
-      }));
-      if (sendSessionId === activeIdRef.current) {
-        setMessages(diskToDisplay(hist, modelId));
-      }
-      // 即使组件卸载，仍通过上下文同步最终消息，以便返回时恢复
-      const finalMsgs = diskToDisplay(hist, modelId);
-      chatCtx.syncMessages(finalMsgs);
-      chatCtx.syncSessionMessages(sendSessionId, finalMsgs);
-    } catch (e) {
-      const errLine = e instanceof Error ? e.message : String(e);
-      hist = [
-        ...hist,
-        {
-          role: "assistant",
-          content: `请求异常：${errLine}`,
-          ts: Date.now(),
-          requestError: true,
-          billingSource: mode === "local-mcp" ? "local" : "cloud",
-          modelId,
-          ...turnAgent,
-        },
-      ];
-      await patchSession(sendSessionId, (s) => ({ ...s, history: hist, modelId }));
-      if (sendSessionId === activeIdRef.current) {
-        setMessages(diskToDisplay(hist, modelId));
-      }
-      const errorMsgs = diskToDisplay(hist, modelId);
-      chatCtx.syncMessages(errorMsgs);
-      chatCtx.syncSessionMessages(sendSessionId, errorMsgs);
-      toast.error(errLine);
-    } finally {
-      await appendAgentExecEvent({
-        agent: cmd.stem,
-        mode,
-        source: "chat_command",
-        phase: "end",
-        instruction: route.body || displayLine,
-        modelId,
-      });
-      chatCtx.activeRequestIdsRef.current.delete(sendSessionId);
-      if (streamContextRef.current?.sessionId === sendSessionId) {
-        streamContextRef.current = null;
-      }
-      activeStreamRequestIdRef.current = null;
-      setActiveStreamRequestId(null);
-      // 即使 ChatPage 已卸载，也同步到上下文让 GlobalChatPanel 知道流已结束
-      chatCtx.syncActiveStreamRequestId(null);
-      setSessionSending(sendSessionId, false);
-      await pruneWorkspaceSessions(activeIdRef.current);
-    }
-  };
-
-  /** 箭头按钮：用原问题立即重新发起（不进入编辑态） */
-  const resendUserMessageImpl = useCallback(
-    async (historyIndex: number) => {
-      const sessionId = activeIdRef.current;
-      const sess = sessionsRef.current.find((s) => s.id === sessionId);
-      const msg = sess?.history[historyIndex];
-      if (!msg || msg.role !== "user") return;
-
-      const restored = restoreUserMsgToComposer(msg);
-      const ml = sess.modelId?.trim() || globalModel || "模型";
-      setEditHistoryIndex(null);
-      setMessages(diskToDisplay(sess.history.slice(0, historyIndex), ml));
-      sendPayloadOverrideRef.current = {
-        text: restored.input,
-        pendingImages: restored.attachments,
-        pendingFiles: [],
-        pendingTerminalSnippets: restored.terminalSnippets,
-        editCutoff: historyIndex,
-      };
-      resetScrollFollow();
-      await sendChat();
-    },
-    [globalModel, resetScrollFollow],
-  );
+  const { sendChat, stopChat, resendUserMessageImpl } = useChatSend({
+    navigate,
+    chatCtx,
+    getCachedSettings,
+    resetScrollFollow,
+    patchSession,
+    persist,
+    clearExplicitEmptyChatSessionIf,
+    pruneWorkspaceSessions,
+    appendLocalChatExchange,
+    appendAgentExecEvent,
+    runPmDelegationRuntime,
+    runOrchestrationChain,
+    performBulkWriteProject,
+    runProjectPreview,
+    stemAgentMeta,
+    runWorkflowFromWbsRef,
+    input,
+    pendingImages,
+    pendingFiles,
+    pendingTerminalSnippets,
+    pendingDomElements,
+    selectedSkillStems,
+    activeId,
+    globalModel,
+    localAgentBasename,
+    orchMode,
+    orchestratorModels,
+    localOllamaTags,
+    setInput,
+    setPendingImages,
+    setPendingFiles,
+    setPendingTerminalSnippets,
+    setPendingDomElements,
+    setSelectedSkillStems,
+    setStopRequested,
+    setSessionSending,
+    setEditComposer,
+    setEditHistoryIndex,
+    setSessions,
+    setMessages,
+    setActiveStreamRequestId,
+    setTerminalOpen,
+    setParallelDialogPreset,
+    setParallelDialogDefaultTask,
+    setParallelDialogOpen,
+    sendPayloadOverrideRef,
+    editComposerRef,
+    editHistoryIndexRef,
+    activeIdRef,
+    sendingSessionsRef,
+    workspacePathRef,
+    activeByWorkspaceRef,
+    sessionsRef,
+    composerDraftsRef,
+    streamContextRef,
+    activeStreamRequestIdRef,
+    chainRunningRef,
+    chainDocsInjectedRef,
+    expandInjectedPathsRef,
+    configuredPoolsRef,
+    stopChainExecution,
+  });
 
   const runCheckpointAction = useCallback(
     (historyIndex: number, action: "edit" | "resend") => {
+      const sessionId = activeIdRef.current;
+      const sess = sessionsRef.current.find((s) => s.id === sessionId);
+      if (sess && historyIndex < sess.history.length - 1) {
+        saveSessionHistoryCheckpoint({
+          sessionId,
+          savedAt: Date.now(),
+          keepUntil: historyIndex,
+          discarded: sess.history.slice(historyIndex),
+        });
+        toast.message("已保存检查点", {
+          description: "可恢复被截断的后续消息",
+          duration: 10_000,
+          action: {
+            label: "撤销截断",
+            onClick: () => {
+              const cp = loadSessionHistoryCheckpoint(sessionId);
+              if (!cp?.discarded?.length) return;
+              void (async () => {
+                const nextSessions = await patchSession(sessionId, (s) => {
+                  const head = s.history.slice(0, cp.keepUntil);
+                  const restored = [...head, ...(cp.discarded as DiskMsg[])];
+                  return { ...s, history: restored };
+                });
+                clearSessionHistoryCheckpoint();
+                const updated = nextSessions.find((s) => s.id === sessionId);
+                if (updated && sessionId === activeIdRef.current) {
+                  const ml = updated.modelId?.trim() || globalModel || "模型";
+                  const display = diskToDisplay(updated.history, ml);
+                  setMessages(display);
+                  chatCtx.syncMessages(display);
+                  chatCtx.syncSessionMessages(sessionId, display);
+                }
+                toast.success("已恢复检查点之后的消息");
+              })();
+            },
+          },
+        });
+      }
       if (action === "edit") beginEditUserMessageImpl(historyIndex);
       else void resendUserMessageImpl(historyIndex);
     },
-    [beginEditUserMessageImpl, resendUserMessageImpl],
+    [beginEditUserMessageImpl, resendUserMessageImpl, patchSession, globalModel, chatCtx],
   );
 
   const requestCheckpointAction = useCallback(
@@ -3919,6 +3161,7 @@ function ChatPage() {
       return { ok: false, error };
     }
   };
+  runWorkflowFromWbsRef.current = runWorkflowFromWbs;
 
   /**
    * 继续执行（优先从 currentIndex 续跑）；若链缺失/已跑完，则按“退出时间”就近匹配工作区 .md 重建链并执行。
@@ -4085,6 +3328,8 @@ function ChatPage() {
       modelFallback: primaryModelFallback,
       onModelPick: inlineOnModelPick,
       onCancelEdit: cancelEditUserMessage,
+      selectedSkillStems,
+      onSelectedSkillStemsChange: setSelectedSkillStems,
     };
   }, [
     editHistoryIndex,
@@ -4104,6 +3349,7 @@ function ChatPage() {
     inlineOnModelPick,
     cancelEditUserMessage,
     stopChat,
+    selectedSkillStems,
   ]);
 
   const editingUserMessage = useMemo((): Msg | null => {
@@ -4149,6 +3395,7 @@ function ChatPage() {
               onSelectHistorySession={(id) => void activateHistorySession(id)}
               onDeleteHistorySession={(id) => void handleDeleteHistorySession(id)}
               onHistoryOpen={handleHistoryOpen}
+              onCollapsePanel={() => setChatPanelOpen(false)}
             />
           }
           terminalOpen={terminalOpen}
@@ -4182,6 +3429,7 @@ function ChatPage() {
                   onGenerateChain={handleBubbleGenerateChain}
                   onEditUserMessage={beginEditUserMessage}
                   onRequestResendUserMessage={requestResendUserMessage}
+                  onAssistantContentPatch={handleAssistantContentPatch}
                 />
 
                 <WorkbenchChatComposer
@@ -4225,8 +3473,15 @@ function ChatPage() {
                   modelValue={activeSession?.modelId || globalModel || primaryModelFallback || ""}
                   modelFallback={primaryModelFallback}
                   onModelPick={(pick) => void handleModelPick(pick)}
+                  selectedSkillStems={selectedSkillStems}
+                  onSelectedSkillStemsChange={setSelectedSkillStems}
                   chainStatusLabel={chainStatusBadge.label}
                   chainStatusTone={chainStatusBadge.tone}
+                  onStopChain={
+                    chainStatusBadge.tone === "active" || chainStatusBadge.tone === "paused"
+                      ? () => stopChainExecution()
+                      : undefined
+                  }
                   onAddTask={handleAddTask}
                   chainOptions={chainOptions}
                   onCancelEdit={cancelEditUserMessage}

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { CornerUpLeft, TerminalSquare } from "lucide-react";
+import { CornerUpLeft } from "lucide-react";
+import { SetiShellIcon } from "@/lib/seti/seti-file-icon";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { ImageLightbox } from "@/components/image-lightbox";
 import {
@@ -23,7 +24,7 @@ function TerminalChip({
 }) {
   return (
     <span className="terminal-context-chip inline-flex max-w-full items-center gap-1 rounded-[5px] px-1.5 py-0.5 font-mono text-[11.5px] leading-none">
-      <TerminalSquare className="h-3 w-3 shrink-0 opacity-85" aria-hidden />
+      <SetiShellIcon className="text-[12px]" />
       <span className="truncate">{formatTerminalChipLabel(payload)}</span>
     </span>
   );

@@ -1,6 +1,12 @@
 import type { DesktopApi } from "@/types/desktop";
 import type { PriorTurn, UserImageAttachment } from "@/lib/ollama-messages";
 import { agentStemFromBasename } from "@/lib/agent-basename";
+import {
+  getWorkbenchInteractionMode,
+  interactionModePromptBlock,
+} from "@/lib/workbench-interaction-mode";
+import { loadProjectRulesSnippet } from "@/lib/project-rules";
+import { loadAgentRoleBodySnippet } from "@/lib/agent-context-appendix";
 
 export type ClaudeOrchestrationHints = {
   /** Claude Code CLI --model，编排层（sonnet / opus / haiku） */
@@ -34,6 +40,8 @@ export async function buildClaudeCodePrompt(
     skipDefaultRoleBlock?: boolean;
     /** 当前 Agent 可调用的任务链摘要（对话 /chain 与引导用） */
     chainCatalogSnippet?: string;
+    /** Composer 选用 Skill 正文（空则不注入） */
+    skillSnippet?: string;
     /** MCP Ollama 聊天工具名（默认 ollama_chat） */
     mcpChatToolName?: string;
     /** MCP 模型列举工具名（默认 ollama_list_models） */
@@ -59,7 +67,7 @@ export async function buildClaudeCodePrompt(
   const orchName = orch.orchestratorModel?.trim() || "（默认）";
 
   const stem = agentStemFromBasename(opts.localAgentBasename ?? undefined);
-  const roleBlock = opts.skipDefaultRoleBlock || stem === "__general__"
+  let roleBlock = opts.skipDefaultRoleBlock || stem === "__general__"
     ? ""
     : [
         `【角色】Agent「${stem}」`,
@@ -70,24 +78,41 @@ export async function buildClaudeCodePrompt(
         .filter(Boolean)
         .join("\n");
 
+  if (!opts.skipDefaultRoleBlock && stem !== "__general__") {
+    const roleBody = await loadAgentRoleBodySnippet(desktop, opts.localAgentBasename);
+    if (roleBody) {
+      roleBlock = roleBlock ? `${roleBlock}\n\n${roleBody}` : roleBody;
+    }
+  }
+
   const mcpChatTool = opts.mcpChatToolName?.trim() || "ollama_chat";
   const mcpListModelsTool = opts.mcpListModelsToolName?.trim() || "ollama_list_models";
+
+  const interactionMode = getWorkbenchInteractionMode();
+  const rulesSnippet = await loadProjectRulesSnippet(desktop);
 
   const preamble = [
     `【环境】Claude Code CLI；Ollama 经 MCP ${mcpChatTool} 调用。`,
     `【模型】${orchName}；Ollama ${localHint}`,
     opts.workspaceDir ? `【工作区】${opts.workspaceDir}` : "",
     "【语言】zh_CN（代码/路径除外）。",
-    stem === "__general__"
-      ? "【MUST_NOT】不可使用 workspace-write。纯问答不写文件；仅用户明确要求写/生成/保存/更新时才可写。"
-      : "【写盘】```workspace-write``` JSON。",
+    interactionModePromptBlock(interactionMode),
+    interactionMode === "ask"
+      ? ""
+      : interactionMode === "agent"
+        ? "【写盘·Agent】Read→Edit/Write→跑测；禁贴方案/征求确认；探索禁用 grep；默认 memory://+migrations；收尾 1–3 句自然语言，勿四行模板。【禁兜底】无工具/写盘证据禁止声称已改文件、已打开应用或已跑通；缺证据如实说明。"
+        : stem === "__general__"
+          ? "【MUST_NOT】不可使用 workspace-write。纯问答不写文件；仅用户明确要求写/生成/保存/更新时才可写。"
+          : "【写盘·Plan】须用 ```workspace-write``` JSON（path+content）或 ```diff```；勿静默 Edit/Write；勿宣称已写入——用户 Accept 后才落盘。",
     crossAgentSnippet,
   ]
     .filter(Boolean)
     .join("\n");
 
   const blocks: string[] = [preamble];
+  if (rulesSnippet) blocks.push(rulesSnippet);
   if (roleBlock) blocks.push(roleBlock);
+  if (opts.skillSnippet?.trim()) blocks.push(opts.skillSnippet.trim());
   if (opts.chainCatalogSnippet?.trim()) blocks.push(opts.chainCatalogSnippet.trim());
 
   for (const m of opts.priorHistory) {
