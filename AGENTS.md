@@ -18,3 +18,11 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## Cloud Agent
+
+开发服务由环境的 `start` 启动：`npm run web:dev:full`。Bridge 在 `http://127.0.0.1:18790`，Web UI 在 `http://127.0.0.1:5188`。该命令不打开 Electron。
+
+镜像自带的 Node 22.14 会在加载 Bridge 和 Vite 时抛出 `ERR_REQUIRE_CYCLE_MODULE`。安装脚本把 Node 22.23.3 放到 `/opt/cursor-node`，并通过 `/etc/profile.d/cursor-node.sh` 放到 `PATH` 前面。确认 `node -v` 为 `v22.23.3` 后再启动服务。
+
+依赖安装使用 `bash scripts/cloud-agent-install.sh`（根目录与 `web/` 的 `npm ci`，以及 `npm run vendor:install`）。`server/vendor/` 不入库。目录里还没有 CAD 源码时，脚本只补启动所需的依赖和占位模块，已有文件不会被覆盖。任务链与本地 MCP 编排仍依赖本机完整 CAD 树。
