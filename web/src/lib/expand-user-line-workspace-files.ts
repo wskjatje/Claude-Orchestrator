@@ -82,17 +82,14 @@ export function shouldInjectFollowUpWorkspaceContext(displayLine: string): boole
   );
 }
 
-/** 用户问"当前项目是什么"或泛指「WEB应用/本项目」时，注入 README/PRD 与目录树 */
-export function shouldInjectProjectBootstrap(displayLine: string): boolean {
-  const s = displayLine.trim();
-  if (!s || s.length > 96) return false;
-  return (
-    /^(WEB应用|web\s*应用|本项目|当前项目|这个仓库|工作区)$/i.test(s) ||
-    /^告诉我\s*(?:这|当前|本).*(?:项目|仓库|工作区)/.test(s) ||
-    /^(?:这(?:是|个)|当前)(?:项目|仓库|工作区)\s*(?:是|做什么|干什么|属于)/.test(s) ||
-    /^(?:这是什么|这是什么项目|这是什么仓库|这是做什么的)$/.test(s)
-  );
-}
+import {
+  shouldInjectProjectBootstrap as shouldInjectProjectBootstrapFromPolicy,
+  isReadOnlyUserIntent as isReadOnlyUserIntentFromPolicy,
+} from "@/lib/turn-policy";
+
+/** 与 server/turn-policy.mjs 同源，避免前后端意图判定分叉 */
+export const shouldInjectProjectBootstrap = shouldInjectProjectBootstrapFromPolicy;
+export const isReadOnlyUserIntent = isReadOnlyUserIntentFromPolicy;
 
 /**
  * 是否跳过工作区上下文注入。
@@ -136,6 +133,171 @@ function shouldSkipWorkspaceContext(displayLine: string): boolean {
 
 const MAX_FILE_CHARS = 4_000;
 const MAX_APPENDIX_CHARS = 20_000;
+
+/**
+ * 产品事实候选（按常见栈；存在才读，不写死某一业务域）。
+ * 优先入口/依赖/概要文档；过程材料（WBS 任务链、Agent 指派）另行降权。
+ */
+const SLIM_BRIEF_PRODUCT_FILES = [
+  "README.md",
+  "readme.md",
+  "README.rst",
+  "README.txt",
+  "docs/project-status.md",
+  "docs/README.md",
+  "docs/prd.md",
+  "docs/frontend-summary.md",
+  "docs/architecture-note.md",
+  "package.json",
+  "pyproject.toml",
+  "requirements.txt",
+  "Cargo.toml",
+  "go.mod",
+  "composer.json",
+  "Gemfile",
+  "run.py",
+  "wsgi.py",
+  "app.py",
+  "main.py",
+  "src/app.py",
+  "src/main.py",
+  "src/__init__.py",
+];
+
+/** 工具链/缓存目录：目录树不展开，避免噪声 */
+const SLIM_TREE_SKIP_DIR =
+  /^(venv|\.venv|node_modules|__pycache__|dist|build|coverage|\.git|graphify-out|\.pytest_cache|\.claudecode|\.tox|\.mypy_cache)$/i;
+
+/** 开发过程目录：可显示一层名，不展开，避免被当成「产品就是编排器」 */
+const SLIM_TREE_PROCESS_DIR = /^(chain-steps|agents)$/i;
+
+type PanelTreeNode = {
+  name?: string;
+  type?: "file" | "dir" | string;
+  children?: PanelTreeNode[];
+};
+
+function flattenProductTreeNames(
+  nodes: PanelTreeNode[] | undefined,
+  depth = 0,
+  prefix = "",
+  out: string[] = [],
+): string[] {
+  if (!nodes?.length || depth > 2) return out;
+  for (const n of nodes) {
+    const name = typeof n.name === "string" ? n.name : "";
+    if (!name || name.startsWith(".")) continue;
+    if (SLIM_TREE_SKIP_DIR.test(name)) continue;
+    const rel = prefix ? `${prefix}/${name}` : name;
+    const isDir = n.type === "dir" || Boolean(n.children?.length);
+    const processDir = isDir && SLIM_TREE_PROCESS_DIR.test(name);
+    out.push(`${"  ".repeat(depth)}${isDir ? `${rel}/` : rel}`);
+    if (isDir && !processDir && n.children?.length) {
+      flattenProductTreeNames(n.children, depth + 1, rel, out);
+    }
+    if (out.length >= 36) break;
+  }
+  return out;
+}
+
+/** 从工作区 markdown 清单里挑「产品概要」类文档（按路径语义打分，不写死业务名） */
+function scoreProductDocPath(relPath: string): number {
+  const p = relPath.replace(/\\/g, "/").toLowerCase();
+  if (!p.endsWith(".md")) return -1;
+  if (/(^|\/)(chain-steps|agents)\//.test(p)) return -100;
+  if (/(^|\/)wbs\.md$/.test(p)) return -40;
+  if (/(project-status|product-overview|overview|readme|prd|frontend-summary|architecture-note)/.test(p)) {
+    return 80;
+  }
+  // docs 根下一层 md：概要潜力高于深层任务产物
+  if (/^docs\/[^/]+\.md$/.test(p)) return 35;
+  return 0;
+}
+
+/**
+ * 通用聊天问「项目做什么」：注入产品事实摘录。
+ * 不注入 Agent 强制指令；过程文档（任务链/Agent 指派）不得压过入口与产品概要。
+ */
+export async function buildSlimProjectBrief(desktop: DesktopApi): Promise<string> {
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  const read = desktop.readWorkspaceTextFile;
+
+  const pushFile = async (rel: string, cap: number) => {
+    if (!read || seen.has(rel) || parts.length >= 5) return;
+    try {
+      const r = await read(rel);
+      if (r?.ok && typeof r.text === "string" && r.text.trim()) {
+        seen.add(rel);
+        parts.push(`【${rel}】\n${r.text.trim().slice(0, cap)}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  if (typeof read === "function") {
+    for (const rel of SLIM_BRIEF_PRODUCT_FILES) {
+      const cap =
+        rel.endsWith(".py") || rel.endsWith(".txt") || rel.endsWith(".toml") ? 2_200 : 3_500;
+      await pushFile(rel, cap);
+      if (parts.length >= 5) break;
+    }
+  }
+
+  // 动态补一份高分产品文档（若固定列表未命中）
+  if (parts.length < 5 && typeof desktop.listWorkspaceMarkdownFiles === "function") {
+    try {
+      const ls = await desktop.listWorkspaceMarkdownFiles();
+      const ranked = (ls?.ok && Array.isArray(ls.files) ? ls.files : [])
+        .map((f) => ({ rel: f.relPath, score: scoreProductDocPath(f.relPath) }))
+        .filter((x) => x.score > 0 && !seen.has(x.rel))
+        .sort((a, b) => b.score - a.score);
+      for (const hit of ranked.slice(0, 2)) {
+        await pushFile(hit.rel, 3_500);
+        if (parts.length >= 5) break;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (typeof desktop.listWorkspacePanelTree === "function") {
+    try {
+      const tree = await desktop.listWorkspacePanelTree();
+      if (tree?.ok && Array.isArray(tree.tree)) {
+        const lines = flattenProductTreeNames(tree.tree as PanelTreeNode[]);
+        if (lines.length) {
+          parts.push(
+            `【工作区目录（节选·产品结构）】\n${lines.slice(0, 32).join("\n")}\n` +
+              `（标注为 chain-steps/agents/wbs 的路径多为开发过程材料，不是产品定义）`,
+          );
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  } else if (!parts.length && typeof desktop.workspaceGetExecutionSnapshot === "function") {
+    try {
+      const snap = await desktop.workspaceGetExecutionSnapshot();
+      if (snap?.ok && typeof snap.text === "string" && snap.text.trim()) {
+        parts.push(`【工作区快照】\n${snap.text.trim().slice(0, 2_500)}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (!parts.length) return "";
+  return (
+    "\n\n---\n【项目摘录·仅供回答问题】\n" +
+    parts.join("\n\n") +
+    "\n\n【回答约束】用与用户相同的语言概述「这个产品/应用做什么」。" +
+    "证据优先级：依赖清单与应用入口/路由/页面 > 项目状态或概要文档 > 目录结构；" +
+    "WBS、Agent 指派、chain-steps、任务链文档只说明「如何被开发管理」，不得据此把产品本身概括为多智能体编排平台或自动化工作流运行时。" +
+    "禁止声称用户未提供任何资料；禁止复述本段标题或自称待命。"
+  );
+}
 
 /**
  * 扫描工作区 docs/ 目录，返回真实文件清单 markdown。
@@ -209,10 +371,11 @@ async function buildWorkspaceContextAppendix(desktop: DesktopApi): Promise<{
     }
   }
 
+  // 短约束：禁止英文 Mandatory / Source of Truth 教程式口吻；用中性说明即可
   const antiTemplate =
-    "【强制】项目定义以 package.json/README.md 为权威来源。" +
-    "勿引用任务跟踪文件的猜测内容。勿虚构不存在的文档。" +
-    "纯询问场景无需写文档/任务跟踪文件。落地优化须基于真实文件给具体改动。";
+    "【参考】以上为工作区摘录，请据此直接回答用户问题。" +
+    "勿复述本段规则、勿自称待命；勿虚构未列出的文件。" +
+    "纯询问无需新建文档。";
 
   // 共享函数：注入实际 docs/ 文件列表
   const docsFileList = await buildDocsFileListHint(desktop);

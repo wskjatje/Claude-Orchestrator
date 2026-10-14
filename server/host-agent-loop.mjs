@@ -647,17 +647,31 @@ function resolveChatBackend(preferredModel) {
   }
 
   const ollamaBase = String(settings?.ollamaBase || 'http://127.0.0.1:11434').replace(/\/$/, '')
-  const fallbackLocal = String(
-    settings?.localOllamaModel || settings?.localModel || settings?.ollamaModel || 'qwen2.5-coder:7b',
-  ).trim()
-  const candidate = String(preferredModel || fallbackLocal).trim() || fallbackLocal
-  const looksCloudId =
-    /^(gpt-|o1-|o3-|claude-|gemini-|deepseek-v|deepseek-chat|qwen-turbo|qwen-plus|qwen-max)/i.test(
-      candidate,
-    ) ||
-    /flash|turbo|instruct/i.test(candidate)
-  const ollamaModel = looksCloudId ? fallbackLocal : candidate
-  return { kind: 'ollama', base: ollamaBase, model: ollamaModel }
+  const localPool = new Set(
+    [
+      ...(Array.isArray(settings?.chatEnabledLocalModels) ? settings.chatEnabledLocalModels : []),
+      ...(Array.isArray(settings?.localModelCatalog) ? settings.localModelCatalog : []),
+      settings?.localOllamaModel,
+      settings?.localModel,
+      settings?.ollamaModel,
+    ]
+      .map((x) => String(x || '').trim())
+      .filter(Boolean),
+  )
+  const candidate = String(preferredModel || settings?.localOllamaModel || '').trim()
+  if (!candidate) {
+    return {
+      kind: 'none',
+      error: '未指定可用模型：请在设置中启用云端或本地模型后再试。',
+    }
+  }
+  if (localPool.has(candidate)) {
+    return { kind: 'ollama', base: ollamaBase, model: candidate }
+  }
+  return {
+    kind: 'none',
+    error: `无法解析模型「${candidate}」的执行后端（云端未就绪且不在本地启用池）。`,
+  }
 }
 
 function isToolsUnsupportedError(status, errText) {
@@ -674,10 +688,22 @@ function isToolsUnsupportedError(status, errText) {
 
 function ollamaBackendFromSettings() {
   const settings = loadChatSettings()
+  const model = String(
+    settings?.localOllamaModel ||
+      (Array.isArray(settings?.chatEnabledLocalModels) && settings.chatEnabledLocalModels[0]) ||
+      (Array.isArray(settings?.localModelCatalog) && settings.localModelCatalog[0]) ||
+      '',
+  ).trim()
+  if (!model) {
+    return {
+      kind: 'none',
+      error: '未配置本地模型：请在设置中启用至少一个 Ollama 模型。',
+    }
+  }
   return {
     kind: 'ollama',
     base: String(settings?.ollamaBase || 'http://127.0.0.1:11434').replace(/\/$/, ''),
-    model: String(settings?.localOllamaModel || 'qwen2.5-coder:7b').trim(),
+    model,
   }
 }
 
@@ -871,7 +897,22 @@ export async function runHostAgentLoop(opts) {
   const workspaceDir = loadWorkspace()
   if (!workspaceDir) return { ok: false, content: '', error: '未选择工作区' }
   const root = path.resolve(workspaceDir)
-  const mode = readInteractionMode(root)
+  const diskMode = readInteractionMode(root)
+  // Cursor 对齐：有回合策略时优先；否则回落底栏磁盘模式
+  const hasTurnGate =
+    typeof opts.allowWrites === 'boolean' ||
+    typeof opts.autoApplyWrites === 'boolean' ||
+    Boolean(opts.readOnlyTurn)
+  /** @type {string} */
+  let mode = diskMode
+  if (hasTurnGate) {
+    const allowWrites = opts.allowWrites !== false && !opts.readOnlyTurn
+    const autoApplyWrites = allowWrites && opts.autoApplyWrites === true
+    if (!allowWrites) mode = 'ask'
+    else if (!autoApplyWrites) mode = 'plan'
+    else mode = 'agent'
+  }
+
   const preferredModel = String(opts.model || opts.orchestratorModel || '').trim()
   let backend = resolveChatBackend(preferredModel)
   if (backend.kind === 'none') {
@@ -894,6 +935,7 @@ export async function runHostAgentLoop(opts) {
   const readPaths = new Set()
   const ctx = { root, mode, deferredWrites, writtenPaths, readPaths, ranVerify: false }
 
+  const systemConstraint = String(opts.systemConstraint || '').trim()
   const system = [
     '你是工作区编码 Agent。',
     '工具顺序：code_search → read_file → search_replace|write_file → run_tests|run_command → get_diagnostics|git_status。',
@@ -910,14 +952,17 @@ export async function runHostAgentLoop(opts) {
       : mode === 'plan' || mode === 'propose'
         ? 'Plan：用 search_replace / write_file 提出改动（暂存待 Accept）；可用 run_command 探测。'
         : [
-            'Agent：用户已授权。所有改动必须经 search_replace 或 write_file 立刻落盘；禁止只贴方案/```diff```。',
+            'Agent：用户已授权改文件。仅当本轮用户明确要求修改时才 search_replace/write_file；纯问答禁止写盘。',
             '禁止询问「要我落盘吗」「只分析还是开始改」「memory 还是 Redis」「是否 flask db init」。',
             '默认：限频 memory://；一并 migrations init/migrate；Redis 等写入「未改：…」。',
             '写盘后必须 run_tests（或针对性 run_command）；失败则修复再测。',
             '不要把「请用户自行跑测」当作收尾。',
           ].join(''),
+    systemConstraint,
     '收尾 1–3 句自然语言；禁止「改动/路径/测试/未改」模板与「下一步/P2」推销。',
-  ].join('\n')
+  ]
+    .filter(Boolean)
+    .join('\n')
 
   const appendix = String(opts.contextAppendix || '').trim()
   const userContent = [
@@ -993,7 +1038,11 @@ export async function runHostAgentLoop(opts) {
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e)
       if (backend.kind === 'cloud') {
-        backend = ollamaBackendFromSettings()
+        const localBe = ollamaBackendFromSettings()
+        if (localBe.kind === 'none') {
+          return failHost(`模型不可用：${lastError}；${localBe.error}`)
+        }
+        backend = localBe
         usedBackend = 'ollama'
         usedModel = backend.model
         backendsTried.push(`ollama:${backend.model}`)
@@ -1017,18 +1066,22 @@ export async function runHostAgentLoop(opts) {
       lastError = round.error || 'chat failed'
       const toolsUnsupported = Boolean(round.toolsUnsupported)
       if (backend.kind === 'cloud') {
-        backend = ollamaBackendFromSettings()
+        const localBe = ollamaBackendFromSettings()
+        if (localBe.kind === 'none') {
+          return failHost(`${lastError}；${localBe.error}`)
+        }
+        backend = localBe
         usedBackend = 'ollama'
         usedModel = backend.model
         backendsTried.push(
           toolsUnsupported
-            ? `ollama:${backend.model}(tools回落)`
+            ? `ollama:${backend.model}(改本地)`
             : `ollama:${backend.model}`,
         )
         emit(
           toolsUnsupported
-            ? '\n⋯ 云端不支持 tools，改用本机 Ollama…\n'
-            : '\n⋯ 云端失败，改用本机 Ollama…\n',
+            ? '\n⋯ 云端不支持 tools，改用本机已启用的 Ollama 模型…\n'
+            : '\n⋯ 云端失败，改用本机已启用的 Ollama 模型…\n',
         )
         forceToolsNext = wantRequired
         continue

@@ -8,7 +8,16 @@ export const GENERAL_AGENT_DISPLAY_NAME = "通用";
 
 export function isAutoAgentBasename(basename: string | undefined | null): boolean {
   const raw = typeof basename === "string" ? basename.trim().toLowerCase() : "";
-  return !raw || raw === "auto" || raw === "__auto__";
+  // 空 / auto / __general__ 均视为底栏「通用」（普通聊天，非具名 Agent）
+  return (
+    !raw ||
+    raw === "auto" ||
+    raw === "__auto__" ||
+    raw === "__general__" ||
+    raw === "general" ||
+    raw === "__general__.md" ||
+    raw === "general.md"
+  );
 }
 
 export function agentStemFromBasename(basename: string | undefined | null): string {

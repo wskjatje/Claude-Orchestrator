@@ -322,18 +322,50 @@ export function collapseWorkspaceWriteForHistory(fullText: string, writtenPaths:
 }
 
 /**
- * 单聊回复后处理：
- * - Agent（）：自动落盘并折叠围栏
- * - Plan/Ask：不落盘，保留卡片供 Accept
+ * 去掉气泡中所有可解析的写盘载荷（workspace-write / ```json path+content），
+ * 供只读回合使用，避免 UI 再渲染成文件卡片。
+ */
+export function stripAllWorkspaceWritePayloads(text: string): string {
+  if (!text) return text;
+  let out = stripWorkspaceWriteFencesForHistory(text);
+  // 再剥 ```json 中可解析为写盘项的块（下标相对当前 out）
+  const fenceRe = /```(?:json)\s*([\s\S]*?)```/gi;
+  const removals: { start: number; end: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = fenceRe.exec(out)) !== null) {
+    const chunk = (m[1] || "").trim();
+    if (!chunk) continue;
+    try {
+      const items = parseWorkspaceWriteItemsFromBubble(
+        "```json\n" + chunk + "\n```",
+      );
+      if (items.length) {
+        removals.push({ start: m.index, end: m.index + m[0].length });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  for (let i = removals.length - 1; i >= 0; i--) {
+    const { start, end } = removals[i]!;
+    out = out.slice(0, start) + out.slice(end);
+  }
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * 单聊回复后处理（Cursor 对齐）：
+ * - 仅当显式 allowApply:true 时自动落盘（调用方必须传回合策略）
+ * - 未传 allowApply 时默认不写，避免 Ask/问答误落盘
  */
 export async function ingestWorkspaceWritesAndCollapseDisplay(
   desktop: DesktopApi,
   assistantText: string,
   onToast?: (msg: string) => void,
-  _meta?: { agentStem?: string },
+  meta?: { agentStem?: string; allowApply?: boolean },
 ): Promise<string> {
-  const { shouldAutoApplyWorkspaceWrites } = await import("@/lib/workbench-interaction-mode");
-  if (!shouldAutoApplyWorkspaceWrites()) return assistantText;
+  const allowApply = meta?.allowApply === true;
+  if (!allowApply) return assistantText;
   const items = parseWorkspaceWriteItemsFromBubble(assistantText);
   if (!items.length) return assistantText;
   if (!desktop.workspaceApplyWriteFence) return assistantText;

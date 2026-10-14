@@ -67,6 +67,14 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
 
   const headerMessage = isEditingSticky ? editingUserMessage : stickyUser;
 
+  const priorUserLineFor = (assistantIndex: number): string => {
+    for (let j = assistantIndex - 1; j >= 0; j--) {
+      const prev = messages[j];
+      if (prev?.role === "user") return String(prev.content || "");
+    }
+    return "";
+  };
+
   const renderUser = (m: ChatBubbleMessage, turnIndex: number) => (
     <div key={`user:${m.historyIndex ?? turnIndex}`} ref={setUserRef(turnIndex)} className="chat-turn-user">
       <MessageBubble
@@ -84,6 +92,7 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
     <MessageBubble
       key={`${i}:${messages[i].role}:${messages[i].content.length}`}
       m={messages[i]}
+      priorUserLine={priorUserLineFor(i)}
       hasDesktopApi={hasDesktopApi}
       onWriteToWorkspace={onWriteToWorkspace}
       onGenerateChain={onGenerateChain}

@@ -7,7 +7,7 @@
 
 export type WorkbenchInteractionMode = "ask" | "plan" | "agent";
 
-const KEY = "claude-orchestrator:workbench-interaction-mode:v3";
+const KEY = "claude-orchestrator:workbench-interaction-mode:v4";
 const listeners = new Set<() => void>();
 
 let mode: WorkbenchInteractionMode = load();
@@ -24,6 +24,13 @@ function load(): WorkbenchInteractionMode {
     const raw = localStorage.getItem(KEY);
     const n = normalizeMode(raw);
     if (n) return n;
+    // v3→v4：保留用户已选模式；未选过则默认 ask（对齐 Cursor）
+    const v3 = localStorage.getItem("claude-orchestrator:workbench-interaction-mode:v3");
+    const n3 = normalizeMode(v3);
+    if (n3) {
+      localStorage.setItem(KEY, n3);
+      return n3;
+    }
     const v2 = localStorage.getItem("claude-orchestrator:workbench-interaction-mode:v2");
     const n2 = normalizeMode(v2);
     if (n2) {
@@ -33,13 +40,15 @@ function load(): WorkbenchInteractionMode {
     const v1 = localStorage.getItem("claude-orchestrator:workbench-interaction-mode:v1");
     const n1 = normalizeMode(v1);
     if (n1) {
-      localStorage.setItem(KEY, n1 === "plan" ? "agent" : n1);
-      return n1 === "plan" ? "agent" : n1;
+      const migrated = n1 === "plan" ? "agent" : n1;
+      localStorage.setItem(KEY, migrated);
+      return migrated;
     }
   } catch {
     /* ignore */
   }
-  return "agent";
+  // 对齐 Cursor：默认 Ask（只读），避免「问项目做什么」就被自动改仓库
+  return "ask";
 }
 
 function emit() {
@@ -106,11 +115,37 @@ export function cliPermissionModeForInteraction(
   return "plan";
 }
 
-/** 是否在回复后自动把 workspace-write / diff 写入磁盘 */
+/** 结合回合策略：只读/禁止写盘时一律 plan，避免 Agent 底栏 + 问答仍 acceptEdits */
+export function cliPermissionModeForTurn(opts: {
+  interactionMode?: WorkbenchInteractionMode;
+  allowWrites?: boolean;
+  autoApplyWrites?: boolean;
+}): "plan" | "acceptEdits" {
+  if (opts.allowWrites === false) return "plan";
+  if (opts.autoApplyWrites === false) return "plan";
+  return cliPermissionModeForInteraction(opts.interactionMode ?? mode);
+}
+
+/** 是否在回复后自动把 workspace-write / diff 写入磁盘（仅看交互模式；回合意图另由 turn-policy 再闸） */
 export function shouldAutoApplyWorkspaceWrites(
   m: WorkbenchInteractionMode = mode,
 ): boolean {
   return m === "agent";
+}
+
+/**
+ * Cursor 对齐：仅 Agent + 本轮允许自动落盘时才写。
+ * 缺省 allowAutoApply 时回落为「仅 Agent 模式」（兼容链/学习等未传回合策略的调用）。
+ */
+export function shouldAutoApplyWorkspaceWritesForTurn(opts: {
+  interactionMode?: WorkbenchInteractionMode;
+  allowAutoApply?: boolean;
+}): boolean {
+  const m = opts.interactionMode ?? mode;
+  if (m !== "agent") return false;
+  if (opts.allowAutoApply === false) return false;
+  if (opts.allowAutoApply === true) return true;
+  return true;
 }
 
 /** 注入到 Claude prompt 的模式约束 */
@@ -124,11 +159,10 @@ export function interactionModePromptBlock(m: WorkbenchInteractionMode): string 
   }
   if (m === "agent") {
     return [
-      "【交互模式·Agent】直接完成任务并改工作区，用户发任务即授权执行。",
-      "MUST：检索/Read → Edit/Write 落盘 → 跑测；禁止只贴方案/diff。",
+      "【交互模式·Agent】用户明确要求改文件/修代码时：检索/Read → Edit/Write 落盘 → 跑测。",
+      "MUST：变更任务才写盘；纯问答/解释只用自然语言，禁止 Edit/Write/workspace-write。",
       "MUST_NOT：征求确认；探索禁用 grep（写后可核对）；勿长篇「现状发现」。",
-      "默认自行决定（如 memory:// + migrations）；可选一句「未改：…」。",
-      "收尾：1–3 句自然语言（做了什么 + 测试结果）；勿用「改动/路径/测试/未改」四行模板。",
+      "收尾：1–3 句自然语言；勿用「改动/路径/测试/未改」四行模板。",
     ].join("\n");
   }
   return [

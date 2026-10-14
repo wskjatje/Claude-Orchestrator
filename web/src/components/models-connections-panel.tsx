@@ -31,6 +31,61 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { getCachedModelCapability, rememberModelCapability } from "@/lib/model-capability-cache";
+
+/** 本地模型能力短标签；点击可写入显式覆盖（tools/vision） */
+function LocalCapTags({ modelId }: { modelId: string }) {
+  const [, bump] = useState(0);
+  const caps = getCachedModelCapability(modelId);
+  const tools = caps?.tools === true;
+  const vision = caps?.vision === true;
+  const unknown = !caps || (caps.tools == null && caps.vision == null);
+
+  const toggle = async (key: "tools" | "vision") => {
+    const api = getDesktop();
+    if (!api) return;
+    const s = await api.getChatSettings();
+    const prev = { ...(s.modelCapabilityOverrides || {}) };
+    const cur = { ...(prev[modelId] || {}) };
+    const nextVal = !(key === "tools" ? tools : vision);
+    cur[key] = nextVal;
+    prev[modelId] = cur;
+    await api.saveChatSettings({
+      ...chatSettingsPreservePayload(s),
+      modelCapabilityOverrides: prev,
+    });
+    rememberModelCapability(modelId, cur);
+    bump((n) => n + 1);
+  };
+
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      <button
+        type="button"
+        title="点击切换 tools 覆盖"
+        onClick={() => void toggle("tools")}
+        className={cn(
+          "rounded px-1 py-0.5 text-[10px]",
+          tools ? "bg-success/15 text-success" : "bg-muted text-muted-foreground",
+        )}
+      >
+        {tools ? "工具" : "无工具"}
+      </button>
+      <button
+        type="button"
+        title="点击切换 vision 覆盖"
+        onClick={() => void toggle("vision")}
+        className={cn(
+          "rounded px-1 py-0.5 text-[10px]",
+          vision ? "bg-success/15 text-success" : "bg-muted text-muted-foreground",
+        )}
+      >
+        {vision ? "视觉" : "无视觉"}
+      </button>
+      {unknown ? <span className="text-[10px] text-muted-foreground">未探测</span> : null}
+    </div>
+  );
+}
 
 export type CloudProvider = {
   id: string;
@@ -707,6 +762,17 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         const discovered = r.models.filter(Boolean);
         const notAdded = discovered.filter((m) => !localModelCatalog.includes(m));
         setLocalPick(new Set(notAdded));
+        if (r.modelDetails?.length) {
+          const { rememberModelCapabilities } = await import("@/lib/model-capability-cache");
+          rememberModelCapabilities(r.modelDetails);
+        }
+        if (typeof api.modelsCapabilities === "function") {
+          try {
+            await api.modelsCapabilities({ action: "refreshLocal", ollamaBase: base });
+          } catch {
+            /* ignore */
+          }
+        }
         setLocalTest({
           status: "ok",
           message: `连接成功，发现 ${discovered.length} 个模型`,
@@ -1233,6 +1299,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                 </td>
                 <td className="col-name px-3 py-2.5 align-top">
                   <span className="font-mono text-[11px] text-foreground">{model}</span>
+                  <LocalCapTags modelId={model} />
                 </td>
                 <td className="col-endpoint px-3 py-2.5 align-top font-mono text-[10px] text-muted-foreground">
                   <div className="cell-overflow break-all" title={ollamaBase}>

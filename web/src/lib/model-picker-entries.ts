@@ -1,9 +1,13 @@
+import { getCachedModelCapability } from "@/lib/model-capability-cache";
+
 export type OrchMode = "claude-code" | "local-mcp";
 
 export type ModelPickerEntry = {
   mode: OrchMode;
   model: string;
   tier: string;
+  /** 能力短标签，如「工具」「视觉」 */
+  capHints?: string[];
 };
 
 export function tierLabel(tier: string): string {
@@ -27,6 +31,14 @@ function tierForCloud(model: string): string {
   return "Cloud";
 }
 
+function capHintsFor(model: string): string[] {
+  const caps = getCachedModelCapability(model);
+  const hints: string[] = [];
+  if (caps?.tools === true) hints.push("工具");
+  if (caps?.vision === true) hints.push("视觉");
+  return hints;
+}
+
 export function buildChatEnabledModelEntries(
   cloudModels: string[],
   localModels: string[],
@@ -36,11 +48,13 @@ export function buildChatEnabledModelEntries(
     mode: "claude-code" as const,
     model,
     tier: tierForCloud(model),
+    capHints: capHintsFor(model),
   }));
   const local = localModels.filter(Boolean).map((model) => ({
     mode: "local-mcp" as const,
     model,
     tier: "Local",
+    capHints: capHintsFor(model),
   }));
   const known = new Set([...cloudModels, ...localModels]);
   const extra = extraModels
@@ -50,6 +64,7 @@ export function buildChatEnabledModelEntries(
       mode: "claude-code" as const,
       model,
       tier: "Custom",
+      capHints: capHintsFor(model),
     }));
   return [...cloud, ...local, ...extra];
 }

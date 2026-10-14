@@ -1018,6 +1018,8 @@ function ChatPage() {
     for (const m of messages) {
       if (m.role !== "assistant" || m.historyIndex == null) continue;
       if (!m.content || m.content === "__WAITING__") continue;
+      // 只读问答：禁止侧栏再解析出待写队列
+      if (m.suppressFileEdits || m.requestError) continue;
       const { edits } = parseChatFileEdits(stripStreamEventsBlock(m.content));
       for (const e of edits) {
         if (e.summaryOnly) continue;

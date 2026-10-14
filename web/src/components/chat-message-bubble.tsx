@@ -7,6 +7,11 @@ import { CopyTextButton } from "@/components/copy-text-button";
 import type { UserImageAttachment } from "@/lib/ollama-messages";
 import type { TerminalSelectionPayload } from "@/lib/terminal-selection-meta";
 import type { AgentTurnMeta } from "@/lib/agent-turn-meta";
+import {
+  sanitizeReadonlyAssistantContent,
+  shouldForceReadonlyAssistantDisplay,
+  stripAgentTurnForReadonlyDisplay,
+} from "@/lib/readonly-turn-display";
 
 export type ChatBubbleMessage = {
   role: "user" | "assistant";
@@ -20,6 +25,8 @@ export type ChatBubbleMessage = {
   /** API / 请求失败 */
   requestError?: boolean;
   agentTurn?: AgentTurnMeta;
+  suppressFileEdits?: boolean;
+  localChannel?: "direct" | "orch";
 };
 
 function UserMessageBody({
@@ -61,6 +68,7 @@ function WaitingReply({ modelName }: { modelName: string }) {
 
 function MessageBubbleInner({
   m,
+  priorUserLine,
   hasDesktopApi,
   onWriteToWorkspace,
   onGenerateChain,
@@ -68,6 +76,8 @@ function MessageBubbleInner({
   onAssistantContentPatch,
 }: {
   m: ChatBubbleMessage;
+  /** 本条助手回复前一条用户原文；用于渲染硬闸（不问改就不刷 Edit / 本地MCP） */
+  priorUserLine?: string;
   hasDesktopApi?: boolean;
   onWriteToWorkspace?: (content: string) => void;
   onGenerateChain?: (content: string) => void;
@@ -110,10 +120,27 @@ function MessageBubbleInner({
     );
   }
 
+  const forceReadonly = shouldForceReadonlyAssistantDisplay({
+    userLine: priorUserLine || "",
+    suppressFileEdits: m.suppressFileEdits,
+    requestError: m.requestError,
+  });
+  const displayContent =
+    m.content === "__WAITING__"
+      ? m.content
+      : forceReadonly
+        ? sanitizeReadonlyAssistantContent(m.content)
+        : m.content;
+  const displayAgentTurn = forceReadonly
+    ? stripAgentTurnForReadonlyDisplay(m.agentTurn)
+    : m.agentTurn;
+  const suppressEdits = Boolean(forceReadonly || m.requestError || m.suppressFileEdits);
+  const showDirectBadge = suppressEdits || m.localChannel === "direct";
+
   return (
     <ChatMessageContextMenu
       rowRef={rowRef}
-      content={m.content}
+      content={displayContent}
       hasDesktopApi={hasDesktopApi}
       onWriteToWorkspace={onWriteToWorkspace}
       onGenerateChain={onGenerateChain}
@@ -127,25 +154,36 @@ function MessageBubbleInner({
         <div className="chat-message-meta">
           <span className="assistant-name font-mono">{m.name ?? "assistant"}</span>
           {m.time ? <span className="chat-message-time">{m.time}</span> : null}
-          {m.agentTurn?.backend ? (
+          {showDirectBadge ? (
+            <span
+              className="chat-backend-badge rounded px-1 py-0.5 text-[11px] font-medium text-muted-foreground"
+              title="执行通道：直聊问答（未使用 MCP/写盘工具）"
+            >
+              {m.localChannel === "direct" || forceReadonly ? "本地直聊" : "直聊"}
+            </span>
+          ) : displayAgentTurn?.backend ? (
             <span
               className="chat-backend-badge rounded px-1 py-0.5 text-[11px] font-medium text-muted-foreground"
               title={
-                m.agentTurn.backend === "cli"
+                displayAgentTurn.backend === "cli"
                   ? "执行通道：Claude Code CLI"
-                  : m.agentTurn.backend === "local"
-                    ? "执行通道：本地 MCP 编排"
+                  : displayAgentTurn.backend === "local"
+                    ? displayAgentTurn.mcpUsed
+                      ? "执行通道：本地编排（已调用 MCP 工具）"
+                      : "执行通道：本地编排（未调用 MCP 工具）"
                     : "执行通道：Host 工具环"
               }
             >
-              {m.agentTurn.backend === "cli"
+              {displayAgentTurn.backend === "cli"
                 ? "CLI"
-                : m.agentTurn.backend === "local"
-                  ? "本地MCP"
+                : displayAgentTurn.backend === "local"
+                  ? displayAgentTurn.mcpUsed
+                    ? "本地MCP"
+                    : "本地编排"
                   : "Host"}
             </span>
           ) : null}
-          {m.agentTurn?.mcpUsed ? (
+          {!suppressEdits && displayAgentTurn?.mcpUsed ? (
             <span
               className="chat-backend-badge rounded px-1 py-0.5 text-[11px] font-medium text-primary"
               title="本轮轨迹中调用了 MCP 工具（mcp__…）"
@@ -153,9 +191,9 @@ function MessageBubbleInner({
               MCP·用过
             </span>
           ) : null}
-          {m.content !== "__WAITING__" ? (
+          {displayContent !== "__WAITING__" ? (
             <CopyTextButton
-              text={m.content}
+              text={displayContent}
               label="复制"
               copiedLabel="已复制"
               size="xs"
@@ -164,15 +202,15 @@ function MessageBubbleInner({
           ) : null}
         </div>
         <div className={cn("chat-bubble-assistant", m.requestError && "chat-bubble-assistant--error")}>
-          {m.content === "__WAITING__" ? (
+          {displayContent === "__WAITING__" ? (
             <WaitingReply modelName={m.name ?? "assistant"} />
           ) : (
             <ChatAssistantContent
-              content={m.content}
-              agentTurn={m.agentTurn}
-              suppressFileEdits={Boolean(m.requestError)}
+              content={displayContent}
+              agentTurn={displayAgentTurn}
+              suppressFileEdits={suppressEdits}
               onContentPatch={
-                m.historyIndex != null && onAssistantContentPatch && !m.requestError
+                m.historyIndex != null && onAssistantContentPatch && !m.requestError && !suppressEdits
                   ? (next) => onAssistantContentPatch(m.historyIndex!, next)
                   : undefined
               }
@@ -229,6 +267,7 @@ export const MessageBubble = memo(MessageBubbleInner, (prev, next) => {
     prev.m.content === next.m.content &&
     prev.m.name === next.m.name &&
     prev.m.time === next.m.time &&
+    prev.priorUserLine === next.priorUserLine &&
     prev.hasDesktopApi === next.hasDesktopApi &&
     prev.onWriteToWorkspace === next.onWriteToWorkspace &&
     prev.onGenerateChain === next.onGenerateChain &&
@@ -236,6 +275,8 @@ export const MessageBubble = memo(MessageBubbleInner, (prev, next) => {
     prev.onAssistantContentPatch === next.onAssistantContentPatch &&
     prev.m.historyIndex === next.m.historyIndex &&
     prev.m.requestError === next.m.requestError &&
+    prev.m.suppressFileEdits === next.m.suppressFileEdits &&
+    prev.m.localChannel === next.m.localChannel &&
     agentTurnEqual(prev.m.agentTurn, next.m.agentTurn) &&
     attachmentsEqual(prev.m.attachments, next.m.attachments) &&
     terminalSnippetsEqual(prev.m.terminalSnippets, next.m.terminalSnippets)

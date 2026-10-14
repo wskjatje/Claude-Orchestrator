@@ -50,6 +50,8 @@ export type Msg = {
   requestError?: boolean;
   historyIndex?: number;
   agentTurn?: DiskMsg["agentTurn"];
+  suppressFileEdits?: boolean;
+  localChannel?: DiskMsg["localChannel"];
 };
 
 // ---- Context ----

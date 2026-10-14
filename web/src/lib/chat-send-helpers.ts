@@ -16,6 +16,12 @@ import type { TerminalSelectionPayload } from "@/lib/terminal-selection-meta";
 import type { PendingTerminalSnippet } from "@/components/composer-terminal-attachments";
 import { getDesktop } from "@/lib/desktop-api";
 import type { DesktopApi } from "@/types/desktop";
+import {
+  previousUserLineForAssistant,
+  sanitizeReadonlyAssistantContent,
+  shouldForceReadonlyAssistantDisplay,
+  stripAgentTurnForReadonlyDisplay,
+} from "@/lib/readonly-turn-display";
 
 export type OrchMode = "claude-code" | "local-mcp";
 
@@ -56,6 +62,10 @@ export type DiskMsg = {
   requestError?: boolean;
   billingSource?: "cloud" | "local";
   modelId?: string;
+  /** 只读问答：禁止解析/展示文件编辑卡（对齐 Cursor Ask） */
+  suppressFileEdits?: boolean;
+  /** 本地通道：direct=Ollama 直聊（未连 MCP 工具）；orch=MCP 工具环 */
+  localChannel?: "direct" | "orch";
   /** Agent 写盘/验证/过程轨迹，供续跑与气泡渲染 */
   agentTurn?: AgentTurnMeta;
 };
@@ -139,6 +149,8 @@ export type Msg = {
   historyIndex?: number;
   requestError?: boolean;
   agentTurn?: AgentTurnMeta;
+  suppressFileEdits?: boolean;
+  localChannel?: "direct" | "orch";
 };
 
 /** 旧版任务链写入的超长「用户」气泡，在列表中折叠为摘要（不改磁盘时可逆：仅展示层）。 */
@@ -220,21 +232,47 @@ export function assistantBubbleName(
 }
 
 export function diskToDisplay(list: DiskMsg[], modelLabel: string): Msg[] {
-  return list.map((m, historyIndex) => ({
-    role: m.role,
-    content:
-      m.role === "user"
-        ? shortenLegacyChainUserBubbleForDisplay(m.content)
-        : stripLargeAssistantArtifacts(m.content),
-    name: m.role === "assistant" ? assistantBubbleName(m, modelLabel) : undefined,
-    time: m.ts ? new Date(m.ts).toLocaleString() : undefined,
-    attachments: m.role === "user" && m.attachments?.length ? m.attachments : undefined,
-    terminalSnippets:
-      m.role === "user" && m.terminalSnippets?.length ? m.terminalSnippets : undefined,
-    historyIndex,
-    requestError: m.role === "assistant" && m.requestError === true ? true : undefined,
-    agentTurn: m.role === "assistant" ? m.agentTurn : undefined,
-  }));
+  return list.map((m, historyIndex) => {
+    if (m.role !== "assistant") {
+      return {
+        role: m.role,
+        content: shortenLegacyChainUserBubbleForDisplay(m.content),
+        name: undefined,
+        time: m.ts ? new Date(m.ts).toLocaleString() : undefined,
+        attachments: m.attachments?.length ? m.attachments : undefined,
+        terminalSnippets: m.terminalSnippets?.length ? m.terminalSnippets : undefined,
+        historyIndex,
+      };
+    }
+
+    const userLine = previousUserLineForAssistant(list, historyIndex);
+    const forceReadonly = shouldForceReadonlyAssistantDisplay({
+      userLine,
+      suppressFileEdits: m.suppressFileEdits,
+      requestError: m.requestError,
+    });
+    let content = stripLargeAssistantArtifacts(m.content);
+    if (forceReadonly) content = sanitizeReadonlyAssistantContent(content);
+
+    const localChannel =
+      forceReadonly && (m.billingSource === "local" || m.localChannel)
+        ? ("direct" as const)
+        : m.localChannel;
+
+    return {
+      role: "assistant" as const,
+      content,
+      name: assistantBubbleName(m, modelLabel),
+      time: m.ts ? new Date(m.ts).toLocaleString() : undefined,
+      historyIndex,
+      requestError: m.requestError === true ? true : undefined,
+      agentTurn: forceReadonly
+        ? stripAgentTurnForReadonlyDisplay(m.agentTurn)
+        : m.agentTurn,
+      suppressFileEdits: forceReadonly ? true : undefined,
+      localChannel,
+    };
+  });
 }
 
 /** Auto 模式：纯对话 prompt；可含已展开的 @ 上下文与项目规则（与 IDE 能力对齐） */
@@ -243,6 +281,7 @@ export async function buildPlainChatPrompt(
   userLine: string,
   workspaceDir: string | null,
   api: ReturnType<typeof getDesktop> | null,
+  opts?: { systemConstraint?: string },
 ): Promise<string> {
   const { getWorkbenchInteractionMode, interactionModePromptBlock } = await import(
     "@/lib/workbench-interaction-mode"
@@ -255,6 +294,9 @@ export async function buildPlainChatPrompt(
   }
   preamble.push("【语言】zh_CN（代码/路径除外）。");
   preamble.push(interactionModePromptBlock(mode));
+  if (opts?.systemConstraint?.trim()) {
+    preamble.push(opts.systemConstraint.trim());
+  }
   preamble.push(
     "【注意】你是普通聊天助手，没有实时工具；但本轮用户消息可能已嵌入 @selection / @git / @codebase / @problems / @文件 的展开内容，请据此回答。不要输出 XML 工具调用标签，勿声称已自行读盘或写盘。",
   );

@@ -24,8 +24,34 @@ const {
   loadChatModelPools,
   resolveExecutionModel,
 } = require('./resolve-execution-model.mjs')
+const {
+  resolveTurnPolicy,
+  effectiveWriteMode,
+  cliPermissionModeFromWriteMode,
+} = require('./turn-policy.mjs')
 
-const { applyWorkspaceWriteFenceItems, ingestTextAndApplyWorkspaceWrite, bulkIngestAssistantTexts, collapseWrittenSummary, extractInvolvedSectionPaths } = workspaceWrite
+const {
+  applyWorkspaceWriteFenceItems,
+  ingestTextAndApplyWorkspaceWrite,
+  bulkIngestAssistantTexts,
+  collapseWrittenSummary,
+  extractInvolvedSectionPaths,
+  stripFakeWorkspaceWriteClaims,
+  stripWorkspaceWriteFencesForDisplay,
+} = workspaceWrite
+
+/** 只读回合：剥写盘围栏与「已完成 N 处改动」，避免前端旧包仍刷 Edit 卡 */
+function sanitizeReadonlyOrchContent(text) {
+  let out = stripFakeWorkspaceWriteClaims(stripWorkspaceWriteFencesForDisplay(String(text || '')))
+  out = out
+    .replace(/```diff\s*[\s\S]*?```/gi, '')
+    .replace(/^已完成\s*\d+\s*处改动。?\s*/gm, '')
+    .replace(/\n已完成\s*\d+\s*处改动。?/g, '')
+    .replace(/\n*【工作区已写入】[\s\S]*$/u, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return out
+}
 const { expandChainStepInstructionWithWorkspaceReads } = require('./chain-step-read-inject.cjs')
 const { buildCrossAgentContextMarkdown } = require(path.join(CAD, 'memory-cross-agent.js'))
 const { runLocalMcpOrchestration } = require(path.join(CAD, 'local-mcp-orchestrator.js'))
@@ -207,6 +233,7 @@ function newRequestId() {
 async function runClaudeChainStep(agentName, taskId, instruction, modelId, requestId) {
   const settings = loadChatSettings()
   const userLine = `【任务链 Agent 路由】global://${agentName}（任务 ${taskId || '—'}）\n${instruction}${CHAIN_REPLY_HINT}`
+  const writeMode = writeModeFromWorkspace()
   const resolved = cloudProviders.resolveEnvForModel(modelId?.trim() || settings.model?.trim())
   const timeoutMs = chainStepTimeoutMs(resolved.env || {})
   const r = await deps.runClaudeCodePrint({
@@ -214,6 +241,7 @@ async function runClaudeChainStep(agentName, taskId, instruction, modelId, reque
     model: modelId?.trim() || settings.model?.trim() || undefined,
     requestId,
     timeoutMs,
+    permissionMode: cliPermissionModeFromWriteMode(writeMode),
   })
   const out = (r.content || '').trim()
   if (!r.ok) {
@@ -226,6 +254,7 @@ async function runClaudeChainStep(agentName, taskId, instruction, modelId, reque
       agentName,
       taskId,
       ensureChainArtifact: true,
+      applyWrites: writeMode === 'agent',
     })
     if (wr.displayText) output = wr.displayText
     else output = support.stripLargeAssistantArtifactsMain(out)
@@ -236,13 +265,29 @@ async function runClaudeChainStep(agentName, taskId, instruction, modelId, reque
 }
 
 async function runLocalChainStep({ priorMessages, userLine, modelId, requestId, agentName, allowedMcpServers }) {
+  const diskIx = readWorkspaceInteractionMode()
+  const interactionMode =
+    diskIx === 'ask' ? 'ask' : diskIx === 'propose' ? 'plan' : 'agent'
+  const policy = resolveTurnPolicy({
+    displayLine: userLine,
+    interactionMode,
+    isGeneralTurn: false,
+    isNamedAgent: Boolean(agentName),
+  })
   return runLocalOrch({
     priorMessages,
     userLine,
+    languageSourceLine: userLine,
     orchestratorModel: modelId,
     requestId,
     agentBasenameOverride: agentName ? `${agentName}.md` : undefined,
     allowedMcpServers,
+    interactionMode: policy.interactionMode,
+    allowWrites: policy.allowWrites,
+    autoApplyWrites: policy.autoApplyWrites,
+    readOnlyTurn: !policy.allowWrites,
+    forceDirectChat: policy.forceDirectChat,
+    systemConstraint: policy.systemConstraint,
   })
 }
 
@@ -521,6 +566,7 @@ async function orchestrationChainLoop() {
             agentName,
             taskId,
             ensureChainArtifact: true,
+            applyWrites: writeModeFromWorkspace() === 'agent',
           })
           const mergedWritten = [
             ...new Set([
@@ -949,13 +995,43 @@ function readWorkspaceInteractionMode() {
 }
 
 /**
- * 编排内 workspace-write：
- * - Agent（默认，）：立即落盘
- * - Manual(propose)/Ask：deferred，供 UI Accept
+ * 编排内 workspace-write（Cursor 对齐）：
+ * - agent：立即落盘
+ * - plan：deferred，供 UI Accept
+ * - ask：拒绝落盘（仍返回 pending 供展示剥离）
+ * @param {unknown} items
+ * @param {'ask'|'plan'|'agent'} [writeMode]
  */
-function applyWritesInWorkspace(items) {
+function applyWritesInWorkspace(items, writeMode) {
   const list = Array.isArray(items) ? items : []
-  const mode = readWorkspaceInteractionMode()
+  const mode =
+    writeMode === 'ask' || writeMode === 'plan' || writeMode === 'agent'
+      ? writeMode
+      : (() => {
+          const m = readWorkspaceInteractionMode()
+          if (m === 'ask') return 'ask'
+          if (m === 'propose') return 'plan'
+          return 'agent'
+        })()
+  if (mode === 'ask') {
+    const pending = []
+    for (const it of list) {
+      const p = String(it?.path || it?.file || '')
+        .trim()
+        .replace(/\\/g, '/')
+      if (!p || p.includes('..')) continue
+      const content = it?.content != null ? String(it.content) : ''
+      if (!content.trim()) continue
+      pending.push({ path: p, content })
+    }
+    return {
+      ok: false,
+      deferred: true,
+      written: [],
+      pending,
+      error: '只读回合禁止写盘',
+    }
+  }
   if (mode === 'agent') {
     const workspaceDir = loadWorkspace()
     if (workspaceDir && typeof applyWorkspaceWriteFenceItems === 'function') {
@@ -993,9 +1069,9 @@ function appendDeferredWriteFences(content, pendingItems) {
   return base ? `${base}\n\n${fences}` : fences
 }
 
-function createTrackingWorkspaceWriter(sessionPending) {
+function createTrackingWorkspaceWriter(sessionPending, writeMode) {
   return (items) => {
-    const r = applyWritesInWorkspace(items)
+    const r = applyWritesInWorkspace(items, writeMode)
     if (Array.isArray(r?.pending)) {
       for (const it of r.pending) {
         if (!it?.path) continue
@@ -1008,6 +1084,14 @@ function createTrackingWorkspaceWriter(sessionPending) {
   }
 }
 
+/** 工作区底栏模式 → 落盘档（无回合策略时） */
+function writeModeFromWorkspace() {
+  const m = readWorkspaceInteractionMode()
+  if (m === 'ask') return 'ask'
+  if (m === 'propose') return 'plan'
+  return 'agent'
+}
+
 async function runLocalOrch(payload) {
   const settings = loadChatSettings()
   const requestId = typeof payload?.requestId === 'string' ? payload.requestId.trim() : ''
@@ -1016,18 +1100,74 @@ async function runLocalOrch(payload) {
 
   const prior = Array.isArray(payload?.priorMessages) ? payload.priorMessages : []
   const userLineRaw = typeof payload?.userLine === 'string' ? payload.userLine : ''
+  const languageSourceLine =
+    typeof payload?.languageSourceLine === 'string' && payload.languageSourceLine.trim()
+      ? payload.languageSourceLine.trim()
+      : userLineRaw
+  const interactionModeRaw =
+    typeof payload?.interactionMode === 'string' ? payload.interactionMode.trim() : ''
+  const diskIx = readWorkspaceInteractionMode()
+  const interactionMode =
+    interactionModeRaw === 'ask' ||
+    interactionModeRaw === 'plan' ||
+    interactionModeRaw === 'agent'
+      ? interactionModeRaw
+      : diskIx === 'ask'
+        ? 'ask'
+        : diskIx === 'propose'
+          ? 'plan'
+          : 'agent'
+  const namedOverride =
+    typeof payload?.agentBasenameOverride === 'string' ? payload.agentBasenameOverride.trim() : ''
+  const turnPolicy = resolveTurnPolicy({
+    displayLine: languageSourceLine || userLineRaw,
+    interactionMode,
+    isGeneralTurn:
+      !namedOverride ||
+      namedOverride === '__general__' ||
+      /general|__auto__|^auto$/i.test(namedOverride),
+    isNamedAgent: Boolean(namedOverride && namedOverride !== '__general__'),
+  })
+  // 取更严：前端显式禁写 / 服务端再算一轮意图，任一禁写则禁写
+  const allowWrites =
+    typeof payload?.allowWrites === 'boolean'
+      ? payload.allowWrites && turnPolicy.allowWrites
+      : turnPolicy.allowWrites
+  const autoApplyWrites =
+    typeof payload?.autoApplyWrites === 'boolean'
+      ? payload.autoApplyWrites && turnPolicy.autoApplyWrites && allowWrites
+      : turnPolicy.autoApplyWrites && allowWrites
+  const readOnlyTurn = Boolean(payload?.readOnlyTurn) || !allowWrites
+  const forceDirectChat =
+    Boolean(payload?.forceDirectChat) || readOnlyTurn || turnPolicy.forceDirectChat
+  const systemConstraint =
+    (typeof payload?.systemConstraint === 'string' && payload.systemConstraint.trim()) ||
+    turnPolicy.systemConstraint ||
+    ''
+  const writeMode = effectiveWriteMode({
+    allowWrites,
+    autoApplyWrites,
+    interactionMode: allowWrites ? interactionMode : 'ask',
+  })
   const userAttachments = Array.isArray(payload?.userAttachments) ? payload.userAttachments : []
   let orchestratorModel =
     typeof payload?.orchestratorModel === 'string' ? payload.orchestratorModel.trim() : ''
   const overrideRaw =
     typeof payload?.agentBasenameOverride === 'string' ? payload.agentBasenameOverride.trim() : ''
   const agentBasenameForRead = overrideRaw || settings.localAgentBasename || ''
+  const lockedAgentStem = support.stemFromAgentBasenameForOrchestration(agentBasenameForRead)
+  const generalOrchStem =
+    !lockedAgentStem ||
+    lockedAgentStem === '__general__' ||
+    lockedAgentStem === 'general' ||
+    lockedAgentStem.toLowerCase() === 'auto' ||
+    lockedAgentStem.toLowerCase() === '__auto__'
   if (isAutoModelSelection(orchestratorModel)) {
     const pools = await loadChatModelPools(settings)
     const resolved = await resolveExecutionModel({
       settings,
       sessionModelId: orchestratorModel || settings.model,
-      agentBasename: agentBasenameForRead || undefined,
+      agentBasename: generalOrchStem ? undefined : agentBasenameForRead || undefined,
       pools,
       readAgentMarkdown: (basename) => support.readClaudeAgentMarkdownContent(basename),
     })
@@ -1036,8 +1176,10 @@ async function runLocalOrch(payload) {
     }
     orchestratorModel = resolved.modelId
   }
-  const agentMarkdown = support.readClaudeAgentMarkdownContent(agentBasenameForRead)
-  const lockedAgentStem = support.stemFromAgentBasenameForOrchestration(agentBasenameForRead)
+  // 通用对话：禁止读入具名 Agent markdown（否则模型会英文复述 Mandatory / 待命）
+  const agentMarkdown = generalOrchStem
+    ? ''
+    : support.readClaudeAgentMarkdownContent(agentBasenameForRead)
   const allowedMcpServers = Array.isArray(payload?.allowedMcpServers)
     ? payload.allowedMcpServers.map((x) => String(x ?? '').trim()).filter(Boolean)
     : undefined
@@ -1050,7 +1192,16 @@ async function runLocalOrch(payload) {
     visionModelHint: settings.localOllamaModel || '',
     userLine: userLineRaw,
     attachments: userAttachments,
+    settings,
   })
+  if (enriched.error) {
+    return {
+      ok: false,
+      content: '',
+      error: enriched.error,
+      aborted: false,
+    }
+  }
   const userLine = enriched.userLine
 
   try {
@@ -1068,17 +1219,38 @@ async function runLocalOrch(payload) {
           attachments: Array.isArray(x.attachments) ? x.attachments : undefined,
         })),
       userLine,
+      languageSourceLine,
+      readOnlyTurn,
+      forceDirectChat,
+      systemConstraint,
+      interactionMode,
+      allowWrites,
       userImages: enriched.images,
+      needsVision: Array.isArray(userAttachments) && userAttachments.some((a) => a?.kind === 'image'),
+      modelCapabilityOverrides: settings.modelCapabilityOverrides || {},
       agentMarkdown,
       lockedAgentStem,
       allowedMcpServers,
-      crossAgentContext: buildCrossAgentContextMarkdown(),
+      // 规则/记忆走跨 Agent 上下文，不进 userLine（避免寒暄误判需工具）
+      crossAgentContext: [
+        buildCrossAgentContextMarkdown(),
+        typeof payload?.contextAppendix === 'string' ? payload.contextAppendix.trim() : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+        .slice(0, 14_000),
       defaultOllamaModelHint: settings.localOllamaModel || '',
       devMcpOrchDebug: Boolean(settings.devMcpOrchDebug),
       shouldAbort: () => state.cancelled,
-      applyWorkspaceWriteItems: createTrackingWorkspaceWriter(toolPending),
+      // 只读/Plan：writer 拒绝或暂存，禁止 Agent 底栏误落盘
+      applyWorkspaceWriteItems: createTrackingWorkspaceWriter(toolPending, writeMode),
     })
-    const content = appendDeferredWriteFences(r.content ?? '', toolPending)
+    // 只读：禁止把 deferred 写盘围栏拼回正文（旧前端会解析成 Edit 卡）
+    let content =
+      writeMode === 'ask'
+        ? sanitizeReadonlyOrchContent(r.content ?? '')
+        : appendDeferredWriteFences(r.content ?? '', toolPending)
+    if (writeMode === 'ask') toolPending.length = 0
     return {
       ok: r.ok,
       content,
@@ -1086,7 +1258,10 @@ async function runLocalOrch(payload) {
       aborted: Boolean(r.aborted),
       orchestrationHints: Array.isArray(r.orchestrationHints) ? r.orchestrationHints : undefined,
       toolWrittenPaths: [],
-      deferredWritePaths: toolPending.map((x) => x.path),
+      deferredWritePaths: writeMode === 'ask' ? [] : toolPending.map((x) => x.path),
+      writeMode,
+      // 供前端硬闸：只读回合一律按直聊展示
+      ...(writeMode === 'ask' ? { forceDirectChat: true, readOnlyTurn: true } : {}),
     }
   } finally {
     if (requestId) activeLocalOrchestrationRequests.delete(requestId)
@@ -1229,12 +1404,14 @@ function createHandlers() {
         return { ok: false, error: '缺少 agentName 或 instruction', output: '' }
       }
       const settings = loadChatSettings()
+      const writeMode = writeModeFromWorkspace()
       const userLine = `【任务链 Agent 路由】global://${agentName}（任务 ${taskId || '—'}）\n${instruction}${CHAIN_REPLY_HINT}`
       const r = await deps.runClaudeCodePrint({
         prompt: userLine,
         model: settings.model?.trim() || undefined,
         requestId: undefined,
         timeoutMs: 0,
+        permissionMode: cliPermissionModeFromWriteMode(writeMode),
       })
       const out = (r.content || '').trim()
       if (!r.ok) {
@@ -1249,6 +1426,7 @@ function createHandlers() {
           agentName,
           taskId,
           ensureChainArtifact: true,
+          applyWrites: writeMode === 'agent',
         })
         written = Array.isArray(wr.written) ? wr.written : []
         if (wr.displayText) output = wr.displayText
@@ -1368,12 +1546,14 @@ function createHandlers() {
         const routed = buildAgentRoutedInstruction(step.agentName, execInstr, mode)
 
         if (mode === 'claude-code') {
+          const writeMode = writeModeFromWorkspace()
           const userLine = `【任务链 Agent 路由】global://${step.agentName}（任务 ${step.taskId || '—'}）\n${routed}${CHAIN_REPLY_HINT}`
           const r = await deps.runClaudeCodePrint({
             prompt: userLine,
             model: orchestratorModel || undefined,
             requestId: undefined,
             timeoutMs: 0,
+            permissionMode: cliPermissionModeFromWriteMode(writeMode),
           })
           const out = (r.content || '').trim()
           let displayOutput = out
@@ -1384,6 +1564,7 @@ function createHandlers() {
                 agentName: step.agentName,
                 taskId: step.taskId,
                 ensureChainArtifact: true,
+                applyWrites: writeMode === 'agent',
               })
               if (wr.displayText) displayOutput = wr.displayText
               else displayOutput = support.stripLargeAssistantArtifactsMain(out)
@@ -1413,6 +1594,14 @@ function createHandlers() {
           activeLocalOrchestrationRequests.set(requestId, state)
           try {
             const stepPending = []
+            const writeMode = writeModeFromWorkspace()
+            const stepPolicy = resolveTurnPolicy({
+              displayLine: routed,
+              interactionMode:
+                writeMode === 'ask' ? 'ask' : writeMode === 'plan' ? 'plan' : 'agent',
+              isGeneralTurn: false,
+              isNamedAgent: true,
+            })
             const r = await runLocalMcpOrchestration({
               bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
               workspaceRoot: loadWorkspace() || undefined,
@@ -1421,13 +1610,23 @@ function createHandlers() {
               orchestratorModel,
               priorMessages: [],
               userLine: routed,
+              languageSourceLine: routed,
+              readOnlyTurn: !stepPolicy.allowWrites,
+              forceDirectChat: stepPolicy.forceDirectChat,
+              systemConstraint: stepPolicy.systemConstraint,
+              interactionMode: stepPolicy.interactionMode,
+              allowWrites: stepPolicy.allowWrites,
+              modelCapabilityOverrides: settings.modelCapabilityOverrides || {},
               agentMarkdown: support.readClaudeAgentMarkdownContent(agentBasenameForRead),
               lockedAgentStem: support.stemFromAgentBasenameForOrchestration(agentBasenameForRead),
               crossAgentContext: buildCrossAgentContextMarkdown(),
               defaultOllamaModelHint: settings.localOllamaModel || '',
               devMcpOrchDebug: Boolean(settings.devMcpOrchDebug),
               shouldAbort: () => state.cancelled,
-              applyWorkspaceWriteItems: createTrackingWorkspaceWriter(stepPending),
+              applyWorkspaceWriteItems: createTrackingWorkspaceWriter(
+                stepPending,
+                effectiveWriteMode(stepPolicy),
+              ),
             })
             const out = appendDeferredWriteFences(String(r.content || '').trim(), stepPending)
             let displayOutput = out
@@ -1438,6 +1637,7 @@ function createHandlers() {
                   agentName: step.agentName,
                   taskId: step.taskId,
                   ensureChainArtifact: true,
+                  applyWrites: effectiveWriteMode(stepPolicy) === 'agent',
                 })
                 if (wr.displayText) displayOutput = wr.displayText
               }
@@ -1508,13 +1708,17 @@ function createHandlers() {
               orchestratorModel,
               priorMessages: [],
               userLine: synRouted,
+              modelCapabilityOverrides: settings.modelCapabilityOverrides || {},
               agentMarkdown: support.readClaudeAgentMarkdownContent(`${stem}.md`),
               lockedAgentStem: support.stemFromAgentBasenameForOrchestration(`${stem}.md`),
               crossAgentContext: buildCrossAgentContextMarkdown(),
               defaultOllamaModelHint: settings.localOllamaModel || '',
               devMcpOrchDebug: Boolean(settings.devMcpOrchDebug),
               shouldAbort: () => state.cancelled,
-              applyWorkspaceWriteItems: createTrackingWorkspaceWriter(synthPending),
+              applyWorkspaceWriteItems: createTrackingWorkspaceWriter(
+                synthPending,
+                writeModeFromWorkspace(),
+              ),
             })
             synthesis = {
               ok: Boolean(r.ok),

@@ -580,6 +580,12 @@ export type DesktopApi = {
     requestId?: string;
     /** 打开文件 / Problems 等短上下文（非占位） */
     contextAppendix?: string;
+    /** 回合策略：与 turn-policy 对齐，禁止底栏 Agent + 问答误写盘 */
+    allowWrites?: boolean;
+    autoApplyWrites?: boolean;
+    readOnlyTurn?: boolean;
+    interactionMode?: "ask" | "plan" | "agent";
+    systemConstraint?: string;
   }) => Promise<{
     ok: boolean;
     content?: string;
@@ -934,6 +940,8 @@ export type DesktopApi = {
     chatEnabledCloudProviders?: string[];
     /** 聊天区已启用的本地模型 ID */
     chatEnabledLocalModels?: string[];
+    /** 模型能力显式覆盖 { [modelId]: { tools?, vision? } } */
+    modelCapabilityOverrides?: Record<string, { tools?: boolean; vision?: boolean }>;
     /** 个人 fork：push 与个人 pull 共用（origin） */
     personalGithubRepo?: string;
     /** Git 提交身份：push / 个人 pull 共用 */
@@ -1010,6 +1018,7 @@ export type DesktopApi = {
     cloudProviderCatalog?: string[];
     chatEnabledCloudProviders?: string[];
     chatEnabledLocalModels?: string[];
+    modelCapabilityOverrides?: Record<string, { tools?: boolean; vision?: boolean }>;
     personalGithubRepo?: string;
     gitUserName?: string;
     gitUserEmail?: string;
@@ -1163,7 +1172,41 @@ export type DesktopApi = {
       history: ChatHistoryMsg[];
     }[];
   }) => Promise<{ ok?: boolean; error?: string }>;
-  listOllamaModels: (base: string) => Promise<{ ok: boolean; models?: string[]; error?: string }>;
+  listOllamaModels: (base: string) => Promise<{
+    ok: boolean;
+    models?: string[];
+    modelDetails?: Array<{
+      name: string;
+      capabilities?: { tools?: boolean; vision?: boolean };
+      contextLength?: number | null;
+      digest?: string;
+    }>;
+    error?: string;
+  }>;
+  modelsCapabilities: (payload: {
+    action?: "get" | "assert" | "refreshLocal" | "snapshot";
+    modelId?: string;
+    pool?: "local" | "cloud";
+    needsTools?: boolean;
+    needsVision?: boolean;
+    providerName?: string;
+    ollamaBase?: string;
+  }) => Promise<{
+    ok: boolean;
+    record?: {
+      name: string;
+      capabilities?: { tools?: boolean; vision?: boolean };
+      source?: string;
+    };
+    models?: Array<{
+      name: string;
+      capabilities?: { tools?: boolean; vision?: boolean };
+      source?: string;
+    }>;
+    names?: string[];
+    error?: string;
+    overrides?: Record<string, { tools?: boolean; vision?: boolean }>;
+  }>;
   /** 单轮 headless：当前工作区下执行 `claude -p`，加载 ~/.claude MCP/Skills */
   claudeCodePrompt: (payload: {
     prompt: string;
@@ -1196,11 +1239,27 @@ export type DesktopApi = {
       attachments?: { kind: "image"; name?: string; mime?: string; dataUrl: string }[];
     }[];
     userLine: string;
+    /** 用户原始输入（未拼工作区注入）；语言检测与同语校验以此为准 */
+    languageSourceLine?: string;
     userAttachments?: { kind: "image"; name?: string; mime?: string; dataUrl: string }[];
     orchestratorModel: string;
     requestId?: string;
     /** 仅本轮：覆盖设置中的 Agent 文件名，如 project-manager.md（与 /agent 指令一致） */
     agentBasenameOverride?: string;
+    /** 只读问答：禁止工具写盘 / workspace-write（与底栏 Agent 模式无关） */
+    readOnlyTurn?: boolean;
+    /** 强制本地直聊（不进 MCP 工具环） */
+    forceDirectChat?: boolean;
+    /** 回合策略写入 system 的短约束 */
+    systemConstraint?: string;
+    /** 工作台交互模式 ask|plan|agent（服务端再算策略用） */
+    interactionMode?: "ask" | "plan" | "agent";
+    /** 是否允许本轮写盘（与 turn-policy.allowWrites 一致） */
+    allowWrites?: boolean;
+    /** 是否自动落盘（仅 Agent + 变更意图） */
+    autoApplyWrites?: boolean;
+    /** 项目规则/记忆等，勿混入 userLine；由编排层注入系统或跨 Agent 上下文 */
+    contextAppendix?: string;
   }) => Promise<{
     ok: boolean;
     content?: string;

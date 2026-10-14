@@ -15,7 +15,11 @@ function detectChannels(err: string): FailureChannel[] {
   ) {
     ch.add("MCP");
   }
-  if (/Ollama|11434|连接失败|API Key|401|403|鉴权|配额|429|不支持 tools|toolsUnsupported/i.test(err)) {
+  if (
+    /Ollama|11434|连接失败|API Key|401|403|鉴权|配额|429|不支持 tools|toolsUnsupported|未输出可用正文|thinking/i.test(
+      err,
+    )
+  ) {
     ch.add("连接");
   }
   if (/未选择工作区/i.test(err)) {
@@ -43,11 +47,13 @@ export function enrichAgentFailureHint(error: string): string {
       "【MCP】修复 Claude CLI 或本地编排；或在设置→高级→MCP 禁用相关服务器后再用 Host。成功 MCP 回合应标「MCP·用过」",
     );
   }
-  if (/Ollama|11434|连接失败/i.test(err)) {
-    tips.push("【连接】启动本机 Ollama，或改用支持 tools 的云端模型");
+  if (/未输出可用正文|只返回了 thinking/i.test(err)) {
+    tips.push("【本地直聊】在终端对同一模型试 `ollama run <模型>`；或换 qwen2.5 等非 thinking 模型后重试");
+  } else if (/Ollama|11434|连接失败/i.test(err)) {
+    tips.push("【连接】启动本机 Ollama（默认 11434），确认模型已 pull，或改用已配置的云端模型");
   }
   if (/不支持 tools|toolsUnsupported|tool_choice/i.test(err)) {
-    tips.push("【连接】换支持 function calling 的模型，或确保本地 Ollama 模型带 tools");
+    tips.push("【连接】此回合需要工具时，换支持 function calling 的模型；纯问答应走直聊、不需要 tools");
   }
   if (channels.includes("工作区")) {
     tips.push("【工作区】先在工作区选择项目根目录");

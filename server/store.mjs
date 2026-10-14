@@ -263,6 +263,11 @@ function defaultChatSettings() {
     chatEnabledCloudProviders: [],
     /** 已在聊天区启用的本地模型 ID */
     chatEnabledLocalModels: [],
+    /**
+     * 模型能力显式覆盖（仅覆盖探测缺失；不默认全支持）
+     * { [modelId]: { tools?: boolean, vision?: boolean } }
+     */
+    modelCapabilityOverrides: {},
     /** MCP Ollama 聊天工具名（空=默认 ollama_chat） */
     mcpChatToolName: "",
     /** MCP 模型列举工具名（空=默认 ollama_list_models） */
@@ -604,6 +609,12 @@ export function saveChatSettings(body) {
     chatEnabledLocalModels: Array.isArray(body?.chatEnabledLocalModels)
       ? normalizeStringList(body.chatEnabledLocalModels)
       : cur.chatEnabledLocalModels || [],
+    modelCapabilityOverrides:
+      body?.modelCapabilityOverrides != null &&
+      typeof body.modelCapabilityOverrides === "object" &&
+      !Array.isArray(body.modelCapabilityOverrides)
+        ? body.modelCapabilityOverrides
+        : cur.modelCapabilityOverrides || {},
     personalGithubRepo:
       typeof body?.personalGithubRepo === "string"
         ? body.personalGithubRepo.trim().slice(0, 500)

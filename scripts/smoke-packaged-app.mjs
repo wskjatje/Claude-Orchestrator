@@ -200,6 +200,8 @@ async function smokeHeadlessServices(appPath, bin, backend, logFd) {
         throw new Error(`UI 首页异常：${page.body.slice(0, 120)}`)
       }
       console.log('[smoke] UI / 可访问 OK')
+
+      await assertRpcChannels(UI_PORT)
     } finally {
       try {
         ui.kill('SIGTERM')
@@ -215,6 +217,68 @@ async function smokeHeadlessServices(appPath, bin, backend, logFd) {
     }
     await new Promise((r) => setTimeout(r, 400))
     cleanPorts()
+  }
+}
+
+async function postRpc(uiPort, channel, args = []) {
+  const body = JSON.stringify({ channel, args })
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: uiPort,
+        path: '/api/rpc',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+        },
+        timeout: 15000,
+      },
+      (res) => {
+        const chunks = []
+        res.on('data', (c) => chunks.push(c))
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8')
+          let data = null
+          try {
+            data = text ? JSON.parse(text) : null
+          } catch {
+            data = { raw: text }
+          }
+          resolve({ status: res.statusCode || 0, data })
+        })
+      },
+    )
+    req.on('timeout', () => {
+      req.destroy()
+      reject(new Error(`RPC timeout ${channel}`))
+    })
+    req.on('error', reject)
+    req.write(body)
+    req.end()
+  })
+}
+
+async function assertRpcChannels(uiPort) {
+  for (const channel of [
+    'chat-settings:get',
+    'cloud-providers:status',
+    'ollama:listModels',
+  ]) {
+    const args = channel === 'ollama:listModels' ? ['http://127.0.0.1:11434'] : []
+    const r = await postRpc(uiPort, channel, args)
+    if (r.status < 200 || r.status >= 500) {
+      throw new Error(`RPC ${channel} HTTP ${r.status}`)
+    }
+    // ollama 未运行时 ok:false 可接受；通道必须可达
+    if (channel !== 'ollama:listModels' && r.data && r.data.ok === false && r.data.error) {
+      // chat-settings / cloud-providers 应可读
+      if (channel === 'chat-settings:get') {
+        throw new Error(`RPC ${channel} 失败：${r.data.error}`)
+      }
+    }
+    console.log(`[smoke] RPC ${channel} OK (HTTP ${r.status})`)
   }
 }
 

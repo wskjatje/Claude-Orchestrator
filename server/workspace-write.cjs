@@ -704,6 +704,7 @@ module.exports = {
   collectWritableItemsFromText,
   bulkIngestAssistantTexts,
   stripFakeWorkspaceWriteClaims,
+  stripWorkspaceWriteFencesForDisplay,
   ingestTextAndApplyWorkspaceWrite,
   collapseWrittenSummary,
   defaultArtifactPathForAgent,

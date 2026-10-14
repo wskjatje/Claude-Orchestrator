@@ -227,6 +227,21 @@ export async function loadConfiguredModelPools(
   return { cloudModels: [...cloudSet], localModels };
 }
 
+async function refreshCapabilitySnapshot(
+  api: NonNullable<ReturnType<typeof getDesktop>>,
+): Promise<void> {
+  if (typeof api.modelsCapabilities !== "function") return;
+  try {
+    const { rememberModelCapabilities } = await import("@/lib/model-capability-cache");
+    const r = await api.modelsCapabilities({ action: "snapshot" });
+    if (r.ok && Array.isArray(r.models)) {
+      rememberModelCapabilities(r.models);
+    }
+  } catch {
+    /* 能力缓存刷新失败不阻断模型池 */
+  }
+}
+
 /** 聊天区可选模型：仅 chatEnabled* ∩ catalog */
 export async function loadChatModelPools(
   api: NonNullable<ReturnType<typeof getDesktop>>,
@@ -235,6 +250,7 @@ export async function loadChatModelPools(
     try {
       const r = await api.cloudProvidersGetModelPools();
       if (r.ok && r.chat) {
+        void refreshCapabilitySnapshot(api);
         return {
           cloudModels: r.chat.cloudModels ?? [],
           localModels: r.chat.localModels ?? [],
@@ -273,6 +289,7 @@ export async function loadChatModelPools(
   );
   const localModels = enabledLocal.filter((m) => configuredLocal.has(m));
 
+  void refreshCapabilitySnapshot(api);
   return { cloudModels: [...cloudSet], localModels };
 }
 
@@ -298,6 +315,7 @@ export function chatSettingsPreservePayload(
     cloudProviderCatalog: s.cloudProviderCatalog ?? [],
     chatEnabledCloudProviders: s.chatEnabledCloudProviders ?? [],
     chatEnabledLocalModels: s.chatEnabledLocalModels ?? [],
+    modelCapabilityOverrides: s.modelCapabilityOverrides ?? {},
     personalGithubRepo: s.personalGithubRepo ?? "",
     gitUserName: s.gitUserName ?? "",
     gitUserEmail: s.gitUserEmail ?? "",

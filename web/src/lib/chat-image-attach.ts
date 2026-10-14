@@ -1,13 +1,11 @@
 import type { PriorTurn, UserImageAttachment } from "@/lib/ollama-messages";
+import { getCachedModelCapability } from "@/lib/model-capability-cache";
 
 /** 粘贴大图最长边缩至 2000px */
 export const CHAT_IMAGE_MAX_EDGE_PX = 2000;
 
 /** Claude Code 单轮 inline 附图上限 */
 export const CHAT_INLINE_IMAGE_MAX = 32;
-
-const VISION_MODEL_RE =
-  /claude|sonnet|opus|haiku|gemini|gpt-4o|gpt-4\.1|gpt-5|vision|vl|llava|moondream|minicpm-v|gemma3/i;
 
 export function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -92,7 +90,7 @@ export function insertImageChipTokens(text: string, startIndex: number, count: n
   return next;
 }
 
-/** DeepSeek 等 Anthropic 兼容端点不支持 Claude Code 原生 vision block */
+/** 是否支持附图：只读能力缓存（由测连 / models:capabilities 写入），未知则视为不支持 */
 export function modelSupportsChatVision(opts: {
   orchMode: "claude-code" | "local-mcp";
   modelId: string;
@@ -100,18 +98,13 @@ export function modelSupportsChatVision(opts: {
 }): boolean {
   const model = String(opts.modelId || "").trim();
   if (!model || model.toLowerCase() === "auto") return true;
-  if (opts.orchMode === "local-mcp") {
-    return VISION_MODEL_RE.test(model);
-  }
-  const base = String(opts.providerBaseUrl || "").toLowerCase();
-  if (/deepseek\.com/.test(base)) return false;
-  if (/^deepseek-|^qwen(?!.*vl)/i.test(model)) return false;
-  if (!base || /api\.anthropic\.com|claude\.ai/.test(base)) return true;
-  return VISION_MODEL_RE.test(model);
+  const caps = getCachedModelCapability(model);
+  if (caps && typeof caps.vision === "boolean") return caps.vision;
+  return false;
 }
 
 export function visionRequiredError(modelLabel: string): string {
-  return `当前模型「${modelLabel}」不支持图片。请切换到支持视觉的模型（如 Claude Sonnet、Gemini），或改用「本地 MCP」并安装 Ollama 视觉模型。`;
+  return `当前模型「${modelLabel}」未声明 vision 能力。请换支持视觉的模型，或在设置中为该模型显式开启视觉覆盖后重试。`;
 }
 
 /** 读取 dataUrl 尺寸并按 Claude Code 规则缩小 */

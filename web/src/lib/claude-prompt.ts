@@ -46,6 +46,10 @@ export async function buildClaudeCodePrompt(
     mcpChatToolName?: string;
     /** MCP 模型列举工具名（默认 ollama_list_models） */
     mcpListModelsToolName?: string;
+    /** 回合策略约束（只读/变更），由 turn-policy 注入 */
+    systemConstraint?: string;
+    /** 为 true 时跳过 Agent 角色正文（问答/直聊，避免英文 Mandatory） */
+    skipAgentRoleBody?: boolean;
   },
 ): Promise<string> {
   let crossAgentSnippet = "";
@@ -67,7 +71,9 @@ export async function buildClaudeCodePrompt(
   const orchName = orch.orchestratorModel?.trim() || "（默认）";
 
   const stem = agentStemFromBasename(opts.localAgentBasename ?? undefined);
-  let roleBlock = opts.skipDefaultRoleBlock || stem === "__general__"
+  const skipRole =
+    opts.skipDefaultRoleBlock || opts.skipAgentRoleBody || stem === "__general__";
+  let roleBlock = skipRole
     ? ""
     : [
         `【角色】Agent「${stem}」`,
@@ -78,7 +84,7 @@ export async function buildClaudeCodePrompt(
         .filter(Boolean)
         .join("\n");
 
-  if (!opts.skipDefaultRoleBlock && stem !== "__general__") {
+  if (!skipRole) {
     const roleBody = await loadAgentRoleBodySnippet(desktop, opts.localAgentBasename);
     if (roleBody) {
       roleBlock = roleBlock ? `${roleBlock}\n\n${roleBody}` : roleBody;
@@ -91,19 +97,23 @@ export async function buildClaudeCodePrompt(
   const interactionMode = getWorkbenchInteractionMode();
   const rulesSnippet = await loadProjectRulesSnippet(desktop);
 
+  const writeBlock = opts.systemConstraint?.trim()
+    ? opts.systemConstraint.trim()
+    : interactionMode === "ask"
+      ? ""
+      : interactionMode === "agent"
+        ? "【写盘·Agent】Read→Edit/Write→跑测；禁贴方案/征求确认；探索禁用 grep；默认 memory://+migrations；收尾 1–3 句自然语言，勿四行模板。【禁兜底】无工具/写盘证据禁止声称已改文件、已打开应用或已跑通；缺证据如实说明。"
+        : stem === "__general__"
+          ? "【MUST_NOT】不可使用 workspace-write。纯问答不写文件；仅用户明确要求写/生成/保存/更新时才可写。"
+          : "【写盘·Plan】须用 ```workspace-write``` JSON（path+content）或 ```diff```；勿静默 Edit/Write；勿宣称已写入——用户 Accept 后才落盘。";
+
   const preamble = [
     `【环境】Claude Code CLI；Ollama 经 MCP ${mcpChatTool} 调用。`,
     `【模型】${orchName}；Ollama ${localHint}`,
     opts.workspaceDir ? `【工作区】${opts.workspaceDir}` : "",
     "【语言】zh_CN（代码/路径除外）。",
     interactionModePromptBlock(interactionMode),
-    interactionMode === "ask"
-      ? ""
-      : interactionMode === "agent"
-        ? "【写盘·Agent】Read→Edit/Write→跑测；禁贴方案/征求确认；探索禁用 grep；默认 memory://+migrations；收尾 1–3 句自然语言，勿四行模板。【禁兜底】无工具/写盘证据禁止声称已改文件、已打开应用或已跑通；缺证据如实说明。"
-        : stem === "__general__"
-          ? "【MUST_NOT】不可使用 workspace-write。纯问答不写文件；仅用户明确要求写/生成/保存/更新时才可写。"
-          : "【写盘·Plan】须用 ```workspace-write``` JSON（path+content）或 ```diff```；勿静默 Edit/Write；勿宣称已写入——用户 Accept 后才落盘。",
+    writeBlock,
     crossAgentSnippet,
   ]
     .filter(Boolean)

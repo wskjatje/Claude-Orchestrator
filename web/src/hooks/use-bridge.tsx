@@ -22,13 +22,20 @@ export function useBridge() {
   useEffect(() => {
     if (typeof window === "undefined" || !desktopReady) return;
 
-    if (isWebBridge()) {
+    // web:dev 与打包 Electron 均探测同源 /api/health（不再把 Electron 恒标 online）
+    if (isWebBridge() || hasDesktop()) {
       let cancelled = false;
       const poll = async () => {
         const ok = await pingWebBridgeHealth();
         if (cancelled) return;
         setStatus(ok ? "online" : "offline");
-        setVersion(ok ? BRIDGE_CONNECTED_VERSION : BRIDGE_OFFLINE_VERSION);
+        setVersion(
+          ok
+            ? hasDesktop() && !isWebBridge()
+              ? BRIDGE_ELECTRON_VERSION
+              : BRIDGE_CONNECTED_VERSION
+            : BRIDGE_OFFLINE_VERSION,
+        );
       };
       void poll();
       const id = window.setInterval(poll, 4000);
@@ -36,12 +43,6 @@ export function useBridge() {
         cancelled = true;
         window.clearInterval(id);
       };
-    }
-
-    if (hasDesktop()) {
-      setStatus("online");
-      setVersion(BRIDGE_ELECTRON_VERSION);
-      return;
     }
 
     const b = getBridge();

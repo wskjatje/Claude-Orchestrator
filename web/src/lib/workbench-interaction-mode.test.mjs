@@ -6,6 +6,10 @@ function cliPermissionModeForInteraction(m) {
   if (m === "agent") return "acceptEdits";
   return "plan";
 }
+function cliPermissionModeForTurn({ interactionMode, allowWrites }) {
+  if (allowWrites === false) return "plan";
+  return cliPermissionModeForInteraction(interactionMode);
+}
 function shouldAutoApplyWorkspaceWrites(m) {
   return m === "agent";
 }
@@ -21,5 +25,16 @@ describe("Workbench interaction mode", () => {
     assert.equal(cliPermissionModeForInteraction("plan"), "plan");
     assert.equal(shouldAutoApplyWorkspaceWrites("ask"), false);
     assert.equal(shouldAutoApplyWorkspaceWrites("plan"), false);
+  });
+
+  it("Agent + readonly turn → plan (not acceptEdits)", () => {
+    assert.equal(
+      cliPermissionModeForTurn({ interactionMode: "agent", allowWrites: false }),
+      "plan",
+    );
+    assert.equal(
+      cliPermissionModeForTurn({ interactionMode: "agent", allowWrites: true }),
+      "acceptEdits",
+    );
   });
 });

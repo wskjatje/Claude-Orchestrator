@@ -718,27 +718,45 @@ export async function runClaudeCodePrint({
   )
   const useMultimodalInput = imageAttachments.length > 0
 
-  if (useMultimodalInput && !chatImages.modelSupportsClaudeCodeVision(model, claudeEnv)) {
-    const who = resolved.providerName || '当前供应商'
-    return {
-      ok: false,
-      error:
-        `${who} 的模型「${String(model || '').trim() || '默认'}」不支持图片输入（非视觉模型不可带图）。` +
-        ' 请切换到 Claude Sonnet / Gemini 等视觉模型，或改用「本地 MCP」+ Ollama 视觉模型。',
-      content: '',
-      aborted: false,
+  if (useMultimodalInput) {
+    const visionOk = await chatImages.modelSupportsClaudeCodeVision(model, {
+      ...claudeEnv,
+      providerName: resolved.providerName || '',
+    })
+    if (!visionOk) {
+      const who = resolved.providerName || '当前供应商'
+      return {
+        ok: false,
+        error: `模型「${String(model || '').trim() || '默认'}」（${who}）未声明 vision 能力，无法附图。请换支持视觉的模型或去掉附图。`,
+        content: '',
+        aborted: false,
+      }
     }
   }
 
-  // Agent→acceptEdits 可直接写盘；Ask/Manual→plan。
-  // 优先级：请求体 permissionMode > WORKBENCH_PERMISSION_MODE > acceptEdits（产品默认）。
+  // Cursor 对齐：请求体 > env > 工作区交互模式（Ask/Plan→plan，Agent→acceptEdits）
+  // 禁止无上下文时默认 acceptEdits（Ask 底栏旁路仍会真写盘）
   const permissionMode = (() => {
     const allowed = new Set(['plan', 'default', 'acceptEdits', 'auto'])
     const fromArg = String(permissionModeArg || '').trim().toLowerCase()
     if (allowed.has(fromArg)) return fromArg
     const fromEnv = String(process.env.WORKBENCH_PERMISSION_MODE || '').trim().toLowerCase()
     if (allowed.has(fromEnv)) return fromEnv
-    return 'acceptEdits'
+    try {
+      const root = getWorkspaceCwd()
+      if (root) {
+        const p = path.join(root, '.claudecode', 'interaction-mode.json')
+        if (fs.existsSync(p)) {
+          const j = JSON.parse(fs.readFileSync(p, 'utf8'))
+          const m = String(j?.mode || '').toLowerCase()
+          if (m === 'ask' || m === 'plan' || m === 'propose' || m === 'manual') return 'plan'
+          if (m === 'agent') return 'acceptEdits'
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return 'plan'
   })()
   const args = useMultimodalInput
     ? ['-p', '--permission-mode', permissionMode, '--input-format', 'stream-json']

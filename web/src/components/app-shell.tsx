@@ -90,13 +90,13 @@ export function AppShell({
       </div>
 
       {/* 桥接离线提示（客户端 mount 后再渲染，避免 SSR 与 window.desktop 状态不一致） */}
-      {mounted && !bridge.online && (isWebBridge() || !hasDesktop()) && (
+      {mounted && !bridge.online && (
         <div
           translate="no"
           className="flex h-7 shrink-0 items-center justify-center gap-2 border-b border-warning/30 bg-warning/10 text-[11.5px] text-warning"
         >
           <span className="h-1.5 w-1.5 rounded-full bg-warning" />
-          {isWebBridge() ? (
+          {isWebBridge() || hasDesktop() ? (
             <>{BRIDGE_OFFLINE_BANNER}</>
           ) : (
             <>

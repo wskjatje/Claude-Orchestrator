@@ -116,10 +116,8 @@ function connectBridgeEvents() {
   }
 }
 
-export function installDesktopBridge() {
-  if (typeof window === "undefined") return;
-  if (window.__ELECTRON_DESKTOP__) return;
-
+/** 与 web:dev / 打包 Electron 共用的相对路径 RPC API（同源 /api/rpc） */
+export function createDesktopRpcApi(): DesktopApi {
   const desktop: DesktopApi = {
     getWorkspace: () => rpc("workspace:get"),
     chooseWorkspace: (manualPath?: string) =>
@@ -209,6 +207,7 @@ export function installDesktopBridge() {
     loadChatSessions: () => rpc("chat-sessions:get"),
     saveChatSessions: (payload) => rpc("chat-sessions:save", payload),
     listOllamaModels: (base) => rpc("ollama:listModels", base),
+    modelsCapabilities: (payload) => rpc("models:capabilities", payload),
     claudeCodePrompt: (payload) => rpc("claude-code:prompt", payload),
     claudeCodeAbort: (requestId) => rpc("claude-code:abort", requestId),
     localOrchestrationPrompt: (payload) => rpc("local-orchestration:prompt", payload),
@@ -344,14 +343,39 @@ export function installDesktopBridge() {
     graphDecomposeAndExecute: (payload) => rpc("graph:decomposeAndExecute", payload),
     logout: () => rpc("reset:logout"),
   };
+  return desktop;
+}
+
+/** Electron preload 保留的原生能力（勿被相对路径 RPC 覆盖） */
+const ELECTRON_NATIVE_DESKTOP_KEYS = ["chooseReferenceFiles"] as const;
+
+export function installDesktopBridge() {
+  if (typeof window === "undefined") return;
+
+  const rpcApi = createDesktopRpcApi();
+
+  if (window.__ELECTRON_DESKTOP__) {
+    const native: Partial<DesktopApi> = {};
+    const prev = window.desktop;
+    if (prev) {
+      for (const k of ELECTRON_NATIVE_DESKTOP_KEYS) {
+        if (typeof prev[k] === "function") {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (native as any)[k] = prev[k].bind(prev);
+        }
+      }
+    }
+    window.desktop = Object.assign({}, prev || {}, rpcApi, native) as DesktopApi;
+    return;
+  }
 
   if (window.desktop) {
-    Object.assign(window.desktop, desktop);
+    Object.assign(window.desktop, rpcApi);
     return;
   }
 
   window.__WEB_BRIDGE__ = true;
-  window.desktop = desktop;
+  window.desktop = rpcApi;
   installEmbeddedBrowserBridge();
   connectBridgeEvents();
 }

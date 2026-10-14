@@ -306,6 +306,7 @@ const KNOWN_CLOUD_PROVIDERS = [
   {
     name: "Anthropic",
     needsCcr: false,
+    capabilities: { tools: true, vision: true },
     defaultPricing: { inputPer1M: 3, outputPer1M: 15 },
   },
   {
@@ -315,6 +316,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApiBase: "https://api.deepseek.com/v1",
     fetchModelsStrategy: "openai-compatible",
     fetchModelsPath: "/v1/models",
+    capabilities: { tools: true, vision: false },
     defaultPricing: { inputPer1M: 0.27, outputPer1M: 1.1 },
   },
   {
@@ -323,6 +325,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApi: true,
     directApiBase: "https://api.openai.com/v1",
     fetchModelsStrategy: "openai-compatible",
+    capabilities: { tools: true, vision: true },
     defaultPricing: { inputPer1M: 2.5, outputPer1M: 10 },
   },
   {
@@ -331,6 +334,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApi: true,
     directApiBase: "https://generativelanguage.googleapis.com/v1beta/models/",
     fetchModelsStrategy: "gemini",
+    capabilities: { tools: true, vision: true },
     defaultPricing: { inputPer1M: 0.15, outputPer1M: 0.6 },
   },
   {
@@ -339,6 +343,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApi: true,
     directApiBase: "https://api.groq.com/openai/v1",
     fetchModelsStrategy: "openai-compatible",
+    capabilities: { tools: true, vision: false },
     defaultPricing: { inputPer1M: 0.2, outputPer1M: 0.6 },
   },
   {
@@ -347,6 +352,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApi: true,
     directApiBase: "https://api.mistral.ai/v1",
     fetchModelsStrategy: "openai-compatible",
+    capabilities: { tools: true, vision: true },
     defaultPricing: { inputPer1M: 0.5, outputPer1M: 1.5 },
   },
   {
@@ -355,6 +361,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApi: true,
     directApiBase: "https://api.x.ai/v1",
     fetchModelsStrategy: "openai-compatible",
+    capabilities: { tools: true, vision: true },
     defaultPricing: { inputPer1M: 2, outputPer1M: 8 },
   },
   {
@@ -363,6 +370,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApi: true,
     directApiBase: "https://api.cohere.com/v1",
     fetchModelsStrategy: "openai-compatible",
+    capabilities: { tools: true, vision: false },
     defaultPricing: { inputPer1M: 0.5, outputPer1M: 1.5 },
   },
   {
@@ -371,6 +379,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApi: true,
     directApiBase: "https://api.together.xyz/v1",
     fetchModelsStrategy: "openai-compatible",
+    capabilities: { tools: true, vision: false },
     defaultPricing: { inputPer1M: 0.5, outputPer1M: 1.5 },
   },
   {
@@ -379,6 +388,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApi: true,
     directApiBase: "https://api.perplexity.ai",
     fetchModelsStrategy: "openai-compatible",
+    capabilities: { tools: true, vision: false },
     defaultPricing: { inputPer1M: 1, outputPer1M: 5 },
   },
   {
@@ -387,6 +397,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApi: true,
     directApiBase: "https://api.fireworks.ai/v1",
     fetchModelsStrategy: "openai-compatible",
+    capabilities: { tools: true, vision: false },
     defaultPricing: { inputPer1M: 0.2, outputPer1M: 0.6 },
   },
   { name: "Replicate", needsCcr: false, directApi: true },
@@ -1548,7 +1559,19 @@ function geminiDirectEndpointError() {
   return ""; // Gemini 直连已支持，不再需要错误提示
 }
 
+/** 供应商级能力声明（禁止按模型名猜） */
+function getKnownProviderCapabilities(providerName) {
+  const n = String(providerName || "").trim();
+  const known = KNOWN_CLOUD_PROVIDERS.find((p) => p.name === n);
+  if (known?.capabilities && typeof known.capabilities === "object") {
+    return { ...known.capabilities };
+  }
+  if (!n) return { tools: true, vision: true };
+  return { tools: true };
+}
+
 module.exports = {
+  getKnownProviderCapabilities,
   attachDb,
   attachChatSettings,
   listProviders,

@@ -29,7 +29,7 @@ import {
   lastAgentTurnMeta,
 } from "@/lib/agent-turn-meta";
 import {
-  cliPermissionModeForInteraction,
+  cliPermissionModeForTurn,
   getWorkbenchInteractionMode,
 } from "@/lib/workbench-interaction-mode";
 import { toastWorkspaceWriteSuccess } from "@/lib/toast-workspace-write";
@@ -54,7 +54,10 @@ import { type PriorTurn, type UserImageAttachment } from "@/lib/ollama-messages"
 import {
   ingestWorkspaceWritesAndCollapseDisplay,
   stripLargeAssistantArtifacts,
+  stripAllWorkspaceWritePayloads,
 } from "@/lib/assistant-reply";
+import { parseChatFileEdits } from "@/lib/parse-chat-file-edits";
+import { sanitizeReadonlyAssistantContent } from "@/lib/readonly-turn-display";
 import { autoSaveChainFromReply, notifyAutoSavedChain } from "@/lib/auto-save-chain-from-reply";
 import { parseWbsChainIntent, WBS_GENERATE_PM_PROMPT, type WbsChainSyncResult } from "@/lib/wbs-chain-registry";
 import { handleChainChatCommand } from "@/lib/run-chain-from-chat";
@@ -82,7 +85,9 @@ import {
   expandUserLineWithWorkspaceFiles,
   preReadInstructedWorkspaceFiles,
   buildDocsFileListHint,
+  buildSlimProjectBrief,
 } from "@/lib/expand-user-line-workspace-files";
+import { resolveTurnPolicy } from "@/lib/turn-policy";
 import { buildAgentRoutedInstruction } from "@/lib/agent-skill-routing";
 import { buildSubagentUserLine } from "@/lib/parse-agent-command";
 import { isAutoAgentBasename } from "@/lib/agent-basename";
@@ -565,11 +570,22 @@ export function useChatSend(args: UseChatSendArgs) {
     const turnSkillStems = dedupeSkillStems([...selectedSkillStems, ...atSkill.stems]);
 
     const route = resolveAgentForTurn(displayLine, localAgentBasename);
-    // 自动模式（底栏显示「通用」/ 未选择 Agent）：不走 Agent 路由，保持普通聊天
+    // 底栏「通用」/ auto / stem=__general__：普通聊天，禁止走 Agent 注入（工作区强制指令会导致模型用英文复述规范）
+    const isGeneralTurn =
+      route.stem === "__general__" ||
+      route.stem === "general" ||
+      (isAutoAgentBasename(localAgentBasename) && route.source !== "slash");
     const isAgentMode =
-      !isAutoAgentBasename(localAgentBasename) ||
-      route.source === "slash" ||
-      route.stem === "__general__";
+      !isGeneralTurn &&
+      (route.source === "slash" || !isAutoAgentBasename(localAgentBasename));
+    const ixModeForTurn = getWorkbenchInteractionMode();
+    const turnPolicy = resolveTurnPolicy({
+      displayLine,
+      interactionMode: ixModeForTurn,
+      isGeneralTurn,
+      isNamedAgent: isAgentMode,
+    });
+    const readOnlyTurn = !turnPolicy.allowWrites;
     // cmd.stem 在非 Agent 模式下使用无害的标记值 "__auto__"，确保下游代码不报错
     const cmd = isAgentMode
       ? ({ matched: true as const, stem: route.stem, body: route.body } as const)
@@ -735,7 +751,7 @@ export function useChatSend(args: UseChatSendArgs) {
       }
     };
 
-    // 非 Agent 模式下仍需要拼接图片描述；并展开 @ 工作区路径引用
+    // 非 Agent：普通聊天。仅展开显式 @文件；勿注入「工作区强制指令 / git 快照」整包
     if (!isAgentMode) {
       if (visionEnrichedNote) {
         localUserLineFinal += `\n${visionEnrichedNote}`;
@@ -753,6 +769,17 @@ export function useChatSend(args: UseChatSendArgs) {
           });
           localUserLineFinal = expanded;
           cloudUserLineFinal = expanded;
+        } catch {
+          /* ignore */
+        }
+      } else if (api && turnPolicy.contextLevel === "slim-product") {
+        // 问项目做什么：只附产品事实轻量摘录，不附 Agent 强制指令包
+        try {
+          const brief = await buildSlimProjectBrief(api);
+          if (brief) {
+            localUserLineFinal = `${localUserLineFinal}${brief}`;
+            cloudUserLineFinal = localUserLineFinal;
+          }
         } catch {
           /* ignore */
         }
@@ -826,11 +853,9 @@ export function useChatSend(args: UseChatSendArgs) {
     // 发送前只读：MCP 快照全挂时提示（不阻断）
     void toastMcpHealthIfDegraded(api);
 
-    // 偏好/规则 + 已有记忆尾部：供 Host / 本地编排（CLI 已在 buildClaudeCodePrompt 注入）
+    // 偏好/规则 + 跨 Agent 记忆：勿拼进 userLine（会污染意图检测，导致「你好」误走工具环）
+    // 经 contextAppendix 字段单独下发，由编排层放入系统/跨 Agent 上下文
     const contextAppendix = await loadAgentContextAppendix(api);
-    if (contextAppendix && mode === "local-mcp") {
-      localUserLineFinal = `${contextAppendix}\n\n${localUserLineFinal}`;
-    }
 
     setStopRequested(false);
     setSessionSending(sendSessionId, true);
@@ -920,6 +945,10 @@ export function useChatSend(args: UseChatSendArgs) {
           role: "assistant",
           name: assistantBubbleName(turnAgent, modelId),
           content: "__WAITING__",
+          // 流式阶段也标只读，避免 delta 正文被解析成 Edit 卡 / 「本地MCP」
+          ...(readOnlyTurn
+            ? { suppressFileEdits: true, localChannel: "direct" as const }
+            : {}),
         },
       ];
       setMessages(waitingMsgs);
@@ -985,93 +1014,47 @@ export function useChatSend(args: UseChatSendArgs) {
       }
 
       if (mode === "local-mcp") {
-        const ixMode = getWorkbenchInteractionMode();
-        const hostAgentFn = api.hostAgentPrompt;
-        const canHostFallback =
-          typeof hostAgentFn === "function" &&
-          (ixMode === "agent" || ixMode === "ask" || ixMode === "plan") &&
-          !blockHostWhenMcpEnabled;
-        // F2：名义「本地 MCP」时优先编排（可读 mcp.json）；失败再 Host（无 MCP）
-        // 有附图时仍允许 Host 回落：附图先落盘，路径写入 userLine（Host 无多模态附件字段）
-        // P1-B：用户启用了需 MCP 的服务器时禁止 Host 静默回落
+        // 本地池：只走 Ollama 编排/直连 chat；失败明确报错，禁止静默改 Host（Host 会注入编码 Agent 人格）
         let localOrchError: string | null = null;
         if (typeof api.localOrchestrationPrompt === "function") {
           try {
             res = await api.localOrchestrationPrompt({
               priorMessages: priorTurnsToOrchestrationMessages(priorForApi),
               userLine: localUserLineFinal,
+              /** 语言/意图只用用户原文，避免摘录里的 .md/docs 污染检测与 tools 误判 */
+              languageSourceLine: displayLine,
               userAttachments: attachmentsToSave,
               orchestratorModel: modelId,
               requestId: reqId,
-              agentBasenameOverride: isAgentMode ? basenameOverride : undefined,
+              // 通用对话必须显式 __general__，禁止回落 settings.localAgentBasename 注入 Agent 人格
+              agentBasenameOverride: isAgentMode ? basenameOverride : "__general__",
+              interactionMode: turnPolicy.interactionMode,
+              allowWrites: turnPolicy.allowWrites,
+              autoApplyWrites: turnPolicy.autoApplyWrites,
+              ...(readOnlyTurn ? { readOnlyTurn: true } : {}),
+              ...(turnPolicy.forceDirectChat ? { forceDirectChat: true } : {}),
+              ...(turnPolicy.systemConstraint
+                ? { systemConstraint: turnPolicy.systemConstraint }
+                : {}),
+              ...(contextAppendix && isAgentMode && turnPolicy.contextLevel === "agent-full"
+                ? { contextAppendix }
+                : {}),
             });
             if (res?.ok) {
               agentExecBackend = "local";
             } else {
-              localOrchError = String(res?.error || "本地 MCP 编排失败");
+              localOrchError = String(res?.error || "本地模型调用失败");
+              res = { ok: false, content: "", error: localOrchError };
             }
           } catch (e) {
-            localOrchError = e instanceof Error ? e.message : "本地 MCP 编排异常";
+            localOrchError = e instanceof Error ? e.message : "本地模型调用异常";
             res = { ok: false, content: "", error: localOrchError };
           }
         } else {
-          localOrchError = "localOrchestrationPrompt 不可用";
+          localOrchError = "localOrchestrationPrompt 不可用（请重启应用以加载桌面 API）";
           res = { ok: false, content: "", error: localOrchError };
         }
-        if (!res?.ok && canHostFallback && hostAgentFn) {
-          try {
-            let hostUserLine = localUserLineFinal;
-            if (attachmentsToSave?.length && api.saveChatImageAttachments) {
-              try {
-                const saved = await api.saveChatImageAttachments(attachmentsToSave);
-                if (saved?.ok && saved.paths?.length) {
-                  hostUserLine = `${localUserLineFinal}\n\n【附图已保存到工作区】\n${saved.paths
-                    .map((p) => `- ${p}`)
-                    .join("\n")}`;
-                }
-              } catch {
-                /* Host 仍可仅用文本回落 */
-              }
-            }
-            const hostRes = await hostAgentFn({
-              priorMessages: priorTurnsToOrchestrationMessages(priorForApi).map((m) => ({
-                role: m.role,
-                content: String(m.content || ""),
-              })),
-              userLine: hostUserLine,
-              model: modelId,
-              orchestratorModel: modelId,
-              requestId: reqId,
-              // local-mcp 已把附录拼进 userLine，避免重复
-              ...(mode === "local-mcp" ? {} : { contextAppendix }),
-            });
-            if (hostRes?.ok) {
-              res = {
-                ok: true,
-                content: hostRes.content || "",
-                error: null,
-              };
-              hostWrittenPaths = hostRes.writtenPaths || [];
-              hostVerified = Boolean(hostRes.verified);
-              hostToolTrace = hostRes.toolTrace || [];
-              agentExecBackend = "host";
-            } else {
-              const hostErr = String(hostRes?.error || "Host Agent 失败");
-              res = {
-                ok: false,
-                content: "",
-                error: localOrchError ? `${localOrchError}；Host：${hostErr}` : `Host：${hostErr}`,
-              };
-            }
-          } catch (e) {
-            const hostErr = e instanceof Error ? e.message : "Host Agent 异常";
-            res = {
-              ok: false,
-              content: "",
-              error: localOrchError ? `${localOrchError}；Host：${hostErr}` : `Host：${hostErr}`,
-            };
-          }
-        } else if (!res?.ok && blockHostWhenMcpEnabled) {
+        if (!res?.ok && blockHostWhenMcpEnabled) {
           res = {
             ok: false,
             content: "",
@@ -1096,11 +1079,21 @@ export function useChatSend(args: UseChatSendArgs) {
           if (saved.ok && saved.paths?.length) savedImagePaths = saved.paths;
         }
         const ixMode = getWorkbenchInteractionMode();
+        // 与本地一致：forceDirectChat / 无工具权 → 不进 CLI/Host 写工具环，走 cloudDirect
         const wantsToolLoop =
           !useInlineVision &&
-          (ixMode === "agent" || ixMode === "ask" || ixMode === "plan");
+          turnPolicy.allowTools &&
+          !turnPolicy.forceDirectChat &&
+          (ixMode === "agent" || ixMode === "plan");
+        const cliPerm = cliPermissionModeForTurn({
+          interactionMode: ixMode,
+          allowWrites: turnPolicy.allowWrites,
+          autoApplyWrites: turnPolicy.autoApplyWrites,
+        });
+        const skipCloudRoleBody =
+          turnPolicy.forceDirectChat || !turnPolicy.allowWrites || !isAgentMode;
 
-        // Agent/Ask/Plan：优先 Claude CLI（permission 对齐），失败再 Host
+        // Agent/Plan 且允许工具：优先 Claude CLI，失败再 Host（MCP 门控时禁止静默 Host）
         let usedToolLoop = false;
         let toolLoopError: string | null = null;
         if (wantsToolLoop) {
@@ -1116,11 +1109,15 @@ export function useChatSend(args: UseChatSendArgs) {
             }
             if (!cliReady && typeof api.claudeCodeEnsureCli === "function") {
               try {
-                if (ixMode === "agent") toast.message("正在安装 / 修复 Claude CLI…");
+                if (ixMode === "agent" && turnPolicy.allowWrites) {
+                  toast.message("正在安装 / 修复 Claude CLI…");
+                }
                 const ens = await api.claudeCodeEnsureCli();
                 if (ens?.ok && ens?.claudePath) {
                   cliReady = true;
-                  if (ixMode === "agent") toast.success("Claude CLI 已就绪");
+                  if (ixMode === "agent" && turnPolicy.allowWrites) {
+                    toast.success("Claude CLI 已就绪");
+                  }
                 } else {
                   const ensErr = String(ens?.error || ens?.hint || "ensureCli 未得到可执行 claude");
                   toolLoopError = `Claude CLI：${ensErr}`;
@@ -1143,6 +1140,8 @@ export function useChatSend(args: UseChatSendArgs) {
               sessionResume: claudeSessionResume,
               localAgentBasename: basenameOverride,
               skipDefaultRoleBlock: true,
+              skipAgentRoleBody: skipCloudRoleBody,
+              systemConstraint: turnPolicy.systemConstraint || undefined,
               chainCatalogSnippet,
               skillSnippet: skillSnippet || undefined,
               mcpChatToolName: settings.mcpChatToolName || undefined,
@@ -1161,14 +1160,16 @@ export function useChatSend(args: UseChatSendArgs) {
               isNewClaudeSession: !sess?.claudeSessionId,
               attachmentCount: inlineAttachments?.length ?? attachmentsToSave?.length ?? 0,
               attachments: useInlineVision ? inlineAttachments : attachmentsToSave,
-              permissionMode: cliPermissionModeForInteraction(ixMode),
+              permissionMode: cliPerm,
             });
             usedToolLoop = Boolean(res?.ok);
             if (usedToolLoop) {
               agentExecBackend = "cli";
-              // 仅 Agent：征求确认且未写盘时强制续写（Ask/Plan 保持 plan，不强制落盘）
+              // 仅可写 Agent：征求确认且未写盘时强制续写（只读/Ask 禁止）
               const cliText = String(res?.content || "");
               if (
+                turnPolicy.allowWrites &&
+                turnPolicy.autoApplyWrites &&
                 ixMode === "agent" &&
                 looksLikeAgentAskingConfirmation(cliText) &&
                 !hasAgentWriteEvidence(cliText)
@@ -1184,6 +1185,7 @@ export function useChatSend(args: UseChatSendArgs) {
                   sessionResume: Boolean(res?.claudeSessionId || sess?.claudeSessionId),
                   localAgentBasename: basenameOverride,
                   skipDefaultRoleBlock: true,
+                  systemConstraint: turnPolicy.systemConstraint || undefined,
                   chainCatalogSnippet,
                   skillSnippet: skillSnippet || undefined,
                   mcpChatToolName: settings.mcpChatToolName || undefined,
@@ -1201,7 +1203,7 @@ export function useChatSend(args: UseChatSendArgs) {
                   claudeSessionId:
                     res?.claudeSessionId ?? sess?.claudeSessionId ?? undefined,
                   isNewClaudeSession: false,
-                  permissionMode: cliPermissionModeForInteraction(ixMode),
+                  permissionMode: cliPerm,
                 });
                 if (contRes?.ok) {
                   res = {
@@ -1224,14 +1226,21 @@ export function useChatSend(args: UseChatSendArgs) {
               error: mcpCliGateFailureMessage(toolLoopError, mcpNamesRequiringCli),
             };
             usedToolLoop = true;
-          } else if (!usedToolLoop && typeof api.hostAgentPrompt === "function") {
+          } else if (
+            !usedToolLoop &&
+            turnPolicy.allowWrites &&
+            typeof api.hostAgentPrompt === "function"
+          ) {
             try {
               let hostUserLine = cloudUserLineFinal;
+              if (turnPolicy.systemConstraint) {
+                hostUserLine = `${turnPolicy.systemConstraint}\n\n${hostUserLine}`;
+              }
               if (attachmentsToSave?.length && api.saveChatImageAttachments) {
                 try {
                   const saved = await api.saveChatImageAttachments(attachmentsToSave);
                   if (saved?.ok && saved.paths?.length) {
-                    hostUserLine = `${cloudUserLineFinal}\n\n【附图已保存到工作区】\n${saved.paths
+                    hostUserLine = `${hostUserLine}\n\n【附图已保存到工作区】\n${saved.paths
                       .map((p) => `- ${p}`)
                       .join("\n")}`;
                   }
@@ -1248,7 +1257,16 @@ export function useChatSend(args: UseChatSendArgs) {
                 model: modelId,
                 orchestratorModel: modelId,
                 requestId: reqId,
-                ...(contextAppendix ? { contextAppendix } : {}),
+                allowWrites: turnPolicy.allowWrites,
+                autoApplyWrites: turnPolicy.autoApplyWrites,
+                readOnlyTurn: !turnPolicy.allowWrites,
+                interactionMode: turnPolicy.interactionMode,
+                ...(turnPolicy.systemConstraint
+                  ? { systemConstraint: turnPolicy.systemConstraint }
+                  : {}),
+                ...(contextAppendix && turnPolicy.contextLevel === "agent-full"
+                  ? { contextAppendix }
+                  : {}),
               });
               if (hostRes?.ok) {
                 res = { ok: true, content: hostRes.content || "", error: null };
@@ -1270,12 +1288,13 @@ export function useChatSend(args: UseChatSendArgs) {
                 ? `${toolLoopError}；Host：${hostErr}`
                 : `Host：${hostErr}`;
             }
-          } else if (!usedToolLoop && ixMode === "agent") {
+          } else if (!usedToolLoop && ixMode === "agent" && turnPolicy.allowWrites) {
             toolLoopError =
               toolLoopError ||
               "Host Agent 接口不可用（请完全退出并重启桌面应用以加载 preload）";
           }
-          if (!usedToolLoop && ixMode === "agent") {
+          // 可写 Agent：工具环失败硬报错；只读/直聊不阻断 cloudDirect
+          if (!usedToolLoop && ixMode === "agent" && turnPolicy.allowWrites) {
             res = {
               ok: false,
               content: "",
@@ -1294,8 +1313,9 @@ export function useChatSend(args: UseChatSendArgs) {
             cloudUserLineFinal,
             workspaceDir,
             api,
+            { systemConstraint: turnPolicy.systemConstraint || undefined },
           );
-          // Ask/Plan 无工具环时才允许 cloudDirect；Agent 已在上方硬失败
+          // 问答/Ask/只读：cloudDirect；可写 Agent 已在上方硬失败
           if (api.cloudDirectPrompt) {
             let finalPrompt = prompt;
             const preReadAppendix = await preReadInstructedWorkspaceFiles(
@@ -1320,7 +1340,7 @@ export function useChatSend(args: UseChatSendArgs) {
               isNewClaudeSession: !sess?.claudeSessionId,
               attachmentCount: inlineAttachments?.length ?? attachmentsToSave?.length ?? 0,
               attachments: useInlineVision ? inlineAttachments : attachmentsToSave,
-              permissionMode: cliPermissionModeForInteraction(ixMode),
+              permissionMode: cliPerm,
             });
           } else {
             res = { ok: false, error: "无可用发送后端", content: "" };
@@ -1349,35 +1369,57 @@ export function useChatSend(args: UseChatSendArgs) {
       } else {
         let reply = res.content || "";
         maybeToastMissingWorkspaceWrite(reply);
-        // Agent：Host 直写路径 + 剩余 pending/diff 统一落盘，禁止半写半挂
-        const auto = await autoAcceptPendingFromAssistantReply(reply, {
-          alreadyWrittenPaths: hostWrittenPaths,
-        });
-        reply = auto.nextContent;
-        // CLI acceptEdits：从 stream-events / ⋯ Edit 行回收写盘路径（host/auto 可能为空）
-        const pathsFromReply = extractWrittenPathsFromAgentContent(reply);
-        let writtenForTurn = [
-          ...new Set(
-            [...hostWrittenPaths, ...auto.written, ...pathsFromReply].filter(
-              isPlausibleWorkspaceRelPath,
-            ),
-          ),
-        ];
-        // 仍无路径时：用 git status 补脏文件（CLI 静默写盘常见）
+        // 回合策略：Ask/只读意图禁止自动落盘，并剥掉全部写盘载荷（避免 UI 刷文件卡）
+        let auto: { nextContent: string; written: string[]; failed: string[] } = {
+          nextContent: reply,
+          written: [],
+          failed: [],
+        };
+        if (!turnPolicy.allowWrites) {
+          reply = stripAllWorkspaceWritePayloads(reply);
+          const { edits: dumpEdits, stripped } = parseChatFileEdits(reply);
+          if (dumpEdits.length) {
+            reply = stripped.trim() || reply;
+          }
+          auto = { nextContent: reply, written: [], failed: [] };
+        } else if (!turnPolicy.autoApplyWrites) {
+          auto = { nextContent: reply, written: [], failed: [] };
+        } else {
+          auto = await autoAcceptPendingFromAssistantReply(reply, {
+            alreadyWrittenPaths: hostWrittenPaths,
+          });
+          reply = auto.nextContent;
+        }
+        // 只读：禁止从正文/脏 git 树合成「本轮写入」
+        const pathsFromReply =
+          !turnPolicy.allowWrites ? [] : extractWrittenPathsFromAgentContent(reply);
+        let writtenForTurn = !turnPolicy.allowWrites
+          ? []
+          : [
+              ...new Set(
+                [...hostWrittenPaths, ...auto.written, ...pathsFromReply].filter(
+                  isPlausibleWorkspaceRelPath,
+                ),
+              ),
+            ];
+        // 仅 CLI Agent 可写意图：用 git status 补路径；禁止无 commit 脏树冒充问答写入
         if (
+          turnPolicy.allowWrites &&
+          turnPolicy.autoApplyWrites &&
           !writtenForTurn.length &&
-          agentExecBackend &&
+          agentExecBackend === "cli" &&
           typeof api.workspaceGetGitDiff === "function"
         ) {
           try {
             const gd = await api.workspaceGetGitDiff();
             const statusLine = String(gd?.statusLine || "").trim();
-            // git 失败时 statusLine 是报错文案，禁止当路径解析
             const gitUsable =
               gd?.ok !== false &&
               statusLine &&
               !/^(fatal|error|（git status)/i.test(statusLine) &&
-              !/not a git repository|Command failed|不可用/i.test(statusLine);
+              !/not a git repository|Command failed|不可用|no commits yet/i.test(
+                statusLine,
+              );
             if (gitUsable) {
               const dirty = statusLine
                 .split("\n")
@@ -1397,7 +1439,7 @@ export function useChatSend(args: UseChatSendArgs) {
             /* ignore */
           }
         }
-        if (writtenForTurn.length) {
+        if (writtenForTurn.length && turnPolicy.allowWrites) {
           toastWorkspaceWriteSuccess(`Agent 已写入 ${writtenForTurn.length} 个文件`, {
             writtenPaths: writtenForTurn,
             autoOpenReview: false,
@@ -1410,32 +1452,39 @@ export function useChatSend(args: UseChatSendArgs) {
             { duration: 8000 },
           );
         }
-        // Finalize = merge：轻剥大块 + 气泡结构（过程行 / Thought / 短收尾）
+        // Finalize：只读回合禁止 ingest 落盘，禁止 shape 成 Edit 卡
         let displayContent =
           stripLargeAssistantArtifacts(
             await ingestWorkspaceWritesAndCollapseDisplay(
               api,
               reply || "（助手未返回可见正文）",
               toastIngestWorkspaceHint,
+              { allowApply: turnPolicy.autoApplyWrites },
             ),
           ) || reply || "（助手未返回可见正文）";
+        if (!turnPolicy.allowWrites) {
+          displayContent = sanitizeReadonlyAssistantContent(displayContent);
+        }
         const verifiedForTurn =
           hostVerified === true ||
           /测试[：:].*已跑|· verified|143 passed|\d+ passed/i.test(displayContent);
-        let streamEvents = mergeStreamEvents(
-          extractStreamEventsFromContent(reply),
-          extractStreamEventsFromContent(displayContent),
-          toolTraceToStreamEvents(hostToolTrace),
-        );
+        let streamEvents = turnPolicy.allowWrites
+          ? mergeStreamEvents(
+              extractStreamEventsFromContent(reply),
+              extractStreamEventsFromContent(displayContent),
+              toolTraceToStreamEvents(hostToolTrace),
+            )
+          : [];
         const summary = buildShortAgentSummary(
           writtenForTurn,
           verifiedForTurn,
           displayContent,
         );
         if (
-          agentExecBackend ||
-          getWorkbenchInteractionMode() === "agent" ||
-          looksLikeAgentTurnReport(displayContent)
+          turnPolicy.allowWrites &&
+          (agentExecBackend ||
+            getWorkbenchInteractionMode() === "agent" ||
+            looksLikeAgentTurnReport(displayContent))
         ) {
           const shaped = shapeAgentTurnDisplay({
             content: displayContent,
@@ -1448,7 +1497,18 @@ export function useChatSend(args: UseChatSendArgs) {
           streamEvents = shaped.streamEvents;
         }
         const mcpUsed =
-          eventsHaveMcpTool(streamEvents, hostToolTrace) || /mcp__/i.test(reply || "");
+          turnPolicy.allowWrites &&
+          (eventsHaveMcpTool(streamEvents, hostToolTrace) || /mcp__/i.test(reply || ""));
+        // 只读回合：不写 agentTurn（避免 UI 把路径合成 Edit 卡 / 「本地MCP」徽章）
+        const attachAgentTurn =
+          turnPolicy.allowWrites &&
+          (agentExecBackend || writtenForTurn.length || streamEvents.length || mcpUsed);
+        const localChannel: DiskMsg["localChannel"] =
+          mode === "local-mcp" && res?.ok
+            ? turnPolicy.forceDirectChat || !turnPolicy.allowWrites
+              ? "direct"
+              : "orch"
+            : undefined;
         const am: DiskMsg = {
           role: "assistant",
           content: displayContent,
@@ -1457,7 +1517,9 @@ export function useChatSend(args: UseChatSendArgs) {
           billingSource: mode === "local-mcp" ? "local" : "cloud",
           modelId,
           ...(res.usage ? { usage: res.usage } : {}),
-          ...(agentExecBackend || writtenForTurn.length || streamEvents.length || mcpUsed
+          ...(!turnPolicy.allowWrites ? { suppressFileEdits: true } : {}),
+          ...(localChannel ? { localChannel } : {}),
+          ...(attachAgentTurn
             ? {
                 agentTurn: {
                   writtenPaths: writtenForTurn,

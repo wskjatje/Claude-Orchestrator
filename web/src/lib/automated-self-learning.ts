@@ -157,8 +157,12 @@ export async function runAutomatedSelfLearningAfterChain(
 
   const reply = res.content || "";
   maybeToastMissingWorkspaceWrite(reply);
-  const displayContent = await ingestWorkspaceWritesAndCollapseDisplay(api, reply, (m) =>
-    toast.warning(m, { duration: 12_000 }),
+  const { shouldAutoApplyWorkspaceWrites } = await import("@/lib/workbench-interaction-mode");
+  const displayContent = await ingestWorkspaceWritesAndCollapseDisplay(
+    api,
+    reply,
+    (m) => toast.warning(m, { duration: 12_000 }),
+    { allowApply: shouldAutoApplyWorkspaceWrites() },
   );
   diskMsgs.push({
     role: "assistant",

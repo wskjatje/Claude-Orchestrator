@@ -41,7 +41,6 @@ import {
   type StreamAgentEvent,
 } from "@/lib/stream-agent-events";
 import {
-  extractWrittenPathsFromAgentContent,
   isAgentTraceToolName,
   looksLikeAgentTurnReport,
   looksLikeUserFacingAnswer,
@@ -870,7 +869,9 @@ export function ChatAssistantContent({
   agentTurn?: AgentTurnMeta | null;
 }) {
   // 旧回合 / CLI 报告：展示层再 shape（有 backend 或报告特征即可，不单靠当前 mode）
+  // 只读/Ask：禁止 shape 成 Edit 卡（底栏 Agent 也不例外）
   const shapedForDisplay = useMemo(() => {
+    if (suppressFileEdits) return null;
     let source = content;
     // 旧数据：用户方案被误塞进 <thinking> → 拉回外露再 shape
     const think = content.match(/<thinking>([\s\S]*?)<\/thinking>/i);
@@ -899,9 +900,11 @@ export function ChatAssistantContent({
     ) {
       return null;
     }
-    const written = agentTurn?.writtenPaths?.length
-      ? agentTurn.writtenPaths
-      : extractWrittenPathsFromAgentContent(source);
+    // 仅信任本轮 agentTurn 写盘/工具证据；禁止仅凭正文「像报告」就 shape 出 Edit 卡
+    const written = agentTurn?.writtenPaths?.length ? agentTurn.writtenPaths : [];
+    if (!written.length && !agentTurn?.streamEvents?.length) {
+      return null;
+    }
     return shapeAgentTurnDisplay({
       content: source,
       streamEvents: agentTurn?.streamEvents,
@@ -909,7 +912,7 @@ export function ChatAssistantContent({
       verified: agentTurn?.verified,
       summary: agentTurn?.summary,
     });
-  }, [agentTurn, content]);
+  }, [agentTurn, content, suppressFileEdits]);
 
 
 
@@ -943,10 +946,14 @@ export function ChatAssistantContent({
   const [edits, setEdits] = useState(parsedEdits);
   const [rejectedPaths, setRejectedPaths] = useState<string[]>([]);
   useEffect(() => {
-    const written = [
-      ...(agentTurn?.writtenPaths || []),
-      ...extractWrittenPathsFromAgentContent(renderContent),
-    ].flatMap((p) => splitWorkspaceEditPaths(p));
+    if (suppressFileEdits) {
+      setEdits([]);
+      setRejectedPaths([]);
+      return;
+    }
+    const written = [...(agentTurn?.writtenPaths || [])].flatMap((p) =>
+      splitWorkspaceEditPaths(p),
+    );
     const seq = { n: 20_000 };
     const fromTurn: ChatFileEdit[] = [];
     const seen = new Set(parsedEdits.map((e) => e.path.replace(/\\/g, "/")));
@@ -966,7 +973,7 @@ export function ChatAssistantContent({
     return () => {
       cancelled = true;
     };
-  }, [parsedEdits, agentTurn?.writtenPaths, renderContent]);
+  }, [parsedEdits, agentTurn?.writtenPaths, renderContent, suppressFileEdits]);
 
   const editsForUi = useMemo(() => {
     if (!rejectedPaths.length) return edits;

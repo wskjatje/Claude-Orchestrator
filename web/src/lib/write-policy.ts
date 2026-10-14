@@ -1,8 +1,7 @@
-import { normalizeAgentStem } from "@/lib/agent-artifact-paths";
-
 /**
- * 所有 Agent 均自动落盘。
+ * 具名 Agent 是否允许写项目（历史 API）。
+ * 真正是否落盘以 `resolveTurnPolicy` / 交互模式为准：Ask 与只读意图一律禁止。
  */
-export function agentAutoWritesToProject(agentName: string): boolean {
+export function agentAutoWritesToProject(_agentName: string): boolean {
   return true;
 }

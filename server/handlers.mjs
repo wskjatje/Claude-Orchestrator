@@ -430,6 +430,14 @@ export const handlers = {
       maxTurns: body.maxTurns,
       contextAppendix: typeof body.contextAppendix === "string" ? body.contextAppendix : "",
       requestId,
+      allowWrites: typeof body.allowWrites === "boolean" ? body.allowWrites : undefined,
+      autoApplyWrites:
+        typeof body.autoApplyWrites === "boolean" ? body.autoApplyWrites : undefined,
+      readOnlyTurn: Boolean(body.readOnlyTurn),
+      interactionMode:
+        typeof body.interactionMode === "string" ? body.interactionMode : undefined,
+      systemConstraint:
+        typeof body.systemConstraint === "string" ? body.systemConstraint : "",
       onDelta: requestId
         ? (chunk) => {
             broadcast("message_delta", { requestId, content: chunk });
@@ -1021,15 +1029,108 @@ export const handlers = {
       /\/$/,
       "",
     );
-    try {
-      const res = await fetch(`${base}/api/tags`);
-      if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-      const data = await res.json();
-      const models = (data.models || []).map((m) => m.name).filter(Boolean);
-      return { ok: true, models };
-    } catch (e) {
-      return { ok: false, error: e.message };
+    const { listOllamaModelsWithCapabilities } = await import(
+      "./model-capabilities.mjs"
+    );
+    const r = await listOllamaModelsWithCapabilities(base, { refreshShow: true });
+    if (!r.ok) return { ok: false, error: r.error };
+    // models: string[] 保持旧前端兼容；modelDetails 带能力
+    return {
+      ok: true,
+      models: r.names || [],
+      modelDetails: r.models || [],
+    };
+  },
+
+  "models:capabilities": async (args) => {
+    const {
+      assertModelCanRun,
+      resolveModelCapabilities,
+      listOllamaModelsWithCapabilities,
+    } = await import("./model-capabilities.mjs");
+    const payload = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    const settings = loadChatSettings();
+    const action = String(payload.action || "get").trim();
+    if (action === "refreshLocal") {
+      const base = String(
+        payload.ollamaBase || settings.ollamaBase || "http://127.0.0.1:11434",
+      ).replace(/\/$/, "");
+      const r = await listOllamaModelsWithCapabilities(base, {
+        refreshShow: true,
+      });
+      return r.ok
+        ? { ok: true, models: r.models || [], names: r.names || [] }
+        : { ok: false, error: r.error };
     }
+    if (action === "assert") {
+      return assertModelCanRun({
+        modelId: String(payload.modelId || ""),
+        pool: payload.pool === "cloud" ? "cloud" : "local",
+        needsTools: Boolean(payload.needsTools),
+        needsVision: Boolean(payload.needsVision),
+        settings,
+        providerName: String(payload.providerName || ""),
+        ollamaBase: String(payload.ollamaBase || settings.ollamaBase || ""),
+      });
+    }
+    const modelId = String(payload.modelId || "").trim();
+    if (!modelId || action === "snapshot") {
+      const base = String(
+        payload.ollamaBase || settings.ollamaBase || "http://127.0.0.1:11434",
+      ).replace(/\/$/, "");
+      // 刷新本地缓存后再快照
+      await listOllamaModelsWithCapabilities(base, { refreshShow: true });
+      /** @type {import('./model-capabilities.mjs').ModelCapabilityRecord[]} */
+      const records = [];
+      for (const id of settings.chatEnabledLocalModels || []) {
+        const record = await resolveModelCapabilities({
+          modelId: id,
+          pool: "local",
+          settings,
+          ollamaBase: base,
+        });
+        records.push(record);
+      }
+      for (const id of settings.cloudModelCatalog || []) {
+        let providerName = "";
+        try {
+          const resolved = cloudProviders.resolveEnvForModel(id);
+          providerName = String(resolved?.providerName || "");
+        } catch {
+          /* ignore */
+        }
+        const record = await resolveModelCapabilities({
+          modelId: id,
+          pool: "cloud",
+          settings,
+          providerName,
+        });
+        records.push(record);
+      }
+      // Claude Code 别名
+      for (const id of CLAUDE_CODE_MODEL_ALIASES) {
+        const record = await resolveModelCapabilities({
+          modelId: id,
+          pool: "cloud",
+          settings,
+          providerName: "Anthropic",
+        });
+        records.push(record);
+      }
+      return {
+        ok: true,
+        models: records,
+        overrides: settings.modelCapabilityOverrides || {},
+      };
+    }
+    const record = await resolveModelCapabilities({
+      modelId,
+      pool: payload.pool === "cloud" ? "cloud" : "local",
+      settings,
+      providerName: String(payload.providerName || ""),
+      ollamaBase: String(payload.ollamaBase || settings.ollamaBase || ""),
+    });
+    return { ok: true, record };
   },
 
   "system:localWallClock": async () => {

@@ -96,6 +96,11 @@ function ModelPickerRows({
               <span className="flex min-w-0 flex-1 items-baseline gap-2">
                 <span className="truncate font-medium">{displayModelName(entry.model)}</span>
                 <span className="shrink-0 text-[11px] text-muted-foreground">{tierLabel(entry.tier)}</span>
+                {entry.capHints?.length ? (
+                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                    {entry.capHints.join("·")}
+                  </span>
+                ) : null}
               </span>
               {active ? <Check className="h-4 w-4 shrink-0 text-primary" strokeWidth={2.25} /> : null}
             </button>
