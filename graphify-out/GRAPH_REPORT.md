@@ -6,12 +6,12 @@
 - Unclassified: 20 file(s) not represented in the graph (top: (none) 11, .toml 3, .css 2)
 
 ## Summary
-- 5926 nodes · 14613 edges · 237 communities (196 shown, 41 thin omitted)
+- 5939 nodes · 14526 edges · 247 communities (206 shown, 41 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 299 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `3076f737`
+- Built from commit: `f3bc1ea7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -43,10 +43,10 @@
 - chains.tsx
 - chat-message-bubble.tsx
 - cad-bridge.cjs
-- help.tsx
+- project-preview.ts
 - workbench-git-sync.mjs
-- cloud-providers.cjs
-- chat-session-workspace.ts
+- loadStore
+- ChatPage
 - desktop/package.json
 - codemirror-workbench.tsx
 - workbench-main-layout.tsx
@@ -59,7 +59,7 @@
 - scheduled.tsx
 - compress-agent-display.ts
 - project-preview.cjs
-- workbench-applied-diff-review.tsx
+- carousel.tsx
 - agent-exec-registry.cjs
 - GSAP Plugins
 - assistant-reply.ts
@@ -77,7 +77,7 @@
 - orchestration-chains.cjs
 - wbs-chain-registry.ts
 - desktop/runtime.mjs
-- agent-artifact-paths.ts
+- chain-templates.ts
 - workspace-terminal.tsx
 - reports.tsx
 - index.mjs
@@ -86,7 +86,7 @@
 - cloud-direct.cjs
 - expand-user-line-workspace-files.ts
 - main.mjs
-- chain-templates.ts
+- chat-user-message-body.tsx
 - EmbeddedBrowserManager
 - workbench-side-tab.ts
 - gsap.utils
@@ -94,20 +94,20 @@
 - workspaces.tsx
 - cad-support.cjs
 - parse-chat-file-edits.ts
-- index.tsx
-- check-context-compact.mjs
+- chat-session-tabs.tsx
+- sonner
 - chat-enabled-model-picker.tsx
 - run-dev.mjs
 - resolve-execution-model.mjs
 - deploy-dialog.tsx
 - usage-stats.cjs
 - ref_node_assert
-- ref_node_os
+- check-workspace-write-no-guess.mjs
 - agent-skill-defaults.ts
 - code-index.mjs
 - terminal-sessions-view.tsx
-- buildModelPools
-- workspace-lint.mjs
+- cloud-providers.cjs
+- chat-messages-pane.tsx
 - project-db.cjs
 - global-chat-panel.tsx
 - codemirror-ghost-text.ts
@@ -118,8 +118,8 @@
 - ref_types_desktop
 - workspace-tsservice-client.ts
 - workbench-center-editor.tsx
-- workbench-composer-turn-footer.ts
-- check-shared-parity.mjs
+- workbench-editor-toolbar.tsx
+- embedded-browser-native.ts
 - install-desktop-bridge.ts
 - mcp-health-persist.mjs
 - parse-active-chain.ts
@@ -135,7 +135,7 @@
 - agentic_review
 - agent-daily-reports.cjs
 - workbench-chat-composer.tsx
-- package.json
+- codemirror-editor-theme.ts
 - plan.md
 - GSAP AI Skills
 - composer-session-chip.tsx
@@ -149,12 +149,12 @@
 - createHandlers
 - check-incomplete-reply.mjs
 - desktop.d.ts
-- codemirror-import-resolve.ts
+- help.tsx
 - Claude Orchestrator 桌面应用
 - GSAP with Vue, Svelte, and Other Frameworks
 - GSAP with React
 - sweep.ts
-- context-budget.mjs
+- languageFromPath
 - model-capabilities.mjs
 - codemirror-scm-gutter.ts
 - chat-tool-activity.tsx
@@ -171,29 +171,29 @@
 - codemirror-editor-menu.ts
 - seti-file-icon.tsx
 - trim-agent-teaching-content.cjs
-- claude-stream-parse.mjs
+- project-logs.cjs
 - rebuild-native-for-electron.mjs
-- use-claude-mcp-list.ts
+- token-pricing.mjs
 - .claude-plugin/marketplace.json
 - Claude Code
-- chat-assistant-parse.ts
+- workspace-terminal.cjs
 - workbench-output-log.ts
 - chat-composer-shell.tsx
-- mcp-health-hint.ts
+- use-mcp-health-summary.ts
 - embedded-browser-preload.cjs
 - gsap-skills/.claude-plugin/marketplace.json
 - auto-close-duplicates.ts
 - check-workspace-write-yaml.mjs
-- ensure-claude-cli.mjs
+- composer-chips.tsx
 - finder-dialog.tsx
 - test-hook.sh
 - reply-language.mjs
-- codemirror-agent-highlight.ts
+- workbench-outline-panel.tsx
 - Guidance for AI Agents Working in This Repo
 - Guidance for AI Agents Working in This Repo
 - backfill-duplicate-comments.ts
 - chat-images.cjs
-- workbench-terminal-run-bridge.ts
+- verify-packaged-native.mjs
 - file-browser.tsx
 - 本仓库 · Codex 约定
 - 本仓库 · Claude Code 约定
@@ -231,19 +231,29 @@
 - switch-to-ollama-local.sh
 - sync-cc-switch-to-workbench.sh
 - BRIDGE.md
-- rejected-workspace-writes.ts
+- claude-projects.mjs
 - user-preferences-panel.tsx
 - 2.1.153
-- agent-skill-routing.ts
+- install-embedded-browser-bridge.ts
 - select.tsx
 - workbench-composer-file-sync.tsx
 - drawer.tsx
 - accept-workspace-write-flow.test.mjs
 - agent-skill-presets.mjs
+- codebase-inject-selection.ts
 - workbench-status-bar.tsx
+- navigation-menu.tsx
+- use-theme.tsx
+- chain-error-classify.js
+- collectCloudModelPool
 - ref_node_module
+- workbench-status-bar.tsx
+- workbench-terminal-bridge-context.tsx
 - scheduler.mjs
-- use-chat-send.ts
+- restore-dev-native-modules.mjs
+- browser-navigation-shim.mjs
+- launch-desktop-browser.ts
+- index.tsx
 
 ## God Nodes (most connected - your core abstractions)
 1. `cn()` - 460 edges
@@ -253,58 +263,58 @@
 5. `useChatSend()` - 105 edges
 6. `lucide-react` - 101 edges
 7. `ChatPage()` - 99 edges
-8. `createHandlers()` - 54 edges
-9. `sonner` - 49 edges
-10. `loadWorkspace()` - 48 edges
+8. `sonner` - 49 edges
+9. `loadWorkspace()` - 47 edges
+10. `loadChatSettings()` - 41 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `📐 阶段 6 — 真实 Claude CLI 对接架构(本轮全部交付)` --references--> `useBridge()`  [INFERRED]
-  web/.lovable/plan.md → web/src/hooks/use-bridge.tsx
-- `2.1.69` --references--> `escape()`  [INFERRED]
-  CHANGELOG.md → web/src/lib/codemirror-import-resolve.ts
 - `2.1.153` --references--> `Agent`  [INFERRED]
   CHANGELOG.md → web/src/routes/agents.tsx
+- `2.1.69` --references--> `escape()`  [INFERRED]
+  CHANGELOG.md → web/src/lib/codemirror-import-resolve.ts
+- `📐 阶段 6 — 真实 Claude CLI 对接架构(本轮全部交付)` --references--> `useBridge()`  [INFERRED]
+  web/.lovable/plan.md → web/src/hooks/use-bridge.tsx
 - `sanitizeThoughtForUnit()` --calls--> `sanitizeDirectChatReply()`  [EXTRACTED]
   web/src/components/chat-assistant-content.tsx → shared/sanitize-direct-reply.mjs
-- `sanitizeReadonlyAssistantContent()` --calls--> `sanitizeDirectChatReply()`  [EXTRACTED]
-  web/src/lib/readonly-turn-display.ts → shared/sanitize-direct-reply.mjs
+- `ChatComposerShell()` --calls--> `isPlanDocumentRequest()`  [EXTRACTED]
+  web/src/components/chat-composer-shell.tsx → shared/turn-policy.mjs
 
 ## Import Cycles
 - None detected.
 
-## Communities (237 total, 41 thin omitted)
+## Communities (247 total, 41 thin omitted)
 
 ### Community 0 - "Changelog"
 Cohesion: 0.01
 Nodes (303): 0.2.100, 0.2.102, 0.2.105, 0.2.106, 0.2.107, 0.2.108, 0.2.117, 0.2.125 (+295 more)
 
 ### Community 1 - "cn"
-Cohesion: 0.03
-Nodes (97): @radix-ui/react-accordion, @radix-ui/react-avatar, @radix-ui/react-menubar, @radix-ui/react-slot, @radix-ui/react-tabs, @radix-ui/react-tooltip, LengthChip(), ModelChip() (+89 more)
+Cohesion: 0.05
+Nodes (69): @radix-ui/react-slot, Breadcrumb, BreadcrumbEllipsis(), BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator() (+61 more)
 
 ### Community 2 - "react"
 Cohesion: 0.04
-Nodes (37): clsx, input-otp, lucide-react, @radix-ui/react-hover-card, @radix-ui/react-progress, @radix-ui/react-radio-group, @radix-ui/react-switch, tailwind-merge (+29 more)
+Nodes (45): clsx, input-otp, lucide-react, @radix-ui/react-accordion, @radix-ui/react-avatar, @radix-ui/react-hover-card, @radix-ui/react-progress, @radix-ui/react-radio-group (+37 more)
 
 ### Community 3 - "dependencies"
 Cohesion: 0.02
 Nodes (82): dependencies, class-variance-authority, @cloudflare/vite-plugin, clsx, cmdk, @codemirror/autocomplete, @codemirror/commands, @codemirror/lang-css (+74 more)
 
 ### Community 4 - "ref_node_path"
-Cohesion: 0.03
-Nodes (57): apps, collectMachOBinaries(), walk(), findApps(), RELEASE, ROOT, ok(), root (+49 more)
+Cohesion: 0.04
+Nodes (45): apps, collectMachOBinaries(), walk(), findApps(), RELEASE, ROOT, ok(), root (+37 more)
 
 ### Community 5 - "workspace.mjs"
-Cohesion: 0.06
-Nodes (58): buildWorkspaceGraph(), execFileAsync, graphifyStatus(), markGraphifyNeedsUpdate(), resolveGraphifyCmd(), runGraphify(), runUpdate(), scheduleGraphifyUpdate() (+50 more)
+Cohesion: 0.08
+Nodes (50): buildWorkspaceGraph(), execFileAsync, graphifyStatus(), markGraphifyNeedsUpdate(), resolveGraphifyCmd(), runGraphify(), runUpdate(), scheduleGraphifyUpdate() (+42 more)
 
 ### Community 6 - "gitutil.py"
 Cohesion: 0.04
 Nodes (31): _append_reviewed_shas(), capture_git_baseline(), compute_v2_review_set(), _list_untracked(), _load_reviewed_shas(), record_touched_path(), _reviewed_shas_path(), save_baseline_sha() (+23 more)
 
 ### Community 7 - "agent-skills-github.mjs"
-Cohesion: 0.14
-Nodes (26): getSkillDefinition(), resolveAgentSkillBundleFromMeta(), agentNeedsAssociationSync(), buildSkillDefFromAgent(), DUPLICATE_SKILL_ALIASES, ensureSkillFile(), extractAgentHeading(), extractFrontmatterField() (+18 more)
+Cohesion: 0.15
+Nodes (24): agentNeedsAssociationSync(), buildSkillDefFromAgent(), DUPLICATE_SKILL_ALIASES, ensureSkillFile(), extractAgentHeading(), extractFrontmatterField(), fetchSkillMarkdownFromGithub(), fetchUrlText() (+16 more)
 
 ### Community 8 - "check-cursor-parity-e2e.mjs"
 Cohesion: 0.03
@@ -312,31 +322,31 @@ Nodes (72): agentExec, agentFix, appliedReview, askPlan, atLib, bottom, bridge, 
 
 ### Community 9 - "agents.tsx"
 Cohesion: 0.09
-Nodes (42): AgentCategory, buildDefaultAgentMarkdown(), CATEGORIES, extractFrontmatterField(), parseAgentMarkdown(), ParsedAgentMarkdown, parseFrontmatterListField(), serializeAgentMarkdown() (+34 more)
+Nodes (43): AgentCategory, buildDefaultAgentMarkdown(), CATEGORIES, extractFrontmatterField(), parseAgentMarkdown(), ParsedAgentMarkdown, parseFrontmatterListField(), serializeAgentMarkdown() (+35 more)
 
 ### Community 10 - "debug_log"
 Cohesion: 0.05
 Nodes (35): debug_log(), _config_paths(), _glob_match(), guidance_block(), _has_redos_structure(), load_for_session(), _load_guidance(), _load_user_patterns() (+27 more)
 
 ### Community 11 - "browser-tab-inspector.tsx"
-Cohesion: 0.19
-Nodes (22): BrowserComponentsPanel(), BrowserDevToolsPanel(), BrowserInspectorHost(), BrowserInspectorHostProps, BrowserInspectorToolbarButtons(), DomTreeList(), InspectorToolsProps, buildDomTree() (+14 more)
+Cohesion: 0.18
+Nodes (24): BrowserComponentsPanel(), BrowserDevToolsPanel(), BrowserInspectorHost(), BrowserInspectorHostProps, BrowserInspectorToolbarButtons(), DomTreeList(), InspectorToolsProps, useBrowserInspector() (+16 more)
 
 ### Community 12 - "claude-mcp-config.mjs"
-Cohesion: 0.07
-Nodes (54): buildMcpServerConfig(), bundledExternalAppsMcpServerPath(), bundledMcpPresetCommandLines(), bundledSanshengliubuMcpServerPath(), CANONICAL_EXTERNAL_APPS_MCP, CANONICAL_FETCH_MCP, CANONICAL_FILESYSTEM_MCP, CANONICAL_MEMORY_MCP (+46 more)
+Cohesion: 0.06
+Nodes (60): buildMcpServerConfig(), bundledExternalAppsMcpServerPath(), bundledMcpPresetCommandLines(), bundledSanshengliubuMcpServerPath(), CANONICAL_EXTERNAL_APPS_MCP, CANONICAL_FETCH_MCP, CANONICAL_FILESYSTEM_MCP, CANONICAL_MEMORY_MCP (+52 more)
 
 ### Community 13 - "web/package.json"
 Cohesion: 0.05
-Nodes (40): @cloudflare/vite-plugin, date-fns, eslint, eslint-config-prettier, @eslint/js, eslint-plugin-prettier, eslint-plugin-react-hooks, eslint-plugin-react-refresh (+32 more)
+Nodes (48): @cloudflare/vite-plugin, @codemirror/commands, @codemirror/lang-css, @codemirror/lang-html, @codemirror/lang-javascript, @codemirror/lang-json, @codemirror/lang-markdown, @codemirror/lang-python (+40 more)
 
 ### Community 14 - "host-agent-loop.mjs"
-Cohesion: 0.12
-Nodes (33): activeHost, agentTraceToolLabel(), applySearchReplace(), buildCompactAgentSummary(), buildHostAgentDisplayContent(), capHostPatchText(), chatOnce(), cloudProviders (+25 more)
+Cohesion: 0.03
+Nodes (93): big, cleared, dialogue, fat, msgs, prior, r, slim (+85 more)
 
 ### Community 15 - "overview.tsx"
-Cohesion: 0.13
-Nodes (26): buildDesktopTodayKpis(), OverviewTodayKpis(), OverviewTodayKpisProps, todayKpiIcons, TodayKpiItem, OverviewKpiCard(), OverviewSection(), OverviewSegmented() (+18 more)
+Cohesion: 0.09
+Nodes (33): PageHeader(), InfoHint(), buildDesktopTodayKpis(), OverviewTodayKpis(), OverviewTodayKpisProps, todayKpiIcons, TodayKpiItem, OverviewKpiCard() (+25 more)
 
 ### Community 16 - "json"
 Cohesion: 0.07
@@ -351,109 +361,109 @@ Cohesion: 0.06
 Nodes (21): _read_plugin_version_int(), _usage_metrics(), get_baseline_file_content(), load_baseline_sha(), rule_names_to_mask(), RuleId, check_patterns(), _claim_bash_hook_once() (+13 more)
 
 ### Community 19 - "getDesktop"
-Cohesion: 0.16
-Nodes (18): Ctx, ORCHESTRATION_FALLBACK, OrchestrationContext, OrchestrationExecutionProvider(), buildChainWorkflowBadge(), ChainWorkflowBadge, ChainWorkflowBadgeTone, getDesktop() (+10 more)
+Cohesion: 0.08
+Nodes (35): gsap, @gsap/react, GlobalChatPanel(), SchedulerNotifications(), Toaster(), ToasterProps, ChatStateProvider(), DesktopHydrationProvider() (+27 more)
 
 ### Community 20 - "routeTree.gen.ts"
 Cohesion: 0.07
-Nodes (39): parseUsageRange(), DefaultErrorComponent(), getRouter(), Route, Route, Route, Route, Route (+31 more)
+Nodes (42): @tanstack/react-router, parseUsageRange(), DefaultErrorComponent(), getRouter(), Route, Route, Route, Route (+34 more)
 
 ### Community 21 - "store.mjs"
-Cohesion: 0.08
-Nodes (62): normalizeCloudModelId(), upsertMcpHealthServer(), appLogFilePath(), dailyReportsDir(), DATA_DIR, DEFAULT_CLAUDE_CLI, DEFAULT_WORKSPACE, ensureDataDir() (+54 more)
+Cohesion: 0.07
+Nodes (71): agentExecRegistry, appendBridgeAppLog(), cadBridge, {
+  classifyChainError,
+  isMaxRetries,
+  retryDelayMs,
+  shouldRetry,
+}, cloudDirect, cloudProviders, eventSubs, handlers (+63 more)
 
 ### Community 22 - "workbench-workspace-context.tsx"
-Cohesion: 0.08
-Nodes (36): ChromeBtn(), WorkbenchBrowserInspectorChrome(), useBrowserInspectorOptional(), makeTabId(), revokeBlobUrl(), shortenHomeInPath(), WorkbenchWorkspaceContext, WorkbenchWorkspaceContextValue (+28 more)
+Cohesion: 0.09
+Nodes (34): ChromeBtn(), WorkbenchBrowserInspectorChrome(), useBrowserInspectorOptional(), makeTabId(), revokeBlobUrl(), shortenHomeInPath(), WorkbenchWorkspaceContext, WorkbenchWorkspaceContextValue (+26 more)
 
 ### Community 23 - "models-connections-panel.tsx"
-Cohesion: 0.05
-Nodes (67): embla-carousel-react, react-day-picker, ChatResendConfirmDialog(), Props, CloudDrawerProps, CloudForm, CloudProviderDrawer(), CURRENCY_SYMBOLS (+59 more)
+Cohesion: 0.09
+Nodes (41): @radix-ui/react-alert-dialog, @radix-ui/react-checkbox, ChatResendConfirmDialog(), Props, CloudDrawerProps, CloudForm, CloudProviderDrawer(), CURRENCY_SYMBOLS (+33 more)
 
 ### Community 24 - "chains.tsx"
 Cohesion: 0.15
 Nodes (28): RequiredMark(), useClaudeAgentList(), resolveChainStepSkills(), skillsUnionFromSteps(), chainCardStatus(), ChainCardStatusTone, chainCategoryLabel(), CATEGORY_FILTERS (+20 more)
 
 ### Community 25 - "chat-message-bubble.tsx"
-Cohesion: 0.15
-Nodes (22): agentTurnEqual(), attachmentsEqual(), backendBadgeLabel(), ChatBubbleMessage, MessageBubble, MessageBubbleInner(), terminalSnippetsEqual(), UserMessageBody() (+14 more)
+Cohesion: 0.18
+Nodes (19): flattenAskEncyclopediaFormat(), isHollowCloseOnly(), sanitizeDirectChatReply(), stripDirectChatUpsellTail(), stripFakeToolPayloads(), stripInlineLatex(), agentTurnEqual(), attachmentsEqual() (+11 more)
 
 ### Community 26 - "cad-bridge.cjs"
 Cohesion: 0.05
-Nodes (59): activeLocalOrchestrationRequests, advanceOrchestrationState(), agentDailyReports, agentExecRegistry, agentStemFromName(), appendDeferredWriteFences(), applyWritesInWorkspace(), { buildCrossAgentContextMarkdown } (+51 more)
+Nodes (37): activeLocalOrchestrationRequests, advanceOrchestrationState(), agentDailyReports, agentExecRegistry, { buildCrossAgentContextMarkdown }, CAD, chainRunState, { chainStepTimeoutMs } (+29 more)
 
-### Community 27 - "help.tsx"
-Cohesion: 0.09
-Nodes (32): openExternalUrl(), DiskMsg, extractPreviewHint(), formatPreviewAssistantReply(), isPythonPreviewQuestion(), performProjectPreview(), formatPreviewRunReply(), formatStaticRunReply() (+24 more)
+### Community 27 - "project-preview.ts"
+Cohesion: 0.24
+Nodes (15): DiskMsg, extractPreviewHint(), formatPreviewAssistantReply(), isProjectPreviewMessage(), isPythonPreviewQuestion(), isStopPreviewMessage(), performProjectPreview(), performStopPreview() (+7 more)
 
 ### Community 28 - "workbench-git-sync.mjs"
-Cohesion: 0.10
-Nodes (48): APPS_DOC_PATH, appTitle(), buildFrontendAppsCommitSection(), CATALOG_PATH, formatAppBlock(), PROJECT_ROOT, BINARY_PUSH_BLOCK_EXT, buildDefaultPushReason() (+40 more)
+Cohesion: 0.12
+Nodes (45): loadChatSettings(), importPersonalGithubArtifacts(), BINARY_PUSH_BLOCK_EXT, buildDefaultPushReason(), buildPersonalCommitMessage(), checkUpstreamUpdates(), combineOutput(), commitCurrentBranch() (+37 more)
 
-### Community 29 - "cloud-providers.cjs"
+### Community 29 - "loadStore"
+Cohesion: 0.11
+Nodes (31): buildProviderEnv(), buildTokenPricingFromProviders(), defaultStore(), deleteProvider(), isCcSwitchImportedProvider(), isLegacyImportedProvider(), isUserManagedProvider(), listProviders() (+23 more)
+
+### Community 30 - "ChatPage"
 Cohesion: 0.07
-Nodes (51): preflightAnthropicEndpoint(), buildProviderEnv(), buildTokenPricingFromProviders(), collectCloudModelPool(), defaultStore(), deleteProvider(), dns, fetchGatewayModels() (+43 more)
-
-### Community 30 - "chat-session-workspace.ts"
-Cohesion: 0.10
-Nodes (36): ChatHistoryDropdown(), ChatHistoryScope, HistoryRow(), Props, ChatHistoryDateGroup, ChatHistoryWorkspaceGroup, dateGroupLabel(), filterHistoryItems() (+28 more)
+Nodes (52): ToolbarBtn(), WorkbenchPanelToolbar(), isNearBottom(), ScrollMessage, useChatScroll(), useChatSessionRevision(), useOrchestrationExecution(), setAgentFixHandler() (+44 more)
 
 ### Community 31 - "desktop/package.json"
 Cohesion: 0.04
 Nodes (46): allowScripts, electron@35.7.5, author, build, appId, asar, copyright, directories (+38 more)
 
 ### Community 32 - "codemirror-workbench.tsx"
-Cohesion: 0.07
-Nodes (37): @codemirror/commands, @codemirror/lint, @codemirror/view, @uiw/codemirror-theme-vscode, @uiw/react-codemirror, CodemirrorEditorContextMenu(), EditorContextMenuState, Props (+29 more)
+Cohesion: 0.08
+Nodes (33): @codemirror/lint, @codemirror/view, react-dom, CodemirrorEditorContextMenu(), EditorContextMenuState, Props, CodemirrorWorkbench(), Props (+25 more)
 
 ### Community 33 - "workbench-main-layout.tsx"
-Cohesion: 0.12
-Nodes (25): react-resizable-panels, ResizableHandle(), ResizablePanelGroup(), CENTER_FALLBACK, CENTER_PANEL_IDS, WorkbenchCenterPanel(), WorkbenchChatComposerBridge(), FALLBACK_LAYOUT (+17 more)
+Cohesion: 0.13
+Nodes (27): react-resizable-panels, ResizableHandle(), ResizablePanelGroup(), CENTER_FALLBACK, CENTER_PANEL_IDS, WorkbenchCenterPanel(), WorkbenchChatComposerBridge(), FALLBACK_LAYOUT (+19 more)
 
 ### Community 34 - "ui-prefs.ts"
-Cohesion: 0.14
-Nodes (27): opts, ThemeToggle(), apply(), Ctx, getSystem(), Resolved, ThemeContext, ThemeMode (+19 more)
+Cohesion: 0.16
+Nodes (26): DEFAULT_BRIDGE_URL, Field(), OverviewBridgeBar(), SecretInput(), useBridge(), getBridge(), setSkipCheckpointConfirm(), shouldSkipCheckpointConfirm() (+18 more)
 
 ### Community 35 - "ui-copy.ts"
-Cohesion: 0.07
-Nodes (37): SettingsLayout(), SettingsNavItem(), formatGitErrorMessage(), BRIDGE_OFFLINE_TOAST, CHAINS_INFO_HINT, COMPOSER_ASK_PLAN_HINT, COMPOSER_PLACEHOLDER, DEMO_LIST_BANNER (+29 more)
+Cohesion: 0.06
+Nodes (45): SettingsLayout(), SettingsNavItem(), formatGitErrorMessage(), BRIDGE_CONNECTED_VERSION, BRIDGE_ELECTRON_VERSION, BRIDGE_OFFLINE_TOAST, BRIDGE_OFFLINE_VERSION, CHAINS_INFO_HINT (+37 more)
 
 ### Community 36 - "react"
-Cohesion: 0.16
-Nodes (17): react, AgentStemCombobox(), Props, ChainQuickTrigger(), groupIcon(), groupLabel(), Props, QuickChainOption (+9 more)
+Cohesion: 0.13
+Nodes (21): @radix-ui/react-popover, AgentStemCombobox(), Props, ChainQuickTrigger(), groupIcon(), groupLabel(), Props, QuickChainOption (+13 more)
 
 ### Community 37 - "workspace.mjs"
-Cohesion: 0.09
-Nodes (43): agentExecRegistry, cadBridge, {
-  classifyChainError,
-  isMaxRetries,
-  retryDelayMs,
-  shouldRetry,
-}, cloudDirect, cloudProviders, eventSubs, handlers, PROJECT_ROOT (+35 more)
+Cohesion: 0.12
+Nodes (31): runTypeScriptDiagnostics(), applyOpenContent(), cache, findTsConfigForFile(), getOrCreateService(), invalidateTsServiceCache(), invalidateTsSnapshotsForPaths(), loadTypescriptModule() (+23 more)
 
 ### Community 38 - "workbench-code-editor.tsx"
-Cohesion: 0.12
-Nodes (29): EditorTabBar(), Props, WorkbenchCodeEditor(), EditorViewMode, Props, ViewToggle(), WorkbenchEditorToolbar(), WorkbenchSvgPreview() (+21 more)
+Cohesion: 0.20
+Nodes (15): Props, WorkbenchCodeEditor(), EditorViewMode, WorkbenchMarkdownPreview(), WorkbenchSvgPreview(), canInlineFilePreview(), fileOpenKind, inlinePreviewKind (+7 more)
 
 ### Community 39 - "model-catalog.ts"
-Cohesion: 0.10
-Nodes (27): buildAutoLeadingOption(), ChatModelSelector(), ModelPick, OrchMode, Props, pickOrchestratorModel(), chatModelPoolCombined(), CLOUD_PROVIDER_REQUIRED_ERROR (+19 more)
+Cohesion: 0.13
+Nodes (21): pickOrchestratorModel(), chatModelPoolCombined(), CLOUD_PROVIDER_REQUIRED_ERROR, inferModelRouteHint(), isAutoModelSelection(), isClaudeCliModel(), isInheritedAgentModel(), loadConfiguredModelPools() (+13 more)
 
 ### Community 40 - "scheduled.tsx"
-Cohesion: 0.10
-Nodes (33): ClaudeHooksPanel(), summarizeHooks(), DetailActions(), DetailBody(), DetailRow(), FilterPills(), ListCard(), ListEmpty() (+25 more)
+Cohesion: 0.15
+Nodes (24): DetailActions(), DetailBody(), DetailRow(), FilterPills(), ListCard(), ListEmpty(), ListGrid(), ListPane() (+16 more)
 
 ### Community 41 - "compress-agent-display.ts"
-Cohesion: 0.11
-Nodes (43): sanitizeThoughtForUnit(), ChatThoughtBlock(), normalizeThoughtTitle(), sanitizeThoughtBody(), mergeLiveToolEventIntoAssistantMessages(), ToolEventDetail, agentExecReportScore(), agentTraceToolLabel() (+35 more)
+Cohesion: 0.10
+Nodes (44): ChatMarkdown(), ChatThoughtBlock(), normalizeThoughtTitle(), sanitizeThoughtBody(), mergeLiveToolEventIntoAssistantMessages(), ToolEventDetail, useAgentToolStream(), agentExecReportScore() (+36 more)
 
 ### Community 42 - "project-preview.cjs"
 Cohesion: 0.11
-Nodes (37): buildPythonPreviewGuide(), buildScanSummary(), detectFlaskPort(), detectNpmScript(), detectProjectRunPlan(), detectProjectRunPlanEnriched(), enrichRunPlan(), ensurePreviewAppPy() (+29 more)
+Nodes (36): buildPythonPreviewGuide(), buildScanSummary(), detectFlaskPort(), detectNpmScript(), detectProjectRunPlan(), detectProjectRunPlanEnriched(), enrichRunPlan(), ensurePreviewAppPy() (+28 more)
 
-### Community 43 - "workbench-applied-diff-review.tsx"
-Cohesion: 0.13
-Nodes (25): highlightDiffLine(), highlightWithRules(), wrapClass(), ChatDockCollapsible(), ChatDockCollapsibleProps, useDockCollapsibleState(), ChatFileEditActionResult, ChatFileEditActions (+17 more)
+### Community 43 - "carousel.tsx"
+Cohesion: 0.10
+Nodes (28): embla-carousel-react, react-day-picker, Button, ButtonProps, buttonVariants, Calendar(), CalendarDayButton(), Carousel (+20 more)
 
 ### Community 44 - "agent-exec-registry.cjs"
 Cohesion: 0.18
@@ -464,92 +474,92 @@ Cohesion: 0.05
 Nodes (36): Best practices, CustomBounce, CustomEase, CustomWiggle, Development, Do Not, DOM / UI, Draggable (+28 more)
 
 ### Community 46 - "assistant-reply.ts"
-Cohesion: 0.06
-Nodes (55): AskPreview, CodemirrorInlineEditDialog(), extractReplacementSegment(), previewLines(), Props, selectionAnchorStyle(), MODES, WorkbenchModeChip() (+47 more)
+Cohesion: 0.11
+Nodes (27): collapseAcceptedWorkspaceWriteForHistory(), collapseWorkspaceWriteForHistory(), escapeRegExp(), findBalancedTripleFenceClose(), findTopLevelJsonEnd(), findWorkspaceWriteBlocks(), ingestChainStepWorkspaceWrites(), IngestWorkspaceWriteResult (+19 more)
 
 ### Community 47 - "cc-switch.cjs"
-Cohesion: 0.13
-Nodes (35): buildImportDeeplink(), buildProviderEnv(), CAD_SQLITE, ccSwitchDbPath(), ccSwitchInstalled(), collectCloudModelPool(), collectModelsFromAllProviders(), deleteProvider() (+27 more)
+Cohesion: 0.08
+Nodes (47): buildImportDeeplink(), buildProviderEnv(), CAD_SQLITE, ccSwitchDbPath(), ccSwitchInstalled(), collectCloudModelPool(), collectModelsFromAllProviders(), deleteProvider() (+39 more)
 
 ### Community 48 - "workbench-browser-proxy.mjs"
-Cohesion: 0.19
-Nodes (19): getWorkbenchBrowserProxyPublicPath(), buildBrowserNavigationShimScript(), buildBrowserProxyTopFrameGuardScript(), WORKBENCH_BROWSER_FRAME_NAV_MESSAGE, WORKBENCH_BROWSER_NAVIGATE_MESSAGE, WORKBENCH_BROWSER_OPEN_TAB_MESSAGE, absolutizeSrcset(), absolutizeSubresourceUrl() (+11 more)
+Cohesion: 0.25
+Nodes (16): getWorkbenchBrowserProxyPublicPath(), buildBrowserNavigationShimScript(), buildBrowserProxyTopFrameGuardScript(), absolutizeSrcset(), absolutizeSubresourceUrl(), BLOCKED_RESPONSE_HEADERS, extractClientRedirectUrl(), fetchBrowserPage() (+8 more)
 
 ### Community 49 - "workbench-bottom-panel.tsx"
 Cohesion: 0.08
-Nodes (43): TerminalSessionsHeaderState, DropdownMenuSubContent, DropdownMenuSubTrigger, channelLabel(), copyProblemsList(), DebugConsoleView(), DEFAULT_SEVERITY_FILTER, FilterInput() (+35 more)
+Nodes (46): @radix-ui/react-dropdown-menu, TerminalSessionPicker(), DropdownMenuCheckboxItem, DropdownMenuItem, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut(), DropdownMenuSubContent (+38 more)
 
 ### Community 50 - "smoke-packaged-app.mjs"
 Cohesion: 0.14
 Nodes (16): appPath, assertRpcChannels(), cleanPorts(), DESKTOP, fetchText(), freePort(), logFd, logPath (+8 more)
 
 ### Community 51 - "workspace-external-lsp.mjs"
-Cohesion: 0.10
-Nodes (46): commandExists(), defaultHint(), detectExternalLspCandidates(), detectProject(), encodeMessage(), ensureSession(), externalLspCallHierarchyAt(), externalLspCompletionsAt() (+38 more)
+Cohesion: 0.07
+Nodes (63): collectDiagnostics(), commandExists(), defaultHint(), detectExternalLspCandidates(), detectProject(), encodeMessage(), ensureSession(), externalLspCallHierarchyAt() (+55 more)
 
 ### Community 52 - "comms.tsx"
-Cohesion: 0.09
-Nodes (34): BUNDLED_PLACEHOLDERS, collapseHomeInToken(), formatStdioCommandLine(), hasAngleBracketPlaceholder(), MCP_PRESET_COMMAND_LINES, MCP_PRESETS, MCP_TEMPLATE_ENV, McpPresetMeta (+26 more)
+Cohesion: 0.11
+Nodes (31): BUNDLED_PLACEHOLDERS, collapseHomeInToken(), formatStdioCommandLine(), hasAngleBracketPlaceholder(), MCP_PRESET_COMMAND_LINES, MCP_PRESETS, MCP_TEMPLATE_ENV, McpPresetMeta (+23 more)
 
 ### Community 53 - "workspace-run-command.mjs"
-Cohesion: 0.13
-Nodes (18): activeByRunId, isAskSafeCommand(), isDeniedCommand(), require, resolveCwd(), runViaPipe(), runViaPty(), scrubPtyOutput() (+10 more)
+Cohesion: 0.35
+Nodes (10): activeByRunId, isAskSafeCommand(), isDeniedCommand(), require, resolveCwd(), runViaPipe(), runViaPty(), scrubPtyOutput() (+2 more)
 
 ### Community 54 - "scripts"
-Cohesion: 0.07
-Nodes (29): scripts, bridge, browser:install, check:cli-bash-echo, check:context-compact, check:cursor-parity-e2e, check:dev-gates, check:incomplete-reply (+21 more)
+Cohesion: 0.05
+Nodes (42): dependencies, node-pty, playwright, pyright, ws, description, name, private (+34 more)
 
 ### Community 55 - "workspace-panel.tsx"
-Cohesion: 0.09
-Nodes (28): gsap, @gsap/react, GlobalChatPanel(), SchedulerNotifications(), Toaster(), ToasterProps, DiffView(), FilesView() (+20 more)
+Cohesion: 0.11
+Nodes (27): ClaudeHooksPanel(), HOOK_EVENT_REF, HookSummary, summarizeHooks(), DiffView(), FilePreviewPane(), FilesView(), ShellView() (+19 more)
 
 ### Community 56 - "chat-image-attach.ts"
-Cohesion: 0.15
-Nodes (16): CHAT_IMAGE_MAX_EDGE_PX, CHAT_INLINE_IMAGE_MAX, downscaleDataUrlForChat(), insertImageChipToken(), insertImageChipTokens(), normalizePendingImage(), normalizePendingImageFiles(), readFileAsDataUrl() (+8 more)
+Cohesion: 0.11
+Nodes (21): CHAT_IMAGE_MAX_EDGE_PX, CHAT_INLINE_IMAGE_MAX, collectPriorUserAttachments(), downscaleDataUrlForChat(), insertImageChipToken(), insertImageChipTokens(), mergeInlineAttachments(), modelSupportsChatVision() (+13 more)
 
 ### Community 57 - "workspace-write.cjs"
 Cohesion: 0.15
-Nodes (23): finalizeChainStepWrite(), { appendWorkspaceArtifactLog }, applyWorkspaceWriteFenceItems(), buildMissingWriteNotice(), bulkIngestAssistantTexts(), capPatchText(), collapseWrittenSummary(), collectWritableItemsFromText() (+15 more)
+Nodes (24): finalizeChainStepWrite(), sanitizeReadonlyOrchContent(), { appendWorkspaceArtifactLog }, applyWorkspaceWriteFenceItems(), buildMissingWriteNotice(), bulkIngestAssistantTexts(), capPatchText(), collapseWrittenSummary() (+16 more)
 
 ### Community 58 - "orchestration-chains.cjs"
 Cohesion: 0.21
 Nodes (31): activateOrchestrationChain(), chainFilePath(), createOrchestrationChain(), deleteOrchestrationChain(), ensureOfficialGenericChains(), ensureProjectDataDir(), fs, getActiveOrchestrationChainId() (+23 more)
 
 ### Community 59 - "wbs-chain-registry.ts"
-Cohesion: 0.16
-Nodes (18): autoSaveChainFromReply(), AutoSaveChainResult, saveChainFromBubbleText(), buildWbsMarkdownFromChainState(), DEFAULT_WBS_REL_PATH, escapeMdCell(), formatWbsChainSyncAssistantReply(), parseWbsChainIntent() (+10 more)
+Cohesion: 0.14
+Nodes (20): autoSaveChainFromReply(), AutoSaveChainResult, notifyAutoSavedChain(), saveChainFromBubbleText(), ActiveChainState, buildWbsMarkdownFromChainState(), DEFAULT_WBS_REL_PATH, escapeMdCell() (+12 more)
 
 ### Community 60 - "desktop/runtime.mjs"
-Cohesion: 0.13
+Cohesion: 0.12
 Nodes (25): formatBridgeConnectionError(), getBridgeHealthUrl(), getBridgeRpcUrl(), getBridgeWsUrl(), getUiProxyHealthUrl(), getUiProxyRpcUrl(), getWorkbenchHttpPort(), getWorkbenchUiPort() (+17 more)
 
-### Community 61 - "agent-artifact-paths.ts"
-Cohesion: 0.22
-Nodes (18): AGENT_STEM_ALIASES, buildAgentArtifactPathHint(), CATEGORY_PREFIX_DIRS, CHAIN_STEP_DIR, defaultArtifactPathForAgent(), normalizeAgentStem(), relatedArtifactPathsForAgent(), resolveCanonicalStem() (+10 more)
+### Community 61 - "chain-templates.ts"
+Cohesion: 0.07
+Nodes (41): AGENT_ARTIFACT_PATHS, AGENT_STEM_ALIASES, buildAgentArtifactPathHint(), CATEGORY_PREFIX_DIRS, CHAIN_STEP_DIR, CHINESE_TO_AGENT_STEM, defaultArtifactPathForAgent(), normalizeAgentStem() (+33 more)
 
 ### Community 62 - "workspace-terminal.tsx"
-Cohesion: 0.10
-Nodes (30): @xterm/addon-fit, @xterm/xterm, TerminalAddToChatButton(), clearTerminalHost(), hostReadyForFit(), loadXtermModules(), shortenHomeInPath(), syncTerminalSize() (+22 more)
+Cohesion: 0.11
+Nodes (28): @xterm/addon-fit, @xterm/xterm, TerminalAddToChatButton(), clearTerminalHost(), hostReadyForFit(), loadXtermModules(), shortenHomeInPath(), syncTerminalSize() (+20 more)
 
 ### Community 63 - "reports.tsx"
-Cohesion: 0.16
-Nodes (19): PageHeader(), AgentListRow, isLikelyAgentStem(), mergeAgentRowsWithRegistry(), resolveRegistryEntry(), REPORTS_API_OFFLINE, REPORTS_INFO_HINT, agentCardUsageDate() (+11 more)
+Cohesion: 0.15
+Nodes (19): AgentListRow, isLikelyAgentStem(), mergeAgentRowsWithRegistry(), resolveRegistryEntry(), BRIDGE_OFFLINE_BANNER, REPORTS_API_OFFLINE, REPORTS_INFO_HINT, agentCardUsageDate() (+11 more)
 
 ### Community 64 - "index.mjs"
 Cohesion: 0.11
 Nodes (25): broadcast(), subscribeEvent(), { attachTerminalToWebSocket }, HTTP_PORT, httpServer, logStartupMcpHealthResult(), require, runStartupMcpHealthCheckWithLog() (+17 more)
 
 ### Community 65 - "chat-assistant-content.tsx"
-Cohesion: 0.18
-Nodes (22): ChatAssistantContent(), dedupeToolItems(), DockAssistantContent(), DockTerminalOutputBlock(), enrichEditsAgainstDisk(), groupAgentTurnUnits(), hasRealPreview(), RenderUnit (+14 more)
+Cohesion: 0.05
+Nodes (74): ChatAssistantContent(), dedupeToolItems(), enrichEditsAgainstDisk(), groupAgentTurnUnits(), hasRealPreview(), RenderUnit, sanitizeThoughtForUnit(), streamEventsToToolItems() (+66 more)
 
 ### Community 66 - "chat-message-context-menu.tsx"
 Cohesion: 0.10
-Nodes (25): @radix-ui/react-context-menu, react-markdown, remark-gfm, ChatMarkdown(), ChatMarkdownProps, ChatMarkdownVariant, extractPlainText(), MarkdownCodeBlock() (+17 more)
+Nodes (23): @radix-ui/react-context-menu, react-markdown, remark-gfm, ChatMarkdownProps, ChatMarkdownVariant, extractPlainText(), MarkdownCodeBlock(), ChatMessageContextMenu() (+15 more)
 
 ### Community 67 - "cloud-direct.cjs"
-Cohesion: 0.14
-Nodes (20): callOpenAiCompatibleApi(), activeRequests, cloudProviders, directPrompt(), dns, extractGeminiContent(), finishDirectOk(), http (+12 more)
+Cohesion: 0.16
+Nodes (15): activeRequests, cloudProviders, directPrompt(), dns, extractGeminiContent(), finishDirectOk(), http, httpPostJson() (+7 more)
 
 ### Community 68 - "expand-user-line-workspace-files.ts"
 Cohesion: 0.05
@@ -559,25 +569,25 @@ Nodes (57): afterWsSwitch, agentChatNamed, agentExec, agentHi, agentPlanDoc, age
 Cohesion: 0.15
 Nodes (16): ./ensure-dev-bridge.mjs, appIcon, createWindow(), __dirname, iconPath, loadDevBridge(), resolveWebUrl(), bridgeLogTail (+8 more)
 
-### Community 70 - "chain-templates.ts"
-Cohesion: 0.12
-Nodes (16): artifactPath(), CHAIN_TEMPLATE_CATEGORY_LABEL, CHAIN_TEMPLATE_DEFAULTS, CHAIN_TEMPLATE_VAR_LABELS, ChainTemplateCategory, ChainTemplateStep, ChainTemplateVarKey, CORE_CHAIN_AGENT_STEMS (+8 more)
+### Community 70 - "chat-user-message-body.tsx"
+Cohesion: 0.17
+Nodes (20): ChatStickyUserHeader(), Props, ChatUserMessageBody(), TerminalChip(), ComposerTerminalAttachments(), ImageLightbox(), ImageLightboxProps, formatChatResendPreview() (+12 more)
 
 ### Community 71 - "EmbeddedBrowserManager"
 Cohesion: 0.21
 Nodes (3): EmbeddedBrowserManager, registerEmbeddedBrowserIpc(), sharedBrowserWebPreferences()
 
 ### Community 72 - "workbench-side-tab.ts"
-Cohesion: 0.07
-Nodes (51): cmdk, Command, CommandDialog(), CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList (+43 more)
+Cohesion: 0.08
+Nodes (42): CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, Cmd, WorkbenchCommandPalette(), WorkbenchQuickOpen() (+34 more)
 
 ### Community 73 - "gsap.utils"
 Cohesion: 0.07
 Nodes (26): Arrays and Collections, Best practices, clamp(min, max, value?), Clamping and Ranges, distribute(config), Do Not, getUnit(value), gsap.utils (+18 more)
 
 ### Community 74 - "claude-cli.mjs"
-Cohesion: 0.11
-Nodes (29): abortClaudeCode(), active, callGeminiApi(), capCliPatchText(), chainStepTimeoutMs(), chatImages, cloudProviders, collectCliEditSnapshots() (+21 more)
+Cohesion: 0.09
+Nodes (40): abortClaudeCode(), active, callGeminiApi(), callOpenAiCompatibleApi(), capCliPatchText(), chainStepTimeoutMs(), chatImages, claudeCliStatus() (+32 more)
 
 ### Community 75 - "workspaces.tsx"
 Cohesion: 0.17
@@ -588,20 +598,20 @@ Cohesion: 0.10
 Nodes (27): buildClaudeCodeBundleMarkdown(), claudeDebugLatestResolvedPath(), claudeMemoryEventsPath(), cleanAgentHeadingLabel(), collectAgentMarkdownEntries(), collectSkillMarkdownEntries(), { execFileSync }, extractAgentCategoryFromMarkdown() (+19 more)
 
 ### Community 77 - "parse-chat-file-edits.ts"
-Cohesion: 0.18
-Nodes (26): buildLineDiffPreview(), countLineStats(), dedupeEditsByPath(), dedupePreviewLines(), editFromFilePatch(), editRank(), editsPreviewFromUnifiedDiff(), EXT_LANG (+18 more)
-
-### Community 78 - "index.tsx"
-Cohesion: 0.05
-Nodes (71): GithubDialog(), ParallelDispatchConfig, ChatSession, ChatStateContext, ChatStateValue, DiskMsg, useChatState(), useAgentToolStream() (+63 more)
-
-### Community 79 - "check-context-compact.mjs"
 Cohesion: 0.11
-Nodes (23): big, cleared, dialogue, fat, msgs, prior, r, slim (+15 more)
+Nodes (40): autoAcceptPendingFromAssistantReply(), normPath(), AgentFilePatch, capAgentPatchText(), mergeAgentFilePatches(), normAgentPatchPath(), normalizeWritePatches(), buildLineDiffPreview() (+32 more)
+
+### Community 78 - "chat-session-tabs.tsx"
+Cohesion: 0.14
+Nodes (20): ChatHistoryDropdown(), ChatHistoryScope, HistoryRow(), Props, ChatPanelToolbar(), Props, Session, ChatSessionTabs() (+12 more)
+
+### Community 79 - "sonner"
+Cohesion: 0.29
+Nodes (21): sonner, runEditorMenuAction(), findAllImplementations(), findAllReferences(), formatDocumentAt(), goToDefinition(), goToImplementation(), goToKind() (+13 more)
 
 ### Community 80 - "chat-enabled-model-picker.tsx"
-Cohesion: 0.23
-Nodes (16): AgentModelPicker(), buildInheritLeadingOption(), ChatEnabledModelPicker(), ModelPickerLeadingOption, ModelPickerRows(), Props, buildChatEnabledModelEntries(), capHintsFor() (+8 more)
+Cohesion: 0.16
+Nodes (23): AgentModelPicker(), buildAutoLeadingOption(), buildInheritLeadingOption(), ChatEnabledModelPicker(), ModelPickerLeadingOption, ModelPickerRows(), Props, ChatModelSelector() (+15 more)
 
 ### Community 81 - "run-dev.mjs"
 Cohesion: 0.14
@@ -609,59 +619,66 @@ Nodes (21): BRIDGE_HTTP_PORT, BRIDGE_WS_PORT, children, cleanup(), __dirname, fr
 
 ### Community 82 - "resolve-execution-model.mjs"
 Cohesion: 0.11
-Nodes (27): agentOut, autoAsk, autoAskNoLocal, autoWrite, cloud, emptyCloudPrefer, heuristicPin, local (+19 more)
+Nodes (28): agentOut, autoAsk, autoAskNoLocal, autoWrite, cloud, emptyCloudPrefer, heuristicPin, local (+20 more)
 
 ### Community 83 - "deploy-dialog.tsx"
-Cohesion: 0.17
-Nodes (18): @radix-ui/react-dialog, CheckItem, CheckRow(), DeployDialog(), IconError(), IconOk(), IconSpin(), IconWarn() (+10 more)
+Cohesion: 0.13
+Nodes (23): cmdk, @radix-ui/react-dialog, CheckItem, CheckRow(), DeployDialog(), IconError(), IconOk(), IconSpin() (+15 more)
 
 ### Community 84 - "usage-stats.cjs"
-Cohesion: 0.08
-Nodes (41): aggregateClaudeProjectUsage(), extractUserTitle(), listProjectJsonlFiles(), listRecentClaudeProjectSessions(), messageText(), parseTs(), PROJECTS_ROOT, scanJsonlFile() (+33 more)
+Cohesion: 0.15
+Nodes (23): applyMessage(), dayInRange(), dayKey(), db(), emptyBucket(), {
+  estimateUsageCostUsd,
+  resolveModelPricing,
+}, finalizeSummary(), foldBucket() (+15 more)
 
 ### Community 85 - "ref_node_assert"
 Cohesion: 0.14
 Nodes (7): buildLineDiffPreview(), lineOpsLcs(), opsToPreviewLines(), applyUnifiedDiff(), resolveWorkspaceEditContent(), cliPermissionModeForInteraction(), cliPermissionModeForTurn()
 
-### Community 86 - "ref_node_os"
-Cohesion: 0.04
-Nodes (41): bridge, chainInstr, chainTpl, {
+### Community 86 - "check-workspace-write-no-guess.mjs"
+Cohesion: 0.14
+Nodes (11): bridge, chainInstr, chainTpl, {
   ingestTextAndApplyWorkspaceWrite,
   collectWritableItemsFromText,
   MISSING_WRITE_FENCE_ERROR,
-}, officialDir, require, resync, root (+33 more)
+}, officialDir, require, resync, root (+3 more)
 
 ### Community 87 - "agent-skill-defaults.ts"
-Cohesion: 0.18
-Nodes (15): AGENT_SKILL_FILE_STEMS, AgentSkillToolBundle, EXTRA_AGENT_SKILL_STEMS, getAgentSkillToolBundle(), presetToolsToAgentTools(), resolveAgentSkillBundleFromMeta(), ROUTING_SKILL_STEM, routingLabelToStem() (+7 more)
+Cohesion: 0.12
+Nodes (21): AGENT_SKILL_FILE_STEMS, AgentSkillToolBundle, EXTRA_AGENT_SKILL_STEMS, getAgentSkillToolBundle(), presetToolsToAgentTools(), ROUTING_SKILL_STEM, routingLabelToStem(), SHORT_DESCRIPTIONS (+13 more)
 
 ### Community 88 - "code-index.mjs"
 Cohesion: 0.21
 Nodes (21): bm25Score(), buildBm25(), buildCodeIndex(), chunkFile(), codeIndexStatus(), cosine(), embedTexts(), loadIndex() (+13 more)
 
 ### Community 89 - "terminal-sessions-view.tsx"
-Cohesion: 0.24
-Nodes (14): TerminalSessionRail(), createSession(), newSessionId(), TerminalSession, TerminalSessionsView(), bindLiveExecTerminalSession(), getLiveExecTerminalSessionId(), getDefaultTerminalShell() (+6 more)
+Cohesion: 0.13
+Nodes (22): createSession(), newSessionId(), TerminalSession, TerminalSessionsHeaderState, TerminalSessionsView(), WorkspaceTerminalHandle, WorkspaceTerminalMeta, bindLiveExecTerminalSession() (+14 more)
 
-### Community 90 - "buildModelPools"
-Cohesion: 0.18
-Nodes (13): buildModelPools(), collectProviderModelIds(), filterProviderRowsByIds(), filterProvidersForCatalog(), filterProvidersForSettings(), findProviderForModel(), getInvokableProviderIds(), listProviderRecords() (+5 more)
+### Community 90 - "cloud-providers.cjs"
+Cohesion: 0.06
+Nodes (27): buildModelPools(), collectProviderModelIds(), dns, filterProviderRowsByIds(), filterProvidersForCatalog(), filterProvidersForSettings(), findProviderForModel(), {
+  formatBridgeConnectionError,
+  isBridgeLoopbackConnectionError,
+  normalizeRpcErrorMessage,
+} (+19 more)
 
-### Community 91 - "workspace-lint.mjs"
-Cohesion: 0.18
-Nodes (17): CONFIG_NAMES, EXTERNAL_LINT_EXTS, findEslintConfigForFile(), LINT_EXTS, lintWorkspaceFiles(), parseEslintStdout(), resolveEslintBin(), runEslintOnFiles() (+9 more)
+### Community 91 - "chat-messages-pane.tsx"
+Cohesion: 0.16
+Nodes (11): ChatComposerShellProps, ChatBubbleMessage, ChatMessagesPane, ChatMessagesPaneProps, ErrorBoundary, findActiveTurnIndex(), isUserBubbleScrolledAway(), useStickyUserPrompt() (+3 more)
 
 ### Community 92 - "project-db.cjs"
 Cohesion: 0.18
-Nodes (13): CAD_SQLITE, dbGet(), dbSet(), ensureMigrated(), fs, getDb(), kvStatements(), kvStmtCache (+5 more)
+Nodes (14): CAD_SQLITE, dbGet(), dbSet(), ensureMigrated(), fs, getDb(), kvStatements(), kvStmtCache (+6 more)
 
 ### Community 93 - "global-chat-panel.tsx"
-Cohesion: 0.25
-Nodes (12): ChatMessagesView(), ChatPanelFooter(), ChatPanelHeader(), ChatPanelShell(), GlobalChatPanelInner(), MessageItem(), Msg, MessageDeltaDetail (+4 more)
+Cohesion: 0.17
+Nodes (17): ChatMessagesView(), ChatPanelFooter(), ChatPanelHeader(), ChatPanelShell(), GlobalChatPanelInner(), MessageItem(), ChatSession, ChatStateContext (+9 more)
 
 ### Community 94 - "codemirror-ghost-text.ts"
-Cohesion: 0.07
-Nodes (36): @codemirror/autocomplete, @codemirror/lang-css, @codemirror/lang-html, @codemirror/lang-javascript, @codemirror/lang-json, @codemirror/lang-markdown, @codemirror/lang-python, @codemirror/lang-yaml (+28 more)
+Cohesion: 0.15
+Nodes (16): @codemirror/autocomplete, @codemirror/language, abortInflight(), completionKey(), fetchAiCompletionText(), sanitizeCompletionText(), slicePrefixSuffix(), aiCompletionSource() (+8 more)
 
 ### Community 95 - "chain-step-read-inject.cjs"
 Cohesion: 0.17
@@ -677,39 +694,39 @@ Nodes (15): @supabase/supabase-js, @tanstack/react-start, requireSupabaseAuth, s
 
 ### Community 98 - "workbench-references-peek.tsx"
 Cohesion: 0.09
-Nodes (41): WorkbenchReferencesPeek(), applyCrossFileRename(), lineColToOffset(), RenameLoc, applyPendingGoto(), applyPendingLineGoto(), getLastPeekDefinition(), getLastReferencesPeek() (+33 more)
+Nodes (43): WorkbenchReferencesPeek(), applyCrossFileRename(), lineColToOffset(), RenameLoc, applyPendingGoto(), applyPendingLineGoto(), execClipboard(), getLastPeekDefinition() (+35 more)
 
 ### Community 99 - "ref_types_desktop"
-Cohesion: 0.14
-Nodes (20): loadAgentRoleBodySnippet(), optimizeAgentMarkdownViaWorkflow(), ingestWorkspaceWritesAndCollapseDisplay(), resolveClaudeModelForSelfLearning(), runAutomatedSelfLearningAfterChain(), SelfLearningDiskMsg, buildClaudeCodePrompt(), ClaudeOrchestrationHints (+12 more)
+Cohesion: 0.09
+Nodes (29): loadAgentContextAppendix(), loadAgentRoleBodySnippet(), optimizeAgentMarkdownViaWorkflow(), ingestWorkspaceWritesAndCollapseDisplay(), resolveClaudeModelForSelfLearning(), runAutomatedSelfLearningAfterChain(), SelfLearningDiskMsg, collectAssistantTextsForBulkWrite() (+21 more)
 
 ### Community 100 - "workspace-tsservice-client.ts"
-Cohesion: 0.12
-Nodes (28): isExternalLspPath(), isTsLikePath(), navKind(), OutlineHeader(), OutlineSource, WorkbenchOutlinePanel(), kindLabel(), listFileOutline() (+20 more)
+Cohesion: 0.16
+Nodes (20): mapKind(), tsCompletionSource(), callExternalLsp(), fetchTsCompletions(), fetchTsDefinition(), fetchTsHover(), fetchTsImplementation(), fetchTsImplementations() (+12 more)
 
 ### Community 101 - "workbench-center-editor.tsx"
-Cohesion: 0.07
-Nodes (57): EmbeddedBrowserPane(), EmbeddedBrowserPaneProps, readWindowZoomFactor(), BrowserTabContent(), fileHostLabel(), FileTabContent(), NavBtn(), BrowserInspectorContext (+49 more)
+Cohesion: 0.11
+Nodes (43): EmbeddedBrowserPane(), EmbeddedBrowserPaneProps, readWindowZoomFactor(), BrowserTabContent(), NavBtn(), BrowserInspectorContext, BrowserInspectorContextValue, BrowserInspectorProvider() (+35 more)
 
-### Community 102 - "workbench-composer-turn-footer.ts"
-Cohesion: 0.16
-Nodes (14): BackgroundTerminalRun, clearComposerCanvasPlan(), ComposerCanvasPlan, ComposerTurnFooterFile, ComposerTurnFooterSnapshot, emit(), Listener, listeners (+6 more)
+### Community 102 - "workbench-editor-toolbar.tsx"
+Cohesion: 0.25
+Nodes (14): EditorTabBar(), Props, ViewToggle(), WorkbenchEditorToolbar(), editorLanguageLabel(), inlinePreviewSourceLabel(), fileIconClass(), fileIconFor() (+6 more)
 
-### Community 103 - "check-shared-parity.mjs"
-Cohesion: 0.08
-Nodes (19): cadBridge, chain, claudePrompt, cloudDirect, host, markers, orch, plain (+11 more)
+### Community 103 - "embedded-browser-native.ts"
+Cohesion: 0.21
+Nodes (9): useEmbeddedBrowserReady(), EmbeddedBrowserBounds, EmbeddedBrowserLayout, hasEmbeddedBrowserNative(), isElectronInPaneBrowser(), isEmbeddedBrowserReady(), useInPaneIframeBrowser(), useNativeEmbeddedBrowser() (+1 more)
 
 ### Community 104 - "install-desktop-bridge.ts"
-Cohesion: 0.14
-Nodes (27): formatBridgeConnectionError(), formatFetchModelsError(), getBridgeWsUrl(), getWorkbenchHttpPort(), getWorkbenchWsPort(), isBridgeConnectionError(), normalizeRpcErrorMessage(), normalizeRpcPayload() (+19 more)
+Cohesion: 0.24
+Nodes (18): formatBridgeConnectionError(), formatFetchModelsError(), getBridgeWsUrl(), getWorkbenchHttpPort(), getWorkbenchWsPort(), isBridgeConnectionError(), normalizeRpcErrorMessage(), normalizeRpcPayload() (+10 more)
 
 ### Community 105 - "mcp-health-persist.mjs"
-Cohesion: 0.12
-Nodes (29): expandHome(), augmentSearchPath(), checkAllMcpServers(), checkMcpServerEntry(), checkOneMcpServer(), { Client }, detectPuppeteerBrowser(), __dirname (+21 more)
+Cohesion: 0.05
+Nodes (56): AGENTS_DIR, BATCH, DRY, listAgentFiles(), walk(), main(), OLLAMA, parseFrontmatter() (+48 more)
 
 ### Community 106 - "parse-active-chain.ts"
 Cohesion: 0.09
-Nodes (32): ChainStatusBadge, ChainExecutionPhase, ChainExecutionView, ChainStepRow, deriveChainExecutionView(), DEFAULT_WBS_CANDIDATE_PATHS, discoverWbsDocument(), isParseableWbsText() (+24 more)
+Nodes (31): ChainStatusBadge, ChainExecutionPhase, ChainExecutionView, ChainStepRow, deriveChainExecutionView(), DEFAULT_WBS_CANDIDATE_PATHS, discoverWbsDocument(), isParseableWbsText() (+23 more)
 
 ### Community 107 - "compilerOptions"
 Cohesion: 0.10
@@ -753,15 +770,15 @@ Nodes (9): _record_usage(), agentic_review(), _arun(), _intersects_diff(), _norm
 
 ### Community 117 - "agent-daily-reports.cjs"
 Cohesion: 0.24
-Nodes (16): agentDailyReportDir(), agentDailyReportFile(), appendAgentDailyActivity(), appendUnderSection(), buildAgentDailyReportFromEvents(), defaultReportMarkdown(), formatActivityLine(), fs (+8 more)
+Nodes (14): agentDailyReportDir(), agentDailyReportFile(), appendAgentDailyActivity(), appendUnderSection(), buildAgentDailyReportFromEvents(), defaultReportMarkdown(), formatActivityLine(), fs (+6 more)
 
 ### Community 118 - "workbench-chat-composer.tsx"
-Cohesion: 0.13
-Nodes (26): EditorWithTabs(), WorkbenchChatComposer(), WorkbenchChatComposerProps, buildPreview(), PreviewState, WorkbenchDiffReview(), useWorkbenchWorkspaceOptional(), applyUnifiedDiff() (+18 more)
+Cohesion: 0.12
+Nodes (26): WorkbenchChatComposer(), WorkbenchChatComposerProps, buildPreview(), PreviewState, WorkbenchDiffReview(), useWorkbenchWorkspaceOptional(), applyUnifiedDiff(), applyUnifiedDiffHunks() (+18 more)
 
-### Community 119 - "package.json"
+### Community 119 - "codemirror-editor-theme.ts"
 Cohesion: 0.14
-Nodes (13): dependencies, node-pty, playwright, pyright, ws, description, name, private (+5 more)
+Nodes (12): @uiw/codemirror-theme-vscode, codeDark, codeLight, editorCodeDarkTheme, editorCodeLightTheme, editorDarkTheme, editorLightTheme, editorMarkdownDarkTheme (+4 more)
 
 ### Community 120 - "plan.md"
 Cohesion: 0.18
@@ -772,20 +789,20 @@ Cohesion: 0.13
 Nodes (13): GSAP — Repository-wide instructions for GitHub Copilot, Claude Code, Clone / copy, Cursor, GitHub Copilot, GSAP AI Skills, Installing, License (+5 more)
 
 ### Community 122 - "composer-session-chip.tsx"
-Cohesion: 0.08
-Nodes (47): @radix-ui/react-dropdown-menu, @tanstack/react-router, AgentRow, ChatAgentSelector(), Props, ChatPanelToolbar(), Props, Session (+39 more)
+Cohesion: 0.11
+Nodes (35): AgentRow, ChatAgentSelector(), Props, AgentRow, ComposerSessionChip(), MODES, Props, ComposerSkillChip() (+27 more)
 
 ### Community 123 - "resync-official-chains.js"
 Cohesion: 0.18
 Nodes (13): AGENT_ARTIFACT_PATHS, buildChainStepReadBlock(), buildChainStepWriteBlock(), CHAINS_DIR, defaultArtifactPath(), fs, IMPLEMENTATION_STEMS, MUST_DO (+5 more)
 
 ### Community 124 - "class-variance-authority"
-Cohesion: 0.09
-Nodes (23): class-variance-authority, @radix-ui/react-navigation-menu, @radix-ui/react-toggle, @radix-ui/react-toggle-group, Alert, AlertDescription, AlertTitle, alertVariants (+15 more)
+Cohesion: 0.14
+Nodes (15): class-variance-authority, @radix-ui/react-toggle, @radix-ui/react-toggle-group, Alert, AlertDescription, AlertTitle, alertVariants, Badge() (+7 more)
 
 ### Community 125 - "binary-file-viewer.tsx"
-Cohesion: 0.35
-Nodes (10): BinaryFileViewer(), Props, FilePreviewPane(), base64ToBytes(), dataUrlFromBase64(), formatFileSize(), formatHexDump(), IMAGE_EXT (+2 more)
+Cohesion: 0.25
+Nodes (12): BinaryFileViewer(), Props, fileHostLabel(), FileTabContent(), base64ToBytes(), dataUrlFromBase64(), formatFileSize(), formatHexDump() (+4 more)
 
 ### Community 126 - "project-rules.ts"
 Cohesion: 0.28
@@ -800,24 +817,24 @@ Cohesion: 0.16
 Nodes (11): bridgeConstantsPromise, connectBridgeEvents(), { contextBridge, ipcRenderer }, desktop, embeddedBrowser, eventHandlers, getRpcBase(), getWsUrl() (+3 more)
 
 ### Community 129 - "workbench-call-hierarchy-peek.tsx"
-Cohesion: 0.28
-Nodes (14): Row(), WorkbenchCallHierarchyPeek(), CallHierarchyPeekState, clearCallHierarchyPeek(), emit(), getCallHierarchyPeek(), getCallHierarchyStackDepth(), Listener (+6 more)
+Cohesion: 0.26
+Nodes (15): Row(), WorkbenchCallHierarchyPeek(), CallHierarchyPeekState, clearCallHierarchyPeek(), emit(), getCallHierarchyPeek(), getCallHierarchyStackDepth(), Listener (+7 more)
 
 ### Community 130 - "createHandlers"
-Cohesion: 0.14
-Nodes (25): appendAppLog(), appendMemoryEventRow(), broadcast(), createHandlers(), emitChainRunStatus(), execFileAsync, executeScheduledTask(), getClaudeCliVersionSnapshot() (+17 more)
+Cohesion: 0.15
+Nodes (28): agentStemFromName(), appendAppLog(), appendDeferredWriteFences(), appendMemoryEventRow(), applyWritesInWorkspace(), broadcast(), createHandlers(), createTrackingWorkspaceWriter() (+20 more)
 
 ### Community 131 - "check-incomplete-reply.mjs"
-Cohesion: 0.11
-Nodes (23): cases, code, failed, mergeEnd, mergeStart, orchPath, policy, root (+15 more)
+Cohesion: 0.13
+Nodes (17): cases, code, failed, mergeEnd, mergeStart, orchPath, policy, root (+9 more)
 
 ### Community 132 - "desktop.d.ts"
 Cohesion: 0.14
 Nodes (13): AgentExecRegistryEntry, CcSwitchProviderSummary, ChatHistoryMsg, CloudProviderSummary, DesktopApi, ModelCatalogPools, OrchestrationState, SavedChainDetail (+5 more)
 
-### Community 133 - "codemirror-import-resolve.ts"
-Cohesion: 0.28
-Nodes (12): 2.1.69, buildImportPathCandidates(), escape(), EXT_CANDIDATES, findImportModuleForSymbol(), joinRelative(), namedImportIncludes(), normalizePath() (+4 more)
+### Community 133 - "help.tsx"
+Cohesion: 0.18
+Nodes (13): HELP_SECTION_DESC, aboutGroups, browserGroups, CardGroup, CardGroupGrid(), CardGroupPanel(), CardGroupRow(), CardItem (+5 more)
 
 ### Community 134 - "Claude Orchestrator 桌面应用"
 Cohesion: 0.15
@@ -835,21 +852,21 @@ Nodes (12): Best practices, Context-Safe Callbacks, Dependency array, scope, and
 Cohesion: 0.23
 Nodes (10): lifecycle, LifecycleLabel, STALE_UPVOTE_THRESHOLD, DRY_RUN, entry, CLOSE_MESSAGE(), closeExpired(), DRY_RUN (+2 more)
 
-### Community 138 - "context-budget.mjs"
-Cohesion: 0.15
-Nodes (13): COMPACT_KEEP_RECENT_TURNS, DEFAULT_REQUEST_TIMEOUT_MS, HOST_MAX_TURNS, HOST_VERIFY_EXTRA_TURNS, LOCAL_DIRECT_NUM_CTX, LOCAL_DIRECT_NUM_PREDICT, LOCAL_RECOVERY_NUM_CTX, LOCAL_RECOVERY_NUM_PREDICT (+5 more)
+### Community 138 - "languageFromPath"
+Cohesion: 0.27
+Nodes (10): prismjs, Props, resolveGrammar(), WorkbenchCodeView(), inferLanguageFromContent(), languageFromPath(), looksLikeJson(), codemirrorExtensionsForPath() (+2 more)
 
 ### Community 139 - "model-capabilities.mjs"
 Cohesion: 0.27
 Nodes (11): assertModelCanRun(), capabilitiesForCloudProvider(), contextLengthFromShow(), fetchOllamaModelShow(), getCachedOllamaCapability(), listOllamaModelsWithCapabilities(), ollamaCache, overrideCaps() (+3 more)
 
 ### Community 140 - "codemirror-scm-gutter.ts"
-Cohesion: 0.16
-Nodes (10): @codemirror/state, addMarker, createScmGutterController(), modMarker, parseScmChangedLines(), scmGutterExt(), ScmLineKind, scmLinesField (+2 more)
+Cohesion: 0.18
+Nodes (9): addMarker, createScmGutterController(), modMarker, parseScmChangedLines(), scmGutterExt(), ScmLineKind, scmLinesField, ScmMarker (+1 more)
 
 ### Community 141 - "chat-tool-activity.tsx"
-Cohesion: 0.27
-Nodes (12): ChatEditedFileRow(), ChatToolActivityGroup(), ChatToolActivityRow(), collapseExploreTools(), ExploredRow(), formatExploredCaption(), rerunBashInTerminal(), TOOL_META (+4 more)
+Cohesion: 0.17
+Nodes (20): DockAssistantContent(), DockTerminalOutputBlock(), ChatEditedFileRow(), ChatToolActivityGroup(), ChatToolActivityRow(), collapseExploreTools(), ExploredRow(), formatExploredCaption() (+12 more)
 
 ### Community 142 - "terminal-pty-bridge.py"
 Cohesion: 0.30
@@ -873,7 +890,11 @@ Nodes (11): recharts, ChartConfig, ChartContainer, ChartContext, ChartContextPro
 
 ### Community 147 - "workbench-side-panels.tsx"
 Cohesion: 0.11
-Nodes (36): ExplorerTreeRow(), EmptyEditorState(), WorkbenchCenterEditor(), escapeRegExp(), groupHits(), Hit, ToggleIcon(), WorkbenchSearchPanel() (+28 more)
+Nodes (34): ExplorerTreeRow(), EmptyEditorState(), WorkbenchCenterEditor(), escapeRegExp(), groupHits(), Hit, ToggleIcon(), WorkbenchSearchPanel() (+26 more)
+
+### Community 148 - "BridgeClient"
+Cohesion: 0.17
+Nodes (4): BridgeClient, BridgeEvent, BridgeStatus, Listener
 
 ### Community 149 - "patch-electron-index-html.mjs"
 Cohesion: 0.25
@@ -889,27 +910,27 @@ Nodes (14): getBridgeHealthUrl(), getBridgeRpcUrl(), getBridgeWsUrl(), getUiProx
 
 ### Community 152 - "codemirror-editor-menu.ts"
 Cohesion: 0.12
-Nodes (46): sonner, buildEditorMenuSnapshot(), EditorMenuItemDef, isCallHierarchyLikePath(), isTsLikePath(), runEditorMenuAction(), changeAllOccurrences(), execClipboard() (+38 more)
+Nodes (36): 2.1.69, @codemirror/state, buildEditorMenuSnapshot(), EditorMenuItemDef, isCallHierarchyLikePath(), isTsLikePath(), changeAllOccurrences(), peekDefinition (+28 more)
 
 ### Community 153 - "seti-file-icon.tsx"
 Cohesion: 0.20
-Nodes (15): explorerIconifyId(), baseName(), EXT_TO_LANG, inferExt(), matchFileExtension(), pickId(), resolveDef(), resolveSetiFolderIcon() (+7 more)
+Nodes (16): explorerIconifyId(), baseName(), EXT_TO_LANG, inferExt(), matchFileExtension(), pickId(), resolveDef(), resolveSetiFolderIcon() (+8 more)
 
 ### Community 154 - "trim-agent-teaching-content.cjs"
-Cohesion: 0.20
+Cohesion: 0.24
 Nodes (9): AGENTS_DIR, files, fs, h2Matches(), KEEP_FULL_SECTIONS, path, processFile(), REMOVE_SECTIONS (+1 more)
 
-### Community 155 - "claude-stream-parse.mjs"
-Cohesion: 0.38
-Nodes (9): appendStreamJsonLine(), extractToolArg(), extractToolPath(), extractToolResultOutput(), FILE_EDIT_TOOLS, formatToolLine(), normalizeToolName(), pushToolEvent() (+1 more)
+### Community 155 - "project-logs.cjs"
+Cohesion: 0.24
+Nodes (11): appendLogEntry(), clearAppLogs(), db(), formatLogLine(), parseLevel(), path, PROJECT_DATA_DIR, PROJECT_DB_PATH (+3 more)
 
 ### Community 156 - "rebuild-native-for-electron.mjs"
 Cohesion: 0.24
 Nodes (11): CAD_ROOT, DESKTOP, electronExecPath(), prepareBetterSqlite3(), probeBetterSqlite3In(), readBetterSqlite3Meta(), readElectronVersion(), ROOT (+3 more)
 
-### Community 157 - "use-claude-mcp-list.ts"
-Cohesion: 0.50
-Nodes (4): ClaudeMcpRow, MCP_LABELS, mcpDisplayLabel(), useClaudeMcpList()
+### Community 157 - "token-pricing.mjs"
+Cohesion: 0.21
+Nodes (10): convertToUsd(), CURRENCY_RATES, CURRENCY_SYMBOLS, DEFAULT_MODEL_PRICING, estimateUsageCostUsd(), formatUsd(), getDefaultModelPricing(), normalizePricingTable() (+2 more)
 
 ### Community 158 - ".claude-plugin/marketplace.json"
 Cohesion: 0.22
@@ -919,21 +940,21 @@ Nodes (8): description, name, owner, email, name, plugins, $schema, version
 Cohesion: 0.22
 Nodes (8): Claude Code, Connect on Discord, Data collection, usage, and retention, Get started, How we use your data, Plugins, Privacy safeguards, Reporting Bugs
 
-### Community 160 - "chat-assistant-parse.ts"
-Cohesion: 0.39
-Nodes (8): AssistantBlock, isToolLine(), normalizeToolName(), parseAssistantContent(), TOOL_LINE, TOOL_LINE_BARE, tryTerminalBlock(), tryToolLine()
+### Community 160 - "workspace-terminal.cjs"
+Cohesion: 0.20
+Nodes (7): attachTerminalToWebSocket(), fs, hasPythonPty, path, PY_PTY_BRIDGE, resolveShell(), { spawn, spawnSync }
 
 ### Community 161 - "workbench-output-log.ts"
-Cohesion: 0.20
-Nodes (14): appendOutputRaw(), buildOutputSnapshot(), channel(), channels, ChannelState, clearAllOutput(), clearOutput(), emit() (+6 more)
+Cohesion: 0.18
+Nodes (16): appendOutput(), appendOutputRaw(), buildOutputSnapshot(), channel(), channels, ChannelState, clearAllOutput(), clearOutput() (+8 more)
 
 ### Community 162 - "chat-composer-shell.tsx"
-Cohesion: 0.06
-Nodes (65): react-dom, CodeIndexChip(), GraphifyChip(), ChatComposerShell(), ChatComposerShellProps, ChatStickyUserHeader(), Props, ChatUserMessageBody() (+57 more)
+Cohesion: 0.16
+Nodes (24): CodeIndexChip(), GraphifyChip(), ChatComposerShell(), ComposerDomAttachments(), ComposerFileAttachments(), PendingFileEntry, DropdownMenuLabel, CodebaseHit (+16 more)
 
-### Community 163 - "mcp-health-hint.ts"
-Cohesion: 0.29
-Nodes (8): assertMcpHealthForTurn(), MCP_HEALTH_HARD_FAIL_MESSAGE, MCP_HEALTH_SNAPSHOT_UNAVAILABLE_MESSAGE, summarizeMcpHealthSnapshot(), toastMcpHealthIfDegraded(), EMPTY, McpHealthSummary, useMcpHealthSummary()
+### Community 163 - "use-mcp-health-summary.ts"
+Cohesion: 0.38
+Nodes (5): ComposerOrchHint(), OrchMode, EMPTY, McpHealthSummary, useMcpHealthSummary()
 
 ### Community 164 - "embedded-browser-preload.cjs"
 Cohesion: 0.50
@@ -951,9 +972,9 @@ Nodes (7): autoCloseDuplicates(), closeIssueAsDuplicate(), extractDuplicateIssue
 Cohesion: 0.21
 Nodes (10): findBalancedTripleFenceClose(), findTopLevelJsonEnd(), normalizeItem(), parseAll(), root, sharedPol, sib, src (+2 more)
 
-### Community 168 - "ensure-claude-cli.mjs"
-Cohesion: 0.47
-Nodes (9): claudeCliStatus(), candidateClaudePaths(), ensureClaudeCliInstalled(), expandUser(), npmGlobalBinDirs(), require, resolveClaudeCliDetailed(), runCmd() (+1 more)
+### Community 168 - "composer-chips.tsx"
+Cohesion: 0.18
+Nodes (8): LengthChip(), ModelChip(), RatioChip(), SegmentToggle(), STYLE_OPTIONS, StylePopover(), TEMPLATE_OPTIONS, TemplatePopover()
 
 ### Community 169 - "finder-dialog.tsx"
 Cohesion: 0.29
@@ -967,9 +988,9 @@ Nodes (6): CLAUDE_ENV_FILE, CLAUDE_PLUGIN_ROOT, CLAUDE_PROJECT_DIR, create_sampl
 Cohesion: 0.48
 Nodes (6): assertReplyLanguageMatchesUser(), buildLanguagePolicyInstruction(), detectReplyLanguage(), scriptBucket(), stripNonProseForLangDetect(), TAG_LABEL
 
-### Community 172 - "codemirror-agent-highlight.ts"
-Cohesion: 0.28
-Nodes (7): agentDecoField, agentLineDeco, agentLinesField, computeAgentChangedLines(), createAgentHighlightController(), setAgentLines, peekWorkspaceWriteCheckpoint()
+### Community 172 - "workbench-outline-panel.tsx"
+Cohesion: 0.31
+Nodes (10): isExternalLspPath(), isTsLikePath(), navKind(), OutlineHeader(), OutlineSource, WorkbenchOutlinePanel(), kindLabel(), listFileOutline() (+2 more)
 
 ### Community 173 - "Guidance for AI Agents Working in This Repo"
 Cohesion: 0.33
@@ -987,13 +1008,13 @@ Nodes (5): backfillDuplicateComments(), GitHubComment, GitHubIssue, githubReques
 Cohesion: 0.23
 Nodes (13): buildAnthropicContentBlocks(), buildStreamJsonUserLine(), crypto, dataUrlToBuffer(), enrichUserLineForImages(), extFromMime(), fs, loadModelCapabilities() (+5 more)
 
-### Community 177 - "workbench-terminal-run-bridge.ts"
-Cohesion: 0.36
-Nodes (8): echoAgentRunsInWorkbenchTerminal(), registerWorkbenchTerminalFocusTab(), runCommandInWorkbenchTerminalBridge(), TerminalRunHandlers, workbenchTerminalEchoAgentRun(), workbenchTerminalEnsureSession(), workbenchTerminalIsReady(), workbenchTerminalRunInActive()
+### Community 177 - "verify-packaged-native.mjs"
+Cohesion: 0.24
+Nodes (9): appPath, DESKTOP, electronExec(), findApps(), findMacApp(), probeSqlite(), RELEASE, result (+1 more)
 
 ### Community 178 - "file-browser.tsx"
-Cohesion: 0.18
-Nodes (13): @radix-ui/react-scroll-area, @radix-ui/react-separator, FileBrowser(), FileBrowserProps, FileTreeItem, Input, ScrollArea, ScrollBar (+5 more)
+Cohesion: 0.19
+Nodes (12): @radix-ui/react-scroll-area, @radix-ui/react-separator, FileBrowser(), FileBrowserProps, FileTreeItem, Input, ScrollArea, ScrollBar (+4 more)
 
 ### Community 179 - "本仓库 · Codex 约定"
 Cohesion: 0.50
@@ -1016,20 +1037,20 @@ Cohesion: 0.50
 Nodes (3): Anthropic Bug Bounty, Reporting Security Issues, Security Policy
 
 ### Community 192 - "desktop-api.ts"
-Cohesion: 0.09
-Nodes (36): AppLogo(), AppLogoProps, LogoMark(), AppShell(), groups, NavGroup, NavItem, OPS_NAV_ICONS (+28 more)
+Cohesion: 0.12
+Nodes (23): AppLogo(), AppLogoProps, LogoMark(), AppShell(), groups, NavGroup, NavItem, OPS_NAV_ICONS (+15 more)
 
-### Community 216 - "rejected-workspace-writes.ts"
-Cohesion: 0.71
-Nodes (6): clearRejectedWorkspaceWrite(), fingerprint(), isWorkspaceWriteRejected(), load(), rejectWorkspaceWrite(), save()
+### Community 216 - "claude-projects.mjs"
+Cohesion: 0.36
+Nodes (8): aggregateClaudeProjectUsage(), extractUserTitle(), listProjectJsonlFiles(), listRecentClaudeProjectSessions(), messageText(), parseTs(), PROJECTS_ROOT, scanJsonlFile()
 
 ### Community 225 - "user-preferences-panel.tsx"
 Cohesion: 0.50
 Nodes (6): UserPreferencesPanel(), ensureUserPreferencesFile(), loadUserPreferencesText(), saveUserPreferencesText(), USER_PREFERENCES_REL, USER_PREFERENCES_TEMPLATE
 
-### Community 227 - "agent-skill-routing.ts"
-Cohesion: 0.32
-Nodes (7): AGENT_ROUTING_PRESETS, AgentRoutingMode, AgentRoutingPreset, buildAgentRoutedInstruction(), buildAgentScopeGuard(), buildRoutingToolHint(), UI_IMPLEMENTATION_STEMS
+### Community 227 - "install-embedded-browser-bridge.ts"
+Cohesion: 0.27
+Nodes (8): EventHandler, eventHandlers, EmbeddedBrowserApi, embeddedRpc(), installEmbeddedBrowserBridge(), installOverlayEmbeddedBrowserBridge(), notifyEmbeddedBrowserReady(), RpcResult
 
 ### Community 228 - "select.tsx"
 Cohesion: 0.28
@@ -1037,7 +1058,7 @@ Nodes (8): @radix-ui/react-select, SelectContent, SelectItem, SelectLabel, Selec
 
 ### Community 229 - "workbench-composer-file-sync.tsx"
 Cohesion: 0.12
-Nodes (27): undoWrittenPathsOnDisk(), WorkbenchComposerFileSync(), AgentWrittenReviewState, clearAgentWrittenReview(), emit(), getAgentWrittenReviewState(), listeners, normalizePaths() (+19 more)
+Nodes (31): highlightDiffLine(), highlightWithRules(), wrapClass(), CursorDiffLines(), linesFromUnifiedOrPreview(), splitDiffByFile(), WorkbenchAppliedDiffReview(), EditorWithTabs() (+23 more)
 
 ### Community 230 - "drawer.tsx"
 Cohesion: 0.25
@@ -1048,44 +1069,80 @@ Cohesion: 0.38
 Nodes (4): applyUnifiedDiff(), collapseAccepted(), escapeRegExp(), resolveWorkspaceEditContent()
 
 ### Community 232 - "agent-skill-presets.mjs"
-Cohesion: 0.32
-Nodes (7): AGENT_ROUTING_PRESETS, EXTRA_AGENT_SKILL_STEMS, getAgentSkillToolBundle(), presetToolsToAgentTools(), ROUTING_SKILL_STEM, routingLabelToStem(), SHORT_DESCRIPTIONS
+Cohesion: 0.27
+Nodes (9): AGENT_ROUTING_PRESETS, EXTRA_AGENT_SKILL_STEMS, getAgentSkillToolBundle(), getSkillDefinition(), presetToolsToAgentTools(), resolveAgentSkillBundleFromMeta(), ROUTING_SKILL_STEM, routingLabelToStem() (+1 more)
+
+### Community 233 - "codebase-inject-selection.ts"
+Cohesion: 0.27
+Nodes (9): bump(), getCodebaseInjectPaths(), Listener, listeners, selected, setCodebaseInjectPaths(), setCodebaseInjectQuery(), subscribeCodebaseInject() (+1 more)
 
 ### Community 234 - "workbench-status-bar.tsx"
-Cohesion: 0.13
-Nodes (18): LspLangStatus, WorkbenchStatusBar(), workspaceFolderName(), Ctx, useWorkbenchProblems(), useWorkbenchProblemsOptional(), WorkbenchProblemsContext, WorkbenchProblemsProvider() (+10 more)
+Cohesion: 0.15
+Nodes (13): Ctx, WorkbenchProblemsContext, WorkbenchProblemsProvider(), setProblemsSnapshot(), snapshot, LintHandler, registerWorkbenchLintHandler(), requestWorkbenchLint() (+5 more)
+
+### Community 235 - "navigation-menu.tsx"
+Cohesion: 0.28
+Nodes (8): @radix-ui/react-navigation-menu, NavigationMenu, NavigationMenuContent, NavigationMenuIndicator, NavigationMenuList, NavigationMenuTrigger, navigationMenuTriggerStyle, NavigationMenuViewport
+
+### Community 236 - "use-theme.tsx"
+Cohesion: 0.32
+Nodes (7): apply(), Ctx, getSystem(), Resolved, ThemeContext, ThemeMode, ThemeProvider()
+
+### Community 237 - "chain-error-classify.js"
+Cohesion: 0.38
+Nodes (6): classifyChainError(), isMaxRetries(), RETRYABLE_KINDS, retryDelayMs(), retryHint(), shouldRetry()
+
+### Community 238 - "collectCloudModelPool"
+Cohesion: 0.33
+Nodes (7): collectCloudModelPool(), fetchGatewayModels(), fetchOllamaModelTags(), filterCloudModelList(), isLocalOllamaModel(), isLocalOllamaProvider(), syncProvidersToWorkbench()
 
 ### Community 239 - "ref_node_module"
 Cohesion: 0.15
 Nodes (15): connectBrowserBridgeHost(), connect(), scheduleReconnect(), require, WS_PORT, __dirname, PRELOAD, appIcon (+7 more)
 
+### Community 240 - "workbench-status-bar.tsx"
+Cohesion: 0.48
+Nodes (6): LspLangStatus, WorkbenchStatusBar(), workspaceFolderName(), useWorkbenchProblems(), gitBranchFromStatusLine(), focusProblemsPanel()
+
+### Community 241 - "workbench-terminal-bridge-context.tsx"
+Cohesion: 0.29
+Nodes (3): TerminalHandlers, WorkbenchTerminalBridgeContext, WorkbenchTerminalBridgeValue
+
 ### Community 242 - "scheduler.mjs"
 Cohesion: 0.36
 Nodes (7): isScheduledTaskDue(), parseDailyTime(), running, startTaskScheduler(), runAuto(), tick(), TICK_MS
 
-### Community 247 - "use-chat-send.ts"
+### Community 243 - "restore-dev-native-modules.mjs"
+Cohesion: 0.50
+Nodes (4): CAD_ROOT, ROOT, run(), runNodeScript()
+
+### Community 244 - "browser-navigation-shim.mjs"
+Cohesion: 0.70
+Nodes (3): WORKBENCH_BROWSER_FRAME_NAV_MESSAGE, WORKBENCH_BROWSER_NAVIGATE_MESSAGE, WORKBENCH_BROWSER_OPEN_TAB_MESSAGE
+
+### Community 247 - "index.tsx"
 Cohesion: 0.05
-Nodes (63): formatTurnAuditMessage(), useChatSend(), UseChatSendArgs, CHINESE_TO_AGENT_STEM, AgentChainEntry, buildAgentChainCatalogMarkdown(), chainsForAgent(), formatChainListForAgent() (+55 more)
+Nodes (92): formatTurnAuditMessage(), GithubDialog(), PendingTerminalSnippet, AgentEntry, deriveAgentList(), ParallelDispatchConfig, ParallelDispatchDialog(), stemToLabel() (+84 more)
 
 ## Knowledge Gaps
-- **41 isolated node(s):** `graphify-mcp`, `@modelcontextprotocol/server-filesystem`, `mcp-server-fetch`, `@modelcontextprotocol/server-memory`, `@modelcontextprotocol/server-sequential-thinking` (+36 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2213 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **41 isolated node(s):** `electron-builder`, `node-pty`, `playwright`, `pyright`, `mcp-server-fetch` (+36 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2228 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **41 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `cn()` connect `cn` to `workbench-call-hierarchy-peek.tsx`, `react`, `agents.tsx`, `browser-tab-inspector.tsx`, `web/package.json`, `overview.tsx`, `chart.tsx`, `workbench-side-panels.tsx`, `workbench-workspace-context.tsx`, `models-connections-panel.tsx`, `chains.tsx`, `chat-message-bubble.tsx`, `seti-file-icon.tsx`, `chat-session-workspace.ts`, `codemirror-workbench.tsx`, `workbench-main-layout.tsx`, `chat-composer-shell.tsx`, `ui-copy.ts`, `react`, `ui-prefs.ts`, `workbench-code-editor.tsx`, `scheduled.tsx`, `finder-dialog.tsx`, `workbench-applied-diff-review.tsx`, `assistant-reply.ts`, `workbench-bottom-panel.tsx`, `file-browser.tsx`, `comms.tsx`, `workspace-panel.tsx`, `workspace-terminal.tsx`, `reports.tsx`, `desktop-api.ts`, `chat-message-context-menu.tsx`, `workbench-side-tab.ts`, `workspaces.tsx`, `chat-enabled-model-picker.tsx`, `deploy-dialog.tsx`, `terminal-sessions-view.tsx`, `global-chat-panel.tsx`, `user-preferences-panel.tsx`, `select.tsx`, `workbench-center-editor.tsx`, `drawer.tsx`, `workspace-tsservice-client.ts`, `workbench-status-bar.tsx`, `form.tsx`, `workbench-chat-composer.tsx`, `composer-session-chip.tsx`, `class-variance-authority`, `binary-file-viewer.tsx`?**
-  _High betweenness centrality (0.110) - this node is a cross-community bridge._
+- **Why does `resolveTurnPolicy()` connect `expand-user-line-workspace-files.ts` to `index.tsx`?**
+  _High betweenness centrality (0.085) - this node is a cross-community bridge._
 - **Are the 2 inferred relationships involving `useChatSend()` (e.g. with `toastIngestWorkspaceHint()` and `isPlausibleWorkspaceRelPath()`) actually correct?**
   _`useChatSend()` has 2 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `graphify-mcp`, `@modelcontextprotocol/server-filesystem`, `mcp-server-fetch` to the rest of the system?**
+- **What connects `electron-builder`, `node-pty`, `playwright` to the rest of the system?**
   _41 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Changelog` be split into smaller, more focused modules?**
   _Cohesion score 0.006578947368421052 - nodes in this community are weakly interconnected._
-- **Why does `Changelog` connect `Changelog` to `2.1.153`, `codemirror-import-resolve.ts`?**
-  _High betweenness centrality (0.094) - this node is a cross-community bridge._
+- **Why does `react` connect `react` to `cn`, `workbench-call-hierarchy-peek.tsx`, `agents.tsx`, `languageFromPath`, `browser-tab-inspector.tsx`, `web/package.json`, `chat-tool-activity.tsx`, `overview.tsx`, `chart.tsx`, `getDesktop`, `workbench-side-panels.tsx`, `workbench-workspace-context.tsx`, `models-connections-panel.tsx`, `chains.tsx`, `chat-message-bubble.tsx`, `ChatPage`, `codemirror-workbench.tsx`, `workbench-main-layout.tsx`, `chat-composer-shell.tsx`, `ui-prefs.ts`, `react`, `use-mcp-health-summary.ts`, `workbench-code-editor.tsx`, `ui-copy.ts`, `scheduled.tsx`, `compress-agent-display.ts`, `finder-dialog.tsx`, `carousel.tsx`, `workbench-outline-panel.tsx`, `workbench-bottom-panel.tsx`, `file-browser.tsx`, `comms.tsx`, `workspace-panel.tsx`, `workspace-terminal.tsx`, `reports.tsx`, `desktop-api.ts`, `chat-assistant-content.tsx`, `chat-message-context-menu.tsx`, `chat-user-message-body.tsx`, `workbench-side-tab.ts`, `workspaces.tsx`, `chat-session-tabs.tsx`, `chat-enabled-model-picker.tsx`, `deploy-dialog.tsx`, `terminal-sessions-view.tsx`, `chat-messages-pane.tsx`, `global-chat-panel.tsx`, `user-preferences-panel.tsx`, `workbench-references-peek.tsx`, `select.tsx`, `workbench-composer-file-sync.tsx`, `workbench-center-editor.tsx`, `drawer.tsx`, `workbench-editor-toolbar.tsx`, `embedded-browser-native.ts`, `workbench-status-bar.tsx`, `navigation-menu.tsx`, `form.tsx`, `use-theme.tsx`, `workbench-status-bar.tsx`, `workbench-terminal-bridge-context.tsx`, `workbench-chat-composer.tsx`, `index.tsx`, `composer-session-chip.tsx`, `class-variance-authority`, `binary-file-viewer.tsx`?**
+  _High betweenness centrality (0.062) - this node is a cross-community bridge._
 - **Should `cn` be split into smaller, more focused modules?**
-  _Cohesion score 0.03092096494735439 - nodes in this community are weakly interconnected._
-- **Why does `Agent` connect `2.1.153` to `agents.tsx`?**
-  _High betweenness centrality (0.090) - this node is a cross-community bridge._
+  _Cohesion score 0.04760505436379665 - nodes in this community are weakly interconnected._
+- **Why does `getDesktop()` connect `getDesktop` to `workbench-call-hierarchy-peek.tsx`, `agents.tsx`, `codemirror-scm-gutter.ts`, `overview.tsx`, `workbench-side-panels.tsx`, `workbench-workspace-context.tsx`, `models-connections-panel.tsx`, `chains.tsx`, `ChatPage`, `chat-composer-shell.tsx`, `ui-prefs.ts`, `react`, `use-mcp-health-summary.ts`, `workbench-code-editor.tsx`, `model-catalog.ts`, `scheduled.tsx`, `ui-copy.ts`, `workbench-outline-panel.tsx`, `workbench-bottom-panel.tsx`, `comms.tsx`, `workspace-panel.tsx`, `workspace-terminal.tsx`, `reports.tsx`, `chat-assistant-content.tsx`, `workbench-side-tab.ts`, `workspaces.tsx`, `parse-chat-file-edits.ts`, `deploy-dialog.tsx`, `global-chat-panel.tsx`, `codemirror-ghost-text.ts`, `user-preferences-panel.tsx`, `workbench-references-peek.tsx`, `ref_types_desktop`, `workspace-tsservice-client.ts`, `workbench-composer-file-sync.tsx`, `workbench-center-editor.tsx`, `workbench-status-bar.tsx`, `workbench-status-bar.tsx`, `launch-desktop-browser.ts`, `workbench-chat-composer.tsx`, `index.tsx`, `composer-session-chip.tsx`, `binary-file-viewer.tsx`?**
+  _High betweenness centrality (0.055) - this node is a cross-community bridge._

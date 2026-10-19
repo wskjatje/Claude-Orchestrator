@@ -2521,12 +2521,14 @@
   },
   "web/supabase/migrations/20260425010738_b8605aee-0450-46f3-9a45-968c27ba327d.sql": {
     "mtime": 1777253928.0,
-    "ast_hash": "",
+    "seen": 1792369510.013248,
+    "ast_hash": "e233be12cd63a59d4ac758a105f0dd9c",
     "semantic_hash": ""
   },
   "web/supabase/migrations/20260425010801_852d07b8-de64-43f2-9bfa-a37bc09fa6a0.sql": {
     "mtime": 1777253928.0,
-    "ast_hash": "",
+    "seen": 1792369510.013249,
+    "ast_hash": "e71686cde247dbb30a06a26587d9542f",
     "semantic_hash": ""
   },
   "web/tsconfig.json": {
@@ -3022,8 +3024,8 @@
     "semantic_hash": ""
   },
   "desktop/bridge-constants.mjs": {
-    "mtime": 1792300902.507757,
-    "seen": 1792301728.756951,
+    "mtime": 1792369409.1217542,
+    "seen": 1792369510.012733,
     "ast_hash": "b40c9cea4a4f5a57f57d470efabc8d15",
     "semantic_hash": ""
   },
