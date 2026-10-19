@@ -91,10 +91,13 @@ import {
   tsReferencesAt,
   tsRenameLocationsAt,
   tsOrganizeImports,
+  tsFormatDocument,
   tsCodeFixesAt,
   tsApplyCodeFix,
   tsSignatureHelpAt,
   tsTypeDefinitionAt,
+  tsNavigationTree,
+  tsCallHierarchyAt,
 } from "./workspace-tsservice.mjs";
 import { workspaceRipgrep } from "./workspace-ripgrep.mjs";
 import { workspaceGraphifyQuery } from "./workspace-graphify-query.mjs";
@@ -108,6 +111,7 @@ import { runHostAgentLoop, abortHostAgent } from "./host-agent-loop.mjs";
 import {
   workspaceRunCommand,
   workspaceRunTests,
+  abortWorkspaceRunCommand,
 } from "./workspace-run-command.mjs";
 import { ensureClaudeCliInstalled } from "./ensure-claude-cli.mjs";
 import { ensureCodeIndexHybrid } from "./ensure-code-index-hybrid.mjs";
@@ -123,6 +127,8 @@ import {
   externalLspHoverAt,
   externalLspReferencesAt,
   externalLspRenameAt,
+  externalLspDocumentSymbols,
+  externalLspCallHierarchyAt,
   getExternalLspStatus,
   pythonCompletionsAt,
   pythonDefinitionAt,
@@ -368,6 +374,10 @@ export const handlers = {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
     return tsHoverAt(body);
   },
+  "workspace:tsNavigationTree": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsNavigationTree(body);
+  },
   "workspace:tsSignatureHelp": async (args) => {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
     return tsSignatureHelpAt(body);
@@ -380,6 +390,10 @@ export const handlers = {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
     return tsReferencesAt(body);
   },
+  "workspace:tsCallHierarchy": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsCallHierarchyAt(body);
+  },
   "workspace:tsRename": async (args) => {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
     return tsRenameLocationsAt(body);
@@ -387,6 +401,10 @@ export const handlers = {
   "workspace:tsOrganizeImports": async (args) => {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
     return tsOrganizeImports(body);
+  },
+  "workspace:tsFormatDocument": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return tsFormatDocument(body);
   },
   "workspace:ripgrep": async (args) => {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
@@ -443,6 +461,11 @@ export const handlers = {
             broadcast("message_delta", { requestId, content: chunk });
           }
         : undefined,
+      onToolEvent: requestId
+        ? (event) => {
+            broadcast("agent_tool_event", { requestId, event });
+          }
+        : undefined,
     });
   },
   "host-agent:abort": async (args) => {
@@ -458,6 +481,15 @@ export const handlers = {
   "workspace:runCommand": async (args) => {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
     return workspaceRunCommand(body);
+  },
+  "workspace:abortRunCommand": async (args) => {
+    const id =
+      typeof args?.[0] === "string"
+        ? args[0]
+        : args?.[0] && typeof args[0] === "object"
+          ? String(args[0].runId || args[0].requestId || "")
+          : "";
+    return abortWorkspaceRunCommand(id);
   },
   "workspace:runTests": async (args) => {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
@@ -512,6 +544,14 @@ export const handlers = {
   "workspace:externalLspRename": async (args) => {
     const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
     return externalLspRenameAt(body);
+  },
+  "workspace:externalLspDocumentSymbols": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return externalLspDocumentSymbols(body);
+  },
+  "workspace:externalLspCallHierarchy": async (args) => {
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    return externalLspCallHierarchyAt(body);
   },
   "workspace:getShellSnapshot": async () => shellSnapshot(),
   "workspace:getGitCommitLog": async (args) => gitCommitLog(args?.[0]?.limit),
@@ -688,6 +728,11 @@ export const handlers = {
             broadcast("message_delta", { requestId, content: chunk });
           }
         : undefined,
+      onToolEvent: requestId
+        ? (event) => {
+            broadcast("agent_tool_event", { requestId, event });
+          }
+        : undefined,
     };
     // 瞬态失败自动退避重试（timeout / rate_limit / network）
     let attempts = 0;
@@ -785,11 +830,17 @@ export const handlers = {
 
   "cloud-direct:prompt": async (args) => {
     const p = args?.[0] || {};
+    const requestId = typeof p.requestId === "string" ? p.requestId.trim() : "";
     const result = await cloudDirect.directPrompt({
       prompt: p.prompt,
       model: p.model,
-      requestId: p.requestId,
+      requestId,
       timeoutMs: p.timeoutMs,
+      onDelta: requestId
+        ? (chunk) => {
+            broadcast("message_delta", { requestId, content: chunk });
+          }
+        : undefined,
     });
     return result;
   },

@@ -1,11 +1,23 @@
 import { useMemo, useSyncExternalStore, type RefObject } from "react";
+import { Check, X } from "lucide-react";
+import { toast } from "sonner";
 import { ChatComposerShell, type ChatComposerShellProps } from "@/components/chat-composer-shell";
 import { ChainQuickTrigger, type QuickChainOption } from "@/components/chain-quick-trigger";
+import { ComposerTurnFooterPanel } from "@/components/composer-turn-footer-panel";
 import { cn } from "@/lib/utils";
 import {
   getComposerFileBarState,
   subscribeComposerFileBar,
 } from "@/lib/workbench-composer-file-bar";
+import {
+  getComposerBackgroundTerminalRuns,
+  getComposerCanvasPlan,
+  subscribeComposerTurnFooter,
+} from "@/lib/workbench-composer-turn-footer";
+import {
+  getPendingWritesState,
+  subscribePendingWrites,
+} from "@/lib/workbench-pending-writes";
 import { useWorkbenchWorkspaceOptional } from "@/contexts/workbench-workspace-context";
 import { isFileTab } from "@/types/workbench-editor";
 
@@ -38,6 +50,21 @@ export function WorkbenchChatComposer({
     getComposerFileBarState,
     getComposerFileBarState,
   );
+  const canvasPlan = useSyncExternalStore(
+    subscribeComposerTurnFooter,
+    getComposerCanvasPlan,
+    getComposerCanvasPlan,
+  );
+  const backgroundTerminals = useSyncExternalStore(
+    subscribeComposerTurnFooter,
+    getComposerBackgroundTerminalRuns,
+    getComposerBackgroundTerminalRuns,
+  );
+  const pending = useSyncExternalStore(
+    subscribePendingWrites,
+    getPendingWritesState,
+    getPendingWritesState,
+  );
   const ws = useWorkbenchWorkspaceOptional();
   const mentionPriorityPaths = useMemo(() => {
     if (!ws?.editorTabs?.length) return [];
@@ -48,28 +75,63 @@ export function WorkbenchChatComposer({
     return paths;
   }, [ws?.editorTabs, ws?.activeEditorTab]);
 
+  const pendingCount = pending.items.length;
+  const showPendingBar = pendingCount > 0 && Boolean(pending.applyAll || pending.rejectAll);
+  const showTurnFooter =
+    Boolean(canvasPlan) || backgroundTerminals.length > 0 || fileBar.count > 0;
+
   return (
-    <div ref={dockRef} className="chat-pane-composer border-t border-border/70 bg-card">
-      {fileBar.count > 0 ? (
-        <div className="composer-file-changes-bar mb-2 flex items-center gap-2 rounded-lg border border-border/70 bg-secondary/35 px-2.5 py-1.5">
-          <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">
-            &gt; {fileBar.count} Files
+    <div ref={dockRef} className="chat-pane-composer border-t border-border/60">
+      {showPendingBar ? (
+        <div className="composer-pending-bar" role="status">
+          <span className="min-w-0 flex-1 truncate text-[12px] text-foreground/90">
+            {pendingCount} 个待确认写入
           </span>
-          <button
-            type="button"
-            className="shrink-0 text-[12px] text-muted-foreground transition hover:text-foreground"
-            onClick={() => fileBar.undoAll?.()}
-          >
-            Undo All
-          </button>
-          <button
-            type="button"
-            className="shrink-0 rounded-md bg-secondary px-2.5 py-0.5 text-[12px] font-medium text-foreground transition hover:bg-secondary/80"
-            onClick={() => fileBar.review?.()}
-          >
-            Review
-          </button>
+          {pending.applyAll ? (
+            <button
+              type="button"
+              className="btn-row shrink-0 text-[11px] font-medium"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    await pending.applyAll?.();
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "全部接受失败");
+                  }
+                })();
+              }}
+            >
+              <Check className="h-3 w-3" /> 全部接受
+            </button>
+          ) : null}
+          {pending.rejectAll ? (
+            <button
+              type="button"
+              className="btn-row shrink-0 text-[11px]"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    await pending.rejectAll?.();
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "全部拒绝失败");
+                  }
+                })();
+              }}
+            >
+              <X className="h-3 w-3" /> 全部拒绝
+            </button>
+          ) : null}
         </div>
+      ) : null}
+
+      {showTurnFooter ? (
+        <ComposerTurnFooterPanel
+          canvas={canvasPlan}
+          terminals={backgroundTerminals}
+          files={fileBar.paths.map((path) => ({ path }))}
+          onUndoAll={fileBar.undoAll}
+          onReview={fileBar.review}
+        />
       ) : null}
 
       <ChatComposerShell
@@ -83,10 +145,10 @@ export function WorkbenchChatComposer({
       {chainStatusLabel &&
       chainStatusLabel !== "链：—" &&
       chainStatusTone !== "done" ? (
-        <div className="mt-1.5 flex items-center justify-between gap-2 px-0.5">
+        <div className="mt-1 flex items-center justify-between gap-2 px-0.5">
           <span
             className={cn(
-              "inline-flex max-w-full truncate rounded-full border px-2.5 py-0.5 text-[12px] font-medium",
+              "inline-flex max-w-full truncate rounded-full border px-2 py-0.5 text-[11px] font-medium",
               chainStatusTone === "active" &&
                 "border-emerald-400/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
               chainStatusTone === "idle" &&
@@ -104,7 +166,7 @@ export function WorkbenchChatComposer({
             {onStopChain ? (
               <button
                 type="button"
-                className="rounded-md border border-border/70 px-2 py-0.5 text-[12px] text-muted-foreground transition hover:bg-secondary/70 hover:text-foreground"
+                className="rounded-md border border-border/70 px-2 py-0.5 text-[11px] text-muted-foreground transition hover:bg-secondary/70 hover:text-foreground"
                 onClick={onStopChain}
                 title="停止任务链"
               >
@@ -122,7 +184,7 @@ export function WorkbenchChatComposer({
         </div>
       ) : null}
       {!chainStatusLabel && onAddTask && chainOptions && chainOptions.length > 0 ? (
-        <div className="mt-1.5 flex justify-end px-0.5">
+        <div className="mt-1 flex justify-end px-0.5">
           <ChainQuickTrigger
             disabled={Boolean(shellProps.disabled)}
             chains={chainOptions}

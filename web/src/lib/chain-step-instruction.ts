@@ -1,5 +1,6 @@
 import {
   buildAgentArtifactPathHint,
+  defaultArtifactPathForAgent,
   normalizeAgentStem,
   upstreamArtifactPathsForAgent,
 } from "@/lib/agent-artifact-paths";
@@ -37,19 +38,31 @@ export function buildChainStepWriteBlock(stemRaw: string): string {
   const stem = normalizeAgentStem(stemRaw);
   if (!stem) return "";
   if (stem === "__general__") {
-    return buildAgentArtifactPathHint(stem);
+    return (
+      "【WRITE】须输出合法 ```workspace-write``` JSON：{\"path\":\"...\",\"content\":\"...\"}（也接受 contents）。" +
+      "path 必须写明；无围栏则本步失败，系统不会猜路径或写默认 docs/chain-steps。"
+    );
   }
+  const suggested = defaultArtifactPathForAgent(stem);
   const pathHint = buildAgentArtifactPathHint(stem);
-  const codeHint = "【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.";
+  const lines = [
+    pathHint,
+    `【WRITE】须输出合法 \`\`\`workspace-write\`\`\` JSON：{"path":"${suggested}","content":"..."}（也接受 contents；path 可改但必须显式）。` +
+      "无围栏则本步失败；系统不会猜路径、不会写默认 docs/chain-steps。",
+    "【NO FAKE WRITE】无有效围栏勿声称已写入。",
+  ];
   if (IMPLEMENTATION_STEMS.has(stem)) {
-    return `${pathHint}\n${codeHint}`;
+    lines.push(
+      "【CODE WRITE】业务代码 path 指向 src/（或仓库约定目录）；文档用建议 md 路径。",
+    );
   }
-  return `${pathHint}\n${codeHint}`;
+  return lines.join("\n");
 }
 
 export const MUST_DO = [
-  "【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.",
-  "【2】Your reply IS the artifact. Produce structured Chinese markdown.",
+  "【1】基于已注入工作区状态作答；禁止伪造不存在文件。",
+  "【2】变更须经 ```workspace-write``` JSON 显式 path+content|contents；无围栏不落盘。",
+  "【3】收尾 1～3 句；禁止下一步推销。",
 ].join("\n");
 
 function buildWrappedInstruction(label: string, agent: string, taskId: string, instruction: string): string {

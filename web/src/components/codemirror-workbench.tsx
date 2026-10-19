@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { MessageCirclePlus, WandSparkles } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { lintGutter } from "@codemirror/lint";
 import { EditorView } from "@codemirror/view";
@@ -13,7 +14,7 @@ import { workspaceLinterExtension } from "@/lib/codemirror-workspace-lint";
 import { buildEditorMenuSnapshot } from "@/lib/codemirror-editor-menu";
 import { editorIdeExtensions, runPendingGotoWithRetry } from "@/lib/codemirror-ide-extensions";
 import { ghostTextExtension } from "@/lib/codemirror-ghost-text";
-import { setEditorIdeHandlers } from "@/lib/codemirror-ide-handlers";
+import { setActiveEditorView, setEditorIdeHandlers } from "@/lib/codemirror-ide-handlers";
 import {
   clearPendingGotoRetry,
   clearPendingSymbolGoto,
@@ -31,6 +32,16 @@ import { setEditorSelectionSnapshot } from "@/lib/editor-selection-snapshot";
 import { setActiveEditorRelPath } from "@/lib/active-editor-path";
 import { getUiPrefsCache, getUiPrefsEpoch, subscribeUiPrefs } from "@/lib/ui-prefs";
 import { cn } from "@/lib/utils";
+import { useWorkbenchComposerBridgeOptional } from "@/contexts/workbench-composer-bridge-context";
+import { setWorkbenchInteractionMode } from "@/lib/workbench-interaction-mode";
+
+type SelectionFab = {
+  top: number;
+  left: number;
+  text: string;
+  fromLine: number;
+  toLine: number;
+};
 
 type Props = {
   value: string;
@@ -53,6 +64,9 @@ export function CodemirrorWorkbench({
 }: Props) {
   const { resolved } = useTheme();
   const problemsCtx = useWorkbenchProblemsOptional();
+  const composerBridge = useWorkbenchComposerBridgeOptional();
+  const composerBridgeRef = useRef(composerBridge);
+  composerBridgeRef.current = composerBridge;
   const prefsEpoch = useSyncExternalStore(subscribeUiPrefs, getUiPrefsEpoch, getUiPrefsEpoch);
   const isDark = resolved === "dark";
   const isMd = isMarkdownPath(relPath);
@@ -60,6 +74,7 @@ export function CodemirrorWorkbench({
   const menuOpenRef = useRef(false);
   const [menuState, setMenuState] = useState<EditorContextMenuState>(null);
   const [inlineEditOpen, setInlineEditOpen] = useState(false);
+  const [selectionFab, setSelectionFab] = useState<SelectionFab | null>(null);
   const contentSampleRef = useRef("");
   const pendingRetryCancelRef = useRef<(() => void) | null>(null);
   const readFileRef = useRef(readWorkspaceFile);
@@ -116,6 +131,10 @@ export function CodemirrorWorkbench({
         }
         requestAnimationFrame(() => openMenuAt(x, y, pos));
       },
+      askAboutSelection: (prompt) => {
+        setWorkbenchInteractionMode("ask");
+        composerBridgeRef.current?.prefillComposer(prompt);
+      },
     });
     return () => {
       closeMenu();
@@ -125,6 +144,7 @@ export function CodemirrorWorkbench({
 
   useEffect(() => {
     closeMenu();
+    setSelectionFab(null);
     contentSampleRef.current = value.slice(0, 4096);
   }, [relPath, closeMenu]);
 
@@ -171,6 +191,7 @@ export function CodemirrorWorkbench({
         const sel = update.state.selection.main;
         if (sel.empty) {
           setEditorSelectionSnapshot(null);
+          setSelectionFab(null);
           return;
         }
         const text = update.state.doc.sliceString(sel.from, sel.to);
@@ -183,6 +204,21 @@ export function CodemirrorWorkbench({
           toLine,
           updatedAt: Date.now(),
         });
+        try {
+          const start = update.view.coordsAtPos(sel.from);
+          const end = update.view.coordsAtPos(sel.to);
+          const host = update.view.dom.getBoundingClientRect();
+          if (start && end) {
+            const top = Math.max(8, Math.min(start.top, end.top) - host.top - 36);
+            const left = Math.max(
+              8,
+              Math.min(Math.max(start.left, end.left) - host.left - 8, host.width - 140),
+            );
+            setSelectionFab({ top, left, text, fromLine, toLine });
+          }
+        } catch {
+          setSelectionFab(null);
+        }
       }),
       EditorView.theme({
         "&": {
@@ -245,6 +281,7 @@ export function CodemirrorWorkbench({
   const onCreateEditor = useCallback(
     (view: EditorView) => {
       viewRef.current = view;
+      setActiveEditorView(view);
       scmCtrlRef.current?.attach(view);
       agentCtrlRef.current?.attach(view);
       if (pathsMatchAnyPending(relPath)) tryPendingGoto();
@@ -268,6 +305,7 @@ export function CodemirrorWorkbench({
     return () => {
       pendingRetryCancelRef.current?.();
       pendingRetryCancelRef.current = null;
+      if (viewRef.current) setActiveEditorView(null);
       viewRef.current = null;
       closeMenu();
     };
@@ -307,6 +345,55 @@ export function CodemirrorWorkbench({
         onChange={(v) => onChange?.(v)}
         className="h-full [&_.cm-editor]:h-full [&_.cm-editor]:outline-none"
       />
+      {selectionFab ? (
+        <div
+          className="editor-selection-fab absolute z-30 flex items-center gap-0.5"
+          style={{ top: selectionFab.top, left: selectionFab.left }}
+        >
+          {!readOnly ? (
+            <button
+              type="button"
+              className="editor-selection-chat-btn !static"
+              title="Inline Edit (⌘K)"
+              aria-label="Inline Edit"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setInlineEditOpen(true);
+                setSelectionFab(null);
+              }}
+            >
+              <WandSparkles className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+              Edit
+              <kbd className="rounded border border-border/60 bg-muted/40 px-1 py-px font-mono text-[10px] text-muted-foreground">
+                ⌘K
+              </kbd>
+            </button>
+          ) : null}
+          {composerBridge ? (
+            <button
+              type="button"
+              className="editor-selection-chat-btn !static"
+              title="用选区提问（插入 @selection）"
+              aria-label="用选区提问"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setWorkbenchInteractionMode("ask");
+                const range =
+                  selectionFab.fromLine === selectionFab.toLine
+                    ? `L${selectionFab.fromLine}`
+                    : `L${selectionFab.fromLine}-${selectionFab.toLine}`;
+                composerBridge.prefillComposer(
+                  `@selection\n\n请解释选中代码（${relPath}:${range}）并给出可执行建议：`,
+                );
+                setSelectionFab(null);
+              }}
+            >
+              <MessageCirclePlus className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+              Ask
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <CodemirrorInlineEditDialog
         open={inlineEditOpen}
         view={viewRef.current}

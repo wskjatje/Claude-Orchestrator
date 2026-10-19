@@ -217,8 +217,8 @@ function attachTerminalToWebSocket(ws, getWorkspace) {
         cols,
         rows,
         warning: nodePty
-          ? 'node-pty 暂不可用，终端为管道模式；可正常执行 python、npm 等命令。'
-          : '未安装 node-pty，终端为管道模式；可正常执行 python、npm 等命令。',
+          ? 'node-pty 启动失败，已降级为管道模式（非完整 PTY；交互式程序可能异常）。请检查 node-pty 原生模块与权限。'
+          : '未安装 node-pty，已降级为管道模式（非完整 PTY）。请安装依赖后重启应用以获得真 PTY。',
       })
     } catch (e) {
       send({ type: 'terminal:error', error: e?.message || String(e) })

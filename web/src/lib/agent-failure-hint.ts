@@ -71,7 +71,7 @@ export function enrichAgentFailureHint(error: string): string {
   if (/Agent 工具环不可用/i.test(err) && !/CLI|Host|本地/.test(err.slice(0, 40))) {
     head = head.replace(
       /^请求失败：Agent 工具环不可用/,
-      "请求失败：工具环不可用（CLI→Host）",
+      "请求失败：工具环不可用（Claude CLI）",
     );
   }
 

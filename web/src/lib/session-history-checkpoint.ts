@@ -11,11 +11,37 @@ export type SessionHistoryCheckpoint = {
   keepUntil: number;
 };
 
-export function saveSessionHistoryCheckpoint(cp: SessionHistoryCheckpoint): void {
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+function emit() {
+  listeners.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      /* */
+    }
+  });
+}
+
+export function subscribeSessionHistoryCheckpoint(fn: Listener) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
+/** @returns 是否写入成功；失败时调用方必须硬报错，禁止继续截断 */
+export function saveSessionHistoryCheckpoint(cp: SessionHistoryCheckpoint): boolean {
+  if (!cp?.sessionId || !Array.isArray(cp.discarded) || cp.discarded.length === 0) {
+    return false;
+  }
   try {
     localStorage.setItem(KEY, JSON.stringify(cp));
+    emit();
+    return true;
   } catch {
-    /* quota */
+    return false;
   }
 }
 
@@ -27,11 +53,17 @@ export function loadSessionHistoryCheckpoint(
     if (!raw) return null;
     const cp = JSON.parse(raw) as SessionHistoryCheckpoint;
     if (!cp || typeof cp.sessionId !== "string" || !Array.isArray(cp.discarded)) return null;
+    if (cp.discarded.length === 0) return null;
+    if (typeof cp.keepUntil !== "number" || cp.keepUntil < 0) return null;
     if (sessionId && cp.sessionId !== sessionId) return null;
     return cp;
   } catch {
     return null;
   }
+}
+
+export function hasSessionHistoryCheckpoint(sessionId?: string): boolean {
+  return loadSessionHistoryCheckpoint(sessionId) != null;
 }
 
 export function clearSessionHistoryCheckpoint(): void {
@@ -40,4 +72,26 @@ export function clearSessionHistoryCheckpoint(): void {
   } catch {
     /* ignore */
   }
+  emit();
+}
+
+/** 命令面板 → ChatPage 执行恢复（需会话 patch 能力） */
+type RestoreListener = () => void;
+const restoreListeners = new Set<RestoreListener>();
+
+export function requestRestoreSessionCheckpoint() {
+  restoreListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      /* */
+    }
+  });
+}
+
+export function subscribeRestoreSessionCheckpoint(fn: RestoreListener) {
+  restoreListeners.add(fn);
+  return () => {
+    restoreListeners.delete(fn);
+  };
 }

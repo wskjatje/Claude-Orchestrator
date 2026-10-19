@@ -25,5 +25,5 @@ export function agentStemFromBasename(basename: string | undefined | null): stri
   if (!raw || isAutoAgentBasename(raw)) return "__general__";
   const lower = raw.toLowerCase();
   const stripMd = lower.endsWith(".md") ? raw.slice(0, -3).trim() : raw;
-  return stripMd || "product-manager";
+  return stripMd || "__general__";
 }

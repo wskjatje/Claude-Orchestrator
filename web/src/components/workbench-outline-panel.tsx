@@ -1,21 +1,138 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ListTree } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkbenchWorkspace } from "@/contexts/workbench-workspace-context";
-import { kindLabel, listFileOutline } from "@/lib/codemirror-symbol-nav";
+import { kindLabel, listFileOutline, type SymbolKind } from "@/lib/codemirror-symbol-nav";
+import { getDesktop } from "@/lib/desktop-api";
+import { fetchExternalLspDocumentSymbols } from "@/lib/workspace-tsservice-client";
 import { isFileTab } from "@/types/workbench-editor";
 
-/** 左侧栏 Outline：当前活动文件符号列表，点击跳转行（Outline） */
+function isTsLikePath(relPath: string) {
+  return /\.(tsx?|jsx?|mjs|cjs)$/i.test(relPath);
+}
+
+function isExternalLspPath(relPath: string) {
+  return /\.(py|go|rs)$/i.test(relPath);
+}
+
+function navKind(kind: string): SymbolKind {
+  const k = kind.toLowerCase();
+  if (k.includes("function") || k.includes("method")) return "function";
+  if (k.includes("class") || k.includes("struct")) return "class";
+  if (k.includes("interface")) return "interface";
+  if (k.includes("enum")) return "enum";
+  if (k.includes("typealias") || k === "typealias" || k.includes("type")) return "type";
+  if (k.includes("property") || k.includes("variable") || k.includes("const") || k.includes("field"))
+    return "variable";
+  return "unknown";
+}
+
+type OutlineSource = "语言服务" | "LSP" | "当前文件";
+
+/** 左侧栏 Outline：TS NavigationTree / 外部 LSP DocumentSymbol / 当前文件正则 */
 export function WorkbenchOutlinePanel() {
   const ws = useWorkbenchWorkspace();
   const [filter, setFilter] = useState("");
   const active = ws.activeEditorTab;
   const fileTab = active && isFileTab(active) ? active : null;
 
+  const tsLike = Boolean(fileTab && isTsLikePath(fileTab.relPath));
+  const extLspLike = Boolean(fileTab && isExternalLspPath(fileTab.relPath));
+  const [lsSymbols, setLsSymbols] = useState<ReturnType<typeof listFileOutline> | null>(null);
+  const [source, setSource] = useState<OutlineSource>("当前文件");
+
+  const outlinePath = fileTab?.relPath ?? "";
+  const outlineContent = fileTab?.content ?? "";
+  const outlineBusy = Boolean(fileTab?.binary || fileTab?.loading);
+
+  useEffect(() => {
+    if (!outlinePath || outlineBusy) {
+      setLsSymbols(null);
+      setSource("当前文件");
+      return;
+    }
+
+    let cancelled = false;
+
+    if (tsLike) {
+      const api = getDesktop();
+      if (!api?.workspaceTsNavigationTree) {
+        setLsSymbols(null);
+        setSource("当前文件");
+        return;
+      }
+      void api
+        .workspaceTsNavigationTree({
+          relPath: outlinePath,
+          content: outlineContent,
+        })
+        .then((res) => {
+          if (cancelled) return;
+          if (!res?.ok || !res.symbols?.length) {
+            setLsSymbols(null);
+            setSource("当前文件");
+            return;
+          }
+          setSource("语言服务");
+          setLsSymbols(
+            res.symbols.map((s) => ({
+              name: s.name,
+              kind: navKind(s.kind),
+              line: s.line,
+              preview: s.name,
+            })),
+          );
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setLsSymbols(null);
+            setSource("当前文件");
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (extLspLike) {
+      void fetchExternalLspDocumentSymbols({
+        relPath: outlinePath,
+        content: outlineContent,
+      }).then((symbols) => {
+        if (cancelled) return;
+        if (!symbols?.length) {
+          setLsSymbols(null);
+          setSource("当前文件");
+          return;
+        }
+        setSource("LSP");
+        setLsSymbols(
+          symbols.map((s) => ({
+            name: s.name,
+            kind: navKind(s.kind),
+            line: s.line,
+            preview: s.name,
+            depth: typeof s.depth === "number" ? s.depth : 0,
+          })),
+        );
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setLsSymbols(null);
+    setSource("当前文件");
+    return () => {
+      cancelled = true;
+    };
+  }, [outlineBusy, outlineContent, outlinePath, tsLike, extLspLike]);
+
   const symbols = useMemo(() => {
     if (!fileTab || fileTab.binary || fileTab.loading) return [];
+    if (lsSymbols?.length) return lsSymbols;
     return listFileOutline(fileTab.content || "");
-  }, [fileTab]);
+  }, [fileTab, lsSymbols]);
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -24,6 +141,9 @@ export function WorkbenchOutlinePanel() {
       (s) => s.name.toLowerCase().includes(q) || kindLabel(s.kind).includes(q),
     );
   }, [symbols, filter]);
+
+  const displaySource: OutlineSource =
+    lsSymbols?.length ? source : "当前文件";
 
   if (!fileTab) {
     return (
@@ -36,7 +156,10 @@ export function WorkbenchOutlinePanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <OutlineHeader subtitle={fileTab.relPath.split("/").pop() || fileTab.relPath} />
+      <OutlineHeader
+        subtitle={fileTab.relPath.split("/").pop() || fileTab.relPath}
+        source={displaySource}
+      />
       <div className="shrink-0 border-b border-[var(--explorer-border)] px-2 py-1.5">
         <input
           type="search"
@@ -61,8 +184,13 @@ export function WorkbenchOutlinePanel() {
                   type="button"
                   className={cn(
                     "flex w-full items-center gap-1.5 px-2 py-0.5 text-left text-[13px] hover:bg-[var(--explorer-row-hover)]",
-                    s.kind === "property" && "pl-5 text-muted-foreground",
+                    s.kind === "property" && !s.depth && "pl-5 text-muted-foreground",
                   )}
+                  style={
+                    s.depth && s.depth > 0
+                      ? { paddingLeft: `${8 + Math.min(s.depth, 6) * 12}px` }
+                      : undefined
+                  }
                   title={`${s.preview}\n行 ${s.line}`}
                   onClick={() => {
                     void ws.openFile(fileTab.relPath, { line: s.line, pin: true });
@@ -85,12 +213,14 @@ export function WorkbenchOutlinePanel() {
   );
 }
 
-function OutlineHeader({ subtitle }: { subtitle?: string }) {
+function OutlineHeader({ subtitle, source }: { subtitle?: string; source?: string }) {
   return (
     <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--explorer-border)] px-2.5 py-1.5">
       <ListTree className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
       <div className="min-w-0 flex-1">
-        <div className="text-[12px] font-medium text-foreground">大纲</div>
+        <div className="text-[12px] font-medium text-foreground">
+          大纲（{source || "当前文件"}）
+        </div>
         {subtitle ? (
           <div className="truncate font-mono text-[11px] text-muted-foreground">{subtitle}</div>
         ) : null}

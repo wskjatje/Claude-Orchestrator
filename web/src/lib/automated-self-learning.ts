@@ -157,12 +157,21 @@ export async function runAutomatedSelfLearningAfterChain(
 
   const reply = res.content || "";
   maybeToastMissingWorkspaceWrite(reply);
-  const { shouldAutoApplyWorkspaceWrites } = await import("@/lib/workbench-interaction-mode");
+  const { resolveTurnPolicy } = await import("@/lib/turn-policy");
+  const { getWorkbenchInteractionMode } = await import("@/lib/workbench-interaction-mode");
+  const learnLine = String(
+    (diskMsgs || []).filter((m) => m.role === "user").slice(-1)[0]?.content || "",
+  ).trim();
+  const learnPolicy = resolveTurnPolicy({
+    displayLine: learnLine || "自我学习写盘",
+    interactionMode: getWorkbenchInteractionMode(),
+    isGeneralTurn: true,
+  });
   const displayContent = await ingestWorkspaceWritesAndCollapseDisplay(
     api,
     reply,
     (m) => toast.warning(m, { duration: 12_000 }),
-    { allowApply: shouldAutoApplyWorkspaceWrites() },
+    { allowApply: learnPolicy.autoApplyWrites },
   );
   diskMsgs.push({
     role: "assistant",

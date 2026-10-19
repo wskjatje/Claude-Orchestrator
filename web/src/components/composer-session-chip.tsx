@@ -31,7 +31,8 @@ import {
 import { cn } from "@/lib/utils";
 
 const AUTO_AGENT_VALUE = "";
-const MODES: WorkbenchInteractionMode[] = ["agent", "ask", "plan"];
+/** 与 cycleWorkbenchInteractionMode 同序（Cursor：Agent → Plan → Ask） */
+const MODES: WorkbenchInteractionMode[] = ["agent", "plan", "ask"];
 
 type AgentRow = {
   basename: string;

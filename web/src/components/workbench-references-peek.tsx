@@ -73,7 +73,7 @@ export function WorkbenchReferencesPeek() {
         toast.error(r.error || "重命名失败");
         return;
       }
-      toastWorkspaceWriteSuccess(`已重命名写入 ${r.written.length} 个文件`, {
+      toastWorkspaceWriteSuccess("", {
         refreshDiff: () => ws?.refreshDiff?.(),
         refreshFiles: () => ws?.refreshFiles?.(),
         writtenPaths: r.written,

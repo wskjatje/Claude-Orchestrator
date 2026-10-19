@@ -21,9 +21,97 @@ const chatImages = require('./chat-images.cjs')
 /** @type {Map<string, import('node:child_process').ChildProcess>} */
 const active = new Map()
 
+/** 持久化到会话的 before/after 上限（过大则省略） */
+const CLI_PATCH_CHAR_CAP = 120_000
+
 function expandUser(p) {
   if (p.startsWith('~/')) return path.join(os.homedir(), p.slice(2))
   return p
+}
+
+function capCliPatchText(s) {
+  const t = String(s ?? '')
+  if (t.length <= CLI_PATCH_CHAR_CAP) return t
+  return undefined
+}
+
+/**
+ * CLI Edit/Write 写前快照：tool_use 到达时读盘（尚未落盘）。
+ * @param {string} root
+ * @param {string} relRaw
+ * @param {Map<string, { path: string, before?: string, isNewFile?: boolean }>} map
+ */
+function snapshotCliEditBefore(root, relRaw, map) {
+  if (!root || !map) return
+  const rel = String(relRaw || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+  if (!rel || rel.includes('..')) return
+  if (map.has(rel)) return
+  const abs = path.resolve(root, rel)
+  const rootPrefix = root.endsWith(path.sep) ? root : root + path.sep
+  if (abs !== root && !abs.startsWith(rootPrefix)) return
+  let before = ''
+  let isNewFile = true
+  if (fs.existsSync(abs)) {
+    isNewFile = false
+    try {
+      before = fs.readFileSync(abs, 'utf8')
+    } catch {
+      before = ''
+    }
+  }
+  map.set(rel, {
+    path: rel,
+    before: capCliPatchText(before),
+    isNewFile,
+  })
+}
+
+/**
+ * 收尾读写后内容，生成 filePatches。
+ * @param {string} root
+ * @param {Map<string, { path: string, before?: string, isNewFile?: boolean }>} map
+ */
+function finalizeCliFilePatches(root, map) {
+  /** @type {Array<{ path: string, before?: string, after?: string, isNewFile?: boolean }>} */
+  const out = []
+  if (!root || !map?.size) return out
+  const rootPrefix = root.endsWith(path.sep) ? root : root + path.sep
+  for (const [rel, patch] of map) {
+    const abs = path.resolve(root, rel)
+    if (abs !== root && !abs.startsWith(rootPrefix)) continue
+    let after
+    if (fs.existsSync(abs)) {
+      try {
+        after = capCliPatchText(fs.readFileSync(abs, 'utf8'))
+      } catch {
+        after = undefined
+      }
+    }
+    out.push({
+      path: rel,
+      before: patch.before,
+      after,
+      isNewFile: patch.isNewFile,
+    })
+  }
+  return out
+}
+
+/** 从 stream events 收集 Edit/Write 路径并写前快照 */
+function collectCliEditSnapshots(streamState, root, map) {
+  if (!streamState || !root || !map) return
+  const events = Array.isArray(streamState.events) ? streamState.events : []
+  for (const e of events) {
+    if (!e || e.type !== 'tool') continue
+    if (!/^(Edit|Write|MultiEdit)$/i.test(String(e.name || ''))) continue
+    const p = String(e.path || e.arg || '')
+      .trim()
+      .replace(/\\/g, '/')
+    if (p) snapshotCliEditBefore(root, p, map)
+  }
 }
 
 async function execSimple(cmd, extraEnv = {}) {
@@ -328,6 +416,7 @@ async function callOpenAiCompatibleApi({
     messages: [{ role: 'user', content: prompt }],
     stream,
     max_tokens: 8192,
+    ...cloudProviders.deepSeekRequestExtras(apiModel),
   })
 
   const requestOptions = {
@@ -386,7 +475,14 @@ async function callOpenAiCompatibleApi({
           cleanup()
           try {
             const data = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-            resolve({ ok: true, content: data?.choices?.[0]?.message?.content || '', error: null, aborted: false })
+            const parts = cloudProviders.openAiVisibleText(data?.choices?.[0])
+            const visible = cloudProviders.finalizeOpenAiVisible(parts.content, parts.reasoning)
+            resolve({
+              ok: visible.ok,
+              content: visible.content,
+              error: visible.ok ? null : `供应商「${who}」${visible.error}`,
+              aborted: false,
+            })
           } catch {
             resolve({ ok: false, content: '', error: `供应商「${who}」响应解析失败`, aborted: false })
           }
@@ -395,6 +491,7 @@ async function callOpenAiCompatibleApi({
       }
 
       let buf = ''
+      let reasoning = ''
       const emit = () => {
         let idx
         while ((idx = buf.indexOf('\n')) >= 0) {
@@ -404,13 +501,31 @@ async function callOpenAiCompatibleApi({
           if (!line.startsWith('data: ')) continue
           try {
             const json = JSON.parse(line.slice(6))
-            const delta = json?.choices?.[0]?.delta?.content
-            if (delta) { fullContent += delta; if (onDelta && !timedOut) onDelta(delta, requestId) }
+            const parts = cloudProviders.openAiVisibleText(json?.choices?.[0])
+            if (parts.content) {
+              fullContent += parts.content
+              if (onDelta && !timedOut) onDelta(parts.content, requestId)
+            } else if (parts.reasoning) {
+              reasoning += parts.reasoning
+            }
           } catch { /* skip */ }
         }
       }
       res.on('data', (chunk) => { buf += chunk.toString('utf8'); emit() })
-      res.on('end', () => { cleanup(); emit(); resolve({ ok: true, content: fullContent, error: null, aborted: false }) })
+      res.on('end', () => {
+        cleanup()
+        emit()
+        const visible = cloudProviders.finalizeOpenAiVisible(fullContent, reasoning)
+        if (visible.ok && !fullContent && visible.content && onDelta && !timedOut) {
+          onDelta(visible.content, requestId)
+        }
+        resolve({
+          ok: visible.ok,
+          content: visible.content,
+          error: visible.ok ? null : `供应商「${who}」${visible.error}`,
+          aborted: false,
+        })
+      })
     })
 
     req.on('error', (e) => {
@@ -589,6 +704,7 @@ export async function runClaudeCodePrint({
   /** 前端传入：ask/manual→plan，agent→acceptEdits（） */
   permissionMode: permissionModeArg,
   onDelta,
+  onToolEvent,
 }) {
   if (!prompt?.trim()) {
     return { ok: false, error: '提示词为空', content: '', aborted: false }
@@ -842,10 +958,33 @@ export async function runClaudeCodePrint({
     const streamState = useStreaming ? createStreamDisplayState() : null
     let streamLineBuf = ''
     let emittedDisplayLen = 0
+    /** @type {Map<string, string>} tool key → last emitted status */
+    const emittedToolStatus = new Map()
+    /** @type {Map<string, { path: string, before?: string, isNewFile?: boolean }>} */
+    const cliPatchMap = new Map()
+    const workspaceRoot = cwd ? path.resolve(cwd) : ''
+
+    const flushToolEvents = () => {
+      if (!streamState || typeof onToolEvent !== 'function') return
+      const events = Array.isArray(streamState.events) ? streamState.events : []
+      for (const e of events) {
+        if (!e || e.type !== 'tool') continue
+        const key =
+          (e.toolUseId && String(e.toolUseId)) ||
+          `${e.name || ''}\0${e.arg || e.path || ''}`
+        const st = String(e.status || 'ok')
+        if (emittedToolStatus.get(key) === st) continue
+        emittedToolStatus.set(key, st)
+        onToolEvent(e, rid)
+      }
+    }
 
     const flushStreamDisplay = (finalize = false) => {
-      if (!useStreaming || !streamState || !onDelta) return
+      if (!useStreaming || !streamState) return
       if (finalize) finalizeStreamDisplay(streamState)
+      collectCliEditSnapshots(streamState, workspaceRoot, cliPatchMap)
+      flushToolEvents()
+      if (!onDelta) return
       const next = streamState.display.slice(emittedDisplayLen)
       if (!next) return
       emittedDisplayLen = streamState.display.length
@@ -862,10 +1001,23 @@ export async function runClaudeCodePrint({
       while (idx >= 0) {
         const line = streamLineBuf.slice(0, idx).trim()
         streamLineBuf = streamLineBuf.slice(idx + 1)
-        if (line) appendStreamJsonLine(line, streamState)
+        if (line) {
+          appendStreamJsonLine(line, streamState)
+          // tool_use 一到立刻快照（赶在 CLI 真写盘前）
+          collectCliEditSnapshots(streamState, workspaceRoot, cliPatchMap)
+        }
         idx = streamLineBuf.indexOf('\n')
       }
       flushStreamDisplay(false)
+    }
+
+    const buildCliWriteExtras = () => {
+      const filePatches = finalizeCliFilePatches(workspaceRoot, cliPatchMap)
+      const writtenPaths = filePatches.map((p) => p.path)
+      return {
+        ...(writtenPaths.length ? { writtenPaths, toolWrittenPaths: writtenPaths } : {}),
+        ...(filePatches.length ? { filePatches } : {}),
+      }
     }
 
     child.stdout?.on('data', (d) => {
@@ -892,6 +1044,7 @@ export async function runClaudeCodePrint({
         signal === 'SIGKILL' ||
         code === 143 ||
         code === 137
+      const writeExtras = buildCliWriteExtras()
       if (timedOut) {
         const hint = timeoutHint(env, cliModel || model, resolved.providerName, imageCountForTimeout)
         resolve({
@@ -899,6 +1052,7 @@ export async function runClaudeCodePrint({
           content: out,
           error: `Claude Code 超时（${Math.round(limit / 1000)}s）。${hint}`.trim(),
           aborted: true,
+          ...writeExtras,
         })
         return
       }
@@ -908,6 +1062,7 @@ export async function runClaudeCodePrint({
           content: out,
           error: friendlyClaudeError(err || out || '请求已取消', env, resolved.providerName),
           aborted: true,
+          ...writeExtras,
         })
         return
       }
@@ -918,6 +1073,7 @@ export async function runClaudeCodePrint({
             content: '',
             error: 'Claude Code 返回空内容，请检查「设置 → 模型与连接」中的供应商配置是否正常。',
             aborted: false,
+            ...writeExtras,
           })
           return
         }
@@ -927,6 +1083,7 @@ export async function runClaudeCodePrint({
           error: null,
           aborted: false,
           claudeSessionId: resolvedSessionId || undefined,
+          ...writeExtras,
         })
         return
       }
@@ -940,6 +1097,7 @@ export async function runClaudeCodePrint({
         content: out || err,
         error: msg,
         aborted: false,
+        ...writeExtras,
       })
     }
 

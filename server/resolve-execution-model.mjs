@@ -35,51 +35,116 @@ export function parseAgentModelFromFrontmatter(content) {
   return model
 }
 
-function resolveAutoModelFromPools(cloud, local, preferredMode) {
-  if (preferredMode === 'local-mcp') {
-    return local.length ? { mode: 'local-mcp', modelId: local[0] } : null
+/**
+ * @param {{ allowWrites?: boolean, forceDirectChat?: boolean, allowTools?: boolean, intent?: string }} input
+ * @returns {'prefer-cloud'|'prefer-local'|'prefer-mode'}
+ */
+export function inferModelRouteHint(input = {}) {
+  if (input.allowWrites || input.intent === 'write') return 'prefer-cloud'
+  if (input.forceDirectChat || input.intent === 'readonly' || input.allowTools === false) {
+    return 'prefer-local'
   }
-  return cloud.length ? { mode: 'claude-code', modelId: cloud[0] } : null
+  if (input.intent === 'chat') return 'prefer-local'
+  return 'prefer-cloud'
 }
 
+/**
+ * @param {string[]} cloud
+ * @param {string[]} local
+ * @param {'claude-code'|'local-mcp'} [preferredMode]
+ * @param {'prefer-cloud'|'prefer-local'|'prefer-mode'} [routeHint]
+ * @param {{ preferredCloudModel?: string, preferredLocalModel?: string }} [prefs]
+ */
+function resolveAutoModelFromPools(cloud, local, preferredMode, routeHint = 'prefer-mode', prefs = {}) {
+  const preferCloud = String(prefs.preferredCloudModel || '').trim()
+  const preferLocal = String(prefs.preferredLocalModel || '').trim()
+  const pickFrom = (list, preferred) => {
+    if (preferred && list.includes(preferred)) return preferred
+    return list[0] || null
+  }
+  const pickCloud = () => {
+    const id = pickFrom(cloud, preferCloud)
+    return id ? { mode: 'claude-code', modelId: id } : null
+  }
+  const pickLocal = () => {
+    const id = pickFrom(local, preferLocal)
+    return id ? { mode: 'local-mcp', modelId: id } : null
+  }
+  const pickByMode = () => {
+    if (preferredMode === 'local-mcp') return pickLocal() || pickCloud()
+    return pickCloud() || pickLocal()
+  }
+  // prefer-cloud / prefer-local：对侧池空禁止静默换通道
+  if (routeHint === 'prefer-cloud') return pickCloud()
+  if (routeHint === 'prefer-local') return pickLocal()
+  return pickByMode()
+}
+
+/** 空云池 + 需要云时的硬错误文案（前后端单源） */
+export const CLOUD_PROVIDER_REQUIRED_ERROR =
+  '未启用云供应商：请在「设置 → 模型与连接」添加并启用云模型；不会自动改用本地模型。'
+
+/** 空本地池 + prefer-local 时硬错误（禁止静默改云） */
+export const LOCAL_PROVIDER_REQUIRED_ERROR =
+  '未启用本地模型：请在「设置 → 模型与连接」配置 Ollama/本地池；不会自动改用云模型。'
+
+/** 手选/Agent 模型不在已启用池 */
+export const MODEL_NOT_IN_POOL_ERROR =
+  '所选模型不在已启用池内：请在「设置 → 模型与连接」启用该模型后再选；不会按名称启发式推断通道。'
+
+/**
+ * 优先级：用户手选 > Agent frontmatter > Auto(routeHint)
+ */
 export function resolveModelForExecution(input) {
   const cloud = (input.cloudModels || []).map((m) => String(m || '').trim()).filter(Boolean)
   const local = (input.localModels || []).map((m) => String(m || '').trim()).filter(Boolean)
   const cloudAll = (input.allCloudModels || cloud).map((m) => String(m || '').trim()).filter(Boolean)
   const localAll = (input.allLocalModels || local).map((m) => String(m || '').trim()).filter(Boolean)
-  const agentRaw = input.agentModel?.trim()
-  const agent = agentRaw && !isInheritedAgentModel(agentRaw) ? agentRaw : undefined
-
-  if (agent) {
-    if (cloudAll.includes(agent)) return { mode: 'claude-code', modelId: agent }
-    if (localAll.includes(agent)) return { mode: 'local-mcp', modelId: agent }
-    // Agent 指定了模型但不在任何已配置供应商池中 → 忽略 agent 声明，回退到会话模型/自动选择
-  }
 
   const selected = normalizeChatModelSelection(input.selectedModel)
   if (selected && !isAutoModelSelection(selected)) {
-    if (local.includes(selected)) return { mode: 'local-mcp', modelId: selected }
-    if (cloud.includes(selected)) return { mode: 'claude-code', modelId: selected }
-    if (/^(sonnet|opus|haiku|claude-)/i.test(selected)) {
-      return { mode: 'claude-code', modelId: selected }
+    if (local.includes(selected) || localAll.includes(selected)) {
+      return { mode: 'local-mcp', modelId: selected, userPinned: true }
     }
-    return resolveAutoModelFromPools(cloud, local, input.preferredMode)
+    if (cloud.includes(selected) || cloudAll.includes(selected)) {
+      return { mode: 'claude-code', modelId: selected, userPinned: true }
+    }
+    // 池外手选：硬失败（禁止名称启发式默默当云/本地）
+    return null
   }
 
-  return resolveAutoModelFromPools(cloud, local, input.preferredMode)
+  const agentRaw = input.agentModel?.trim()
+  const agent = agentRaw && !isInheritedAgentModel(agentRaw) ? agentRaw : undefined
+  if (agent) {
+    if (cloudAll.includes(agent)) {
+      return { mode: 'claude-code', modelId: agent, userPinned: false }
+    }
+    if (localAll.includes(agent)) {
+      return { mode: 'local-mcp', modelId: agent, userPinned: false }
+    }
+    // 池外 Agent frontmatter：硬失败
+    return null
+  }
+
+  const hint = input.routeHint || 'prefer-mode'
+  const auto = resolveAutoModelFromPools(cloud, local, input.preferredMode, hint, {
+    preferredCloudModel: input.preferredCloudModel,
+    preferredLocalModel: input.preferredLocalModel,
+  })
+  return auto ? { ...auto, userPinned: false, routeHint: hint } : null
 }
 
 export async function loadConfiguredModelPools(settings) {
-  const pools = cloudProviders.buildModelPools(settings);
+  const pools = cloudProviders.buildModelPools(settings)
   return {
     cloudModels: pools.configured.cloudModels,
     localModels: pools.configured.localModels,
-  };
+  }
 }
 
 export async function loadChatModelPools(settings) {
-  const pools = cloudProviders.buildModelPools(settings);
-  return pools.chat;
+  const pools = cloudProviders.buildModelPools(settings)
+  return pools.chat
 }
 
 export async function resolveExecutionModel({
@@ -88,26 +153,61 @@ export async function resolveExecutionModel({
   agentBasename,
   pools,
   readAgentMarkdown,
+  routeHint,
+  turnPolicy,
 }) {
   const preferredMode = settings?.orchestrationMode === 'local-mcp' ? 'local-mcp' : 'claude-code'
   let agentModel
-  if (agentBasename && typeof readAgentMarkdown === 'function') {
+  // 会话手选非 Auto 时不读 Agent frontmatter，避免覆盖用户指定
+  const sessionSel = normalizeChatModelSelection(sessionModelId || settings?.model)
+  const userPinned = sessionSel && !isAutoModelSelection(sessionSel)
+  if (!userPinned && agentBasename && typeof readAgentMarkdown === 'function') {
     const stem = String(agentBasename).replace(/\.md$/i, '')
     const content = readAgentMarkdown(stem ? `${stem}.md` : agentBasename)
     if (content) agentModel = parseAgentModelFromFrontmatter(content)
   }
   const chatPools = pools || (await loadChatModelPools(settings))
   const fullPools = await loadConfiguredModelPools(settings)
+  const hint =
+    routeHint ||
+    (turnPolicy
+      ? inferModelRouteHint({
+          allowWrites: turnPolicy.allowWrites,
+          forceDirectChat: turnPolicy.forceDirectChat,
+          allowTools: turnPolicy.allowTools,
+          intent: turnPolicy.intent,
+        })
+      : undefined)
   const resolved = resolveModelForExecution({
     selectedModel: sessionModelId || settings?.model,
     cloudModels: chatPools.cloudModels,
     localModels: chatPools.localModels,
     allCloudModels: fullPools.cloudModels,
     allLocalModels: fullPools.localModels,
-    agentModel,
+    agentModel: userPinned ? undefined : agentModel,
     preferredMode,
+    routeHint: hint,
+    preferredCloudModel: settings?.preferredCloudModel,
+    preferredLocalModel: settings?.preferredLocalModel,
   })
   if (!resolved) {
+    const cloudEmpty = !(fullPools.cloudModels?.length || chatPools.cloudModels?.length)
+    const localEmpty = !(fullPools.localModels?.length || chatPools.localModels?.length)
+    if (hint === 'prefer-cloud' && cloudEmpty) {
+      return { ok: false, error: CLOUD_PROVIDER_REQUIRED_ERROR }
+    }
+    if (hint === 'prefer-local' && localEmpty) {
+      return { ok: false, error: LOCAL_PROVIDER_REQUIRED_ERROR }
+    }
+    if (userPinned && sessionSel && !isAutoModelSelection(sessionSel)) {
+      const inLocal =
+        fullPools.localModels?.includes(sessionSel) || chatPools.localModels?.includes(sessionSel)
+      const inCloud =
+        fullPools.cloudModels?.includes(sessionSel) || chatPools.cloudModels?.includes(sessionSel)
+      if (!inLocal && !inCloud) {
+        return { ok: false, error: MODEL_NOT_IN_POOL_ERROR }
+      }
+    }
     return {
       ok: false,
       error:

@@ -19,6 +19,8 @@ export type ChainTemplateStep = {
   agentName: string;
   taskId: string;
   instruction: string;
+  /** 建议落盘路径（须出现在 ```workspace-write``` JSON 的 path；系统不据此自动写） */
+  artifactPath?: string;
   skills?: string[];
   mcps?: string[];
 };
@@ -83,6 +85,7 @@ function step(
   return {
     agentName: stem,
     taskId,
+    artifactPath: defaultArtifactPathForAgent(stem),
     instruction: `${stepAgentHeader(stem)}\n${body}\n\n${buildChainStepReadBlock(stem)}\n\n${buildChainStepWriteBlock(stem)}\n\n${MUST_DO}`,
     skills: skillsOverride ?? skillFileStemsForAgent(stem),
   };

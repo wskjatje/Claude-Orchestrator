@@ -1,4 +1,3 @@
-import { GripVertical } from "lucide-react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { cn } from "@/lib/utils";
@@ -12,8 +11,12 @@ const ResizablePanelGroup = ({ className, ...props }: React.ComponentProps<typeo
 
 const ResizablePanel = Panel;
 
+/**
+ * Cursor / VS Code 气质：整条缝隙为拖拽热区，无浮层 grip 图标。
+ * withHandle 保留参数兼容调用方，但不再渲染把手。
+ */
 const ResizableHandle = ({
-  withHandle,
+  withHandle: _withHandle,
   className,
   ...props
 }: React.ComponentProps<typeof Separator> & {
@@ -21,17 +24,19 @@ const ResizableHandle = ({
 }) => (
   <Separator
     className={cn(
-      "relative flex w-1.5 shrink-0 items-center justify-center bg-border/80 after:absolute after:inset-y-0 after:left-1/2 after:w-2 after:-translate-x-1/2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1 data-[panel-group-direction=vertical]:h-1.5 data-[panel-group-direction=vertical]:w-full data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:h-2 data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:-translate-y-1/2 data-[panel-group-direction=vertical]:after:translate-x-0 [&[data-panel-group-direction=vertical]>div]:rotate-90",
+      // 视觉 1px；热区加宽（after）便于拖拽，对齐 Cursor
+      "workbench-resize-handle relative flex w-px shrink-0 items-center justify-center bg-transparent",
+      "after:absolute after:inset-y-0 after:left-1/2 after:w-1.5 after:-translate-x-1/2",
+      "before:pointer-events-none before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-border/70 before:transition-colors",
+      "hover:before:bg-primary/55 data-[resize-handle-active]:before:bg-primary/70",
+      "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-1",
+      "data-[panel-group-direction=vertical]:h-px data-[panel-group-direction=vertical]:w-full",
+      "data-[panel-group-direction=vertical]:after:left-0 data-[panel-group-direction=vertical]:after:top-1/2 data-[panel-group-direction=vertical]:after:h-1.5 data-[panel-group-direction=vertical]:after:w-full data-[panel-group-direction=vertical]:after:-translate-y-1/2 data-[panel-group-direction=vertical]:after:translate-x-0",
+      "data-[panel-group-direction=vertical]:before:left-0 data-[panel-group-direction=vertical]:before:top-1/2 data-[panel-group-direction=vertical]:before:h-px data-[panel-group-direction=vertical]:before:w-full data-[panel-group-direction=vertical]:before:-translate-y-1/2 data-[panel-group-direction=vertical]:before:translate-x-0",
       className,
     )}
     {...props}
-  >
-    {withHandle && (
-      <div className="z-10 flex h-4 w-3 items-center justify-center rounded-sm border bg-border">
-        <GripVertical className="h-2.5 w-2.5" />
-      </div>
-    )}
-  </Separator>
+  />
 );
 
 export { ResizablePanelGroup, ResizablePanel, ResizableHandle };

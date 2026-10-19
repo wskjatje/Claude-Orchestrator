@@ -127,22 +127,35 @@ export function ParallelDispatchDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="mx-4 w-full max-w-lg rounded-xl border border-border/80 bg-background shadow-xl">
-        <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
-          <h2 className="text-[14px] font-semibold">并行发布</h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !submitting) onCancel();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="parallel-dispatch-title"
+        className="flex max-h-[min(90dvh,40rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border/80 bg-background shadow-xl"
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-3">
+          <h2 id="parallel-dispatch-title" className="text-[14px] font-semibold">
+            并行发布
+          </h2>
           <button
             type="button"
             onClick={onCancel}
             disabled={submitting}
+            aria-label="关闭"
             className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground disabled:opacity-40"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="px-4 py-3">
-          {/* 任务描述 */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 scrollbar-thin">
           <label className="mb-1.5 block text-[12px] font-medium text-muted-foreground">
             任务描述
           </label>
@@ -155,11 +168,15 @@ export function ParallelDispatchDialog({
             className="w-full resize-none rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
           />
 
-          {/* Agent 选择 */}
           <label className="mb-1.5 mt-4 block text-[12px] font-medium text-muted-foreground">
             选择执行 Agent（至少选 2 个）
+            {selected.size > 0 ? (
+              <span className="ml-1 font-normal text-muted-foreground/70">
+                · 已选 {selected.size}
+              </span>
+            ) : null}
           </label>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex max-h-[min(40vh,14rem)] flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-border/40 bg-muted/10 p-2 scrollbar-thin">
             {agentOptions.map((agent) => (
               <button
                 key={agent.stem}
@@ -179,7 +196,6 @@ export function ParallelDispatchDialog({
             ))}
           </div>
 
-          {/* 汇总选项 */}
           <div className="mt-4 flex items-center gap-2">
             <input
               id="needSynth"
@@ -194,17 +210,15 @@ export function ParallelDispatchDialog({
             </label>
           </div>
 
-          {/* 提交中提示 */}
           {submitting && (
             <div className="mt-3 flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[12px] text-primary">
-              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
               <span>并行任务已提交，各 Agent 执行完成后结果将显示在对话中…</span>
             </div>
           )}
         </div>
 
-        {/* 操作按钮 */}
-        <div className="flex items-center justify-end gap-2 border-t border-border/50 px-4 py-3">
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border/50 bg-background px-4 py-3">
           <button
             type="button"
             onClick={onCancel}

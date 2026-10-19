@@ -26,6 +26,7 @@ const {
 } = require('./resolve-execution-model.mjs')
 const {
   resolveTurnPolicy,
+  classifyTurnIntent,
   effectiveWriteMode,
   cliPermissionModeFromWriteMode,
 } = require('./turn-policy.mjs')
@@ -38,6 +39,7 @@ const {
   extractInvolvedSectionPaths,
   stripFakeWorkspaceWriteClaims,
   stripWorkspaceWriteFencesForDisplay,
+  MISSING_WRITE_FENCE_ERROR,
 } = workspaceWrite
 
 /** 只读回合：剥写盘围栏与「已完成 N 处改动」，避免前端旧包仍刷 Edit 卡 */
@@ -236,9 +238,10 @@ async function runClaudeChainStep(agentName, taskId, instruction, modelId, reque
   const writeMode = writeModeFromWorkspace()
   const resolved = cloudProviders.resolveEnvForModel(modelId?.trim() || settings.model?.trim())
   const timeoutMs = chainStepTimeoutMs(resolved.env || {})
+  const model = modelId?.trim() || settings.model?.trim() || undefined
   const r = await deps.runClaudeCodePrint({
     prompt: userLine,
-    model: modelId?.trim() || settings.model?.trim() || undefined,
+    model,
     requestId,
     timeoutMs,
     permissionMode: cliPermissionModeFromWriteMode(writeMode),
@@ -248,26 +251,36 @@ async function runClaudeChainStep(agentName, taskId, instruction, modelId, reque
     return { ok: false, error: r.error || out || 'Claude Code CLI 执行失败', output: out }
   }
   const workspaceDir = loadWorkspace()
-  let output = out
-  if (workspaceDir) {
-    const wr = ingestTextAndApplyWorkspaceWrite(out, workspaceDir, {
-      agentName,
-      taskId,
-      ensureChainArtifact: true,
-      applyWrites: writeMode === 'agent',
-    })
-    if (wr.displayText) output = wr.displayText
-    else output = support.stripLargeAssistantArtifactsMain(out)
-  } else {
-    output = support.stripLargeAssistantArtifactsMain(out)
+  const fin = await finalizeChainStepWrite({
+    reply: out,
+    workspaceDir,
+    agentName,
+    taskId,
+    instruction,
+    applyWrites: writeMode === 'agent',
+    retryOnce: async (nudge) => {
+      const cont = await deps.runClaudeCodePrint({
+        prompt: `${userLine}\n\n${nudge}`,
+        model,
+        requestId,
+        timeoutMs,
+        permissionMode: cliPermissionModeFromWriteMode(writeMode),
+      })
+      return {
+        ok: Boolean(cont?.ok),
+        output: String(cont?.content || '').trim(),
+        error: cont?.error,
+      }
+    },
+  })
+  if (!fin.ok) {
+    return { ok: false, error: fin.error, output: fin.reply }
   }
-  return { ok: true, output, error: null }
+  return { ok: true, output: fin.reply, error: null, writtenPaths: fin.written }
 }
 
 async function runLocalChainStep({ priorMessages, userLine, modelId, requestId, agentName, allowedMcpServers }) {
-  const diskIx = readWorkspaceInteractionMode()
-  const interactionMode =
-    diskIx === 'ask' ? 'ask' : diskIx === 'propose' ? 'plan' : 'agent'
+  const interactionMode = readWorkspaceInteractionMode()
   const policy = resolveTurnPolicy({
     displayLine: userLine,
     interactionMode,
@@ -561,43 +574,88 @@ async function orchestrationChainLoop() {
             ? String(res.output || '')
             : String(res.content || '')
 
-        if (workspaceDir) {
-          const wr = ingestTextAndApplyWorkspaceWrite(reply, workspaceDir, {
+        let mergedWritten = [
+          ...new Set([
+            ...(Array.isArray(res.writtenPaths) ? res.writtenPaths : []),
+            ...(Array.isArray(res.toolWrittenPaths) ? res.toolWrittenPaths : []),
+          ]),
+        ]
+
+        // claude-code 已在 runClaudeChainStep 内 finalize；本地在此 finalize（含缺围栏续写）
+        if (mode !== 'claude-code' && workspaceDir) {
+          const fin = await finalizeChainStepWrite({
+            reply,
+            workspaceDir,
             agentName,
             taskId,
-            ensureChainArtifact: true,
+            instruction: routedExecInstruction,
+            toolWrittenPaths: res.toolWrittenPaths,
             applyWrites: writeModeFromWorkspace() === 'agent',
+            retryOnce: async (nudge) => {
+              const priorForApi = [
+                ...hist.map((m) => ({
+                  role: m.role === 'assistant' ? 'assistant' : 'user',
+                  content: String(m.content || ''),
+                })),
+                { role: 'assistant', content: reply },
+              ]
+              const cont = await runLocalChainStep({
+                priorMessages: priorForApi,
+                userLine: nudge,
+                modelId: execModelId,
+                requestId: newRequestId(),
+                agentName,
+                allowedMcpServers: Array.isArray(step.mcps)
+                  ? step.mcps.map((x) => String(x ?? '').trim()).filter(Boolean)
+                  : undefined,
+              })
+              return {
+                ok: Boolean(cont?.ok),
+                content: String(cont?.content || ''),
+                error: cont?.error,
+              }
+            },
           })
-          const mergedWritten = [
-            ...new Set([
-              ...(Array.isArray(res.toolWrittenPaths) ? res.toolWrittenPaths : []),
-              ...(Array.isArray(wr.written) ? wr.written : []),
-            ]),
-          ]
-          if (mergedWritten.length) {
-            appendAppLog(`[chain-run] wrote ${mergedWritten.join(', ')}`)
+          if (!fin.ok) {
+            hist = [
+              ...hist,
+              {
+                role: 'assistant',
+                content:
+                  `任务链步骤 ${taskId || '?'} 写盘失败（流程未完成，已暂停）：${fin.error}\n` +
+                  `请补齐合法 workspace-write JSON 后点「继续执行」。`,
+                ts: Date.now(),
+                requestError: true,
+              },
+            ]
+            const nextSessionsFail = sessions.map((s) =>
+              s.id === pinnedId ? { ...s, history: hist } : s,
+            )
+            saveChatSessionsDisk(pinnedId, nextSessionsFail)
+            chainRunState.lastError = fin.error
+            batchFailed = true
+            break
           }
-          // 追踪改过的文件节点状态
+          reply = fin.reply
+          mergedWritten = fin.written
+        } else if (!workspaceDir) {
+          reply = support.stripLargeAssistantArtifactsMain(reply)
+        }
+
+        if (mergedWritten.length) {
+          appendAppLog(`[chain-run] wrote ${mergedWritten.join(', ')}`)
+        }
+        if (workspaceDir && mergedWritten.length) {
           try {
             const { updateNodesStatus, STATUS_COMPLETED } = require(path.join(CAD, 'node-status-tracker.js'))
-            const refPath = agentName && taskId ? `docs/chain-steps/${String(taskId).replace(/[^\w.-]+/g, '_')}-${String(agentName).replace(/\.md$/i, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48)}.md` : null
             updateNodesStatus(workspaceDir, mergedWritten, STATUS_COMPLETED, {
-              agentName, taskId, chainStepRef: refPath,
+              agentName,
+              taskId,
+              chainStepRef: null,
             })
           } catch (_st) {
             appendAppLog(`[chain-run] 状态追踪失败：${_st?.message || ''}`)
           }
-          if (wr.displayText) {
-            reply = wr.displayText
-          } else if (mergedWritten.length) {
-            reply = collapseWrittenSummary(reply, mergedWritten, {
-              claimedPaths: extractInvolvedSectionPaths(reply),
-            })
-          } else {
-            reply = support.stripLargeAssistantArtifactsMain(reply)
-          }
-        } else {
-          reply = support.stripLargeAssistantArtifactsMain(reply)
         }
         hist = [
           ...hist,
@@ -783,8 +841,101 @@ async function orchestrationChainLoop() {
 const CHAIN_REPLY_HINT =
   '\n\n【任务链·可见回复】面向对话窗口的输出须为简体中文短要点（代码/路径/API 名除外）；' +
   '禁止英文 Implementation Plan / Execution 等长篇计划标题；' +
-  'Agent 模式可直接 Edit/Write 或输出 ```workspace-write```（将自动落盘）；Manual 模式须围栏待 Accept；' +
-  '勿在正文整段粘贴 ```json``` 形式的工具负载（界面会折叠大段 JSON）。'
+  '【写盘·Cursor】变更须用真工具 Edit/Write，或仅 ```workspace-write``` JSON（{"path":"...","content":"..."}；也接受 contents）；' +
+  '禁止 YAML path:/content:、禁止缺 path 猜 docs、禁止无围栏时系统默认落盘；' +
+  '【写盘内容·Cursor】贴合仓库风格，禁教学式适配示例/注释墙/整文件注水；收尾 1～3 句，禁下一步推销；' +
+  'Plan 模式须围栏待 Accept；Ask 只读勿写盘；勿在正文整段粘贴伪工具 JSON。'
+
+const CHAIN_WRITE_FENCE_NUDGE =
+  '【系统·写盘】上一步未包含合法 ```workspace-write``` JSON（须显式 path 与 content|contents）。' +
+  '已禁止猜路径与默认产物兜底。请只输出围栏（可附 1～3 句收尾），path 必须写明。'
+
+/**
+ * 链步落盘：仅 JSON 围栏；变更意图且 0 写入时续写一轮；仍 0 → 硬失败。
+ * @param {{
+ *   reply: string,
+ *   workspaceDir: string | null,
+ *   agentName: string,
+ *   taskId?: string,
+ *   instruction: string,
+ *   toolWrittenPaths?: string[],
+ *   applyWrites: boolean,
+ *   retryOnce?: (nudge: string) => Promise<{ ok: boolean, output?: string, content?: string, error?: string }>,
+ * }} opts
+ */
+async function finalizeChainStepWrite(opts) {
+  const applyWrites = opts.applyWrites === true
+  const workspaceDir = opts.workspaceDir
+  const toolWritten = Array.isArray(opts.toolWrittenPaths)
+    ? opts.toolWrittenPaths.filter(Boolean)
+    : []
+  let reply = String(opts.reply || '')
+  let wr =
+    workspaceDir && applyWrites
+      ? ingestTextAndApplyWorkspaceWrite(reply, workspaceDir, {
+          agentName: opts.agentName,
+          taskId: opts.taskId,
+          applyWrites: true,
+        })
+      : workspaceDir && !applyWrites
+        ? ingestTextAndApplyWorkspaceWrite(reply, workspaceDir, {
+            agentName: opts.agentName,
+            taskId: opts.taskId,
+            applyWrites: false,
+          })
+        : { ok: true, written: [], displayText: reply, missingWriteFence: true }
+
+  let written = [...new Set([...(wr.written || []), ...toolWritten])]
+  const needsWrite =
+    applyWrites && classifyTurnIntent(String(opts.instruction || '')) === 'write'
+
+  if (needsWrite && written.length === 0 && typeof opts.retryOnce === 'function') {
+    const nudged = await opts.retryOnce(CHAIN_WRITE_FENCE_NUDGE)
+    if (nudged?.ok) {
+      const extra = String(nudged.output || nudged.content || '').trim()
+      if (extra && workspaceDir) {
+        const wr2 = ingestTextAndApplyWorkspaceWrite(extra, workspaceDir, {
+          agentName: opts.agentName,
+          taskId: opts.taskId,
+          applyWrites: true,
+        })
+        written = [...new Set([...(wr2.written || []), ...toolWritten])]
+        reply = `${reply}\n\n${extra}`.trim()
+        wr = wr2.written?.length
+          ? {
+              ...wr2,
+              displayText:
+                wr2.displayText ||
+                collapseWrittenSummary(reply, wr2.written, {
+                  claimedPaths: extractInvolvedSectionPaths(reply),
+                }),
+            }
+          : wr2
+      }
+    }
+  }
+
+  if (needsWrite && written.length === 0) {
+    const err = MISSING_WRITE_FENCE_ERROR || '变更步骤未写入任何文件'
+    return {
+      ok: false,
+      error: err,
+      reply: wr.displayText || reply,
+      written: [],
+    }
+  }
+
+  if (wr.displayText) {
+    reply = wr.displayText
+  } else if (written.length) {
+    reply = collapseWrittenSummary(reply, written, {
+      claimedPaths: extractInvolvedSectionPaths(reply),
+    })
+  } else {
+    reply = support.stripLargeAssistantArtifactsMain(reply)
+  }
+  return { ok: true, reply, written, error: null }
+}
 
 function init(dependencies) {
   deps = dependencies
@@ -976,22 +1127,28 @@ function orchestrationFile() {
   return { primary, legacy }
 }
 
-/** 读取工作区交互模式（前端写入 .claudecode/interaction-mode.json）；默认 agent */
+/**
+ * 读取工作区交互模式（前端写入 .claudecode/interaction-mode.json）。
+ * 对齐 Cursor：Ask / Plan / Agent；默认 ask（未落盘文件时不自动改仓）。
+ * 旧值 propose/manual → plan。
+ */
 function readWorkspaceInteractionMode() {
   try {
     const root = loadWorkspace()
-    if (!root) return 'agent'
+    if (!root) return 'ask'
     const fs = require('fs')
     const path = require('path')
     const p = path.join(root, '.claudecode', 'interaction-mode.json')
-    if (!fs.existsSync(p)) return 'agent'
+    if (!fs.existsSync(p)) return 'ask'
     const j = JSON.parse(fs.readFileSync(p, 'utf8'))
-    const m = String(j?.mode || '').trim()
-    if (m === 'ask' || m === 'propose' || m === 'agent') return m
+    const m = String(j?.mode || '').trim().toLowerCase()
+    if (m === 'ask') return 'ask'
+    if (m === 'agent') return 'agent'
+    if (m === 'plan' || m === 'propose' || m === 'manual') return 'plan'
   } catch {
     /* ignore */
   }
-  return 'agent'
+  return 'ask'
 }
 
 /**
@@ -1007,20 +1164,15 @@ function applyWritesInWorkspace(items, writeMode) {
   const mode =
     writeMode === 'ask' || writeMode === 'plan' || writeMode === 'agent'
       ? writeMode
-      : (() => {
-          const m = readWorkspaceInteractionMode()
-          if (m === 'ask') return 'ask'
-          if (m === 'propose') return 'plan'
-          return 'agent'
-        })()
+      : writeModeFromWorkspace()
   if (mode === 'ask') {
     const pending = []
     for (const it of list) {
-      const p = String(it?.path || it?.file || '')
-        .trim()
-        .replace(/\\/g, '/')
+      const p = typeof it?.path === 'string' ? it.path.trim().replace(/\\/g, '/') : ''
       if (!p || p.includes('..')) continue
-      const content = it?.content != null ? String(it.content) : ''
+      const contentRaw = it?.content != null ? it.content : it?.contents != null ? it.contents : null
+      if (contentRaw == null) continue
+      const content = String(contentRaw)
       if (!content.trim()) continue
       pending.push({ path: p, content })
     }
@@ -1038,13 +1190,14 @@ function applyWritesInWorkspace(items, writeMode) {
       return applyWorkspaceWriteFenceItems(workspaceDir, list)
     }
   }
+  // Plan：排队待 Accept / Build，不落盘（对齐 Cursor Plan）
   const pending = []
   for (const it of list) {
-    const p = String(it?.path || it?.file || '')
-      .trim()
-      .replace(/\\/g, '/')
+    const p = typeof it?.path === 'string' ? it.path.trim().replace(/\\/g, '/') : ''
     if (!p || p.includes('..')) continue
-    const content = it?.content != null ? String(it.content) : ''
+    const contentRaw = it?.content != null ? it.content : it?.contents != null ? it.contents : null
+    if (contentRaw == null) continue
+    const content = String(contentRaw)
     if (!content.trim()) continue
     pending.push({ path: p, content })
   }
@@ -1055,7 +1208,7 @@ function applyWritesInWorkspace(items, writeMode) {
     pending,
     pendingPaths: pending.map((x) => x.path),
     error: null,
-    message: '未落盘：已排队待用户 Accept（Manual/Ask）',
+    message: '未落盘：已排队待用户 Accept（Plan）',
   }
 }
 
@@ -1069,7 +1222,15 @@ function appendDeferredWriteFences(content, pendingItems) {
   return base ? `${base}\n\n${fences}` : fences
 }
 
-function createTrackingWorkspaceWriter(sessionPending, writeMode) {
+/**
+ * @param {Array<{ path: string; content: string }>} sessionPending Plan 暂存
+ * @param {'ask'|'plan'|'agent'} writeMode
+ * @param {string[]} [sessionWritten] Agent 已落盘路径（供前端硬闭环，不必再靠围栏）
+ * @param {Array<{ path: string, before?: string, after?: string, isNewFile?: boolean }>} [sessionPatches]
+ */
+function createTrackingWorkspaceWriter(sessionPending, writeMode, sessionWritten, sessionPatches) {
+  const writtenAcc = Array.isArray(sessionWritten) ? sessionWritten : null
+  const patchAcc = Array.isArray(sessionPatches) ? sessionPatches : null
   return (items) => {
     const r = applyWritesInWorkspace(items, writeMode)
     if (Array.isArray(r?.pending)) {
@@ -1080,22 +1241,43 @@ function createTrackingWorkspaceWriter(sessionPending, writeMode) {
         else sessionPending.push(it)
       }
     }
+    if (writtenAcc && Array.isArray(r?.written)) {
+      for (const p of r.written) {
+        const rel = String(p || '')
+          .trim()
+          .replace(/\\/g, '/')
+        if (rel && !writtenAcc.includes(rel)) writtenAcc.push(rel)
+      }
+    }
+    if (patchAcc && Array.isArray(r?.patches)) {
+      for (const patch of r.patches) {
+        const path = String(patch?.path || '')
+          .trim()
+          .replace(/\\/g, '/')
+        if (!path) continue
+        const i = patchAcc.findIndex((x) => x.path === path)
+        if (i >= 0) patchAcc[i] = { ...patch, path }
+        else patchAcc.push({ ...patch, path })
+      }
+    }
     return r
   }
 }
 
-/** 工作区底栏模式 → 落盘档（无回合策略时） */
+/** 工作区底栏模式 → 落盘档（无回合策略时）；对齐 Cursor Ask/Plan/Agent */
 function writeModeFromWorkspace() {
   const m = readWorkspaceInteractionMode()
   if (m === 'ask') return 'ask'
-  if (m === 'propose') return 'plan'
-  return 'agent'
+  if (m === 'plan') return 'plan'
+  if (m === 'agent') return 'agent'
+  return 'ask'
 }
 
 async function runLocalOrch(payload) {
   const settings = loadChatSettings()
   const requestId = typeof payload?.requestId === 'string' ? payload.requestId.trim() : ''
-  const state = { cancelled: false }
+  /** @type {{ cancelled: boolean; controllers: AbortController[] }} */
+  const state = { cancelled: false, controllers: [] }
   if (requestId) activeLocalOrchestrationRequests.set(requestId, state)
 
   const prior = Array.isArray(payload?.priorMessages) ? payload.priorMessages : []
@@ -1105,18 +1287,15 @@ async function runLocalOrch(payload) {
       ? payload.languageSourceLine.trim()
       : userLineRaw
   const interactionModeRaw =
-    typeof payload?.interactionMode === 'string' ? payload.interactionMode.trim() : ''
-  const diskIx = readWorkspaceInteractionMode()
+    typeof payload?.interactionMode === 'string' ? payload.interactionMode.trim().toLowerCase() : ''
   const interactionMode =
     interactionModeRaw === 'ask' ||
     interactionModeRaw === 'plan' ||
     interactionModeRaw === 'agent'
       ? interactionModeRaw
-      : diskIx === 'ask'
-        ? 'ask'
-        : diskIx === 'propose'
-          ? 'plan'
-          : 'agent'
+      : interactionModeRaw === 'propose' || interactionModeRaw === 'manual'
+        ? 'plan'
+        : readWorkspaceInteractionMode()
   const namedOverride =
     typeof payload?.agentBasenameOverride === 'string' ? payload.agentBasenameOverride.trim() : ''
   const turnPolicy = resolveTurnPolicy({
@@ -1185,6 +1364,10 @@ async function runLocalOrch(payload) {
     : undefined
   /** @type {Array<{ path: string; content: string }>} */
   const toolPending = []
+  /** @type {string[]} Agent 模式工具已落盘路径（search_replace / write_file / workspace-write） */
+  const toolWritten = []
+  /** @type {Array<{ path: string, before?: string, after?: string, isNewFile?: boolean }>} */
+  const toolPatches = []
 
   const enriched = await chatImages.enrichUserLineForImages({
     ollamaBase: settings.ollamaBase,
@@ -1200,6 +1383,7 @@ async function runLocalOrch(payload) {
       content: '',
       error: enriched.error,
       aborted: false,
+      toolWrittenPaths: [],
     }
   }
   const userLine = enriched.userLine
@@ -1233,7 +1417,7 @@ async function runLocalOrch(payload) {
       allowedMcpServers,
       // 规则/记忆走跨 Agent 上下文，不进 userLine（避免寒暄误判需工具）
       crossAgentContext: [
-        buildCrossAgentContextMarkdown(),
+        buildCrossAgentContextMarkdown({ workspaceRoot: loadWorkspace() }),
         typeof payload?.contextAppendix === 'string' ? payload.contextAppendix.trim() : '',
       ]
         .filter(Boolean)
@@ -1242,8 +1426,26 @@ async function runLocalOrch(payload) {
       defaultOllamaModelHint: settings.localOllamaModel || '',
       devMcpOrchDebug: Boolean(settings.devMcpOrchDebug),
       shouldAbort: () => state.cancelled,
-      // 只读/Plan：writer 拒绝或暂存，禁止 Agent 底栏误落盘
-      applyWorkspaceWriteItems: createTrackingWorkspaceWriter(toolPending, writeMode),
+      bindAbortController: (ac) => {
+        if (ac && typeof ac.abort === 'function') state.controllers.push(ac)
+      },
+      // 只读/Plan：writer 拒绝或暂存；Agent：真落盘并记入 toolWritten + patches
+      applyWorkspaceWriteItems: createTrackingWorkspaceWriter(
+        toolPending,
+        writeMode,
+        writeMode === 'agent' ? toolWritten : undefined,
+        writeMode === 'agent' ? toolPatches : undefined,
+      ),
+      onDelta: requestId
+        ? (chunk) => {
+            broadcast('message_delta', { requestId, content: chunk })
+          }
+        : undefined,
+      onToolEvent: requestId
+        ? (event) => {
+            broadcast('agent_tool_event', { requestId, event })
+          }
+        : undefined,
     })
     // 只读：禁止把 deferred 写盘围栏拼回正文（旧前端会解析成 Edit 卡）
     let content =
@@ -1257,7 +1459,8 @@ async function runLocalOrch(payload) {
       error: r.error ?? null,
       aborted: Boolean(r.aborted),
       orchestrationHints: Array.isArray(r.orchestrationHints) ? r.orchestrationHints : undefined,
-      toolWrittenPaths: [],
+      toolWrittenPaths: writeMode === 'agent' ? [...toolWritten] : [],
+      filePatches: writeMode === 'agent' ? [...toolPatches] : [],
       deferredWritePaths: writeMode === 'ask' ? [] : toolPending.map((x) => x.path),
       writeMode,
       // 供前端硬闸：只读回合一律按直聊展示
@@ -1294,13 +1497,18 @@ function createHandlers() {
       const text = typeof payload.text === 'string' ? payload.text : ''
       const workspaceDir = loadWorkspace()
       if (!workspaceDir) return { ok: false, error: '未选择工作区', written: [] }
+      if (payload.ensureChainArtifact === true || payload.ensureAgentArtifact === true) {
+        return {
+          ok: false,
+          error: 'ensure*Artifact 已废除：须合法 ```workspace-write``` JSON，禁止默认产物兜底',
+          written: [],
+          missingWriteFence: true,
+        }
+      }
       // 仅当调用方显式 applyWrites:true（如用户 Accept / 主动 ingest）才落盘；默认 deferred。
       return ingestTextAndApplyWorkspaceWrite(text, workspaceDir, {
         agentName: payload.agentName,
         taskId: payload.taskId,
-        ensureChainArtifact: Boolean(payload.ensureChainArtifact),
-        ensureAgentArtifact: Boolean(payload.ensureAgentArtifact),
-        autoWriteProject: payload.autoWriteProject,
         applyWrites: payload.applyWrites === true,
       })
     },
@@ -1390,7 +1598,17 @@ function createHandlers() {
     'local-orchestration:abort': async (args) => {
       const id = typeof args?.[0] === 'string' ? args[0].trim() : ''
       const st = id ? activeLocalOrchestrationRequests.get(id) : null
-      if (st) st.cancelled = true
+      if (st) {
+        st.cancelled = true
+        const list = Array.isArray(st.controllers) ? st.controllers : []
+        for (const ac of list) {
+          try {
+            ac.abort()
+          } catch {
+            /* ignore */
+          }
+        }
+      }
       return { ok: Boolean(st) }
     },
 
@@ -1417,21 +1635,33 @@ function createHandlers() {
       if (!r.ok) {
         return { ok: false, error: r.error || out || 'Claude Code CLI 执行失败', output: out }
       }
-      const cleaned = support.stripLargeAssistantArtifactsMain(out)
       const workspaceDir = loadWorkspace()
-      let written = []
-      let output = cleaned
-      if (workspaceDir) {
-        const wr = ingestTextAndApplyWorkspaceWrite(cleaned, workspaceDir, {
-          agentName,
-          taskId,
-          ensureChainArtifact: true,
-          applyWrites: writeMode === 'agent',
-        })
-        written = Array.isArray(wr.written) ? wr.written : []
-        if (wr.displayText) output = wr.displayText
+      const fin = await finalizeChainStepWrite({
+        reply: out,
+        workspaceDir,
+        agentName,
+        taskId,
+        instruction,
+        applyWrites: writeMode === 'agent',
+        retryOnce: async (nudge) => {
+          const cont = await deps.runClaudeCodePrint({
+            prompt: `${userLine}\n\n${nudge}`,
+            model: settings.model?.trim() || undefined,
+            requestId: undefined,
+            timeoutMs: 0,
+            permissionMode: cliPermissionModeFromWriteMode(writeMode),
+          })
+          return {
+            ok: Boolean(cont?.ok),
+            output: String(cont?.content || '').trim(),
+            error: cont?.error,
+          }
+        },
+      })
+      if (!fin.ok) {
+        return { ok: false, error: fin.error, output: fin.reply, writtenPaths: [] }
       }
-      return { ok: true, output, error: null, writtenPaths: written }
+      return { ok: true, output: fin.reply, error: null, writtenPaths: fin.written }
     },
 
     'claude-code:cliUpdate': async () => {
@@ -1557,29 +1787,45 @@ function createHandlers() {
           })
           const out = (r.content || '').trim()
           let displayOutput = out
+          let stepOk = Boolean(r.ok)
+          let stepErr = r.ok ? null : r.error || out || 'Claude Code CLI 失败'
           if (r.ok) {
-            const workspaceDir = loadWorkspace()
-            if (workspaceDir) {
-              const wr = ingestTextAndApplyWorkspaceWrite(out, workspaceDir, {
-                agentName: step.agentName,
-                taskId: step.taskId,
-                ensureChainArtifact: true,
-                applyWrites: writeMode === 'agent',
-              })
-              if (wr.displayText) displayOutput = wr.displayText
-              else displayOutput = support.stripLargeAssistantArtifactsMain(out)
-            } else {
-              displayOutput = support.stripLargeAssistantArtifactsMain(out)
+            const fin = await finalizeChainStepWrite({
+              reply: out,
+              workspaceDir: loadWorkspace(),
+              agentName: step.agentName,
+              taskId: step.taskId,
+              instruction: routed,
+              applyWrites: writeMode === 'agent',
+              retryOnce: async (nudge) => {
+                const cont = await deps.runClaudeCodePrint({
+                  prompt: `${userLine}\n\n${nudge}`,
+                  model: orchestratorModel || undefined,
+                  requestId: undefined,
+                  timeoutMs: 0,
+                  permissionMode: cliPermissionModeFromWriteMode(writeMode),
+                })
+                return {
+                  ok: Boolean(cont?.ok),
+                  output: String(cont?.content || '').trim(),
+                  error: cont?.error,
+                }
+              },
+            })
+            displayOutput = fin.reply
+            if (!fin.ok) {
+              stepOk = false
+              stepErr = fin.error
             }
           }
           stepResults.push({
             agentName: step.agentName,
             taskId: step.taskId,
-            ok: Boolean(r.ok),
+            ok: stepOk,
             output: displayOutput,
-            error: r.ok ? null : r.error || out || 'Claude Code CLI 失败',
+            error: stepErr,
           })
-          if (!r.ok) {
+          if (!stepOk) {
             return {
               ok: false,
               error: `委派在第 ${i + 1} 步失败（${step.agentName}）`,
@@ -1589,11 +1835,12 @@ function createHandlers() {
           }
         } else {
           const agentBasenameForRead = `${step.agentName}.md`
-          const state = { cancelled: false }
+          const state = { cancelled: false, controllers: [] }
           const requestId = `delegation-${Date.now()}-${i}`
           activeLocalOrchestrationRequests.set(requestId, state)
           try {
             const stepPending = []
+            const stepToolWritten = []
             const writeMode = writeModeFromWorkspace()
             const stepPolicy = resolveTurnPolicy({
               displayLine: routed,
@@ -1602,6 +1849,7 @@ function createHandlers() {
               isGeneralTurn: false,
               isNamedAgent: true,
             })
+            const stepWriteMode = effectiveWriteMode(stepPolicy)
             const r = await runLocalMcpOrchestration({
               bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
               workspaceRoot: loadWorkspace() || undefined,
@@ -1619,40 +1867,93 @@ function createHandlers() {
               modelCapabilityOverrides: settings.modelCapabilityOverrides || {},
               agentMarkdown: support.readClaudeAgentMarkdownContent(agentBasenameForRead),
               lockedAgentStem: support.stemFromAgentBasenameForOrchestration(agentBasenameForRead),
-              crossAgentContext: buildCrossAgentContextMarkdown(),
+              crossAgentContext: buildCrossAgentContextMarkdown({ workspaceRoot: loadWorkspace() }),
               defaultOllamaModelHint: settings.localOllamaModel || '',
               devMcpOrchDebug: Boolean(settings.devMcpOrchDebug),
               shouldAbort: () => state.cancelled,
+              bindAbortController: (ac) => {
+                if (ac && typeof ac.abort === 'function') state.controllers.push(ac)
+              },
               applyWorkspaceWriteItems: createTrackingWorkspaceWriter(
                 stepPending,
-                effectiveWriteMode(stepPolicy),
+                stepWriteMode,
+                stepWriteMode === 'agent' ? stepToolWritten : undefined,
               ),
             })
             const out = appendDeferredWriteFences(String(r.content || '').trim(), stepPending)
             let displayOutput = out
+            let stepOk = Boolean(r.ok)
+            let stepErr = r.ok ? null : r.error || null
             if (r.ok) {
-              const workspaceDir = loadWorkspace()
-              if (workspaceDir) {
-                const wr = ingestTextAndApplyWorkspaceWrite(out, workspaceDir, {
-                  agentName: step.agentName,
-                  taskId: step.taskId,
-                  ensureChainArtifact: true,
-                  applyWrites: effectiveWriteMode(stepPolicy) === 'agent',
-                })
-                if (wr.displayText) displayOutput = wr.displayText
+              const fin = await finalizeChainStepWrite({
+                reply: out,
+                workspaceDir: loadWorkspace(),
+                agentName: step.agentName,
+                taskId: step.taskId,
+                instruction: routed,
+                toolWrittenPaths: [
+                  ...stepToolWritten,
+                  ...stepPending
+                    .map((p) => (p && typeof p.path === 'string' ? p.path : ''))
+                    .filter(Boolean),
+                ],
+                applyWrites: stepWriteMode === 'agent',
+                retryOnce: async (nudge) => {
+                  const cont = await runLocalMcpOrchestration({
+                    bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
+                    workspaceRoot: loadWorkspace() || undefined,
+                    ollamaBase: settings.ollamaBase,
+                    mcpConfigAbsolutePath: settings.mcpConfigAbsolutePath || '',
+                    orchestratorModel,
+                    priorMessages: [
+                      { role: 'user', content: routed },
+                      { role: 'assistant', content: out },
+                    ],
+                    userLine: nudge,
+                    languageSourceLine: routed,
+                    readOnlyTurn: !stepPolicy.allowWrites,
+                    forceDirectChat: stepPolicy.forceDirectChat,
+                    systemConstraint: stepPolicy.systemConstraint,
+                    interactionMode: stepPolicy.interactionMode,
+                    allowWrites: stepPolicy.allowWrites,
+                    modelCapabilityOverrides: settings.modelCapabilityOverrides || {},
+                    agentMarkdown: support.readClaudeAgentMarkdownContent(agentBasenameForRead),
+                    lockedAgentStem: support.stemFromAgentBasenameForOrchestration(agentBasenameForRead),
+                    crossAgentContext: buildCrossAgentContextMarkdown({
+                      workspaceRoot: loadWorkspace(),
+                    }),
+                    defaultOllamaModelHint: settings.localOllamaModel || '',
+                    shouldAbort: () => state.cancelled,
+                    applyWorkspaceWriteItems: createTrackingWorkspaceWriter(
+                      stepPending,
+                      stepWriteMode,
+                      stepWriteMode === 'agent' ? stepToolWritten : undefined,
+                    ),
+                  })
+                  return {
+                    ok: Boolean(cont?.ok),
+                    content: String(cont?.content || ''),
+                    error: cont?.error,
+                  }
+                },
+              })
+              displayOutput = fin.reply
+              if (!fin.ok) {
+                stepOk = false
+                stepErr = fin.error
               }
             }
             stepResults.push({
               agentName: step.agentName,
               taskId: step.taskId,
-              ok: Boolean(r.ok),
+              ok: stepOk,
               output: displayOutput,
-              error: r.ok ? null : r.error || null,
+              error: stepErr,
             })
-            if (!r.ok) {
+            if (!stepOk) {
               return {
                 ok: false,
-                error: `委派在第 ${i + 1} 步失败：${r.error || ''}`,
+                error: `委派在第 ${i + 1} 步失败：${stepErr || ''}`,
                 stepResults,
                 synthesis: null,
               }
@@ -1696,7 +1997,7 @@ function createHandlers() {
         } else {
           const stem = normalized.synthesizeStem
           const requestId = `delegation-synth-${Date.now()}`
-          const state = { cancelled: false }
+          const state = { cancelled: false, controllers: [] }
           activeLocalOrchestrationRequests.set(requestId, state)
           try {
             const synthPending = []
@@ -1711,10 +2012,13 @@ function createHandlers() {
               modelCapabilityOverrides: settings.modelCapabilityOverrides || {},
               agentMarkdown: support.readClaudeAgentMarkdownContent(`${stem}.md`),
               lockedAgentStem: support.stemFromAgentBasenameForOrchestration(`${stem}.md`),
-              crossAgentContext: buildCrossAgentContextMarkdown(),
+              crossAgentContext: buildCrossAgentContextMarkdown({ workspaceRoot: loadWorkspace() }),
               defaultOllamaModelHint: settings.localOllamaModel || '',
               devMcpOrchDebug: Boolean(settings.devMcpOrchDebug),
               shouldAbort: () => state.cancelled,
+              bindAbortController: (ac) => {
+                if (ac && typeof ac.abort === 'function') state.controllers.push(ac)
+              },
               applyWorkspaceWriteItems: createTrackingWorkspaceWriter(
                 synthPending,
                 writeModeFromWorkspace(),
@@ -1756,7 +2060,7 @@ function createHandlers() {
               ollamaBase: settings.ollamaBase || '',
               mcpConfigAbsolutePath: settings.mcpConfigAbsolutePath || '',
               defaultOllamaModelHint: settings.localOllamaModel || '',
-              crossAgentContext: buildCrossAgentContextMarkdown(),
+              crossAgentContext: buildCrossAgentContextMarkdown({ workspaceRoot: loadWorkspace() }),
             }
           : undefined
         const result = await executeParallelFanout({
@@ -1821,7 +2125,7 @@ function createHandlers() {
             ollamaBase: settings.ollamaBase || '',
             mcpConfigAbsolutePath: settings.mcpConfigAbsolutePath || '',
             defaultOllamaModelHint: settings.localOllamaModel || '',
-            crossAgentContext: buildCrossAgentContextMarkdown(),
+            crossAgentContext: buildCrossAgentContextMarkdown({ workspaceRoot: loadWorkspace() }),
           }
         : undefined
 
@@ -2018,10 +2322,16 @@ category: 通用
       return support.writeClaudeAgentMarkdownContent(basename, content)
     },
 
-    'memory:getCrossAgentContextText': async () => ({
-      ok: true,
-      text: buildCrossAgentContextMarkdown(),
-    }),
+    'memory:getCrossAgentContextText': async (args) => {
+      const payload = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+      const fromArg =
+        typeof payload.workspacePath === 'string' ? payload.workspacePath.trim() : ''
+      const workspaceRoot = fromArg || loadWorkspace() || null
+      return {
+        ok: true,
+        text: buildCrossAgentContextMarkdown({ workspaceRoot }),
+      }
+    },
 
     'memory:appendEvent': async (args) => {
       try {
@@ -2187,7 +2497,16 @@ category: 通用
       const id = chainRunState.activeRequestId
       if (id) {
         const st = activeLocalOrchestrationRequests.get(id)
-        if (st) st.cancelled = true
+        if (st) {
+          st.cancelled = true
+          for (const ac of Array.isArray(st.controllers) ? st.controllers : []) {
+            try {
+              ac.abort()
+            } catch {
+              /* ignore */
+            }
+          }
+        }
         if (typeof deps.abortClaudeCode === 'function') {
           deps.abortClaudeCode(id)
         }
@@ -2327,6 +2646,38 @@ category: 通用
       } catch (e) {
         return { ok: false, error: e?.message || String(e) }
       }
+    },
+
+    /** 前端回合审计等：写入 log_entries（禁止各处私自写盘日志文件） */
+    'logs:append': async (args) => {
+      const opts = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+      const message = String(opts.message || '').trim()
+      if (!message) return { ok: false, error: 'message 为空' }
+      const level = typeof opts.level === 'string' ? opts.level : 'INFO'
+      const source = typeof opts.source === 'string' ? opts.source : 'app'
+      const r = projectLogs.appendLogEntry({
+        ts: new Date().toISOString(),
+        level,
+        source,
+        message: message.slice(0, 8000),
+        meta: opts.meta != null ? opts.meta : undefined,
+      })
+      if (r.ok && source === 'app') {
+        try {
+          const p = deps.appLogFilePath?.()
+          if (p) {
+            fs.mkdirSync(path.dirname(p), { recursive: true })
+            fs.appendFileSync(
+              p,
+              `[${new Date().toISOString()}] ${level} ${message.replace(/\r?\n/g, ' ')}\n`,
+              'utf8',
+            )
+          }
+        } catch {
+          /* DB 已写入即可 */
+        }
+      }
+      return r
     },
 
     'daily-reports:list': async () => {
@@ -2569,27 +2920,31 @@ category: 通用
         if (!g.ok) return { ok: false, error: g.error }
         const ws = loadWorkspace()
         const useMcp = Boolean(payload?.useLocalMcpNodes)
-        let execute_workflow_node = wf.execute_workflow_node_stub
-        if (useMcp) {
-          const { createMcpWorkflowNodeExecutor } = require(path.join(CAD, 'workflow-node-executor.js'))
-          execute_workflow_node = createMcpWorkflowNodeExecutor({
-            runLocalMcpOrchestration,
-            getWorkspace: loadWorkspace,
-            getSettings: loadChatSettings,
-            bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
-            readAgentMarkdown: support.readClaudeAgentMarkdownContent,
-            stemFromBasename: support.stemFromAgentBasenameForOrchestration,
-            buildCrossAgent: buildCrossAgentContextMarkdown,
-            applyWorkspaceWrites: applyWritesInWorkspace,
-            shouldAbort: () => false,
-          })
+        // 禁止 stub 假成功：未启用本地 MCP 节点时硬失败
+        if (!useMcp) {
+          return {
+            ok: false,
+            error: '须 useLocalMcpNodes:true 才能真实执行工作流节点（已禁止 stub 占位成功）',
+          }
         }
+        const { createMcpWorkflowNodeExecutor } = require(path.join(CAD, 'workflow-node-executor.js'))
+        const execute_workflow_node = createMcpWorkflowNodeExecutor({
+          runLocalMcpOrchestration,
+          getWorkspace: loadWorkspace,
+          getSettings: loadChatSettings,
+          bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
+          readAgentMarkdown: support.readClaudeAgentMarkdownContent,
+          stemFromBasename: support.stemFromAgentBasenameForOrchestration,
+          buildCrossAgent: buildCrossAgentContextMarkdown,
+          applyWorkspaceWrites: applyWritesInWorkspace,
+          shouldAbort: () => false,
+        })
         const out = await wf.execute_workflow_async({
           graph: g,
           execute_workflow_node,
           ctx: typeof payload?.ctx === 'object' ? payload.ctx : {},
         })
-        return { ok: out.ok, trace: out.trace, aggregate: out.aggregate, usedLocalMcpNodes: useMcp }
+        return { ok: out.ok, trace: out.trace, aggregate: out.aggregate, usedLocalMcpNodes: true }
       } catch (e) {
         return { ok: false, error: e?.message || String(e) }
       }

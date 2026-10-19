@@ -252,25 +252,12 @@ export function ChatMarkdown({ content, className, variant = "chat" }: ChatMarkd
             </MarkdownCodeBlock>
           ),
           table: ({ children }) => (
-            <div className={cn("overflow-x-auto rounded-lg border border-border/60", workbench ? "my-3.5" : "my-2")}>
-              <table
-                className={cn(
-                  "w-full border-collapse",
-                  workbench ? "text-[13px]" : "text-[length:var(--font-size-sm)]",
-                )}
-              >
-                {children}
-              </table>
+            <div className="chat-md-table-wrap">
+              <table className="chat-md-table">{children}</table>
             </div>
           ),
-          th: ({ children }) => (
-            <th className="border-b border-border bg-muted/40 px-3 py-1.5 text-left font-semibold text-foreground">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td className="border-b border-border/60 px-3 py-1.5 text-foreground">{children}</td>
-          ),
+          th: ({ children }) => <th>{children}</th>,
+          td: ({ children }) => <td>{children}</td>,
         }}
       >
         {content}

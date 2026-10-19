@@ -5,7 +5,6 @@ import {
   Columns2,
   Copy,
   ExternalLink,
-  FileCode,
   Files,
   Globe,
   MoreHorizontal,
@@ -37,6 +36,7 @@ import {
 import { WorkbenchDiffReview } from "@/components/workbench-diff-review";
 import { WorkbenchAppliedDiffReview } from "@/components/workbench-applied-diff-review";
 import { WorkbenchReferencesPeek } from "@/components/workbench-references-peek";
+import { WorkbenchCallHierarchyPeek } from "@/components/workbench-call-hierarchy-peek";
 import { getDesktop } from "@/lib/desktop-api";
 import { wrapHtmlForWorkbenchPreview } from "@/lib/html-preview-theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -69,6 +69,7 @@ import {
   markEmbeddedBrowserLoaded,
   navigateEmbeddedBrowserTab,
   reloadEmbeddedBrowserTab,
+  setEmbeddedBrowserLayout,
 } from "@/lib/embedded-browser-session";
 import { useEmbeddedBrowserReady } from "@/hooks/use-embedded-browser-ready";
 import { useWorkbenchComposerBridgeOptional } from "@/contexts/workbench-composer-bridge-context";
@@ -94,28 +95,22 @@ export function WorkbenchCenterEditor() {
 }
 
 function EmptyEditorState({ onOpenBrowser }: { onOpenBrowser: () => void }) {
-  const iframeMode = useInPaneIframeBrowser();
   return (
-      <div className="workbench-empty-state flex h-full min-h-0 flex-col items-center justify-center border-r border-border bg-code-bg/20 p-6 text-center">
-        <FileCode className="mb-3 h-10 w-10 text-muted-foreground/40" />
-        <p className="workbench-empty-title text-[13px] font-medium text-foreground/80">预览 / 编辑</p>
-        <p className="workbench-empty-desc mt-1 max-w-sm text-[12px] text-muted-foreground">
-          在左侧文件树中打开多个文件。浏览器标签在项目内嵌浏览器中打开任意网站。
-        </p>
-        {iframeMode ? (
-          <p className="workbench-empty-desc mt-2 max-w-sm text-[11px] text-muted-foreground/80">
-            Web 代理预览：Cookie / 登录态受限，不持久化站点会话。
-          </p>
-        ) : null}
-        <button
-          type="button"
-          onClick={onOpenBrowser}
-          className="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-[12px] font-medium hover:bg-secondary"
-        >
-          <Globe className="h-3.5 w-3.5" />
-          打开浏览器
-        </button>
-      </div>
+    <div className="workbench-empty-state flex h-full min-h-0 flex-col items-center justify-center bg-[var(--code-bg)] px-6 text-center">
+      <p className="workbench-empty-title text-[length:var(--font-size-sm)] text-muted-foreground">
+        打开文件开始编辑
+      </p>
+      <p className="workbench-empty-desc mt-1.5 text-[length:var(--font-size-xs)] text-muted-foreground/80">
+        ⌘P 转到文件
+      </p>
+      <button
+        type="button"
+        onClick={onOpenBrowser}
+        className="mt-4 text-[length:var(--font-size-xs)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+      >
+        打开浏览器
+      </button>
+    </div>
   );
 }
 
@@ -249,9 +244,10 @@ function EditorWithTabs({
                   <FileTabContent tab={ws.activeEditorTab} />
                 ) : null}
                 <WorkbenchReferencesPeek />
+                <WorkbenchCallHierarchyPeek />
               </div>
             </ResizablePanel>
-            <ResizableHandle withHandle />
+            <ResizableHandle />
             <ResizablePanel defaultSize={50} minSize={25} className="min-h-0 border-l border-border">
               <div className="flex h-full min-h-0 flex-col overflow-hidden">
                 <div className="flex shrink-0 items-center gap-1 border-b border-border/60 px-2 py-1 text-[11px]">
@@ -300,6 +296,7 @@ function EditorWithTabs({
               <FileTabContent tab={ws.activeEditorTab} />
             ) : null}
             <WorkbenchReferencesPeek />
+            <WorkbenchCallHierarchyPeek />
           </>
         )}
       </div>
@@ -730,6 +727,19 @@ function BrowserTabContent({
     refreshIframeCanNav();
   }, [notifyFrameLoaded, refreshIframeCanNav, tab.id, tab.url]);
 
+  const refreshCanNav = useCallback(async () => {
+    if (iframeMode) {
+      refreshIframeCanNav();
+      return;
+    }
+    if (!api) return;
+    const nav = await api.canNav(tab.id);
+    if (nav.ok) {
+      setCanGoBack(nav.back);
+      setCanGoForward(nav.forward);
+    }
+  }, [api, iframeMode, refreshIframeCanNav, tab.id]);
+
   const runNavigation = useCallback(
     async (target: string) => {
       const resolved = sanitizeBrowserNavigationUrl(target);
@@ -747,26 +757,20 @@ function BrowserTabContent({
         if (!res.ok) {
           setFrameState("error");
           setLoadError(res.error || "导航失败");
+          return;
+        }
+        // 同 URL 复用：主进程不会再发 did-stop-loading，必须本地收口，否则卡在「正在加载…」
+        if (res.reused) {
+          setFrameState("loaded");
+          setLoadError(null);
+          void refreshCanNav();
         }
       } finally {
         setHostConnecting(false);
       }
     },
-    [api, iframeMode, tab.id],
+    [api, iframeMode, refreshCanNav, tab.id],
   );
-
-  const refreshCanNav = useCallback(async () => {
-    if (iframeMode) {
-      refreshIframeCanNav();
-      return;
-    }
-    if (!api) return;
-    const nav = await api.canNav(tab.id);
-    if (nav.ok) {
-      setCanGoBack(nav.back);
-      setCanGoForward(nav.forward);
-    }
-  }, [api, iframeMode, refreshIframeCanNav, tab.id]);
 
   useEffect(() => {
     if (addressEditingRef.current) return;
@@ -781,14 +785,24 @@ function BrowserTabContent({
     setAddress(resolved === "about:blank" ? "" : resolved);
     setPageUrl(resolved);
     setLoadError(null);
+    // 历史脏数据：tab.url 曾被写成代理壳 → 写回逻辑上游（只改一次）
+    if (!isBlankBrowserUrl(resolved) && !browserUrlsEquivalent(resolved, tab.url)) {
+      skipNavForTabUrlRef.current = true;
+      onNavigate(resolved);
+    }
     if (resolved === "about:blank") {
       setFrameState("idle");
       setIframeSrc("about:blank");
       return;
     }
     if (iframeMode) {
-      setIframeSrc(resolveBrowserFrameSrc(resolved));
-      setFrameState("loading");
+      const nextSrc = resolveBrowserFrameSrc(resolved);
+      if (nextSrc === iframeSrcRef.current) {
+        setFrameState((prev) => (prev === "error" ? prev : "loaded"));
+      } else {
+        setIframeSrc(nextSrc);
+        setFrameState("loading");
+      }
       return;
     }
     if (!shellReady || !api) {
@@ -796,7 +810,7 @@ function BrowserTabContent({
       return;
     }
     void runNavigation(resolved);
-  }, [api, iframeMode, runNavigation, shellReady, tab.id, tab.url]);
+  }, [api, iframeMode, onNavigate, runNavigation, shellReady, tab.id, tab.url]);
 
   useEffect(() => {
     if (!iframeMode) return;
@@ -1005,7 +1019,35 @@ function BrowserTabContent({
   const canReload = browserReady && !showBlank;
   const navBack = browserReady ? canGoBack : false;
   const navForward = browserReady ? canGoForward : false;
-  const overlayVisible = !addressFocused && !showBlank && frameState !== "error";
+  // native WebContentsView 不受 CSS invisible 影响：非活动页签必须关掉 visible，否则盖住其它页签点击
+  const overlayVisible =
+    active && !addressFocused && !showBlank && frameState !== "error";
+
+  // 对齐 Cursor：切走立刻隐藏 native view；切回等两帧布局后再 focus，避免旧 view 挡页签
+  useEffect(() => {
+    if (iframeMode || !api) return;
+    if (!overlayVisible) {
+      void setEmbeddedBrowserLayout(tab.id, { visible: false });
+      return;
+    }
+    let cancelled = false;
+    let inner = 0;
+    const outer = window.requestAnimationFrame(() => {
+      inner = window.requestAnimationFrame(() => {
+        if (cancelled) return;
+        void api.focus(tab.id).then(() => {
+          if (cancelled) return;
+          // 切回已加载页：同 URL 不重载时主进程无 stop 事件，收口 loading 遮罩
+          setFrameState((prev) => (prev === "loading" ? "loaded" : prev));
+        });
+      });
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(outer);
+      if (inner) window.cancelAnimationFrame(inner);
+    };
+  }, [active, api, iframeMode, overlayVisible, tab.id]);
 
   const renderFrame = () => {
     if (showBlank) {

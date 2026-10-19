@@ -1,6 +1,7 @@
 /**
  * 按用户输入的文字脚本检测回复语言（非产品默认写死某一种语言）。
- * 用于系统提示约束 + 出站校验（语言明显不一致则拒发）。
+ * 对齐 Cursor：语言写入 system 提示约束模型；出站不因语言不一致拒发或丢弃正文。
+ * `assertReplyLanguageMatchesUser` 仅作审计/诊断（ok 恒为 true，mismatch 时带 warning）。
  */
 
 /** @typedef {{ tag: string, label: string, confident: boolean, scores: Record<string, number> }} LangDetect }
@@ -125,16 +126,22 @@ export function buildLanguagePolicyInstruction(userLine) {
 }
 
 /**
- * 用户与助手正文语言是否一致（仅在双方都高置信时判定失败）
+ * 诊断用户与助手正文语言是否一致（对齐 Cursor：永不因此拒发）。
  * @param {string} userLine
  * @param {string} assistantText
- * @returns {{ ok: boolean, user?: LangDetect, reply?: LangDetect, error?: string }}
+ * @returns {{
+ *   ok: true,
+ *   mismatch?: boolean,
+ *   user?: LangDetect,
+ *   reply?: LangDetect,
+ *   warning?: string,
+ * }}
  */
 export function assertReplyLanguageMatchesUser(userLine, assistantText) {
   const user = detectReplyLanguage(userLine)
   const reply = detectReplyLanguage(assistantText)
   if (!user.confident) return { ok: true, user, reply }
-  // 助手几乎无自然语言（仅代码）时不拦
+  // 助手几乎无自然语言（仅代码）时不提示
   const replyLetters =
     (reply.scores.cjk || 0) +
     (reply.scores.ja || 0) +
@@ -147,26 +154,28 @@ export function assertReplyLanguageMatchesUser(userLine, assistantText) {
 
   if (!reply.confident) {
     return {
-      ok: false,
+      ok: true,
+      mismatch: true,
       user,
       reply,
-      error: `回复语言无法确认与用户一致（用户侧 ${user.label || user.tag}）。请使用与用户相同的语言重新作答。`,
+      warning: `回复语言无法确认与用户一致（用户侧 ${user.label || user.tag}）；正文已照常展示。`,
     }
   }
 
-  // CJK 族：zh/ja 在汉字为主时可能互判，若用户为 zh 且回复大量假名则失败；用户 zh + 回复 cjk 通过
+  // CJK 族：zh/ja 在汉字为主时可能互判；用户 zh + 回复以汉字为主则视为一致
   if (user.tag === 'zh' && (reply.tag === 'zh' || (reply.tag === 'ja' && (reply.scores.cjk || 0) > (reply.scores.ja || 0)))) {
     return { ok: true, user, reply }
   }
   if (user.tag === reply.tag) return { ok: true, user, reply }
 
-  // 拉丁文：en 与其它拉丁语种都算 latn 匹配（tag 都走 en 桶时用 scores）
+  // 拉丁文：en 与其它拉丁语种都算匹配
   if (user.tag === 'en' && reply.tag === 'en') return { ok: true, user, reply }
 
   return {
-    ok: false,
+    ok: true,
+    mismatch: true,
     user,
     reply,
-    error: `回复语言（${reply.label || reply.tag}）与用户输入语言（${user.label || user.tag}）不一致，已拒绝发送。请用与用户相同的语言重新回答。`,
+    warning: `回复语言（${reply.label || reply.tag}）与用户输入语言（${user.label || user.tag}）不一致；正文已照常展示（对齐 Cursor，不出站拒发）。`,
   }
 }

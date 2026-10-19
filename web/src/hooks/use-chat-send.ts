@@ -18,7 +18,10 @@ import { dedupeSkillStems } from "@/lib/agent-skill-defaults";
 import { expandAtMentionsInUserLine } from "@/lib/composer-at-mention";
 import { getEditorSelectionSnapshot } from "@/lib/editor-selection-snapshot";
 import { autoAcceptPendingFromAssistantReply } from "@/lib/agent-auto-accept-pending";
-import { toastMcpHealthIfDegraded } from "@/lib/mcp-health-hint";
+import {
+  assertMcpHealthForTurn,
+  toastMcpHealthIfDegraded,
+} from "@/lib/mcp-health-hint";
 import {
   agentForceContinueInstruction,
   hasAgentWriteEvidence,
@@ -29,10 +32,20 @@ import {
   lastAgentTurnMeta,
 } from "@/lib/agent-turn-meta";
 import {
+  resetLiveComposerTurnSignals,
+  snapshotComposerTurnFooter,
+} from "@/lib/workbench-composer-turn-footer";
+import {
   cliPermissionModeForTurn,
   getWorkbenchInteractionMode,
 } from "@/lib/workbench-interaction-mode";
 import { toastWorkspaceWriteSuccess } from "@/lib/toast-workspace-write";
+import {
+  mergeAgentFilePatches,
+  normalizeWritePatches,
+  type AgentFilePatch,
+} from "@/lib/agent-file-patch";
+import { stashWorkspaceWriteCheckpoint } from "@/lib/workspace-write-checkpoint";
 import {
   buildShortAgentSummary,
   extractStreamEventsFromContent,
@@ -52,11 +65,12 @@ import {
 } from "@/lib/chat-image-attach";
 import { type PriorTurn, type UserImageAttachment } from "@/lib/ollama-messages";
 import {
-  ingestWorkspaceWritesAndCollapseDisplay,
+  ingestWorkspaceWritesDetailed,
+  parseWorkspaceWriteItemsFromBubble,
   stripLargeAssistantArtifacts,
   stripAllWorkspaceWritePayloads,
 } from "@/lib/assistant-reply";
-import { parseChatFileEdits } from "@/lib/parse-chat-file-edits";
+import { buildLineDiffPreview, parseChatFileEdits } from "@/lib/parse-chat-file-edits";
 import { sanitizeReadonlyAssistantContent } from "@/lib/readonly-turn-display";
 import { autoSaveChainFromReply, notifyAutoSavedChain } from "@/lib/auto-save-chain-from-reply";
 import { parseWbsChainIntent, WBS_GENERATE_PM_PROMPT, type WbsChainSyncResult } from "@/lib/wbs-chain-registry";
@@ -88,11 +102,31 @@ import {
   buildSlimProjectBrief,
 } from "@/lib/expand-user-line-workspace-files";
 import { resolveTurnPolicy } from "@/lib/turn-policy";
+import { assertAgentWriteCloseLoop } from "@/lib/turn-write-close";
+import { echoAgentRunsInWorkbenchTerminal } from "@/lib/workbench-terminal-run-bridge";
+import { formatTurnAuditMessage } from "../../../shared/turn-audit.mjs";
 import { buildAgentRoutedInstruction } from "@/lib/agent-skill-routing";
 import { buildSubagentUserLine } from "@/lib/parse-agent-command";
 import { isAutoAgentBasename } from "@/lib/agent-basename";
 import { loadAgentContextAppendix } from "@/lib/agent-context-appendix";
-import { resolveModelForExecution } from "@/lib/model-catalog";
+import {
+  inferModelRouteHint,
+  isAutoModelSelection,
+  isClaudeCliModel,
+  resolveModelForExecution,
+  CLOUD_PROVIDER_REQUIRED_ERROR,
+  LOCAL_PROVIDER_REQUIRED_ERROR,
+  MODEL_NOT_IN_POOL_ERROR,
+} from "@/lib/model-catalog";
+import {
+  getCachedModelCapability,
+  rememberModelCapability,
+} from "@/lib/model-capability-cache";
+import { slimPriorMessagesForApi } from "@/lib/slim-prior-messages";
+import {
+  clearLiveExecChannel,
+  setLiveExecChannel,
+} from "@/lib/live-exec-channel";
 import { type PendingFileEntry } from "@/components/composer-file-attachments";
 import { type PendingTerminalSnippet } from "@/components/composer-terminal-attachments";
 import { type PendingDomElement } from "@/lib/dom-element-meta";
@@ -204,7 +238,8 @@ export type UseChatSendArgs = {
     pendingFiles: PendingFileEntry[];
     pendingTerminalSnippets: PendingTerminalSnippet[];
     pendingDomElements?: PendingDomElement[];
-    editCutoff: number;
+    /** 省略则保留完整历史 */
+    editCutoff?: number;
   } | null>;
   editComposerRef: RefObject<{
     input: string;
@@ -217,6 +252,8 @@ export type UseChatSendArgs = {
   activeIdRef: RefObject<string>;
   sendingSessionsRef: RefObject<Record<string, boolean>>;
   workspacePathRef: RefObject<string | null>;
+  /** 发送前与磁盘工作区对齐时刷新 Composer 芯片 */
+  setWorkspacePath?: Dispatch<SetStateAction<string | null>>;
   activeByWorkspaceRef: RefObject<Record<string, string>>;
   sessionsRef: RefObject<ChatSession[]>;
   composerDraftsRef: RefObject<
@@ -243,19 +280,61 @@ export type UseChatSendArgs = {
 export function useChatSend(args: UseChatSendArgs) {
   const argsRef = useRef(args);
   argsRef.current = args;
+  /** 本轮用户点了停止：await 返回后勿再覆盖「生成已停止」气泡 */
+  const userStoppedRef = useRef(false);
 
   const stopChat = useCallback(() => {
-    const { setStopRequested, chainRunningRef, stopChainExecution, activeIdRef, chatCtx } =
-      argsRef.current;
+    const {
+      setStopRequested,
+      chainRunningRef,
+      stopChainExecution,
+      activeIdRef,
+      chatCtx,
+      setSessionSending,
+      setMessages,
+      activeStreamRequestIdRef,
+      setActiveStreamRequestId,
+    } = argsRef.current;
+    userStoppedRef.current = true;
     setStopRequested(true);
     if (chainRunningRef.current) {
       stopChainExecution();
     }
-    const id = chatCtx.activeRequestIdsRef.current.get(activeIdRef.current);
+    const sessionId = activeIdRef.current;
+    const id = chatCtx.activeRequestIdsRef.current.get(sessionId);
     const api = getDesktop();
+    // 与 Cursor 一致：先 abort 后端（含本地 Ollama destroy），再收 UI
     if (id && api?.claudeCodeAbort) void api.claudeCodeAbort(id);
     if (id && api?.localOrchestrationAbort) void api.localOrchestrationAbort(id);
     if (id && api?.hostAgentAbort) void api.hostAgentAbort(id);
+    if (id && api?.cloudDirectAbort) void api.cloudDirectAbort(id);
+    // 立刻去掉 Thinking / busy，避免「钮已恢复但模型还在跑」的错觉
+    const markStopped = (msgs: any[]) => {
+      if (!msgs.length) return msgs;
+      const next = [...msgs];
+      const last = next[next.length - 1];
+      if (last?.role === "assistant" && last.content === "__WAITING__") {
+        next[next.length - 1] = {
+          ...last,
+          content: "（生成已停止）",
+          requestError: true,
+        };
+      }
+      return next;
+    };
+    setMessages?.((prev) => {
+      const next = markStopped(prev as any[]);
+      chatCtx.syncMessages?.(next as any);
+      if (sessionId) chatCtx.syncSessionMessages?.(sessionId, next as any);
+      return next;
+    });
+    if (sessionId) {
+      chatCtx.activeRequestIdsRef.current.delete(sessionId);
+      setSessionSending?.(sessionId, false);
+    }
+    if (activeStreamRequestIdRef) activeStreamRequestIdRef.current = null;
+    setActiveStreamRequestId?.(null);
+    chatCtx.syncActiveStreamRequestId?.(null);
   }, []);
 
   const sendChat = useCallback(async function sendChat() {
@@ -310,6 +389,7 @@ export function useChatSend(args: UseChatSendArgs) {
       activeIdRef,
       sendingSessionsRef,
       workspacePathRef,
+      setWorkspacePath,
       activeByWorkspaceRef,
       sessionsRef,
       composerDraftsRef,
@@ -369,6 +449,27 @@ export function useChatSend(args: UseChatSendArgs) {
     if (!api) {
       setMessages((m) => [...m, { role: "assistant", content: BROWSER_MODE_CHAT_MESSAGE }]);
       return;
+    }
+    // 发送前对齐读盘根与 UI：不一致则同步；无工作区则阻断
+    try {
+      const diskWs =
+        typeof api.getWorkspace === "function" ? await api.getWorkspace() : null;
+      const diskKey = workspaceSessionKey(diskWs);
+      const uiKey = workspaceSessionKey(workspacePathRef.current);
+      if (!diskKey) {
+        toast.error("请先选择工作区", {
+          description: "聊天读盘与写盘都依赖当前工作区根目录。",
+        });
+        return;
+      }
+      if (diskKey !== uiKey) {
+        workspacePathRef.current = diskWs;
+        setWorkspacePath?.(diskWs);
+        // 静默对齐工作区根，不弹 toast（扩展菜单可看索引状态）
+      }
+      // 索引冷启动 / 陈旧：不阻断、不弹框；用户可在扩展菜单手动更新
+    } catch {
+      /* getWorkspace 失败时仍尝试发送，由后续 RPC 报错 */
     }
     const sess = sessionsRef.current.find((s) => s.id === sendSessionId);
     if (!sess) return;
@@ -596,22 +697,48 @@ export function useChatSend(args: UseChatSendArgs) {
     let cloudUserLineFinal = displayLine;
     let chainCatalogSnippet = "";
 
+    // 手选模型优先；Auto 时：改码偏云、问答偏本地
+    const selectedRaw = sess.modelId || settings.model;
+    const routeHint = inferModelRouteHint({
+      allowWrites: turnPolicy.allowWrites,
+      forceDirectChat: turnPolicy.forceDirectChat,
+      allowTools: turnPolicy.allowTools,
+      intent: turnPolicy.intent,
+    });
     const resolvedExec = resolveModelForExecution({
-      selectedModel: sess.modelId || settings.model,
+      selectedModel: selectedRaw,
       cloudModels: orchestratorModels,
       localModels: localOllamaTags,
       allCloudModels: configuredPoolsRef.current.cloudModels,
       allLocalModels: configuredPoolsRef.current.localModels,
-      // 不传 agentModel，聊天消息始终用聊天底部选择的模型，忽略 Agent frontmatter 中的 model
+      // 手选时不传 agentModel，避免 frontmatter 覆盖用户指定
       preferredMode: orchMode,
+      routeHint,
+      preferredCloudModel: settings.preferredCloudModel,
+      preferredLocalModel: settings.preferredLocalModel,
     });
     if (!resolvedExec) {
+      const cloudEmpty =
+        !(configuredPoolsRef.current.cloudModels?.length || orchestratorModels?.length);
+      const localEmpty = !(configuredPoolsRef.current.localModels?.length || localOllamaTags?.length);
+      const selectedPin =
+        selectedRaw && !isAutoModelSelection(selectedRaw) ? String(selectedRaw).trim() : "";
+      const inAnyPool =
+        !!selectedPin &&
+        (configuredPoolsRef.current.cloudModels?.includes(selectedPin) ||
+          configuredPoolsRef.current.localModels?.includes(selectedPin) ||
+          orchestratorModels?.includes(selectedPin) ||
+          localOllamaTags?.includes(selectedPin));
+      let errMsg =
+        "请先在「设置 → 模型配置」通过「添加云模型」或「配置本地模型」添加至少一个模型。";
+      if (selectedPin && !inAnyPool) errMsg = MODEL_NOT_IN_POOL_ERROR;
+      else if (routeHint === "prefer-cloud" && cloudEmpty) errMsg = CLOUD_PROVIDER_REQUIRED_ERROR;
+      else if (routeHint === "prefer-local" && localEmpty) errMsg = LOCAL_PROVIDER_REQUIRED_ERROR;
       setMessages((m) => [
         ...m,
         {
           role: "assistant",
-          content:
-            "请先在「设置 → 模型配置」通过「添加云模型」或「配置本地模型」添加至少一个模型。",
+          content: errMsg,
           name: "系统",
         },
       ]);
@@ -619,6 +746,50 @@ export function useChatSend(args: UseChatSendArgs) {
     }
     const mode: OrchMode = resolvedExec.mode;
     const modelId = resolvedExec.modelId;
+    const userPinnedModel =
+      Boolean(resolvedExec.userPinned) || !isAutoModelSelection(selectedRaw);
+
+    // 写码工具环：发送前 assert tools（本地必查；云端有缓存 false 也拦）
+    const needsToolsGate =
+      turnPolicy.allowTools &&
+      !turnPolicy.forceDirectChat &&
+      (turnPolicy.allowWrites || mode === "local-mcp");
+    if (needsToolsGate && typeof api.modelsCapabilities === "function") {
+      const cached = getCachedModelCapability(modelId);
+      if (cached?.tools === false) {
+        toast.error("当前模型不支持工具调用", {
+          description: `${modelId}：请换支持 tools 的模型，或改用 Ask 纯问答。`,
+          duration: 8_000,
+        });
+        return;
+      }
+      if (mode === "local-mcp" || cached?.tools !== true) {
+        try {
+          const gate = await api.modelsCapabilities({
+            action: "assert",
+            modelId,
+            pool: mode === "local-mcp" ? "local" : "cloud",
+            needsTools: true,
+          });
+          if (gate?.record?.capabilities) {
+            rememberModelCapability(modelId, gate.record.capabilities);
+          }
+          if (!gate?.ok) {
+            toast.error(gate?.error || "模型未通过 tools 能力检测", {
+              duration: 8_000,
+            });
+            return;
+          }
+        } catch (e) {
+          if (mode === "local-mcp") {
+            toast.error(e instanceof Error ? e.message : "模型能力探测失败", {
+              duration: 8_000,
+            });
+            return;
+          }
+        }
+      }
+    }
 
     const editCutoff =
       presetEditCutoff !== undefined
@@ -627,25 +798,27 @@ export function useChatSend(args: UseChatSendArgs) {
           ? editHistoryIndexRef.current
           : null;
     const historyBefore = editCutoff != null ? sess.history.slice(0, editCutoff) : sess.history;
-    const priorForApi: PriorTurn[] = historyBefore
-      .filter((m) => {
-        // Auto 模式：过滤掉携带 Agent 标签的旧助手回复（避免跨模式污染）
-        if (isAgentMode) return true;
-        return m.role === "user" || !m.agentStem;
-      })
-      .map((m) => {
-        if (m.role === "user") {
-          const t: PriorTurn = { role: "user", content: m.content };
-          if (m.attachments?.length) t.attachments = m.attachments;
-          return t;
-        }
-        return { role: "assistant", content: m.content };
-      })
-      // __general__ 模式：滤除含 workspace-write fence 的旧助手回复，防止历史污染驱动重复写盘
-      .filter((m): m is PriorTurn => {
-        if (route.stem !== "__general__" || m.role === "user") return true;
-        return !/```workspace-write\b[\s\S]*?```/i.test(m.content);
-      });
+    const priorForApi: PriorTurn[] = slimPriorMessagesForApi(
+      historyBefore
+        .filter((m) => {
+          // Auto 模式：过滤掉携带 Agent 标签的旧助手回复（避免跨模式污染）
+          if (isAgentMode) return true;
+          return m.role === "user" || !m.agentStem;
+        })
+        .map((m) => {
+          if (m.role === "user") {
+            const t: PriorTurn = { role: "user", content: m.content };
+            if (m.attachments?.length) t.attachments = m.attachments;
+            return t;
+          }
+          return { role: "assistant" as const, content: m.content };
+        })
+        // __general__ 模式：滤除含 workspace-write fence 的旧助手回复，防止历史污染驱动重复写盘
+        .filter((m): m is PriorTurn => {
+          if (route.stem !== "__general__" || m.role === "user") return true;
+          return !/```workspace-write\b[\s\S]*?```/i.test(m.content);
+        }),
+    );
 
     let visionEnrichedNote: string | undefined;
     if (
@@ -795,40 +968,54 @@ export function useChatSend(args: UseChatSendArgs) {
         }
       }
 
-      const baseForExpand = await expandSpecialMentions(route.body);
-      const { expanded: expandedBase, injectedPaths: expandInjectedPaths } =
-        await expandUserLineWithWorkspaceFiles(api, baseForExpand, {
-          settings,
-          cmd,
-          displayLine,
-          chainRunning: chainRunningRef.current,
-        });
-      expandInjectedPathsRef.current = expandInjectedPaths || [];
-      const routedBase = buildAgentRoutedInstruction(route.stem, expandedBase, mode, {
-        mcpChatToolName: settings.mcpChatToolName || undefined,
-        mcpListModelsToolName: settings.mcpListModelsToolName || undefined,
-      });
-      await syncOfficialGenericChains();
-      const chainListR = await api.orchestrationListChains?.();
-      chainCatalogSnippet = buildAgentChainCatalogMarkdown(
-        route.stem,
-        chainListR?.ok ? (chainListR.items ?? []) : [],
-        [],
-      );
-      // 链模式：追加真实 docs/ 文件清单（每链第一轮注入一次，避免后续追问重复注入）
-      if (chainRunningRef.current && !chainDocsInjectedRef.current) {
-        const docsHint = await buildDocsFileListHint(api);
-        if (docsHint) {
-          chainCatalogSnippet += docsHint;
-          chainDocsInjectedRef.current = true;
+      // 只读/项目问句：优先 slim 产品摘录，避免 chain-steps / 重附录冒充产品事实
+      if (turnPolicy.contextLevel === "slim-product" && !turnPolicy.allowWrites) {
+        let slimLine = await expandSpecialMentions(route.body || displayLine);
+        try {
+          const brief = await buildSlimProjectBrief(api);
+          if (brief) slimLine = `${slimLine}${brief}`;
+        } catch {
+          /* ignore */
         }
+        if (visionEnrichedNote) slimLine = `${slimLine}\n${visionEnrichedNote}`;
+        localUserLineFinal = slimLine;
+        cloudUserLineFinal = slimLine;
+      } else {
+        const baseForExpand = await expandSpecialMentions(route.body);
+        const { expanded: expandedBase, injectedPaths: expandInjectedPaths } =
+          await expandUserLineWithWorkspaceFiles(api, baseForExpand, {
+            settings,
+            cmd,
+            displayLine,
+            chainRunning: chainRunningRef.current,
+          });
+        expandInjectedPathsRef.current = expandInjectedPaths || [];
+        const routedBase = buildAgentRoutedInstruction(route.stem, expandedBase, mode, {
+          mcpChatToolName: settings.mcpChatToolName || undefined,
+          mcpListModelsToolName: settings.mcpListModelsToolName || undefined,
+        });
+        await syncOfficialGenericChains();
+        const chainListR = await api.orchestrationListChains?.();
+        chainCatalogSnippet = buildAgentChainCatalogMarkdown(
+          route.stem,
+          chainListR?.ok ? (chainListR.items ?? []) : [],
+          [],
+        );
+        // 链模式：追加真实 docs/ 文件清单（每链第一轮注入一次，避免后续追问重复注入）
+        if (chainRunningRef.current && !chainDocsInjectedRef.current) {
+          const docsHint = await buildDocsFileListHint(api);
+          if (docsHint) {
+            chainCatalogSnippet += docsHint;
+            chainDocsInjectedRef.current = true;
+          }
+        }
+        localUserLineFinal = visionEnrichedNote
+          ? `${chainCatalogSnippet ? `${routedBase}\n\n${chainCatalogSnippet}` : routedBase}\n${visionEnrichedNote}`
+          : chainCatalogSnippet
+            ? `${routedBase}\n\n${chainCatalogSnippet}`
+            : routedBase;
+        cloudUserLineFinal = buildSubagentUserLine(route.stem, localUserLineFinal);
       }
-      localUserLineFinal = visionEnrichedNote
-        ? `${chainCatalogSnippet ? `${routedBase}\n\n${chainCatalogSnippet}` : routedBase}\n${visionEnrichedNote}`
-        : chainCatalogSnippet
-          ? `${routedBase}\n\n${chainCatalogSnippet}`
-          : routedBase;
-      cloudUserLineFinal = buildSubagentUserLine(route.stem, localUserLineFinal);
     }
 
     // 续跑：注入上轮 Agent 写盘/验证元数据（逻辑上下文，非占位）
@@ -850,13 +1037,39 @@ export function useChatSend(args: UseChatSendArgs) {
       }
     }
 
-    // 发送前只读：MCP 快照全挂时提示（不阻断）
+    // MCP：部分降级 toast；本轮需 MCP 且全挂 → 硬失败（禁静默 Host）
     void toastMcpHealthIfDegraded(api);
+    {
+      const needsMcp =
+        turnPolicy.allowTools &&
+        !turnPolicy.forceDirectChat &&
+        (turnPolicy.allowWrites || mode === "local-mcp");
+      const mcpGate = await assertMcpHealthForTurn(api, { needsMcp });
+      if (!mcpGate.ok) {
+        toast.error(mcpGate.error, { duration: 10_000 });
+        setMessages((m) => [
+          ...m,
+          {
+            role: "assistant",
+            content: mcpGate.error,
+            name: "系统",
+            requestError: true,
+          },
+        ]);
+        return;
+      }
+    }
 
     // 偏好/规则 + 跨 Agent 记忆：勿拼进 userLine（会污染意图检测，导致「你好」误走工具环）
-    // 经 contextAppendix 字段单独下发，由编排层放入系统/跨 Agent 上下文
-    const contextAppendix = await loadAgentContextAppendix(api);
+    // 仅 agent-full（可写具名 Agent）注入；只读/slim 不问改不灌跨仓记忆
+    const contextAppendix =
+      turnPolicy.contextLevel === "agent-full"
+        ? await loadAgentContextAppendix(api, {
+            workspacePath: workspacePathRef.current,
+          })
+        : "";
 
+    userStoppedRef.current = false;
     setStopRequested(false);
     setSessionSending(sendSessionId, true);
     if (editingFromInline) {
@@ -973,9 +1186,15 @@ export function useChatSend(args: UseChatSendArgs) {
         aborted?: boolean;
         claudeSessionId?: string;
         usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+        toolWrittenPaths?: string[];
+        filePatches?: AgentFilePatch[];
+        deferredWritePaths?: string[];
+        writeMode?: "ask" | "plan" | "agent";
+        writtenPaths?: string[];
       } = { ok: false, content: "", error: "未执行" };
-      /** Host Agent 直写路径（无 workspace-write 围栏） */
+      /** Host / 本地工具直写路径（无 workspace-write 围栏亦可闭环） */
       let hostWrittenPaths: string[] = [];
+      let turnFilePatches: AgentFilePatch[] = [];
       let hostVerified: boolean | undefined;
       let hostToolTrace: Array<{
         tool: string;
@@ -983,6 +1202,8 @@ export function useChatSend(args: UseChatSendArgs) {
         path?: string;
         args?: Record<string, unknown>;
         ok?: boolean;
+        output?: string;
+        exitCode?: number;
       }> = [];
       /** Agent 本轮执行后端：cli | host | local（气泡标注） */
       let agentExecBackend: "cli" | "host" | "local" | null = null;
@@ -1013,7 +1234,12 @@ export function useChatSend(args: UseChatSendArgs) {
         });
       }
 
+      if (turnPolicy.forceDirectChat || !turnPolicy.allowTools) {
+        setLiveExecChannel("direct");
+      }
+
       if (mode === "local-mcp") {
+        setLiveExecChannel("local");
         // 本地池：只走 Ollama 编排/直连 chat；失败明确报错，禁止静默改 Host（Host 会注入编码 Agent 人格）
         let localOrchError: string | null = null;
         if (typeof api.localOrchestrationPrompt === "function") {
@@ -1042,9 +1268,31 @@ export function useChatSend(args: UseChatSendArgs) {
             });
             if (res?.ok) {
               agentExecBackend = "local";
+              const fromTools = Array.isArray(res.toolWrittenPaths)
+                ? res.toolWrittenPaths
+                    .map((p) => String(p || "").trim().replace(/\\/g, "/"))
+                    .filter(Boolean)
+                : [];
+              if (fromTools.length) {
+                hostWrittenPaths = [...new Set([...hostWrittenPaths, ...fromTools])];
+              }
+              const fromPatches = normalizeWritePatches(res.filePatches);
+              if (fromPatches.length) {
+                for (const p of fromPatches) {
+                  if (p.before !== undefined) {
+                    stashWorkspaceWriteCheckpoint(p.path, p.before);
+                  }
+                }
+                turnFilePatches = mergeAgentFilePatches(turnFilePatches, fromPatches);
+              }
             } else {
               localOrchError = String(res?.error || "本地模型调用失败");
-              res = { ok: false, content: "", error: localOrchError };
+              res = {
+                ok: false,
+                content: "",
+                error: localOrchError,
+                aborted: Boolean(res?.aborted),
+              };
             }
           } catch (e) {
             localOrchError = e instanceof Error ? e.message : "本地模型调用异常";
@@ -1079,9 +1327,14 @@ export function useChatSend(args: UseChatSendArgs) {
           if (saved.ok && saved.paths?.length) savedImagePaths = saved.paths;
         }
         const ixMode = getWorkbenchInteractionMode();
-        // 与本地一致：forceDirectChat / 无工具权 → 不进 CLI/Host 写工具环，走 cloudDirect
+        // Cursor：手选的云供应商模型（DeepSeek / Gemini / GPT 等）本轮直接打该 API。
+        // 只有 Claude 系进入 CLI 工具环。CLI 失败仍硬报错，不改道到别的模型。
+        // 附图不整轨跳过：Claude 的 Agent/Plan 仍走 CLI。
+        if (!isClaudeCliModel(modelId)) {
+          setLiveExecChannel("direct", modelId);
+        }
         const wantsToolLoop =
-          !useInlineVision &&
+          isClaudeCliModel(modelId) &&
           turnPolicy.allowTools &&
           !turnPolicy.forceDirectChat &&
           (ixMode === "agent" || ixMode === "plan");
@@ -1093,7 +1346,7 @@ export function useChatSend(args: UseChatSendArgs) {
         const skipCloudRoleBody =
           turnPolicy.forceDirectChat || !turnPolicy.allowWrites || !isAgentMode;
 
-        // Agent/Plan 且允许工具：优先 Claude CLI，失败再 Host（MCP 门控时禁止静默 Host）
+        // Agent/Plan 工具环：优先 Claude CLI；失败硬报错，禁止静默 Host/cloudDirect
         let usedToolLoop = false;
         let toolLoopError: string | null = null;
         if (wantsToolLoop) {
@@ -1130,6 +1383,7 @@ export function useChatSend(args: UseChatSendArgs) {
             }
           }
           if (cliReady && api.claudeCodePrompt) {
+            setLiveExecChannel("cli");
             const prompt = await buildClaudeCodePrompt(api, {
               workspaceDir,
               priorHistory: priorForApi,
@@ -1165,6 +1419,25 @@ export function useChatSend(args: UseChatSendArgs) {
             usedToolLoop = Boolean(res?.ok);
             if (usedToolLoop) {
               agentExecBackend = "cli";
+              // CLI Edit/Write：写前快照 → filePatches（对齐 Host/本地 Diff 卡）
+              const cliPaths = [
+                ...(Array.isArray(res?.writtenPaths) ? res.writtenPaths : []),
+                ...(Array.isArray(res?.toolWrittenPaths) ? res.toolWrittenPaths : []),
+              ]
+                .map((p) => String(p || "").trim().replace(/\\/g, "/"))
+                .filter(Boolean);
+              if (cliPaths.length) {
+                hostWrittenPaths = [...new Set([...hostWrittenPaths, ...cliPaths])];
+              }
+              const cliPatches = normalizeWritePatches(res?.filePatches);
+              if (cliPatches.length) {
+                for (const p of cliPatches) {
+                  if (p.before !== undefined) {
+                    stashWorkspaceWriteCheckpoint(p.path, p.before);
+                  }
+                }
+                turnFilePatches = mergeAgentFilePatches(turnFilePatches, cliPatches);
+              }
               // 仅可写 Agent：征求确认且未写盘时强制续写（只读/Ask 禁止）
               const cliText = String(res?.content || "");
               if (
@@ -1206,11 +1479,41 @@ export function useChatSend(args: UseChatSendArgs) {
                   permissionMode: cliPerm,
                 });
                 if (contRes?.ok) {
+                  const contPaths = [
+                    ...(Array.isArray(contRes.writtenPaths) ? contRes.writtenPaths : []),
+                    ...(Array.isArray(contRes.toolWrittenPaths)
+                      ? contRes.toolWrittenPaths
+                      : []),
+                  ]
+                    .map((p) => String(p || "").trim().replace(/\\/g, "/"))
+                    .filter(Boolean);
+                  if (contPaths.length) {
+                    hostWrittenPaths = [...new Set([...hostWrittenPaths, ...contPaths])];
+                  }
+                  const contPatches = normalizeWritePatches(contRes.filePatches);
+                  if (contPatches.length) {
+                    for (const p of contPatches) {
+                      if (p.before !== undefined) {
+                        stashWorkspaceWriteCheckpoint(p.path, p.before);
+                      }
+                    }
+                    turnFilePatches = mergeAgentFilePatches(turnFilePatches, contPatches);
+                  }
                   res = {
                     ...contRes,
                     // 勿用 ⋯ 前缀：会被当成工具行渲染成扳手「系统强制续写」
                     content: `${cliText}\n\n${contRes.content || ""}`,
                     claudeSessionId: contRes.claudeSessionId || res?.claudeSessionId,
+                    writtenPaths: [
+                      ...new Set([
+                        ...(Array.isArray(res?.writtenPaths) ? res.writtenPaths : []),
+                        ...contPaths,
+                      ]),
+                    ],
+                    filePatches: mergeAgentFilePatches(
+                      normalizeWritePatches(res?.filePatches),
+                      contPatches,
+                    ),
                   };
                 }
               }
@@ -1219,88 +1522,22 @@ export function useChatSend(args: UseChatSendArgs) {
             }
           }
           if (!usedToolLoop && blockHostWhenMcpEnabled) {
-            // P1-B：已启用需 MCP 的服务器 → 禁止 Host / cloudDirect 静默兜底
+            // 已启用需 MCP 的服务器 → 禁止 Host / cloudDirect 静默兜底
             res = {
               ok: false,
               content: "",
               error: mcpCliGateFailureMessage(toolLoopError, mcpNamesRequiringCli),
             };
             usedToolLoop = true;
-          } else if (
-            !usedToolLoop &&
-            turnPolicy.allowWrites &&
-            typeof api.hostAgentPrompt === "function"
-          ) {
-            try {
-              let hostUserLine = cloudUserLineFinal;
-              if (turnPolicy.systemConstraint) {
-                hostUserLine = `${turnPolicy.systemConstraint}\n\n${hostUserLine}`;
-              }
-              if (attachmentsToSave?.length && api.saveChatImageAttachments) {
-                try {
-                  const saved = await api.saveChatImageAttachments(attachmentsToSave);
-                  if (saved?.ok && saved.paths?.length) {
-                    hostUserLine = `${hostUserLine}\n\n【附图已保存到工作区】\n${saved.paths
-                      .map((p) => `- ${p}`)
-                      .join("\n")}`;
-                  }
-                } catch {
-                  /* Host 仍可仅用文本回落 */
-                }
-              }
-              const hostRes = await api.hostAgentPrompt({
-                priorMessages: priorTurnsToOrchestrationMessages(priorForApi).map((m) => ({
-                  role: m.role,
-                  content: String(m.content || ""),
-                })),
-                userLine: hostUserLine,
-                model: modelId,
-                orchestratorModel: modelId,
-                requestId: reqId,
-                allowWrites: turnPolicy.allowWrites,
-                autoApplyWrites: turnPolicy.autoApplyWrites,
-                readOnlyTurn: !turnPolicy.allowWrites,
-                interactionMode: turnPolicy.interactionMode,
-                ...(turnPolicy.systemConstraint
-                  ? { systemConstraint: turnPolicy.systemConstraint }
-                  : {}),
-                ...(contextAppendix && turnPolicy.contextLevel === "agent-full"
-                  ? { contextAppendix }
-                  : {}),
-              });
-              if (hostRes?.ok) {
-                res = { ok: true, content: hostRes.content || "", error: null };
-                hostWrittenPaths = hostRes.writtenPaths || [];
-                hostVerified = Boolean(hostRes.verified);
-                hostToolTrace = hostRes.toolTrace || [];
-                usedToolLoop = true;
-                toolLoopError = null;
-                agentExecBackend = "host";
-              } else {
-                const hostErr = String(hostRes?.error || "Host Agent 失败（无详细错误）");
-                toolLoopError = toolLoopError
-                  ? `${toolLoopError}；Host：${hostErr}`
-                  : `Host：${hostErr}`;
-              }
-            } catch (e) {
-              const hostErr = e instanceof Error ? e.message : "Host Agent 异常";
-              toolLoopError = toolLoopError
-                ? `${toolLoopError}；Host：${hostErr}`
-                : `Host：${hostErr}`;
-            }
-          } else if (!usedToolLoop && ixMode === "agent" && turnPolicy.allowWrites) {
-            toolLoopError =
-              toolLoopError ||
-              "Host Agent 接口不可用（请完全退出并重启桌面应用以加载 preload）";
           }
-          // 可写 Agent：工具环失败硬报错；只读/直聊不阻断 cloudDirect
-          if (!usedToolLoop && ixMode === "agent" && turnPolicy.allowWrites) {
+          // Agent/Plan 已进入工具环意图：CLI 失败硬报错，禁止静默 Host / cloudDirect
+          if (!usedToolLoop && wantsToolLoop) {
             res = {
               ok: false,
               content: "",
               error: toolLoopError
-                ? `工具环不可用（CLI→Host）：${toolLoopError}`
-                : "工具环不可用（CLI→Host 均未成功）",
+                ? `工具环不可用（Claude CLI）：${toolLoopError}。不会自动改用 Host 或直聊。`
+                : "工具环不可用（Claude CLI 未成功）。不会自动改用 Host 或直聊。",
             };
             usedToolLoop = true; // 阻断下方 cloudDirect
           }
@@ -1348,11 +1585,62 @@ export function useChatSend(args: UseChatSendArgs) {
         }
       }
       toastIfLocalOrchestrationHints(res);
+
+      // 用户已点停止：以中止为准，勿用迟到正文盖掉「生成已停止」
+      if (userStoppedRef.current) {
+        res = {
+          ok: false,
+          content: "",
+          error: "请求已取消",
+          aborted: true,
+        };
+      }
+
+      const resolveAuditChannel = (): string => {
+        if (mode === "local-mcp") {
+          if (turnPolicy.forceDirectChat || !turnPolicy.allowWrites) return "direct";
+          return agentExecBackend || "orch";
+        }
+        return agentExecBackend || "cloud";
+      };
+      const appendTurnAudit = async (fields: {
+        writeParsed?: number;
+        writeApplied?: number;
+        writeFailed?: number;
+        ok: boolean;
+        error?: string;
+      }) => {
+        try {
+          const line = formatTurnAuditMessage({
+            interactionMode: turnPolicy.interactionMode,
+            intent: turnPolicy.intent,
+            allowWrites: turnPolicy.allowWrites,
+            autoApplyWrites: turnPolicy.autoApplyWrites,
+            forceDirectChat: turnPolicy.forceDirectChat,
+            modelId,
+            channel: resolveAuditChannel(),
+            writeParsed: fields.writeParsed ?? 0,
+            writeApplied: fields.writeApplied ?? 0,
+            writeFailed: fields.writeFailed ?? 0,
+            ok: fields.ok,
+            error: fields.error,
+            latencyMs: Math.max(0, Date.now() - sendStarted),
+          });
+          await api.logsAppend?.({ level: "INFO", message: line, source: "app" });
+        } catch {
+          /* 审计失败不阻断 */
+        }
+      };
+
       if (!res.ok) {
         // 失败回合：只保留错误文案，禁止解析 fence/diff 成「待应用」卡片
         const line = formatAssistantFailure({
           ...res,
           error: String(res.error || "").slice(0, 1200),
+        });
+        void appendTurnAudit({
+          ok: false,
+          error: String(res.error || line).slice(0, 240),
         });
         hist = [
           ...hist,
@@ -1363,18 +1651,31 @@ export function useChatSend(args: UseChatSendArgs) {
             requestError: true,
             billingSource: mode === "local-mcp" ? "local" : "cloud",
             modelId,
+            // 失败也如实标通道，避免写盘 tools 失败却显示「本地直聊」
+            ...(mode === "local-mcp"
+              ? {
+                  localChannel: (turnPolicy.forceDirectChat || !turnPolicy.allowWrites
+                    ? "direct"
+                    : "orch") as const,
+                }
+              : {}),
+            ...(!turnPolicy.allowWrites ? { suppressFileEdits: true as const } : {}),
             ...turnAgent,
           },
         ];
       } else {
         let reply = res.content || "";
-        maybeToastMissingWorkspaceWrite(reply);
+        // Ask：仅 toast 提醒；Agent 自动写盘走硬闭环（禁止 toast 后当成功）
+        if (!turnPolicy.autoApplyWrites) {
+          maybeToastMissingWorkspaceWrite(reply);
+        }
         // 回合策略：Ask/只读意图禁止自动落盘，并剥掉全部写盘载荷（避免 UI 刷文件卡）
         let auto: { nextContent: string; written: string[]; failed: string[] } = {
           nextContent: reply,
           written: [],
           failed: [],
         };
+        let replyBeforeWrite = reply;
         if (!turnPolicy.allowWrites) {
           reply = stripAllWorkspaceWritePayloads(reply);
           const { edits: dumpEdits, stripped } = parseChatFileEdits(reply);
@@ -1387,8 +1688,12 @@ export function useChatSend(args: UseChatSendArgs) {
         } else {
           auto = await autoAcceptPendingFromAssistantReply(reply, {
             alreadyWrittenPaths: hostWrittenPaths,
+            alreadyPatches: turnFilePatches,
           });
           reply = auto.nextContent;
+          if (auto.patches?.length) {
+            turnFilePatches = mergeAgentFilePatches(turnFilePatches, auto.patches);
+          }
         }
         // 只读：禁止从正文/脏 git 树合成「本轮写入」
         const pathsFromReply =
@@ -1439,31 +1744,159 @@ export function useChatSend(args: UseChatSendArgs) {
             /* ignore */
           }
         }
+
+        // Finalize：只读回合禁止 ingest 落盘；Agent 自动落盘走 detailed + 硬闭环
+        const ingest = await ingestWorkspaceWritesDetailed(
+          api,
+          reply || "（助手未返回可见正文）",
+          toastIngestWorkspaceHint,
+          { allowApply: turnPolicy.autoApplyWrites },
+        );
+        if (ingest.written.length) {
+          writtenForTurn = [...new Set([...writtenForTurn, ...ingest.written])];
+        }
+        if (ingest.patches?.length) {
+          turnFilePatches = mergeAgentFilePatches(turnFilePatches, ingest.patches);
+        }
+        if (ingest.failed.length) {
+          auto = {
+            ...auto,
+            failed: [...new Set([...auto.failed, ...ingest.failed])],
+          };
+        }
+        let displayContent =
+          stripLargeAssistantArtifacts(ingest.text) ||
+          reply ||
+          "（助手未返回可见正文）";
+        if (!turnPolicy.allowWrites) {
+          displayContent = sanitizeReadonlyAssistantContent(displayContent);
+        }
+
+        const requireAppliedWrite = Boolean(turnPolicy.autoApplyWrites);
+        let closeLoop = assertAgentWriteCloseLoop({
+          allowWrites: turnPolicy.allowWrites,
+          autoApplyWrites: turnPolicy.autoApplyWrites,
+          replyRaw: replyBeforeWrite,
+          written: writtenForTurn,
+          failed: auto.failed,
+          requireAppliedWrite,
+        });
+        // 仅本地编排：围栏无法解析 / 0 写入时再问一次，只要一块 JSON。不改云端通道，也不把说明文字兜底写成文件。
+        if (
+          !closeLoop.ok &&
+          mode === "local-mcp" &&
+          turnPolicy.autoApplyWrites &&
+          /无法解析为有效 path\+content|未写入任何文件/.test(closeLoop.error) &&
+          typeof api.localOrchestrationPrompt === "function"
+        ) {
+          try {
+            const repair = await api.localOrchestrationPrompt({
+              priorMessages: priorTurnsToOrchestrationMessages([
+                ...priorForApi,
+                { role: "assistant", content: replyBeforeWrite.slice(0, 6000) },
+              ]),
+              userLine:
+                "上一轮未成功落盘。只重新输出一个 ```workspace-write 围栏，正文必须是 JSON 对象 " +
+                '{"path":"<相对路径>","content":"完整文件内容"}。不要在围栏外写说明；禁止空落盘收尾。',
+              languageSourceLine: displayLine,
+              orchestratorModel: modelId,
+              requestId: reqId,
+              agentBasenameOverride: isAgentMode ? basenameOverride : "__general__",
+              interactionMode: turnPolicy.interactionMode,
+              allowWrites: true,
+              autoApplyWrites: true,
+              systemConstraint:
+                "只输出一个 ```workspace-write JSON 围栏。path 与 content 都必须是 JSON 字符串。",
+            });
+            const repaired = String(repair?.content || "");
+            if (repair?.ok && parseWorkspaceWriteItemsFromBubble(repaired).length) {
+              const repairedIngest = await ingestWorkspaceWritesDetailed(
+                api,
+                repaired,
+                toastIngestWorkspaceHint,
+                { allowApply: true },
+              );
+              if (repairedIngest.written.length) {
+                reply = repaired;
+                replyBeforeWrite = repaired;
+                writtenForTurn = [
+                  ...new Set([...writtenForTurn, ...repairedIngest.written]),
+                ];
+                displayContent =
+                  stripLargeAssistantArtifacts(repairedIngest.text) || repaired;
+                closeLoop = assertAgentWriteCloseLoop({
+                  allowWrites: true,
+                  autoApplyWrites: true,
+                  replyRaw: repaired,
+                  written: writtenForTurn,
+                  failed: repairedIngest.failed,
+                  requireAppliedWrite: true,
+                });
+              }
+            }
+          } catch {
+            /* 补救失败则保留原来的硬错误 */
+          }
+        }
+        const writeParsed =
+          closeLoop.parsed ||
+          (turnPolicy.allowWrites
+            ? parseWorkspaceWriteItemsFromBubble(replyBeforeWrite).length
+            : 0);
+
+        void appendTurnAudit({
+          writeParsed,
+          writeApplied: writtenForTurn.length,
+          writeFailed: auto.failed.length,
+          ok: closeLoop.ok && res.ok !== false,
+          error: closeLoop.ok ? undefined : closeLoop.error,
+        });
+
+        if (!closeLoop.ok) {
+          // 对齐 Cursor：硬失败可 toast / 标红，但必须保留助手正文，禁止用错误文案整段替换气泡
+          toast.error(closeLoop.error, { duration: 10_000 });
+          hist = [
+            ...hist,
+            {
+              role: "assistant",
+              content: displayContent,
+              ts: Date.now(),
+              requestError: true,
+              requestErrorDetail: closeLoop.error,
+              billingSource: mode === "local-mcp" ? "local" : "cloud",
+              modelId,
+              ...(mode === "local-mcp"
+                ? { localChannel: "orch" as const }
+                : {}),
+              ...turnAgent,
+            },
+          ];
+          await patchSession(sendSessionId, (s) => ({
+            ...s,
+            history: hist,
+            modelId,
+          }));
+          if (sendSessionId === activeIdRef.current) {
+            setMessages(diskToDisplay(hist, modelId));
+          }
+          const errMsgs = diskToDisplay(hist, modelId);
+          chatCtx.syncMessages(errMsgs);
+          chatCtx.syncSessionMessages(sendSessionId, errMsgs);
+          return;
+        }
+
+        // 对齐 Cursor：成功写盘不弹常驻 toast；仅登记路径供「查看改动」/底栏，安静刷新
         if (writtenForTurn.length && turnPolicy.allowWrites) {
-          toastWorkspaceWriteSuccess(`Agent 已写入 ${writtenForTurn.length} 个文件`, {
+          toastWorkspaceWriteSuccess("", {
             writtenPaths: writtenForTurn,
-            autoOpenReview: false,
-            autoOpenFirstFile: true,
+            quiet: true,
           });
         }
         if (auto.failed.length) {
           toast.error(
-            `${auto.failed.length} 个文件未能自动应用（diff 与磁盘基线不匹配）：${auto.failed.slice(0, 3).join(", ")}${auto.failed.length > 3 ? "…" : ""}`,
+            `${auto.failed.length} 个文件未能自动应用：${auto.failed.slice(0, 3).join(", ")}${auto.failed.length > 3 ? "…" : ""}`,
             { duration: 8000 },
           );
-        }
-        // Finalize：只读回合禁止 ingest 落盘，禁止 shape 成 Edit 卡
-        let displayContent =
-          stripLargeAssistantArtifacts(
-            await ingestWorkspaceWritesAndCollapseDisplay(
-              api,
-              reply || "（助手未返回可见正文）",
-              toastIngestWorkspaceHint,
-              { allowApply: turnPolicy.autoApplyWrites },
-            ),
-          ) || reply || "（助手未返回可见正文）";
-        if (!turnPolicy.allowWrites) {
-          displayContent = sanitizeReadonlyAssistantContent(displayContent);
         }
         const verifiedForTurn =
           hostVerified === true ||
@@ -1480,9 +1913,11 @@ export function useChatSend(args: UseChatSendArgs) {
           verifiedForTurn,
           displayContent,
         );
+        // Cursor 执行反馈：有实写 / Agent 通道 / 执行报告 → 统一整形（云端 fence 与本地同模板）
         if (
           turnPolicy.allowWrites &&
-          (agentExecBackend ||
+          (writtenForTurn.length ||
+            agentExecBackend ||
             getWorkbenchInteractionMode() === "agent" ||
             looksLikeAgentTurnReport(displayContent))
         ) {
@@ -1495,6 +1930,34 @@ export function useChatSend(args: UseChatSendArgs) {
           });
           displayContent = shaped.content;
           streamEvents = shaped.streamEvents;
+        }
+        // Cursor 体感：Agent Bash/run_command 回显到底栏终端（不重跑）
+        if (turnPolicy.allowWrites && getWorkbenchInteractionMode() === "agent") {
+          const fromTrace = hostToolTrace
+            .filter((t) => /^(run_command|run_tests)$/i.test(String(t.tool || "")))
+            .map((t) => ({
+              command: String(t.detail || t.args?.command || "").trim(),
+              output: String(t.output || ""),
+              ok: t.ok !== false,
+            }))
+            .filter((r) => r.command);
+          const fromEvents = (streamEvents || [])
+            .filter((e) => /^(Bash|Ran|run_command|run_tests)$/i.test(String(e.name || "")))
+            .map((e) => ({
+              command: String(e.arg || "").trim(),
+              output: String(e.output || ""),
+              ok: e.status !== "fail",
+            }))
+            .filter((r) => r.command);
+          const seen = new Set<string>();
+          const runs = [...fromTrace, ...fromEvents].filter((r) => {
+            if (seen.has(r.command)) return false;
+            seen.add(r.command);
+            return true;
+          });
+          if (runs.length) {
+            void echoAgentRunsInWorkbenchTerminal(runs);
+          }
         }
         const mcpUsed =
           turnPolicy.allowWrites &&
@@ -1523,11 +1986,37 @@ export function useChatSend(args: UseChatSendArgs) {
             ? {
                 agentTurn: {
                   writtenPaths: writtenForTurn,
+                  ...(turnFilePatches.length
+                    ? { filePatches: turnFilePatches }
+                    : {}),
                   verified: verifiedForTurn,
                   ...(agentExecBackend ? { backend: agentExecBackend } : {}),
                   ...(mcpUsed ? { mcpUsed: true } : {}),
                   ...(streamEvents.length ? { streamEvents } : {}),
                   ...(summary ? { summary } : {}),
+                  ...(() => {
+                    const turnFooter = snapshotComposerTurnFooter(
+                      writtenForTurn.map((path) => {
+                        const patch = turnFilePatches.find((p) => p.path === path);
+                        if (!patch || (patch.before == null && patch.after == null)) {
+                          return { path };
+                        }
+                        const stats = buildLineDiffPreview(
+                          patch.before || "",
+                          patch.after || "",
+                          8,
+                          { allowFullAdd: !patch.before },
+                        );
+                        return {
+                          path,
+                          added: stats.added,
+                          removed: stats.removed,
+                        };
+                      }),
+                    );
+                    resetLiveComposerTurnSignals();
+                    return turnFooter ? { turnFooter } : {};
+                  })(),
                 },
               }
             : {}),
@@ -1579,6 +2068,7 @@ export function useChatSend(args: UseChatSendArgs) {
       chatCtx.syncSessionMessages(sendSessionId, errorMsgs);
       toast.error(errLine);
     } finally {
+      clearLiveExecChannel();
       await appendAgentExecEvent({
         agent: cmd.stem,
         mode,

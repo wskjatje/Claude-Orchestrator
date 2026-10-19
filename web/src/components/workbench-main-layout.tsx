@@ -1,4 +1,4 @@
-import { memo, useEffect, type ReactNode, type Ref } from "react";
+import { memo, useEffect, useState, type ReactNode, type Ref } from "react";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { WorkbenchProblemsProvider } from "@/contexts/workbench-problems-context";
@@ -9,9 +9,17 @@ import { WorkbenchComposerFileSync } from "@/components/workbench-composer-file-
 import { WorkbenchCenterPanel } from "@/components/workbench-center-panel";
 import { WorkbenchLeftSidebar } from "@/components/workbench-side-panels";
 import { WorkbenchChatComposerBridge } from "@/components/workbench-chat-composer-bridge";
+import { WorkbenchQuickOpen } from "@/components/workbench-quick-open";
+import { WorkbenchCommandPalette } from "@/components/workbench-command-palette";
 import { WorkbenchStatusBar } from "@/components/workbench-status-bar";
 import { ssrSafeLayoutStorage } from "@/lib/ssr-safe-layout-storage";
 import { initWorkbenchBottomPanels } from "@/lib/workbench-panel-init";
+import {
+  subscribePrefillComposer,
+  subscribeWorkbenchCommandPalette,
+  subscribeWorkbenchLayoutToggle,
+  subscribeWorkbenchQuickOpen,
+} from "@/lib/workbench-side-tab";
 import { useTheme } from "@/hooks/use-theme";
 import type { TerminalSelectionPayload } from "@/lib/terminal-selection-meta";
 import type { DomElementPayload } from "@/lib/dom-element-meta";
@@ -30,6 +38,7 @@ export function WorkbenchMainLayout({
   onOpenChatPanel,
   onInsertTerminalSelection,
   onInsertDomElement,
+  onPrefillComposer,
   terminalOpen,
   onTerminalOpenChange,
   leftOpen,
@@ -45,6 +54,7 @@ export function WorkbenchMainLayout({
   onOpenChatPanel: () => void;
   onInsertTerminalSelection: (payload: TerminalSelectionPayload) => void;
   onInsertDomElement: (payload: DomElementPayload) => void;
+  onPrefillComposer: (text: string) => void;
   terminalOpen: boolean;
   onTerminalOpenChange: (open: boolean) => void;
   leftOpen: boolean;
@@ -81,15 +91,41 @@ export function WorkbenchMainLayout({
     else panel.collapse();
   }, [rightOpen, chatPanelRef]);
 
+  useEffect(() => {
+    return subscribeWorkbenchLayoutToggle((which, opts) => {
+      const ensure = Boolean(opts?.ensure);
+      if (which === "left") onLeftOpenChange(ensure ? true : !leftOpen);
+      else if (which === "chat") onRightOpenChange(ensure ? true : !rightOpen);
+      else if (which === "terminal") onTerminalOpenChange(ensure ? true : !terminalOpen);
+    });
+  }, [
+    leftOpen,
+    rightOpen,
+    terminalOpen,
+    onLeftOpenChange,
+    onRightOpenChange,
+    onTerminalOpenChange,
+  ]);
+
+  useEffect(() => {
+    return subscribePrefillComposer((text) => {
+      onOpenChatPanel();
+      onPrefillComposer(text);
+    });
+  }, [onOpenChatPanel, onPrefillComposer]);
+
   return (
     <WorkbenchWorkspaceProvider>
       <WorkbenchComposerFileSync />
+      <WorkbenchQuickOpenHost />
+      <WorkbenchCommandPaletteHost />
       <WorkbenchComposerBridgeProvider>
         <WorkbenchTerminalBridgeProvider>
         <WorkbenchChatComposerBridge
           onOpenChatPanel={onOpenChatPanel}
           onInsertTerminalSelection={onInsertTerminalSelection}
           onInsertDomElement={onInsertDomElement}
+          onPrefillComposer={onPrefillComposer}
         />
         <WorkbenchProblemsProvider>
         <div className="workbench-shell flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -115,7 +151,7 @@ export function WorkbenchMainLayout({
                 <WorkbenchLeftSidebar />
               </div>
             </ResizablePanel>
-            <ResizableHandle withHandle />
+            <ResizableHandle />
             <ResizablePanel id="workbench-center" defaultSize="38" minSize="22">
               <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
                   <WorkbenchCenterPanel
@@ -124,7 +160,7 @@ export function WorkbenchMainLayout({
                   />
               </div>
             </ResizablePanel>
-            <ResizableHandle withHandle />
+            <ResizableHandle />
             <ResizablePanel
               id="workbench-chat"
               panelRef={chatPanelRef}
@@ -145,6 +181,22 @@ export function WorkbenchMainLayout({
       </WorkbenchComposerBridgeProvider>
     </WorkbenchWorkspaceProvider>
   );
+}
+
+function WorkbenchQuickOpenHost() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    return subscribeWorkbenchQuickOpen(() => setOpen(true));
+  }, []);
+  return <WorkbenchQuickOpen open={open} onOpenChange={setOpen} />;
+}
+
+function WorkbenchCommandPaletteHost() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    return subscribeWorkbenchCommandPalette(() => setOpen(true));
+  }, []);
+  return <WorkbenchCommandPalette open={open} onOpenChange={setOpen} />;
 }
 
 /** 仅渲染顶栏 + Portal 空挂载点，避免工作区状态更新时重绘聊天内容 */

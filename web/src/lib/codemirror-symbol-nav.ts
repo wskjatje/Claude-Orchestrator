@@ -253,6 +253,8 @@ export type OutlineSymbol = {
   kind: SymbolKind;
   line: number;
   preview: string;
+  /** DocumentSymbol 层级（0=顶层）；正则大纲无此字段 */
+  depth?: number;
 };
 
 /** 当前文件大纲：扫描顶层/导出声明（Outline 常用条目） */

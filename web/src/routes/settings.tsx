@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
 import {
@@ -29,12 +29,18 @@ import {
   GIT_PUSH_REASON_PLACEHOLDER,
   GIT_PUSH_REASON_REQUIRED,
   PAGE_DESC,
-  SETTINGS_ADVANCED_LINKS,
-  SETTINGS_EXPERIMENTAL_LINKS,
 } from "@/lib/ui-copy";
 import { formatGitErrorMessage } from "@/lib/git-error-message";
 
+/** tab 可选：省略时等同 basic，避免全站 Link to="/settings" 被迫带 search */
+type SettingsSearch = { tab?: "basic" | "advanced" };
+
 export const Route = createFileRoute("/settings")({
+  validateSearch: (search: Record<string, unknown>): SettingsSearch => {
+    if (search.tab === "advanced") return { tab: "advanced" };
+    if (search.tab === "basic") return { tab: "basic" };
+    return {};
+  },
   head: () => ({ meta: [{ title: "应用设置 · Claude Orchestrator" }] }),
   component: SettingsPage,
 });
@@ -86,7 +92,7 @@ function SettingsOverview({
         </div>
         <div className="mt-1 text-[10.5px] text-muted-foreground">
           <Link to="/workspaces" className="underline hover:no-underline">
-            更换工作目录
+            工作目录
           </Link>
         </div>
       </div>
@@ -114,12 +120,20 @@ function SettingsOverview({
 
 function SettingsPage() {
   const desktop = useHasDesktop();
+  const search = Route.useSearch();
+  const settingsTab: "basic" | "advanced" =
+    search.tab === "advanced" ? "advanced" : "basic";
+  const navigate = useNavigate({ from: "/settings" });
+  const setSettingsTab = (next: "basic" | "advanced") => {
+    void navigate({
+      search: next === "advanced" ? { tab: "advanced" } : {},
+    });
+  };
   const [workspacePath, setWorkspacePath] = useState("(未载入)");
   const [modelSelect, setModelSelect] = useState("");
   const [orchestrationModeSelect, setOrchestrationModeSelect] = useState<
     "claude-code" | "local-mcp"
   >("claude-code");
-  const [settingsTab, setSettingsTab] = useState<"basic" | "advanced">("basic");
 
   const refreshWorkspace = useCallback(async () => {
     const api = getDesktop();
@@ -495,33 +509,6 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
   return (
     <>
       <div className="max-w-2xl space-y-5">
-        <Section title="编排与运维">
-          <div className="flex flex-wrap gap-1.5">
-            {SETTINGS_ADVANCED_LINKS.map((item) =>
-              item.to === "/chains" ? (
-                <Link key={item.to} to="/chains" search={{ q: "" }} className="btn-row">
-                  {item.label}
-                </Link>
-              ) : (
-                <Link key={item.to} to={item.to} className="btn-row">
-                  {item.label}
-                </Link>
-              ),
-            )}
-          </div>
-        </Section>
-
-        <Section title="实验">
-          <p className="mb-2 text-[12px] text-muted-foreground">非编码主路径，按需使用。</p>
-          <div className="flex flex-wrap gap-1.5">
-            {SETTINGS_EXPERIMENTAL_LINKS.map((item) => (
-              <Link key={item.to} to={item.to} className="btn-row">
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </Section>
-
         {/* ── 仓库摘要 ── */}
         <Section title="GitHub 同步">
           <div className="flex flex-wrap items-center justify-between gap-3">

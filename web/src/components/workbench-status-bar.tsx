@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { AlertCircle, AlertTriangle, GitBranch } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -139,7 +139,14 @@ export function WorkbenchStatusBar({
       ? "应用壳 · 内嵌浏览"
       : "Web 预览";
 
-  const openProblems = () => {
+  const openProblems = (ev?: MouseEvent) => {
+    if (ev?.shiftKey) {
+      void import("@/lib/workbench-side-tab").then(({ requestPrefillComposer, requestWorkbenchLayoutToggle }) => {
+        requestWorkbenchLayoutToggle("chat", { ensure: true });
+        requestPrefillComposer("@problems ");
+      });
+      return;
+    }
     onOpenProblems?.();
     focusProblemsPanel();
   };
@@ -211,9 +218,9 @@ export function WorkbenchStatusBar({
             "workbench-status-bar__count",
             errorCount > 0 && "workbench-status-bar__count--error",
           )}
-          onClick={errorCount > 0 ? openProblems : undefined}
+          onClick={errorCount > 0 ? (e) => openProblems(e) : undefined}
           disabled={errorCount === 0}
-          title={errorCount > 0 ? "查看问题" : "无错误"}
+          title={errorCount > 0 ? "查看问题（Shift+点击添加到对话）" : "无错误"}
         >
           <AlertCircle className="h-3 w-3" aria-hidden />
           <span>{errorCount}</span>
@@ -224,9 +231,9 @@ export function WorkbenchStatusBar({
             "workbench-status-bar__count",
             warningCount > 0 && "workbench-status-bar__count--warning",
           )}
-          onClick={warningCount > 0 ? openProblems : undefined}
+          onClick={warningCount > 0 ? (e) => openProblems(e) : undefined}
           disabled={warningCount === 0}
-          title={warningCount > 0 ? "查看警告" : "无警告"}
+          title={warningCount > 0 ? "查看警告（Shift+点击添加到对话）" : "无警告"}
         >
           <AlertTriangle className="h-3 w-3" aria-hidden />
           <span>{warningCount}</span>

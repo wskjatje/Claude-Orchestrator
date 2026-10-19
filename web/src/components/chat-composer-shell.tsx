@@ -1,5 +1,14 @@
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowUp, MoreHorizontal, Paperclip, Square, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUp,
+  FolderOpen,
+  Split,
+  MoreHorizontal,
+  Paperclip,
+  Square,
+  X,
+} from "lucide-react";
 import {
   useState,
   useMemo,
@@ -16,6 +25,16 @@ import { ChatModelSelector, type ModelPick } from "@/components/chat-model-selec
 import { ComposerSessionChip } from "@/components/composer-session-chip";
 import { ComposerOrchHint } from "@/components/composer-orch-hint";
 import { CodeIndexChip, GraphifyChip } from "@/components/chat/composer-chips";
+import {
+  getLiveExecChannelState,
+  subscribeLiveExecChannel,
+} from "@/lib/live-exec-channel";
+import {
+  getWorkbenchInteractionMode,
+  subscribeWorkbenchInteractionMode,
+} from "@/lib/workbench-interaction-mode";
+import { isPlanDocumentRequest } from "@/lib/turn-policy";
+import { COMPOSER_ASK_PLAN_HINT } from "@/lib/ui-copy";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,11 +57,14 @@ import type { PendingDomElement } from "@/lib/dom-element-meta";
 import type { UserImageAttachment } from "@/lib/ollama-messages";
 import { getDesktop } from "@/lib/desktop-api";
 import {
+  atMentionPillLabel,
   detectAtMentionAtCursor,
+  extractAtMentionTokens,
   formatAtMentionLabel,
   groupCodebaseHits,
   loadComposerMentionPaths,
   matchAtMentionQuery,
+  removeAtMentionToken,
   type CodebaseHit,
 } from "@/lib/composer-at-mention";
 import { useWorkbenchWorkspaceOptional } from "@/contexts/workbench-workspace-context";
@@ -94,6 +116,12 @@ export type ChatComposerShellProps = {
   /** 本轮可选注入的 Skill stem（空 = 不改发送路径） */
   selectedSkillStems?: string[];
   onSelectedSkillStemsChange?: (stems: string[]) => void;
+  /** 当前工作区绝对路径（与发送读盘同源） */
+  workspacePath?: string | null;
+  /** 点击工作区芯片：跳转工作区页或选择目录 */
+  onWorkspaceChipClick?: () => void;
+  /** 打开本机多 Agent 并行派发 */
+  onParallelClick?: () => void;
 };
 
 /** Composer 主体（底栏与顶部内联编辑共用） */
@@ -133,9 +161,18 @@ export function ChatComposerShell({
   mentionPriorityPaths = [],
   selectedSkillStems = [],
   onSelectedSkillStemsChange,
+  workspacePath = null,
+  onWorkspaceChipClick,
+  onParallelClick,
 }: ChatComposerShellProps) {
   const inline = variant === "inline";
   const [dragOver, setDragOver] = useState(false);
+  const workspaceBasename = useMemo(() => {
+    const p = String(workspacePath || "").trim().replace(/\/+$/, "");
+    if (!p) return "";
+    const parts = p.split(/[/\\]/).filter(Boolean);
+    return parts[parts.length - 1] || p;
+  }, [workspacePath]);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const { health: graphHealth, buildGraph, openGraphHtml } = useGraphifyHealth();
   const [codeIndex, setCodeIndex] = useState<{
@@ -160,6 +197,18 @@ export function ChatComposerShell({
     subscribeCodebaseInject,
     getCodebaseInjectPaths,
     getCodebaseInjectPaths,
+  );
+  const interactionMode = useSyncExternalStore(
+    subscribeWorkbenchInteractionMode,
+    getWorkbenchInteractionMode,
+    getWorkbenchInteractionMode,
+  );
+  const showAskPlanHint =
+    interactionMode === "ask" && isPlanDocumentRequest(input.trim());
+  const liveExec = useSyncExternalStore(
+    subscribeLiveExecChannel,
+    getLiveExecChannelState,
+    getLiveExecChannelState,
   );
 
   const refreshMentionPaths = () => {
@@ -333,6 +382,12 @@ export function ChatComposerShell({
         return;
       }
     }
+    // 编辑历史提问时 Esc = 终止退回/退出编辑（对齐 Cursor）
+    if (e.key === "Escape" && editHistoryActive && onCancelEdit) {
+      e.preventDefault();
+      onCancelEdit();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (!workflowBusy && canSend) onSend();
@@ -369,14 +424,16 @@ export function ChatComposerShell({
     return !modelSupportsChatVision({ orchMode, modelId: v });
   }, [pendingImages.length, orchMode, modelValue, modelFallback]);
 
+  const atMentionTokens = useMemo(() => extractAtMentionTokens(input), [input]);
+
   return (
     <div
       data-workbench-composer=""
       className={cn(
-        "chat-composer-cursor relative overflow-hidden rounded-xl border bg-background shadow-sm transition-all",
+        "chat-composer-cursor relative overflow-hidden border bg-background transition-all",
         dragOver
-          ? "border-primary/60 ring-2 ring-primary/15"
-          : "border-border/80 focus-within:border-primary/35",
+          ? "border-primary/55 ring-2 ring-primary/12"
+          : "border-border/70 focus-within:border-primary/40",
         editHistoryActive && "ring-1 ring-primary/20",
         inline && "chat-composer-cursor--inline",
       )}
@@ -402,21 +459,44 @@ export function ChatComposerShell({
         </div>
       ) : null}
 
+      {showAskPlanHint ? (
+        <div className="border-b border-border/40 px-3 py-0.5 text-[11px] text-muted-foreground/80">
+          {COMPOSER_ASK_PLAN_HINT}
+        </div>
+      ) : null}
+
       {editHistoryActive ? (
         <div className="chat-composer-edit-banner flex items-center justify-between gap-2 border-b border-border/60 bg-muted/20 px-3 py-1.5 text-[11.5px] text-foreground">
           <span>{inline ? "编辑此提问 · 发送后将从此处重新对话" : "正在编辑历史消息 · 发送后将从此处重新对话"}</span>
           <button
             type="button"
             className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[12px] font-medium text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
+            title="终止退回并退出编辑 (Esc)"
             onClick={onCancelEdit}
           >
             <X className="h-3 w-3" />
-            取消
+            取消 (Esc)
           </button>
         </div>
       ) : null}
 
-      <div className="chat-composer-body px-3 pt-2.5">
+      <div className="chat-composer-body px-3 pt-2">
+        {atMentionTokens.length > 0 ? (
+          <div className="composer-at-pills" aria-label="上下文引用">
+            {atMentionTokens.map((token) => (
+              <span key={token} className="composer-at-pill" title={`@${token}`}>
+                <span className="truncate">{atMentionPillLabel(token)}</span>
+                <button
+                  type="button"
+                  aria-label={`移除 @${token}`}
+                  onClick={() => onInputChange(removeAtMentionToken(input, token))}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
         {/* 图片缩略图 — 56×56，无文件名，X 在图片上方 */}
         {pendingImages.length > 0 ? (
           <div className="mb-2 flex flex-wrap gap-1.5">
@@ -482,8 +562,8 @@ export function ChatComposerShell({
             placeholder={placeholder}
             rows={1}
             disabled={disabled}
-            className="scrollbar-thin box-border block w-full min-w-0 resize-none bg-transparent py-1.5 text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground disabled:opacity-60"
-            style={{ minHeight: "28px", maxHeight: inline ? "180px" : "220px" }}
+            className="scrollbar-thin box-border block w-full min-w-0 resize-none bg-transparent py-1 text-[13px] leading-[1.45] outline-none placeholder:text-muted-foreground disabled:opacity-60"
+            style={{ minHeight: "24px", maxHeight: inline ? "160px" : "200px" }}
           />
           {mentionOpen && mentionHits.length > 0 && !codebasePreview?.query ? (
             <ul
@@ -561,8 +641,40 @@ export function ChatComposerShell({
         </div>
       </div>
 
-      <div className="composer-cursor-footer flex min-w-0 items-center gap-1 px-2 pb-2 pt-0">
+      <div className="composer-cursor-footer flex min-w-0 items-center gap-0.5 px-1.5 pb-1.5 pt-0">
         <div className="composer-cursor-controls flex min-w-0 flex-1 items-center gap-0.5 overflow-visible">
+          <button
+            type="button"
+            className="composer-chrome-chip inline-flex max-w-[10rem] shrink items-center gap-1 truncate"
+            title={workspacePath?.trim() || "未选择工作区（点击选择）"}
+            disabled={!hasDesktopApi || workflowBusy}
+            onClick={() => onWorkspaceChipClick?.()}
+            aria-label={
+              workspaceBasename
+                ? `当前工作区 ${workspaceBasename}`
+                : "选择工作区"
+            }
+          >
+            <FolderOpen className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+            <span className="truncate">{workspaceBasename || "未选工作区"}</span>
+          </button>
+          {liveExec.channel !== "idle" && liveExec.label ? (
+            <span
+              className="composer-chrome-chip composer-chrome-chip--active inline-flex max-w-[10rem] shrink truncate"
+              title={
+                liveExec.terminalSessionId
+                  ? `执行通道：${liveExec.label} → 终端 ${liveExec.terminalSessionId}`
+                  : `执行通道：${liveExec.label}`
+              }
+            >
+              {liveExec.label}
+              {liveExec.terminalSessionId ? (
+                <span className="ml-1 opacity-70">
+                  ·{liveExec.terminalSessionId.replace(/^term-/, "").slice(-4)}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
           <ComposerSessionChip
             agentBasename={localAgentBasename}
             onAgentChange={onAgentChange}
@@ -643,6 +755,15 @@ export function ChatComposerShell({
                 />
               </div>
               <DropdownMenuSeparator />
+              {onParallelClick ? (
+                <DropdownMenuItem
+                  disabled={!hasDesktopApi || workflowBusy}
+                  onSelect={() => onParallelClick()}
+                >
+                  <Split className="mr-2 h-3.5 w-3.5 opacity-70" aria-hidden />
+                  多 Agent 并行
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem asChild>
                 <Link to="/chains" search={{ q: "" }}>
                   任务链
@@ -670,10 +791,11 @@ export function ChatComposerShell({
             <button
               type="button"
               onClick={onStop}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-destructive/40 bg-destructive/10 text-destructive transition hover:bg-destructive/15"
-              title="停止"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-foreground text-background shadow-sm transition hover:opacity-90"
+              title="停止生成"
+              aria-label="停止生成"
             >
-              <Square className="h-3.5 w-3.5" fill="currentColor" />
+              <Square className="h-2.5 w-2.5" fill="currentColor" strokeWidth={0} />
             </button>
           ) : (
             <button
@@ -682,6 +804,7 @@ export function ChatComposerShell({
               disabled={!canSend || !hasDesktopApi}
               className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-35"
               title="发送 (Enter)"
+              aria-label="发送"
             >
               <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.25} />
             </button>

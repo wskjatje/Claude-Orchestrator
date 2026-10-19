@@ -1,10 +1,18 @@
 /** 从会话历史提取最近一轮 Agent 写盘/验证元数据，供续跑注入 */
 
+import type { AgentFilePatch } from "@/lib/agent-file-patch";
 import type { StreamAgentEvent } from "@/lib/stream-agent-events";
+import type { ComposerTurnFooterSnapshot } from "@/lib/workbench-composer-turn-footer";
+
+export type { AgentFilePatch };
 
 export type AgentTurnMeta = {
   writtenPaths?: string[];
+  /** 写前/写后补丁（气泡 Diff / Undo 快照回源） */
+  filePatches?: AgentFilePatch[];
   verified?: boolean;
+  /** 回合结束时冻结的底栏（方案 / 终端命令 / 本轮文件），不随下一轮活动摘要被覆盖 */
+  turnFooter?: ComposerTurnFooterSnapshot;
   /** cli=Claude CLI；host=Host 内置工具；local=本地 MCP 编排 */
   backend?: "cli" | "host" | "local";
   /** 本轮轨迹中是否出现 mcp__ 工具调用（与 backend=local 无关） */
@@ -30,6 +38,7 @@ export function lastAgentTurnMeta(history: HistMsg[]): AgentTurnMeta | null {
     if (
       m.agentTurn &&
       (m.agentTurn.writtenPaths?.length ||
+        m.agentTurn.filePatches?.length ||
         m.agentTurn.verified != null ||
         m.agentTurn.streamEvents?.length)
     ) {

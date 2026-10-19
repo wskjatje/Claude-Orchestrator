@@ -128,7 +128,25 @@ function assertBackend(appPath) {
   if (!(Number(String(ver).split('.')[0]) >= 13)) {
     throw new Error(`打包内 better-sqlite3 须 ≥13，当前 ${ver}`)
   }
-  console.log(`[smoke] backend OK (better-sqlite3 ${ver})`)
+  // P2-4：shared/ 与 orch 续写必须进包（禁止缺 direct-chat-policy / continue）
+  const sharedPolicy = path.join(backend, 'shared', 'direct-chat-policy.mjs')
+  if (!fs.existsSync(sharedPolicy)) {
+    throw new Error(`打包缺少 shared/direct-chat-policy.mjs：${sharedPolicy}`)
+  }
+  const orchCandidates = [
+    path.join(backend, 'server', 'vendor', 'cad', 'local-mcp-orchestrator.js'),
+    path.join(backend, 'vendor', 'cad', 'local-mcp-orchestrator.js'),
+  ]
+  const orchPath = orchCandidates.find((p) => fs.existsSync(p))
+  if (!orchPath) throw new Error('打包缺少 local-mcp-orchestrator.js')
+  const orchSrc = fs.readFileSync(orchPath, 'utf8')
+  if (!/maxContinues|auto-continue|looksLikeIncompleteAssistantReply/.test(orchSrc)) {
+    throw new Error('打包 orch 缺少续写符号（maxContinues / auto-continue）')
+  }
+  if (!/direct-chat-policy/.test(orchSrc)) {
+    throw new Error('打包 orch 未引用 direct-chat-policy')
+  }
+  console.log(`[smoke] backend OK (better-sqlite3 ${ver}; shared+continue OK)`)
   return backend
 }
 

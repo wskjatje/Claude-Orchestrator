@@ -256,10 +256,12 @@ export function tsImplementationAt(body) {
   if (!resolved.ok) return resolved
   const { entry, abs, offset, root } = resolved
   const defs = entry.service.getImplementationAtPosition(abs, offset)
-  if (!defs?.length) return { ok: true, definition: null }
-  const d = defs[0]
-  const loc = locFromFileSpan(root, d.fileName, d.textSpan, entry.service)
-  return { ok: true, definition: { ...loc, name: null, kind: null } }
+  if (!defs?.length) return { ok: true, definition: null, definitions: [] }
+  const definitions = defs.map((d) => {
+    const loc = locFromFileSpan(root, d.fileName, d.textSpan, entry.service)
+    return { ...loc, name: null, kind: null }
+  })
+  return { ok: true, definition: definitions[0] ?? null, definitions }
 }
 
 export function tsHoverAt(body) {
@@ -523,6 +525,40 @@ export function tsApplyCodeFix(body) {
 }
 
 /**
+ * 格式化整份文档（TS Language Service；返回完整新文本）。
+ * @param {{ relPath: string, content?: string }} body
+ */
+export function tsFormatDocument(body) {
+  const resolved = resolvePosition({
+    relPath: body?.relPath,
+    line: 1,
+    column: 1,
+    content: body?.content,
+  })
+  if (!resolved.ok) return { ok: false, content: null, error: resolved.error }
+  const { entry, abs, ts } = resolved
+  try {
+    const format = ts.getDefaultFormatCodeSettings?.() || {}
+    const edits = entry.service.getFormattingEditsForDocument(abs, format)
+    let text =
+      typeof body?.content === 'string'
+        ? body.content
+        : entry.service.getProgram()?.getSourceFile(abs)?.getFullText() || ''
+    if (!text) return { ok: false, content: null, error: '无法读取文件' }
+    if (!edits?.length) return { ok: true, content: null, changed: false }
+    const sorted = [...edits].sort((a, b) => b.span.start - a.span.start)
+    for (const ch of sorted) {
+      const start = ch.span.start
+      const end = start + ch.span.length
+      text = text.slice(0, start) + (ch.newText || '') + text.slice(end)
+    }
+    return { ok: true, content: text, changed: true }
+  } catch (e) {
+    return { ok: false, content: null, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+/**
  * Organize Imports（返回完整新文本，由前端替换）。
  * @param {{ relPath: string, content?: string }} body
  */
@@ -616,6 +652,27 @@ export function tsDiagnosticsForAbsFiles(root, absFiles) {
   return problems
 }
 
+export function tsNavigationTree(body) {
+  const resolved = resolvePosition({ ...(body || {}), line: 1, column: 1 })
+  if (!resolved.ok) return resolved
+  const { entry, abs, sf, ts } = resolved
+  const tree = entry.service.getNavigationTree(abs)
+  const symbols = []
+  const walk = (node, depth) => {
+    if (!node || symbols.length >= 400) return
+    const text = String(node.text || '').trim()
+    const span = node.nameSpan || node.spans?.[0]
+    if (depth > 0 && text && !text.startsWith('<') && span && sf) {
+      const pos = sf.getLineAndCharacterOfPosition(Math.min(span.start, sf.text.length))
+      const kindName = ts.SyntaxKind?.[node.kind] || 'unknown'
+      symbols.push({ name: text, kind: kindName, line: pos.line + 1 })
+    }
+    for (const child of node.childItems || []) walk(child, depth + 1)
+  }
+  walk(tree, 0)
+  return { ok: true, symbols }
+}
+
 export function invalidateTsSnapshotsForPaths(relPaths) {
   const workspaceDir = loadWorkspace()
   if (!workspaceDir || !Array.isArray(relPaths) || !relPaths.length) return
@@ -630,6 +687,75 @@ export function invalidateTsSnapshotsForPaths(relPaths) {
       entry.versions.set(abs, (entry.versions.get(abs) || 0) + 1)
     }
   }
+}
+
+/**
+ * TS/JS Call Hierarchy（真 Language Service；无结果则空，禁止假树）。
+ * @param {{ relPath: string, line: number, column: number, content?: string }} body
+ */
+export function tsCallHierarchyAt(body) {
+  const resolved = resolvePosition(body)
+  if (!resolved.ok) {
+    return { ...resolved, item: null, incoming: [], outgoing: [] }
+  }
+  const { entry, abs, offset, root } = resolved
+  const svc = entry.service
+  if (typeof svc.prepareCallHierarchy !== 'function') {
+    return {
+      ok: false,
+      error: '当前 typescript 不支持 Call Hierarchy',
+      item: null,
+      incoming: [],
+      outgoing: [],
+    }
+  }
+  let prepared
+  try {
+    prepared = svc.prepareCallHierarchy(abs, offset)
+  } catch (e) {
+    return {
+      ok: false,
+      error: e?.message || String(e),
+      item: null,
+      incoming: [],
+      outgoing: [],
+    }
+  }
+  if (!prepared) return { ok: true, item: null, incoming: [], outgoing: [] }
+  const rootItem = Array.isArray(prepared) ? prepared[0] : prepared
+  if (!rootItem) return { ok: true, item: null, incoming: [], outgoing: [] }
+
+  const mapItem = (it) => ({
+    name: String(it.name || ''),
+    kind: String(it.kind || ''),
+    containerName: it.containerName != null ? String(it.containerName) : null,
+    ...locFromFileSpan(root, it.file, it.selectionSpan || it.span, entry.service),
+  })
+
+  const item = mapItem(rootItem)
+  let incoming = []
+  let outgoing = []
+  try {
+    incoming = (svc.provideCallHierarchyIncomingCalls(rootItem) || [])
+      .slice(0, 48)
+      .map((c) => ({
+        ...mapItem(c.from),
+        callCount: Array.isArray(c.fromSpans) ? c.fromSpans.length : 0,
+      }))
+  } catch {
+    incoming = []
+  }
+  try {
+    outgoing = (svc.provideCallHierarchyOutgoingCalls(rootItem) || [])
+      .slice(0, 48)
+      .map((c) => ({
+        ...mapItem(c.to),
+        callCount: Array.isArray(c.fromSpans) ? c.fromSpans.length : 0,
+      }))
+  } catch {
+    outgoing = []
+  }
+  return { ok: true, item, incoming, outgoing }
 }
 
 export function invalidateTsServiceCache() {

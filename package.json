@@ -18,11 +18,25 @@
     "desktop:pack": "node scripts/pack-desktop.mjs",
     "vendor:install": "npm --prefix server/vendor/cad install --omit=dev && npm --prefix server/vendor/agent-os-runtime install --omit=dev && node scripts/fix-vendor-native-modules.mjs",
     "sync:cc-switch": "bash scripts/sync-cc-switch-to-workbench.sh",
-    "setup:yunmeng": "bash scripts/setup-yunmeng-cc-switch.sh"
+    "setup:yunmeng": "bash scripts/setup-yunmeng-cc-switch.sh",
+    "check:turn-policy": "node scripts/check-turn-policy.mjs",
+    "check:workspace-fidelity": "node scripts/check-workspace-fidelity.mjs",
+    "check:context-compact": "node scripts/check-context-compact.mjs",
+    "check:model-route": "node scripts/check-model-route.mjs",
+    "check:shared-parity": "node scripts/check-shared-parity.mjs",
+    "check:mcp-cli-gate": "node scripts/check-mcp-cli-gate.mjs",
+    "check:incomplete-reply": "node scripts/check-incomplete-reply.mjs",
+    "check:workspace-write-yaml": "node scripts/check-workspace-write-yaml.mjs",
+    "check:workspace-write-no-guess": "node scripts/check-workspace-write-no-guess.mjs",
+    "check:cursor-parity-e2e": "node scripts/check-cursor-parity-e2e.mjs",
+    "check:cli-bash-echo": "node scripts/check-cli-bash-echo.mjs",
+    "check:turn-write-close": "node scripts/check-turn-write-close.mjs",
+    "check:dev-gates": "node scripts/check-turn-policy.mjs && node scripts/check-workspace-fidelity.mjs && node scripts/check-context-compact.mjs && node scripts/check-model-route.mjs && node scripts/check-shared-parity.mjs && node scripts/check-mcp-cli-gate.mjs && node scripts/check-incomplete-reply.mjs && node scripts/check-workspace-write-yaml.mjs && node scripts/check-workspace-write-no-guess.mjs && node scripts/check-turn-write-close.mjs && node scripts/check-cli-bash-echo.mjs && node scripts/check-cursor-parity-e2e.mjs"
   },
   "dependencies": {
     "node-pty": "^1.0.0",
     "playwright": "^1.61.1",
+    "pyright": "^1.1.414",
     "ws": "^8.18.3"
   }
 }

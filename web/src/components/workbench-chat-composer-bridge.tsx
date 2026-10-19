@@ -8,10 +8,12 @@ export function WorkbenchChatComposerBridge({
   onOpenChatPanel,
   onInsertTerminalSelection,
   onInsertDomElement,
+  onPrefillComposer,
 }: {
   onOpenChatPanel: () => void;
   onInsertTerminalSelection: (payload: TerminalSelectionPayload) => void;
   onInsertDomElement: (payload: DomElementPayload) => void;
+  onPrefillComposer: (text: string) => void;
 }) {
   const { registerComposerHandlers } = useWorkbenchComposerBridge();
   useEffect(() => {
@@ -19,7 +21,14 @@ export function WorkbenchChatComposerBridge({
       openChatPanel: onOpenChatPanel,
       insertTerminalSelection: onInsertTerminalSelection,
       insertDomElement: onInsertDomElement,
+      prefillComposer: onPrefillComposer,
     });
-  }, [registerComposerHandlers, onOpenChatPanel, onInsertTerminalSelection, onInsertDomElement]);
+  }, [
+    registerComposerHandlers,
+    onOpenChatPanel,
+    onInsertTerminalSelection,
+    onInsertDomElement,
+    onPrefillComposer,
+  ]);
   return null;
 }

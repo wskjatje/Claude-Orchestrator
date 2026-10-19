@@ -23,4 +23,4 @@ skills: security-review, correctness-review, maintainability-review, react-best-
 - 可执行的评论列表：问题位置、严重级别、建议改法、是否阻塞合并。
 
 ## 交付与衔接（强制）
-- 本轮评审结论形成后，**须主动**用 **`workspace-write` JSON 代码块**将**评审摘要**落盘（如 `docs/code-review-<日期或主题>.md`），以便作者与后续轮次**按路径跟踪**；无法写盘时给出**建议文件路径**与要点列表。
+- Agent/链步：评审摘要须 ```workspace-write``` JSON 显式 path（如 `docs/code-review-report.md`）+ content|contents；Plan 仅排队待 Accept；Ask 只输出结论不写盘。无围栏勿声称已写入。

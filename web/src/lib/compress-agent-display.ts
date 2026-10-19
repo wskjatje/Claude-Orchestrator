@@ -10,31 +10,54 @@ import {
   type StreamAgentEvent,
 } from "@/lib/stream-agent-events";
 
-/** Agent 轨迹允许的工具名（拒绝「系统强制续写」等伪工具行） */
+/** Agent 轨迹允许的工具名（规范名 Explored / Edited / Ran + 细粒度别名） */
 const AGENT_TRACE_TOOL_NAME_RE =
-  /^(Read|Glob|Grep|Edit|Write|MultiEdit|Bash|WebFetch|WebSearch|Explored|Search|Diagnostics)$/i;
+  /^(Read|Glob|Grep|Edit|Write|MultiEdit|Bash|WebFetch|WebSearch|Explored|Edited|Ran|Search|Diagnostics)$/i;
 
-/** Host / CLI 工具名 → 轨迹展示名 */
+/** Host / CLI 工具名 → 轨迹规范名（Explored / Edited / Ran） */
 export function agentTraceToolLabel(raw: string): string {
   const n = String(raw || "").trim().replace(/[….]+$/u, "");
   const map: Record<string, string> = {
-    read_file: "Read",
-    write_file: "Write",
-    search_replace: "Edit",
-    code_search: "Search",
-    run_command: "Bash",
-    run_tests: "Bash",
-    get_diagnostics: "Diagnostics",
-    git_status: "Bash",
+    read_file: "Explored",
+    write_file: "Edited",
+    search_replace: "Edited",
+    code_search: "Explored",
+    run_command: "Ran",
+    run_tests: "Ran",
+    get_diagnostics: "Explored",
+    git_status: "Ran",
+    Read: "Explored",
+    Glob: "Explored",
+    Grep: "Explored",
+    WebFetch: "Explored",
+    WebSearch: "Explored",
+    Search: "Explored",
+    Diagnostics: "Explored",
+    Edit: "Edited",
+    Write: "Edited",
+    MultiEdit: "Edited",
+    Bash: "Ran",
     Explored: "Explored",
-    Search: "Search",
-    MultiEdit: "Edit",
+    Edited: "Edited",
+    Ran: "Ran",
   };
   if (map[n] || map[n.toLowerCase()]) return map[n] || map[n.toLowerCase()]!;
   // mcp__server__tool_name → tool_name（保留下划线，便于轨迹过滤）
   const mcp = n.match(/^mcp__(?:[^_]+)__(.+)$/i) || n.match(/^mcp__(.+)$/i);
   if (mcp?.[1]) return mcp[1];
   return n;
+}
+
+/** 将 streamEvents 工具名规范为 Explored / Edited / Ran（时间线单源） */
+export function normalizeStreamEventName(name: string | undefined | null): string {
+  const label = agentTraceToolLabel(String(name || ""));
+  if (/^Explored$/i.test(label)) return "Explored";
+  if (/^Edited$/i.test(label)) return "Edited";
+  if (/^Ran$/i.test(label)) return "Ran";
+  if (/^(Read|Glob|Grep|Search|Diagnostics|WebFetch|WebSearch)$/i.test(label)) return "Explored";
+  if (/^(Edit|Write|MultiEdit)$/i.test(label)) return "Edited";
+  if (/^(Bash|Shell|Terminal)$/i.test(label)) return "Ran";
+  return label || "Explored";
 }
 
 export function isAgentTraceToolName(name: string): boolean {
@@ -157,7 +180,8 @@ export function stripDsmlToolMarkup(text: string): {
   const tools = [...xml.tools];
   let t = xml.text;
 
-  const open = String.raw`[◄◁‹<]\s*[|｜]?\s*DSML\s*[|｜]`;
+  // DeepSeek 常见 `<｜｜DSML｜｜`（双竖线），旧式单 `|` 一并兼容
+  const open = String.raw`[◄◁‹<]\s*[|｜]{0,2}\s*DSML\s*[|｜]{0,2}`;
   const close = String.raw`[►▷›>|｜]`;
 
   const invokeRe = new RegExp(
@@ -219,6 +243,7 @@ export type HostToolTraceItem = {
   path?: string;
   args?: Record<string, unknown>;
   ok?: boolean;
+  output?: string;
 };
 
 function detailFromArgs(args?: Record<string, unknown>): string {
@@ -247,12 +272,14 @@ export function toolTraceToStreamEvents(
     if (seen.has(key)) continue;
     seen.add(key);
     const isEdit = /^(Edit|Write)$/i.test(name);
+    const output = String(t?.output || "").trim().slice(0, 8000) || undefined;
     out.push({
       type: "tool",
       name,
       arg: arg || undefined,
       path: isEdit && arg ? arg : undefined,
       status: t?.ok === false ? "fail" : "ok",
+      ...(output ? { output } : {}),
     });
   }
   return out;
@@ -262,7 +289,7 @@ export function toolTraceToStreamEvents(
 export function trailLinesToStreamEvents(text: string): StreamAgentEvent[] {
   const body = stripForceContinueMarkers(stripStreamEventsBlock(text));
   const out: StreamAgentEvent[] = [];
-  const seen = new Set<string>();
+  const byKey = new Map<string, StreamAgentEvent>();
   for (const line of body.split("\n")) {
     const t = line.trim();
     const m = t.match(/^⋯\s+(\S+)(?:\s*[·•]\s*(.+))?$/);
@@ -270,20 +297,41 @@ export function trailLinesToStreamEvents(text: string): StreamAgentEvent[] {
     const name = agentTraceToolLabel(m[1] || "");
     // 拒绝「系统强制续写」等非工具伪行
     if (!isAgentTraceToolName(name)) continue;
-    const arg = String(m[2] || "")
-      .trim()
-      .replace(/[…]+$/u, "");
+    const rawArg = String(m[2] || "").trim();
+    const fail = /[✗×x]\s*$/u.test(rawArg) || /\s[✗×]\s*$/u.test(t);
+    const running = !fail && /[…⋯]\s*$/u.test(rawArg);
+    const arg = rawArg
+      .replace(/[…⋯]+$/u, "")
+      .replace(/\s*[✗×x]\s*$/u, "")
+      .trim();
     const key = `${name}\0${arg}`;
-    if (!name || seen.has(key)) continue;
-    seen.add(key);
+    if (!name) continue;
     const isEdit = /^(Edit|Write)$/i.test(name);
-    out.push({
+    const status: StreamAgentEvent["status"] = fail
+      ? "fail"
+      : running
+        ? "running"
+        : "ok";
+    const prev = byKey.get(key);
+    // 同工具后出现的状态覆盖先到的（running → ok/fail）
+    if (
+      prev &&
+      prev.status === "running" &&
+      (status === "ok" || status === "fail")
+    ) {
+      prev.status = status;
+      continue;
+    }
+    if (prev) continue;
+    const ev: StreamAgentEvent = {
       type: "tool",
       name,
       arg: arg || undefined,
       path: isEdit && arg ? arg : undefined,
-      status: "ok",
-    });
+      status,
+    };
+    byKey.set(key, ev);
+    out.push(ev);
   }
   return out;
 }
@@ -295,38 +343,68 @@ export function extractStreamEventsFromContent(text: string): StreamAgentEvent[]
   return trailLinesToStreamEvents(text);
 }
 
-/** 合并多路 events，按 name+arg 去重，保持顺序 */
+/** 合并多路 events：同 name+arg 后到覆盖先到（保留 running→ok/fail 直播） */
 export function mergeStreamEvents(
   ...lists: Array<StreamAgentEvent[] | undefined | null>
 ): StreamAgentEvent[] {
   const out: StreamAgentEvent[] = [];
-  const seen = new Set<string>();
+  const indexByKey = new Map<string, number>();
+  let thinkingCount = 0;
   for (const list of lists) {
     if (!list?.length) continue;
     for (const e of list) {
       if (!e || typeof e !== "object") continue;
       if (e.type === "thinking") {
-        const key = `thinking:${out.filter((x) => x.type === "thinking").length}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
+        const key = `thinking:${thinkingCount++}`;
+        if (indexByKey.has(key)) continue;
+        indexByKey.set(key, out.length);
         out.push({ type: "thinking" });
         continue;
       }
       if (e.type !== "tool") continue;
-      const name = agentTraceToolLabel(e.name || "Tool");
+      const name = normalizeStreamEventName(e.name || "Tool");
       const arg = String(e.path || e.arg || "")
         .trim()
-        .replace(/[…]+$/, "");
+        .replace(/[…⋯]+$/u, "");
       const key = `tool:${name}\0${arg}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({
+      const status: StreamAgentEvent["status"] =
+        e.status === "fail"
+          ? "fail"
+          : e.status === "running"
+            ? "running"
+            : e.status === "ok"
+              ? "ok"
+              : "ok";
+      const next: StreamAgentEvent = {
         type: "tool",
         name,
         arg: arg || undefined,
-        path: e.path || (/^(Edit|Write)$/i.test(name) && arg ? arg : undefined),
-        status: e.status === "fail" ? "fail" : e.status === "running" ? "ok" : e.status || "ok",
-      });
+        path:
+          e.path ||
+          (/^(Edited|Edit|Write)$/i.test(name) && arg ? arg : undefined),
+        status,
+        ...(e.output != null ? { output: String(e.output) } : {}),
+      };
+      const prevIdx = indexByKey.get(key);
+      if (prevIdx != null) {
+        const prev = out[prevIdx];
+        const mergedStatus: StreamAgentEvent["status"] =
+          prev.status === "fail" || next.status === "fail"
+            ? "fail"
+            : prev.status === "ok" || next.status === "ok"
+              ? "ok"
+              : "running";
+        out[prevIdx] = {
+          ...prev,
+          ...next,
+          status: mergedStatus,
+          output: next.output ?? prev.output,
+          path: next.path || prev.path,
+        };
+        continue;
+      }
+      indexByKey.set(key, out.length);
+      out.push(next);
     }
   }
   return out;
@@ -444,39 +522,76 @@ export function looksLikeAgentTurnReport(text: string): boolean {
   );
 }
 
+/** 与 Host `looksLikeUpsell` 对齐：未请求的下一步 / P2 推销 */
+export function looksLikeUpsellLine(line: string): boolean {
+  return /下一步|后续可|建议继续|还可以做|未完成任务|Remaining|next\s*steps?|P2\s*[:：]|待办\s*P2/i.test(
+    String(line || ""),
+  );
+}
+
+/** 写盘后百科/接入点推销（≠ 用户要的方案正文） */
+export function looksLikeWriteCloseChatter(text: string): boolean {
+  return /接入点|改动清单|是否需你接入|需要你确认|未验证声明|TODO\s*\(\s*接入点\s*\)|要继续推进|待你确认|【工作区已写入】|已完成\s*\d+\s*处改动/i.test(
+    String(text || ""),
+  );
+}
+
 /**
  * 给用户看的答案/方案（应外露，勿整段塞进 Thought briefly）。
  * 过程可折；最终回复默认展开。
+ * 写盘收尾推销不算「用户方案」。
  */
 export function looksLikeUserFacingAnswer(text: string): boolean {
   const body = stripStreamEventsBlock(text).trim();
   if (!body || body.length < 48) return false;
   if (agentExecReportScore(body) >= 3) return false;
+  if (looksLikeWriteCloseChatter(body)) return false;
   if (
-    /优化方案|优先做|建议先|下一步|可观测|工程化|遗留|生产可观测|给我.*方案/i.test(
+    /优化方案|优先做|建议先|可观测|工程化|遗留|生产可观测|给我.*方案/i.test(
       body,
     )
   ) {
     return true;
   }
-  // 带标题或较长编号方案，且不是读盘流水
-  if (/^#{1,3}\s+\S+/m.test(body) && body.length > 120) return true;
+  // 带标题或较长编号方案，且不是读盘流水 / 下一步推销
+  if (/^#{1,3}\s+\S+/m.test(body) && body.length > 120 && !looksLikeUpsellLine(body)) {
+    return true;
+  }
   if (
     /\n\s*\d+\.\s+\S+/m.test(body) &&
     body.length > 200 &&
     !/^读盘[：:]/m.test(body) &&
-    !/^路径[：:]/m.test(body)
+    !/^路径[：:]/m.test(body) &&
+    !looksLikeUpsellLine(body)
   ) {
     return true;
   }
   return false;
 }
 
+/** Thought 折叠正文上限：过程已在 Explored/Edit/Bash，避免百科式占屏 */
+const THOUGHT_FOLD_MAX_LINES = 8;
+const THOUGHT_FOLD_MAX_CHARS = 1000;
+
+function capThoughtForFold(body: string): string {
+  const t = String(body || "").trim();
+  if (!t) return "";
+  const lines = t.split("\n").filter((l) => l.trim());
+  if (lines.length <= THOUGHT_FOLD_MAX_LINES && t.length <= THOUGHT_FOLD_MAX_CHARS) {
+    return t;
+  }
+  return (
+    lines.slice(0, THOUGHT_FOLD_MAX_LINES).join("\n").slice(0, THOUGHT_FOLD_MAX_CHARS) + "\n…"
+  );
+}
+
 /** 从 Thought 正文去掉已升格为过程行的段落，避免百科式重复 */
 function slimThoughtBody(body: string): string {
   let t = stripForceContinueMarkers(stripDsmlToolMarkup(String(body || "")).text);
-  // 剥执行元信息
-  t = t.replace(/^\(执行:[^)]+\)\s*$/gm, "").trim();
+  // 剥执行元信息（整行或行内脚注）
+  t = t.replace(/^\(执行:[^)]+\)\s*$/gm, "");
+  t = t.replace(/\s*\(执行:\s*Claude CLI[^)]*\)\s*/gi, " ");
+  t = t.replace(/\s*·\s*acceptEdits\b/gi, "");
   // 剥读盘行（已进 Explored）
   t = t.replace(/^读盘[：:][^\n]*\n?/gm, "");
   // 剥验证代码块（已进终端卡）
@@ -488,20 +603,113 @@ function slimThoughtBody(body: string): string {
   return t;
 }
 
-/** 可选短摘要（写入 agentTurn.summary，不替换过程正文） */
+/** 去掉与 Cursor 收尾不符的过程复述：接入待办表、落盘清单、「已完成 N 处改动」、下一步推销。文件行由 Edit 卡展示。 */
+export function stripCursorUnlikeWriteNarration(text: string): string {
+  const lines = String(text || "").split("\n");
+  const kept: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const t = line.trim();
+    if (/^\|/.test(t) && /是否需你接入/.test(line)) {
+      while (i < lines.length && /^\|/.test((lines[i] ?? "").trim())) i++;
+      i -= 1;
+      continue;
+    }
+    if (/^#{1,6}\s+.*(改动清单|接入点|未验证声明|下一步|后续)/.test(t)) {
+      break;
+    }
+    if (/^已完成\s*\d+\s*处改动。?\s*$/.test(t)) continue;
+    if (/^(要继续推进|需要你确认|待你确认|下一步|后续可|建议继续)/.test(t)) {
+      break;
+    }
+    if (looksLikeUpsellLine(t)) continue;
+    if (/要不要我|是否现在落盘|等你确认|请确认后|可以开始吗|开始改吗/.test(t)) {
+      break;
+    }
+    kept.push(line);
+  }
+  return kept
+    .join("\n")
+    .replace(/\n*【工作区已写入】[\s\S]*$/u, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Cursor 执行反馈收尾：外露 1～3 句自然语言；余下过程进 Thought。
+ * 模板：Explored/Edit/Bash（streamEvents）→ Thought briefly → 短收尾。
+ */
+export function takeCursorExecCloseProse(
+  text: string,
+  opts?: { maxSentences?: number; maxChars?: number },
+): string {
+  const maxSentences = opts?.maxSentences ?? 3;
+  const maxChars = opts?.maxChars ?? 320;
+  const cleaned = stripCursorUnlikeWriteNarration(text)
+    .split("\n")
+    .filter((l) => {
+      const s = l.trim();
+      if (!s) return false;
+      if (/^⋯\s+\S+/.test(s)) return false;
+      if (/^#{1,6}\s+/.test(s)) return false;
+      if (looksLikeUpsellLine(s)) return false;
+      return true;
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (!cleaned) return "";
+  const parts = cleaned
+    .split(/(?<=[。！？])\s*|(?<=[.!?])\s+|\n+/)
+    .map((p) => p.trim())
+    .filter((p) => p && !looksLikeUpsellLine(p));
+  if (!parts.length) return cleaned.slice(0, maxChars).trim();
+  const kept: string[] = [];
+  let len = 0;
+  for (const p of parts) {
+    if (kept.length >= maxSentences) break;
+    if (len + p.length > maxChars && kept.length > 0) break;
+    kept.push(p);
+    len += p.length;
+  }
+  const joiner = kept.some((k) => /[。！？]$/.test(k)) ? "" : " ";
+  return kept.join(joiner).trim();
+}
+
+/** 有实写时套 Cursor 执行反馈：长过程进 Thought，外露短收尾。 */
+export function applyCursorExecFeedbackTemplate(
+  body: string,
+  summary: string,
+): string {
+  const close =
+    takeCursorExecCloseProse(body) ||
+    summary ||
+    "";
+  const thoughtRaw = slimThoughtBody(stripCursorUnlikeWriteNarration(body)) || "";
+  const thoughtSrc = capThoughtForFold(thoughtRaw);
+  const needsFold =
+    Boolean(thoughtSrc) &&
+    (thoughtRaw.length > close.length + 60 ||
+      thoughtRaw.split("\n").filter((l) => l.trim()).length > 4 ||
+      looksLikeWriteCloseChatter(body) ||
+      looksLikeUpsellLine(body));
+  if (needsFold && thoughtSrc && thoughtSrc !== close) {
+    return close
+      ? `<thinking>\n${thoughtSrc}\n</thinking>\n\n${close}`.trim()
+      : `<thinking>\n${thoughtSrc}\n</thinking>`.trim();
+  }
+  return close || thoughtSrc || summary || "";
+}
+
+/** 可选短摘要（写入 agentTurn.summary）。写盘本身不复述，只留测试结果。 */
 export function buildShortAgentSummary(
-  writtenPaths?: string[],
+  _writtenPaths?: string[],
   verified?: boolean,
   proseHint?: string,
 ): string {
-  const paths = (writtenPaths || []).filter(Boolean);
   const pass = String(proseHint || "").match(/(\d+)\s+passed/i)?.[1];
-  const parts: string[] = [];
-  if (paths.length) parts.push(`已完成 ${paths.length} 处改动。`);
-  if (verified || pass) {
-    parts.push(pass ? `测试 ${pass} passed。` : "测试已通过。");
-  }
-  return parts.join(" ").trim();
+  if (verified || pass) return pass ? `测试 ${pass} passed。` : "测试已通过。";
+  return "";
 }
 
 /**
@@ -591,38 +799,39 @@ export function shapeAgentTurnDisplay(opts: {
   }
 
   const toolCount = events.filter((e) => e.type === "tool").length;
-  let body = body0.trim();
+  let body = stripCursorUnlikeWriteNarration(body0);
   body = body.replace(/^\(执行:[^)]+\)\s*$/gm, "").trim();
+  body = body.replace(/\s*\(执行:\s*Claude CLI[^)]*\)\s*/gi, " ").trim();
+  body = body.replace(/\s*·\s*acceptEdits\b/gi, "").trim();
   // 剥泄漏工具后的可读正文
   body = slimThoughtBody(body) || body;
 
-  const userAnswer = looksLikeUserFacingAnswer(body);
+  const hasWrites = writtenUnique.length > 0;
+  // 有实写时不把百科收尾当「用户方案」
+  const userAnswer = !hasWrites && looksLikeUserFacingAnswer(body);
   const looksLikeReport = looksLikeAgentTurnReport(body0) && !userAnswer;
   const summary =
-    opts.summary ||
+    (opts.summary && !/已完成\s*\d+\s*处改动/.test(opts.summary) ? opts.summary : "") ||
     buildShortAgentSummary(writtenUnique, opts.verified || Boolean(pass), body0) ||
-    (writtenUnique.length ? `已完成 ${writtenUnique.length} 处改动。` : "") ||
     (pass ? `测试 ${pass} passed。` : "");
 
   /**
-   * 气泡整形：
-   * - 用户答案/方案 → 外露 Markdown（不进 Thought）
-   * - 执行流水账 → Thought 可折 + 有证据的短收尾（写盘数/测试）
+   * Cursor 执行反馈模板：
+   * - 有实写 → Explored/Edit/Bash + Thought briefly + 1～3 句收尾（禁下一步推销）
+   * - 用户答案/方案（无写盘）→ 外露 Markdown
+   * - 执行流水账 → Thought 可折 + 短收尾
    * - 仅有工具轨、正文空 → 不合成伪结论
    */
-  if (userAnswer) {
-    // 答案外露；若有写盘摘要可附一行，不替换正文
-    if (summary && writtenUnique.length && !body.includes(summary)) {
+  if (hasWrites) {
+    body = applyCursorExecFeedbackTemplate(body || body0, summary);
+  } else if (userAnswer) {
+    if (summary && !body.includes(summary)) {
       body = `${body}\n\n${summary}`.trim();
     }
-  } else if (looksLikeReport && (toolCount > 0 || summary || writtenUnique.length)) {
+  } else if (looksLikeReport && (toolCount > 0 || summary)) {
     const thought = body;
-    const tail =
-      summary ||
-      (pass ? `测试 ${pass} passed。` : "") ||
-      (writtenUnique.length ? `已完成 ${writtenUnique.length} 处改动。` : "");
-    // 过长且无写盘：仍当答案外露（避免方案被误判成报告）
-    if (thought.length > 500 && !writtenUnique.length) {
+    const tail = summary || (pass ? `测试 ${pass} passed。` : "");
+    if (thought.length > 500) {
       body = thought;
     } else if (thought) {
       body = tail
@@ -632,10 +841,7 @@ export function shapeAgentTurnDisplay(opts: {
       body = tail;
     }
   } else if (!body.trim()) {
-    body =
-      summary ||
-      (opts.writtenPaths?.length ? `已完成 ${opts.writtenPaths.length} 处改动。` : "") ||
-      "";
+    body = summary || "";
   }
 
   const content = `${body}${formatStreamEventsBlock(events)}`.trim();

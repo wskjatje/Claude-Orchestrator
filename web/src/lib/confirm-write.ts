@@ -1,16 +1,12 @@
 import { parseWorkspaceWriteItemsFromBubble, stripWorkspaceWriteFencesForHistory } from "@/lib/assistant-reply";
-import { defaultArtifactPathForAgent, normalizeAgentStem } from "@/lib/agent-artifact-paths";
-import { parseActiveChainFromBubbleText } from "@/lib/parse-active-chain";
-
-/** 注意：`/` 分隔的正则字面量里，`/` 必须写成 `\/`，否则会在 `(frontend)/` 处提前结束解析 */
-const ONE_LINE_PATH =
-  /\b((?:docs|app|data|scripts|frontend)\/[a-zA-Z0-9_.\/-]+\.(?:md|txt))\b/;
 
 /**
- * 从助手纯文本中推断「推荐写入」的相对路径（如文末「例如 `docs/wbs_hie_egs.md`」），
- * 避免一键写入时一律落到默认 `docs/prd.md`。
+ * 从助手纯文本中提取用户/模型**已写出**的相对路径（文末 CTA 行），非关键词硬编码文件名。
+ * 仅用于提示；一键写入仍以围栏或设置默认路径为准。
  */
 export function inferSuggestedWritePathFromBubbleText(text: string): string | null {
+  const ONE_LINE_PATH =
+    /\b((?:docs|app|data|scripts|frontend)\/[a-zA-Z0-9_.\/-]+\.(?:md|txt))\b/;
   const safe = text.replace(/\n*【一键写入】[\s\S]*$/u, "").trim();
   const lines = safe.split(/\r?\n/);
 
@@ -32,33 +28,6 @@ export function inferSuggestedWritePathFromBubbleText(text: string): string | nu
     }
   }
 
-  // 不再做“全文最后一个 docs/xxx.md”兜底，避免把引用路径（如 docs/prd.md）误判成目标写入路径。
-  return null;
-}
-
-/**
- * 当文本里没明确给出 docs/xxx.md 时，按产出类型给统一默认名（所有 Agent 共用同一套规则）。
- * 目标：避免无脑回落到 docs/prd.md。
- */
-function inferCanonicalMdPathByContent(text: string): string | null {
-  const t = text.toLowerCase();
-  if (/(qa engineer|测试工程师|qa\s*&\s*audit|质量审计)/i.test(text)) return "docs/qa-report.md";
-  if (/(sprint backlog|冲刺优先级|rice|moscow|用户故事列表)/i.test(text)) return "docs/sprint-backlog.md";
-  if (/(wbs|任务分解|工作包|task\s*summary)/i.test(text)) return "docs/wbs.md";
-  if (/(进度报|status report|当前状态|预计完成时间|项目状态)/i.test(text)) return "docs/project-status.md";
-  if (/(会议纪要|meeting notes|行动项)/i.test(text)) return "docs/meeting-notes.md";
-  if (/(风险登记|risk log|mitigation)/i.test(text)) return "docs/risk-log.md";
-  if (/(里程碑|milestone)/i.test(text)) return "docs/milestone-plan.md";
-  if (/(测试方案|测试报告|qa|验收|test plan|test report)/i.test(text)) return "docs/qa-report.md";
-  if (/(架构|architecture|边界|数据流|接口契约)/i.test(text)) return "docs/architecture-note.md";
-  if (/(ui spec|视觉规范|界面设计|组件库)/i.test(text)) return "docs/ui-spec.md";
-  if (/(ux|信息架构|交互流程)/i.test(text)) return "docs/ux-architecture.md";
-  if (/(api|接口说明|openapi|swagger)/i.test(text)) return "docs/api-summary.md";
-  if (/(代码评审|review|审查)/i.test(text)) return "docs/code-review-report.md";
-  if (/(发布|部署|devops|ci\/cd)/i.test(text)) return "docs/release-plan.md";
-  if (/(prd|需求文档|验收口径|用户故事)/i.test(text)) return "docs/prd.md";
-  if (/(市场调研|趋势研究|竞品)/i.test(text)) return "docs/market-research.md";
-  if (t.includes("markdown")) return "docs/note.md";
   return null;
 }
 
@@ -108,36 +77,34 @@ export function extractClaimedWritePathFromText(text: string): string | null {
 }
 
 /**
- * 将上一条助手全文落盘：若含可解析的 workspace-write 则按其中 path 写；否则按 Agent 身份或内容推断路径。
+ * 将上一条助手全文落盘：
+ * 1) 有可解析 workspace-write 围栏 → 按围栏 path/content；
+ * 2) 否则仅当设置提供了 `defaultRelativePath` → 写入该路径；
+ * 3) 否则返回 []（调用方硬失败，禁止关键词猜 docs/*.md）。
+ *
+ * `agentStem` 保留参数兼容调用方，不再用于硬编码默认文件名。
  */
 export function buildConfirmWriteItems(
   assistantRaw: string,
   defaultRelativePath: string,
-  agentStem?: string,
+  _agentStem?: string,
 ): { path: string; content: string }[] {
-  const stemPath = agentStem ? defaultArtifactPathForAgent(normalizeAgentStem(agentStem)) : null;
-  const fallback =
-    stemPath ||
-    defaultRelativePath.trim().replace(/^[/\\]+/, "").replace(/\\/g, "/") ||
-    "";
   const parsed = parseWorkspaceWriteItemsFromBubble(assistantRaw);
   if (parsed.length > 0) return parsed;
+
   let body = assistantRaw.trim();
   body = body.replace(/\n*【工作区已写入】[\s\S]*$/u, "").trim();
   body = stripWorkspaceWriteFencesForHistory(body);
   if (!body) return [];
-  const suggested = inferSuggestedWritePathFromBubbleText(assistantRaw);
-  const canonical = inferCanonicalMdPathByContent(body);
-  const parsedChain = parseActiveChainFromBubbleText(body);
-  const wbsChainPath =
-    parsedChain.ok && (parsedChain.state.steps?.length ?? 0) > 0 ? "docs/wbs.md" : null;
-  const pathForPlain =
-    suggested && !suggested.includes("..")
-      ? suggested
-      : wbsChainPath && !wbsChainPath.includes("..")
-        ? wbsChainPath
-        : canonical && !canonical.includes("..")
-          ? canonical
-          : fallback;
-  return [{ path: pathForPlain, content: body }];
+
+  const fallback = defaultRelativePath.trim().replace(/^[/\\]+/, "").replace(/\\/g, "/");
+  if (!fallback || fallback.includes("..")) return [];
+  return [{ path: fallback, content: body }];
+}
+
+/** 气泡右键「写入」：仅围栏项，无围栏则空（菜单不应显示该项） */
+export function buildFenceOnlyWriteItems(
+  assistantRaw: string,
+): { path: string; content: string }[] {
+  return parseWorkspaceWriteItemsFromBubble(assistantRaw);
 }

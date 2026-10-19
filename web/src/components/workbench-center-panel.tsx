@@ -65,7 +65,7 @@ export function WorkbenchCenterPanel({
             <WorkbenchCenterPreview />
           </div>
         </ResizablePanel>
-        <ResizableHandle withHandle className="z-10 bg-border" />
+        <ResizableHandle className="z-10" />
         <ResizablePanel id="workbench-center-terminal" defaultSize="38" minSize="18" maxSize="72">
           <div className="h-full min-h-0 w-full overflow-hidden">
             <WorkbenchBottomPanel onClose={() => onTerminalOpenChange(false)} />

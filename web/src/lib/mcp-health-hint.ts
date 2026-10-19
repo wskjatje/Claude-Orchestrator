@@ -13,9 +13,44 @@ export function summarizeMcpHealthSnapshot(snapshot: {
   return { okCount, total };
 }
 
+export const MCP_HEALTH_HARD_FAIL_MESSAGE =
+  "MCP 全部不可用，本轮需要 MCP 工具，已中止（不会静默改用 Host）。请到「通讯」页修复后重试。";
+
+export const MCP_HEALTH_SNAPSHOT_UNAVAILABLE_MESSAGE =
+  "无法读取 MCP 健康快照，本轮需要 MCP 工具，已中止（不会假定可用）。请到「通讯」页修复后重试。";
+
 /**
- * 发送前只读提示：不阻断发送、不触发全量探活。
- * 仅在「有配置但 0 可用」或「配置缺失且曾期望有 MCP」时提示。
+ * 本轮需要 MCP 且快照显示已配置但 0 可用 → 硬失败。
+ * 快照接口缺失/异常/非 ok → 同样硬失败（禁止 catch→ok）。
+ * 不触发全量探活；只读已有快照。
+ */
+export async function assertMcpHealthForTurn(
+  api: DesktopApi | null | undefined,
+  opts: { needsMcp: boolean },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!opts.needsMcp) return { ok: true };
+  // 无 MCP 快照能力（非桌面桥）→ 放行；有能力则禁止异常/非 ok 静默放行
+  if (!api?.mcpGetHealthSnapshot) return { ok: true };
+  try {
+    const r = await api.mcpGetHealthSnapshot();
+    if (!r?.ok) {
+      return { ok: false, error: MCP_HEALTH_SNAPSHOT_UNAVAILABLE_MESSAGE };
+    }
+    const { okCount, total } = summarizeMcpHealthSnapshot(r.snapshot);
+    // missing / 未配置服务器：无已配 MCP，放行
+    if (r.missing || total === 0) return { ok: true };
+    if (okCount === 0) {
+      return { ok: false, error: MCP_HEALTH_HARD_FAIL_MESSAGE };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: MCP_HEALTH_SNAPSHOT_UNAVAILABLE_MESSAGE };
+  }
+}
+
+/**
+ * 发送前只读提示：不阻断（硬闸见 assertMcpHealthForTurn）。
+ * 仅在「有配置但部分降级」时 toast。
  */
 export async function toastMcpHealthIfDegraded(api: DesktopApi | null | undefined): Promise<void> {
   if (!api?.mcpGetHealthSnapshot) return;
@@ -23,10 +58,13 @@ export async function toastMcpHealthIfDegraded(api: DesktopApi | null | undefine
     const r = await api.mcpGetHealthSnapshot();
     if (!r?.ok) return;
     const { okCount, total } = summarizeMcpHealthSnapshot(r.snapshot);
-    // 仅「已配置但全部不可用」；无配置/空快照不打扰
     if (r.missing || total === 0) return;
     if (okCount === 0) {
-      toast.message(`MCP 快照 ${okCount}/${total} 均不可用；本轮 CLI/编排可能无 MCP（详见通讯页）。`);
+      // 硬闸会阻断；此处仅弱提示部分降级
+      return;
+    }
+    if (okCount < total) {
+      toast.message(`MCP 快照 ${okCount}/${total} 部分不可用（详见通讯页）。`);
     }
   } catch {
     /* ignore */

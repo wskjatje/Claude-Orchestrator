@@ -164,6 +164,27 @@ export async function fetchTsImplementation(opts: {
   }
 }
 
+/** 全部实现位置（Peek）；无结果返回 []，不静默编造 */
+export async function fetchTsImplementations(opts: {
+  relPath: string;
+  line: number;
+  column: number;
+  content?: string;
+}): Promise<TsDefinitionHit[]> {
+  if (!isTsLike(opts.relPath)) return [];
+  const api = getDesktop();
+  if (!api?.workspaceTsImplementation) return [];
+  try {
+    const r = await api.workspaceTsImplementation(opts);
+    if (!r?.ok) return [];
+    if (Array.isArray(r.definitions) && r.definitions.length) return r.definitions;
+    if (r.definition) return [r.definition];
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchTsHover(opts: {
   relPath: string;
   line: number;
@@ -221,6 +242,108 @@ export async function fetchTsCompletions(opts: {
       fromLine: r.fromLine ?? opts.line,
       fromCol: r.fromCol ?? opts.column,
     };
+  } catch {
+    return null;
+  }
+}
+
+export type TsCallHierarchyItem = {
+  name: string;
+  kind?: string;
+  containerName?: string | null;
+  relPath: string;
+  line: number;
+  column: number;
+  endLine?: number;
+  endColumn?: number;
+  callCount?: number;
+};
+
+export async function fetchTsCallHierarchy(opts: {
+  relPath: string;
+  line: number;
+  column: number;
+  content?: string;
+}): Promise<{
+  item: TsCallHierarchyItem | null;
+  incoming: TsCallHierarchyItem[];
+  outgoing: TsCallHierarchyItem[];
+  error?: string;
+} | null> {
+  if (isExternalLspLike(opts.relPath)) {
+    const api = getDesktop();
+    if (!api?.workspaceExternalLspCallHierarchy) {
+      return {
+        item: null,
+        incoming: [],
+        outgoing: [],
+        error: "外部 LSP Call Hierarchy 未接线",
+      };
+    }
+    try {
+      const r = await api.workspaceExternalLspCallHierarchy(opts);
+      if (!r?.ok) {
+        return {
+          item: null,
+          incoming: [],
+          outgoing: [],
+          error: r?.error || "Call Hierarchy 失败（请确认已安装语言服务器）",
+        };
+      }
+      return {
+        item: r.item ?? null,
+        incoming: Array.isArray(r.incoming) ? r.incoming : [],
+        outgoing: Array.isArray(r.outgoing) ? r.outgoing : [],
+      };
+    } catch (e) {
+      return {
+        item: null,
+        incoming: [],
+        outgoing: [],
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }
+  if (!isTsLike(opts.relPath)) return null;
+  const api = getDesktop();
+  if (!api?.workspaceTsCallHierarchy) return null;
+  try {
+    const r = await api.workspaceTsCallHierarchy(opts);
+    if (!r?.ok) {
+      return {
+        item: null,
+        incoming: [],
+        outgoing: [],
+        error: r?.error || "Call Hierarchy 失败",
+      };
+    }
+    return {
+      item: r.item ?? null,
+      incoming: Array.isArray(r.incoming) ? r.incoming : [],
+      outgoing: Array.isArray(r.outgoing) ? r.outgoing : [],
+    };
+  } catch (e) {
+    return {
+      item: null,
+      incoming: [],
+      outgoing: [],
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+/** Python/Go/Rust DocumentSymbol；无 LSP 返回 null（调用方回退当前文件正则） */
+export async function fetchExternalLspDocumentSymbols(opts: {
+  relPath: string;
+  content?: string;
+}): Promise<{ name: string; kind: string; line: number; column?: number; depth?: number }[] | null> {
+  if (!isExternalLspLike(opts.relPath)) return null;
+  const api = getDesktop();
+  if (!api?.workspaceExternalLspDocumentSymbols) return null;
+  try {
+    const r = await api.workspaceExternalLspDocumentSymbols(opts);
+    if (!r?.ok || !Array.isArray(r.symbols)) return null;
+    return r.symbols;
   } catch {
     return null;
   }

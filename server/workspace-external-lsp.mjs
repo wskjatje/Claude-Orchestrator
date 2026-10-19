@@ -31,11 +31,16 @@ export function getExternalLspStatus() {
     const cmd = resolveCommand(id)
     const meta = metaFor(id)
     const running = Boolean(sessions.get(id)?.proc && !sessions.get(id)?.proc.killed)
+    const hint = cmd
+      ? id === 'python' && String(cmd.args?.[0] || '').includes('pyright')
+        ? defaultHint(id)
+        : `${cmd.cmd} ${(cmd.args || []).join(' ')}`.trim()
+      : defaultHint(id)
     return {
       id,
       detected: detectProject(id, root),
       commandAvailable: Boolean(cmd),
-      serverHint: cmd ? `${cmd.cmd} ${(cmd.args || []).join(' ')}`.trim() : defaultHint(id),
+      serverHint: hint,
       installHint: cmd ? null : installHint(id),
       running,
       lastError: meta.lastError,
@@ -53,7 +58,7 @@ function defaultHint(id) {
 
 /** 缺命令时可行动安装说明（状态栏 title / toast） */
 function installHint(id) {
-  if (id === 'python') return 'npm i -g pyright  或  pip install pyright'
+  if (id === 'python') return '在应用仓库执行 npm i pyright（或 npm i -g pyright / pip install pyright）'
   if (id === 'go') return 'go install golang.org/x/tools/gopls@latest'
   return 'rustup component add rust-analyzer  或  brew install rust-analyzer'
 }
@@ -71,11 +76,52 @@ function detectProject(id, root) {
   return false
 }
 
+/** 与 mcp-health 一致：补齐常见 bin，便于 Electron 壳找到语言服务器 */
+function lspSearchEnv() {
+  const env = { ...process.env }
+  const sep = process.platform === 'win32' ? ';' : ':'
+  const extraDirs =
+    process.platform === 'win32'
+      ? [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'nodejs')].filter(Boolean)
+      : [
+          '/opt/homebrew/bin',
+          '/usr/local/bin',
+          path.join(process.env.HOME || '', '.local', 'bin'),
+          path.join(process.env.HOME || '', '.cargo', 'bin'),
+        ]
+  const cur = env.PATH || env.Path || ''
+  const parts = String(cur)
+    .split(sep)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const seen = new Set(parts)
+  for (const dir of extraDirs) {
+    try {
+      if (dir && fs.existsSync(dir) && !seen.has(dir)) {
+        parts.unshift(dir)
+        seen.add(dir)
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  // 应用仓库自带的 node_modules/.bin（本模块位于 server/）
+  const appBin = path.join(__dirname, '..', 'node_modules', '.bin')
+  if (fs.existsSync(appBin) && !seen.has(appBin)) {
+    parts.unshift(appBin)
+    seen.add(appBin)
+  }
+  env.PATH = parts.join(sep)
+  if (process.platform === 'win32') env.Path = env.PATH
+  return env
+}
+
 function commandExists(bin) {
   try {
     const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', [bin], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      env: lspSearchEnv(),
     })
     return r.status === 0 && Boolean((r.stdout || '').trim())
   } catch {
@@ -83,9 +129,21 @@ function commandExists(bin) {
   }
 }
 
+/**
+ * 应用自带 pyright（package.json 依赖），不依赖用户全局 PATH。
+ * @returns {{ cmd: string, args: string[] } | null}
+ */
+function resolveBundledPyrightLangserver() {
+  const script = path.join(__dirname, '..', 'node_modules', 'pyright', 'langserver.index.js')
+  if (!fs.existsSync(script)) return null
+  return { cmd: process.execPath, args: [script, '--stdio'] }
+}
+
 /** @returns {{ cmd: string, args: string[] } | null} */
 function resolveCommand(id) {
   if (id === 'python') {
+    const bundled = resolveBundledPyrightLangserver()
+    if (bundled) return bundled
     if (commandExists('basedpyright-langserver')) {
       return { cmd: 'basedpyright-langserver', args: ['--stdio'] }
     }
@@ -295,7 +353,7 @@ async function ensureSession(lang) {
   const proc = spawn(cmd.cmd, cmd.args, {
     cwd: root,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env },
+    env: lspSearchEnv(),
   })
 
   /** @type {LspSession} */
@@ -349,6 +407,10 @@ async function ensureSession(lang) {
           definition: { linkSupport: true },
           references: {},
           rename: { prepareSupport: true },
+          documentSymbol: {
+            hierarchicalDocumentSymbolSupport: true,
+          },
+          callHierarchy: {},
           publishDiagnostics: { relatedInformation: false },
         },
       },
@@ -628,6 +690,188 @@ export async function externalLspRenameAt(body) {
     }
   })
   if (!r.ok) return { ok: false, canRename: false, displayName: null, locations: [], error: r.error }
+  return r
+}
+
+/** LSP SymbolKind → 短文案 */
+function lspSymbolKindName(kind) {
+  const map = {
+    1: 'File',
+    2: 'Module',
+    3: 'Namespace',
+    4: 'Package',
+    5: 'Class',
+    6: 'Method',
+    7: 'Property',
+    8: 'Field',
+    9: 'Constructor',
+    10: 'Enum',
+    11: 'Interface',
+    12: 'Function',
+    13: 'Variable',
+    14: 'Constant',
+    15: 'String',
+    16: 'Number',
+    17: 'Boolean',
+    18: 'Array',
+    19: 'Object',
+    20: 'Key',
+    21: 'Null',
+    22: 'EnumMember',
+    23: 'Struct',
+    24: 'Event',
+    25: 'Operator',
+    26: 'TypeParameter',
+  }
+  return map[Number(kind)] || 'Symbol'
+}
+
+function flattenDocumentSymbols(session, symbols, out, depth = 0) {
+  if (!Array.isArray(symbols) || depth > 8) return
+  for (const s of symbols) {
+    if (!s || typeof s !== 'object') continue
+    const range = s.selectionRange || s.range
+    if (!range?.start) continue
+    const name = String(s.name || '').trim()
+    if (!name) continue
+    out.push({
+      name,
+      kind: lspSymbolKindName(s.kind),
+      line: range.start.line + 1,
+      column: (range.start.character ?? 0) + 1,
+      endLine: (range.end?.line ?? range.start.line) + 1,
+      endColumn: (range.end?.character ?? range.start.character ?? 0) + 1,
+      depth,
+    })
+    if (Array.isArray(s.children) && s.children.length) {
+      flattenDocumentSymbols(session, s.children, out, depth + 1)
+    }
+    if (out.length >= 400) return
+  }
+}
+
+/**
+ * 真 LSP DocumentSymbol（Python/Go/Rust）；无结果返回空列表，禁止假树。
+ * @param {{ relPath: string, content?: string }} body
+ */
+export async function externalLspDocumentSymbols(body) {
+  const r = await withSyncedSession(body, async (session, uri) => {
+    const result = await request(session, 'textDocument/documentSymbol', {
+      textDocument: { uri },
+    })
+    const symbols = []
+    if (Array.isArray(result) && result.length) {
+      // DocumentSymbol[] 或 SymbolInformation[]
+      if (result[0]?.location?.range) {
+        for (const si of result) {
+          const loc = locFromLsp(session, si.location)
+          if (!loc) continue
+          symbols.push({
+            name: String(si.name || ''),
+            kind: lspSymbolKindName(si.kind),
+            line: loc.line,
+            column: loc.column,
+            endLine: loc.endLine,
+            endColumn: loc.endColumn,
+            depth: 0,
+          })
+          if (symbols.length >= 400) break
+        }
+      } else {
+        flattenDocumentSymbols(session, result, symbols)
+      }
+    }
+    return { ok: true, symbols }
+  })
+  if (!r.ok) return { ok: false, symbols: [], error: r.error }
+  return r
+}
+
+function mapCallHierarchyItem(session, it) {
+  if (!it?.uri || !it.range?.start) return null
+  const rel = uriToRel(session.root, it.uri)
+  if (!rel) return null
+  const sel = it.selectionRange || it.range
+  return {
+    name: String(it.name || ''),
+    kind: lspSymbolKindName(it.kind),
+    containerName: it.detail != null ? String(it.detail) : null,
+    relPath: rel,
+    line: sel.start.line + 1,
+    column: (sel.start.character ?? 0) + 1,
+    endLine: (sel.end?.line ?? sel.start.line) + 1,
+    endColumn: (sel.end?.character ?? sel.start.character ?? 0) + 1,
+  }
+}
+
+/**
+ * 真 LSP Call Hierarchy（Python/Go/Rust）；无结果空树，禁止假层。
+ * @param {{ relPath: string, line: number, column: number, content?: string }} body
+ */
+export async function externalLspCallHierarchyAt(body) {
+  const r = await withSyncedSession(body, async (session, uri) => {
+    let prepared
+    try {
+      prepared = await request(
+        session,
+        'textDocument/prepareCallHierarchy',
+        positionParams(uri, body.line, body.column),
+      )
+    } catch (e) {
+      return {
+        ok: false,
+        item: null,
+        incoming: [],
+        outgoing: [],
+        error: e instanceof Error ? e.message : String(e),
+      }
+    }
+    if (!prepared || (Array.isArray(prepared) && !prepared.length)) {
+      return { ok: true, item: null, incoming: [], outgoing: [] }
+    }
+    const rootItem = Array.isArray(prepared) ? prepared[0] : prepared
+    const item = mapCallHierarchyItem(session, rootItem)
+    if (!item) return { ok: true, item: null, incoming: [], outgoing: [] }
+
+    let incoming = []
+    let outgoing = []
+    try {
+      const inc = await request(session, 'callHierarchy/incomingCalls', { item: rootItem })
+      incoming = (Array.isArray(inc) ? inc : [])
+        .slice(0, 48)
+        .map((c) => {
+          const mapped = mapCallHierarchyItem(session, c.from)
+          if (!mapped) return null
+          return {
+            ...mapped,
+            callCount: Array.isArray(c.fromRanges) ? c.fromRanges.length : 0,
+          }
+        })
+        .filter(Boolean)
+    } catch {
+      incoming = []
+    }
+    try {
+      const out = await request(session, 'callHierarchy/outgoingCalls', { item: rootItem })
+      outgoing = (Array.isArray(out) ? out : [])
+        .slice(0, 48)
+        .map((c) => {
+          const mapped = mapCallHierarchyItem(session, c.to)
+          if (!mapped) return null
+          return {
+            ...mapped,
+            callCount: Array.isArray(c.fromRanges) ? c.fromRanges.length : 0,
+          }
+        })
+        .filter(Boolean)
+    } catch {
+      outgoing = []
+    }
+    return { ok: true, item, incoming, outgoing }
+  })
+  if (!r.ok) {
+    return { ok: false, item: null, incoming: [], outgoing: [], error: r.error }
+  }
   return r
 }
 

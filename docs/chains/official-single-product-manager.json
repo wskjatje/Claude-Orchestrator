@@ -7,8 +7,8 @@
   "templateId": "single-product-manager",
   "official": true,
   "userModified": false,
-  "createdAt": "2026-06-14T03:15:16.998Z",
-  "updatedAt": "2026-07-15T00:59:39.615Z",
+  "createdAt": "2026-06-29T11:00:00.000Z",
+  "updatedAt": "2026-06-29T11:00:00.000Z",
   "state": {
     "status": "idle",
     "currentIndex": 0,
@@ -16,12 +16,9 @@
       {
         "agentName": "product-manager",
         "taskId": "PRD-1",
-        "instruction": "【Agent】global://product-manager（~/.claude/agents/product-manager.md）\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】\n1. 目标用户与核心场景\n2. 可测试验收标准\n3. 非目标与待确认项\n\n【禁止】不写 WBS、不写代码/UI 稿\n\n【READ】No fixed upstream md. Pre-injected workspace state available.\n\n【PATH】`docs/prd.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
-        "skills": [
-          "product-req-clarify",
-          "product-acceptance-criteria",
-          "product-scope-mgmt"
-        ],
+        "artifactPath": "docs/prd.md",
+        "instruction": "【Agent】global://product-manager（~/.claude/agents/product-manager.md）\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】\n1. 目标用户与核心场景\n2. 可测试验收标准\n3. 非目标与待确认项\n\n【禁止】不写 WBS、不写代码/UI 稿\n\n【READ】No fixed upstream md. Pre-injected workspace state available.\n\n【PATH】`docs/prd.md`\n【WRITE】须输出合法 ```workspace-write``` JSON：{\"path\":\"docs/prd.md\",\"content\":\"...\"}（也接受 contents；path 可改但必须显式）。无围栏则本步失败；系统不会猜路径、不会写默认 docs/chain-steps。\n【NO FAKE WRITE】无有效围栏勿声称已写入。\n\n【1】基于已注入工作区状态作答；禁止伪造不存在文件。\n【2】变更须经 ```workspace-write``` JSON 显式 path+content|contents；无围栏不落盘。\n【3】收尾 1～3 句；禁止下一步推销。",
+        "skills": [],
         "mcps": []
       }
     ]

@@ -1570,6 +1570,51 @@ function getKnownProviderCapabilities(providerName) {
   return { tools: true };
 }
 
+/** OpenAI 兼容流/非流：正文在 content；推理模型可能只填 reasoning_content */
+function textFromUnknown(value) {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (!part || typeof part !== "object") return "";
+        if (typeof part.text === "string") return part.text;
+        if (typeof part.content === "string") return part.content;
+        if (typeof part.thinking === "string") return part.thinking;
+        return "";
+      })
+      .join("");
+  }
+  return "";
+}
+
+function openAiVisibleText(choice) {
+  const msg = choice?.delta || choice?.message || choice || {};
+  const content = textFromUnknown(msg.content);
+  const reasoning = [
+    msg.reasoning_content,
+    msg.reasoning,
+    msg.thinking,
+  ]
+    .map((v) => textFromUnknown(v))
+    .find((v) => v.trim()) || "";
+  return { content, reasoning };
+}
+
+/** DeepSeek V4 思考模式会把可见答案放空。只对这类模型关闭思考，正文回到 content。 */
+function deepSeekRequestExtras(model) {
+  const id = String(model || "");
+  if (!/deepseek-(?:v4|flash|reasoner|chat)/i.test(id)) return {};
+  return { thinking: { type: "disabled" } };
+}
+
+/** 有 content 只用 content。content 为空时才用 reasoning，避免改掉已有正文的云回复 */
+function finalizeOpenAiVisible(content, reasoning) {
+  if (String(content || "").trim()) return { ok: true, content: String(content) };
+  if (String(reasoning || "").trim()) return { ok: true, content: String(reasoning) };
+  return { ok: false, content: "", error: "云模型未返回可显示正文。" };
+}
+
 module.exports = {
   getKnownProviderCapabilities,
   attachDb,
@@ -1602,6 +1647,9 @@ module.exports = {
   filterProvidersForSettings,
   filterProvidersForCatalog,
   reconcileCloudProviderCatalog,
+  openAiVisibleText,
+  finalizeOpenAiVisible,
+  deepSeekRequestExtras,
   isCcSwitchImportedProvider,
   isUserManagedProvider,
   providerSource,

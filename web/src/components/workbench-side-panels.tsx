@@ -10,13 +10,11 @@ import {
   ChevronsDownUp,
   CircleHelp,
   Download,
-  Files,
   FolderOpen,
   GitBranch,
-  ListTree,
   RefreshCw,
+  AtSign,
   ScanSearch,
-  Search,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -43,9 +41,15 @@ import {
   subscribePendingWrites,
 } from "@/lib/workbench-pending-writes";
 import {
+  requestPrefillComposer,
+  requestWorkbenchLayoutToggle,
   subscribeWorkbenchSideTab,
   type WorkbenchSideTabId,
 } from "@/lib/workbench-side-tab";
+import {
+  consumePreferredGitCommitMessage,
+  subscribePreferredGitCommitMessage,
+} from "@/lib/workbench-git-prefills";
 import {
   getRecentlyWrittenPaths,
   subscribeRecentlyWrittenPaths,
@@ -53,70 +57,32 @@ import {
 
 type SideTab = WorkbenchSideTabId;
 
-const SIDE_TABS: { id: SideTab; icon: typeof Files; label: string }[] = [
-  { id: "files", icon: Files, label: "资源管理器" },
-  { id: "search", icon: Search, label: "搜索" },
-  { id: "git", icon: GitBranch, label: "源代码管理" },
-  { id: "outline", icon: ListTree, label: "大纲" },
-];
-
 export function WorkbenchLeftSidebar() {
   const [tab, setTab] = useState<SideTab>("files");
   const ws = useWorkbenchWorkspace();
 
-  const selectTab = (next: SideTab) => {
-    setTab(next);
-    if (next === "files") void ws.refreshFiles();
-    if (next === "git") {
-      void ws.refreshDiff();
-      void ws.refreshGitLog();
-      void ws.refreshFiles();
-    }
-  };
-
   useEffect(() => {
     return subscribeWorkbenchSideTab((next) => {
-      selectTab(next);
+      setTab(next);
+      if (next === "files") void ws.refreshFiles();
+      if (next === "git") {
+        void ws.refreshDiff();
+        void ws.refreshGitLog();
+        void ws.refreshFiles();
+      }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载订阅；selectTab 读最新 ws
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅挂载订阅
   }, []);
 
+  // 顶栏水平 tab 已迁到左侧活动栏（Cursor）；此处只渲染内容
   return (
     <div className="workbench-explorer-sidebar flex h-full min-h-0 flex-col border-r border-[var(--explorer-border)] bg-[var(--explorer-bg)]">
-      <SidePanelTabBar tab={tab} onSelect={selectTab} />
       <div className="workbench-side-panel min-h-0 flex-1 overflow-hidden">
         {tab === "files" && <FileTreePanel />}
         {tab === "search" && <WorkbenchSearchPanel />}
         {tab === "git" && <GitPanel />}
         {tab === "outline" && <WorkbenchOutlinePanel />}
       </div>
-    </div>
-  );
-}
-
-function SidePanelTabBar({ tab, onSelect }: { tab: SideTab; onSelect: (t: SideTab) => void }) {
-  return (
-    <div
-      className="workbench-side-tabs shrink-0 border-b border-[var(--explorer-border)]"
-      role="tablist"
-    >
-      {SIDE_TABS.map(({ id, icon: Icon, label }) => {
-        const active = tab === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onSelect(id)}
-            className={cn("workbench-side-tab", active && "workbench-side-tab--active")}
-            title={label}
-            aria-label={label}
-          >
-            <Icon className="h-4 w-4 shrink-0" aria-hidden />
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -243,6 +209,16 @@ function GitPanel() {
   const changedPaths = Array.from(ws.gitStatusByPath.entries()).sort(([a], [b]) =>
     a.localeCompare(b),
   );
+
+  useEffect(() => {
+    const apply = (msg: string) => {
+      if (!msg.trim()) return;
+      setCommitMessage((prev) => (prev.trim() ? prev : msg));
+    };
+    const cached = consumePreferredGitCommitMessage();
+    if (cached) apply(cached);
+    return subscribePreferredGitCommitMessage((p) => apply(p.message));
+  }, []);
 
   useEffect(() => {
     if (!graphAutoRefresh) return;
@@ -447,10 +423,10 @@ function GitPanel() {
                 const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
                 const name = path.split("/").pop() || path;
                 return (
-                  <li key={path}>
+                  <li key={path} className="group flex items-center gap-0.5">
                     <button
                       type="button"
-                      className="git-changes-row"
+                      className="git-changes-row min-w-0 flex-1"
                       onClick={() => void ws.openFile(path)}
                       title={path}
                     >
@@ -459,6 +435,18 @@ function GitPanel() {
                       <span className={cn("git-changes-letter", explorerGitStatusClass(tone))}>
                         {letter}
                       </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="workbench-icon-btn workbench-icon-btn--sm shrink-0 opacity-70 hover:opacity-100"
+                      title="添加到对话"
+                      aria-label={`将 ${path} 添加到对话`}
+                      onClick={() => {
+                        requestWorkbenchLayoutToggle("chat", { ensure: true });
+                        requestPrefillComposer(`@${path} `);
+                      }}
+                    >
+                      <AtSign className="h-3 w-3" aria-hidden />
                     </button>
                   </li>
                 );

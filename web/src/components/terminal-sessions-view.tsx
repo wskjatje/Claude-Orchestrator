@@ -6,6 +6,14 @@ import {
   shellDisplayLabel,
 } from "@/lib/terminal-shell-profiles";
 import { registerWorkbenchTerminalRunHandlers } from "@/lib/workbench-terminal-run-bridge";
+import {
+  publishOpenTerminalSessions,
+  recordBackgroundTerminalRun,
+} from "@/lib/workbench-composer-turn-footer";
+import {
+  bindLiveExecTerminalSession,
+  getLiveExecTerminalSessionId,
+} from "@/lib/live-exec-channel";
 import { TerminalSessionRail } from "@/components/terminal-session-rail";
 import {
   WorkspaceTerminal,
@@ -216,15 +224,46 @@ export function TerminalSessionsView({
   ]);
 
   useEffect(() => {
+    publishOpenTerminalSessions(sessions.map((s) => s.id));
+  }, [sessions]);
+
+  const sessionIdsKey = sessions.map((s) => s.id).join("|");
+
+  useEffect(() => {
+    const idSet = new Set(sessionIdsKey.split("|").filter(Boolean));
     registerWorkbenchTerminalRunHandlers({
-      runInActive: (command) => focusedHandle()?.runCommand(command) ?? false,
+      runInActive: (command) => {
+        const sessionId = focusedPaneId || activeId;
+        const ok = focusedHandle()?.runCommand(command) ?? false;
+        if (ok) recordBackgroundTerminalRun(sessionId, command);
+        return ok;
+      },
+      echoAgentRun: (command, output, ok) => {
+        const bound = getLiveExecTerminalSessionId();
+        const sessionId =
+          (bound && idSet.has(bound) ? bound : null) || focusedPaneId || activeId;
+        if (bound && sessionId === bound && sessionId !== focusedPaneId) {
+          // 绑定会话仍开着：优先写回该 pane，避免 CLI/Host 回显进拆分的另一侧
+          selectSession(sessionId);
+        }
+        const handle =
+          (sessionId ? handleFor(sessionId) : null) || focusedHandle();
+        const wrote = handle?.echoAgentRun(command, output, ok) ?? false;
+        if (wrote) {
+          bindLiveExecTerminalSession(sessionId);
+          recordBackgroundTerminalRun(sessionId, command);
+        }
+        return wrote;
+      },
       ensureSession: () => {
-        if (!sessions.length) addSession();
+        if (!idSet.size) addSession();
+        const id = focusedPaneId || activeId;
+        if (id) bindLiveExecTerminalSession(id);
       },
       isActiveReady: () => focusedHandle()?.isReady() ?? false,
     });
     return () => registerWorkbenchTerminalRunHandlers(null);
-  }, [addSession, sessions.length, activeId, focusedPaneId]);
+  }, [addSession, sessionIdsKey, activeId, focusedPaneId, selectSession]);
 
   useEffect(() => {
     if (!panelActive || !focusedPaneId) return;

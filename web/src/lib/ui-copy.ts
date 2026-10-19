@@ -50,22 +50,33 @@ export const PAGE_DESC = {
   },
 } as const;
 
+/** 设置 → 高级「编排与运维」入口分组（列表导航，非页内页签） */
+export type SettingsOpsGroup = "环境" | "编排" | "运维" | "实验";
+
 /** 设置 → 高级：编码相关管理（侧栏已降权） */
 export const SETTINGS_ADVANCED_LINKS = [
-  { to: "/workspaces", label: "工作目录" },
-  { to: "/overview", label: "概览" },
-  { to: "/agents", label: "角色" },
-  { to: "/skills", label: "Skill" },
-  { to: "/chains", label: "任务链" },
-  { to: "/comms", label: "MCP 服务器" },
-  { to: "/logs", label: "日志" },
-] as const;
+  { to: "/workspaces", label: "工作目录", group: "环境" },
+  { to: "/overview", label: "概览", group: "环境" },
+  { to: "/agents", label: "角色", group: "编排" },
+  { to: "/skills", label: "Skill", group: "编排" },
+  { to: "/chains", label: "任务链", group: "编排" },
+  { to: "/comms", label: "MCP 服务器", group: "运维" },
+  { to: "/logs", label: "日志", group: "运维" },
+] as const satisfies ReadonlyArray<{
+  to: string;
+  label: string;
+  group: SettingsOpsGroup;
+}>;
 
 /** 设置 → 高级 → 实验：非编码主路径，默认不宣传 */
 export const SETTINGS_EXPERIMENTAL_LINKS = [
-  { to: "/scheduled", label: "定时任务" },
-  { to: "/reports", label: "执行日报" },
-] as const;
+  { to: "/scheduled", label: "定时任务", group: "实验" },
+  { to: "/reports", label: "执行日报", group: "实验" },
+] as const satisfies ReadonlyArray<{
+  to: string;
+  label: string;
+  group: SettingsOpsGroup;
+}>;
 
 export const GIT_PUSH_HINT = "推送后直接更新远程。";
 
@@ -113,7 +124,16 @@ export const CHOOSE_WORKSPACE_OFFLINE_TITLE = "无法连接本机服务";
 
 export const CHOOSE_WORKSPACE_OFFLINE_DESC = "请启动 Claude Orchestrator 后刷新页面。";
 
-export const COMPOSER_PLACEHOLDER = "输入指令";
+export const COMPOSER_PLACEHOLDER = "Plan, Build, Agent…  / 技能  @ 上下文";
+
+/** Ask + 方案言语：Composer 一句诚实提示（不堆百科） */
+export const COMPOSER_ASK_PLAN_HINT = "切 Plan/Agent 才会写入方案文件";
+
+/** Ask 下点 Build（对齐 Cursor：Ask 不执行方案） */
+export const PLAN_BUILD_ASK_BLOCKED = "请先切到 Plan 或 Agent";
+
+/** 方案文档旁主按钮（Cursor 文案 Build） */
+export const PLAN_BUILD_BUTTON = "Build";
 
 export const BROWSER_MODE_CHAT_MESSAGE = "请在 Claude Orchestrator 桌面应用中打开。";
 

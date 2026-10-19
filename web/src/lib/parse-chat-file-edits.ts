@@ -626,6 +626,47 @@ export function summaryEditForPath(
   });
 }
 
+/**
+ * 由持久化 before/after 补丁生成可展开 Diff 卡（对齐 Cursor Agent 反馈）
+ */
+export function editFromFilePatch(
+  patch: {
+    path: string;
+    before?: string;
+    after?: string;
+    isNewFile?: boolean;
+  },
+  seq: { n: number },
+): ChatFileEdit {
+  const path = String(patch.path || "")
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "");
+  const before = patch.before ?? "";
+  const after = patch.after ?? "";
+  const hasBodies = patch.before !== undefined || patch.after !== undefined;
+  if (!hasBodies) {
+    return summaryEditForPath(path, seq, { applied: true });
+  }
+  const { previewLines, added, removed, isNewFile } = buildLineDiffPreview(
+    before,
+    after,
+    64,
+    { allowFullAdd: Boolean(patch.isNewFile) || !before },
+  );
+  return makeEdit(seq, {
+    path,
+    language: languageFromPath(path),
+    added,
+    removed,
+    previewLines,
+    summaryOnly: false,
+    source: "summary",
+    status: "applied",
+    writeContent: after || undefined,
+    isNewFile: isNewFile || patch.isNewFile || !before,
+  });
+}
+
 /** 拆开「a.py, b.py」式多路径 Edit 参数 */
 export function splitWorkspaceEditPaths(raw: string): string[] {
   const s = String(raw || "")

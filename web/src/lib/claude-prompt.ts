@@ -97,23 +97,25 @@ export async function buildClaudeCodePrompt(
   const interactionMode = getWorkbenchInteractionMode();
   const rulesSnippet = await loadProjectRulesSnippet(desktop);
 
-  const writeBlock = opts.systemConstraint?.trim()
-    ? opts.systemConstraint.trim()
+  // 回合策略单源：有 systemConstraint 时不再叠 interactionMode / 旧写盘块
+  const policyBlock = opts.systemConstraint?.trim() || "";
+  const legacyWriteFallback = policyBlock
+    ? ""
     : interactionMode === "ask"
       ? ""
       : interactionMode === "agent"
-        ? "【写盘·Agent】Read→Edit/Write→跑测；禁贴方案/征求确认；探索禁用 grep；默认 memory://+migrations；收尾 1–3 句自然语言，勿四行模板。【禁兜底】无工具/写盘证据禁止声称已改文件、已打开应用或已跑通；缺证据如实说明。"
+        ? "【写盘·Agent】Read→Edit/Write→跑测；禁贴方案/征求确认；探索禁用 grep；默认 memory://+migrations；收尾 1–3 句自然语言，勿四行模板。【写盘内容·Cursor】贴合仓库框架；禁教学式适配示例/注释墙/静默兜底假成功/整文件注水。【禁兜底】无工具/写盘证据禁止声称已改文件、已打开应用或已跑通；缺证据如实说明。"
         : stem === "__general__"
           ? "【MUST_NOT】不可使用 workspace-write。纯问答不写文件；仅用户明确要求写/生成/保存/更新时才可写。"
-          : "【写盘·Plan】须用 ```workspace-write``` JSON（path+content）或 ```diff```；勿静默 Edit/Write；勿宣称已写入——用户 Accept 后才落盘。";
+          : "【写盘·Plan】须用 ```workspace-write``` 仅 JSON（path+content|contents；禁 YAML/猜路径）或 ```diff```；【写盘内容·Cursor】贴合仓库风格、禁教学百科注水；勿静默 Edit/Write；勿宣称已写入——用户 Accept 后才落盘。";
 
   const preamble = [
     `【环境】Claude Code CLI；Ollama 经 MCP ${mcpChatTool} 调用。`,
     `【模型】${orchName}；Ollama ${localHint}`,
     opts.workspaceDir ? `【工作区】${opts.workspaceDir}` : "",
     "【语言】zh_CN（代码/路径除外）。",
-    interactionModePromptBlock(interactionMode),
-    writeBlock,
+    policyBlock ? "" : interactionModePromptBlock(interactionMode),
+    policyBlock || legacyWriteFallback,
     crossAgentSnippet,
   ]
     .filter(Boolean)

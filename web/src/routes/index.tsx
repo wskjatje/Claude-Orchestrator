@@ -50,7 +50,11 @@ import {
 import {
   cliPermissionModeForInteraction,
   getWorkbenchInteractionMode,
+  setWorkbenchInteractionMode,
 } from "@/lib/workbench-interaction-mode";
+import { setPlanBuildHandler } from "@/lib/plan-build-request";
+import { setAgentFixHandler } from "@/lib/agent-fix-request";
+import { PLAN_BUILD_ASK_BLOCKED } from "@/lib/ui-copy";
 import { toast } from "sonner";
 import { toastWorkspaceWriteSuccess } from "@/lib/toast-workspace-write";
 import {
@@ -96,6 +100,7 @@ import {
   clearSessionHistoryCheckpoint,
   loadSessionHistoryCheckpoint,
   saveSessionHistoryCheckpoint,
+  subscribeRestoreSessionCheckpoint,
 } from "@/lib/session-history-checkpoint";
 import { parseActiveChainFromBubbleText } from "@/lib/parse-active-chain";
 import {
@@ -124,7 +129,11 @@ import {
 import { resolveAgentDisplayName } from "@/lib/agent-display-name";
 import { maybeToastMissingWorkspaceWrite } from "@/lib/maybe-toast-workspace-write";
 import { restoreUserMsgToComposer } from "@/lib/restore-user-composer";
-import { buildConfirmWriteItems, isBulkWriteProjectMessage } from "@/lib/confirm-write";
+import {
+  buildConfirmWriteItems,
+  buildFenceOnlyWriteItems,
+  isBulkWriteProjectMessage,
+} from "@/lib/confirm-write";
 import { performBulkWriteFromHistory } from "@/lib/bulk-write-from-history";
 import { runProjectFromChat } from "@/lib/run-project-in-terminal";
 import { MSG_BRIDGE_OFFLINE } from "@/lib/user-messages";
@@ -135,7 +144,6 @@ import {
   performStopPreview,
 } from "@/lib/project-preview";
 import { isOpenTerminalMessage } from "@/lib/workspace-terminal-client";
-import { defaultArtifactPathForAgent } from "@/lib/agent-artifact-paths";
 import {
   expandUserLineWithWorkspaceFiles,
   preReadInstructedWorkspaceFiles,
@@ -163,9 +171,19 @@ import { type PendingFileEntry } from "@/components/composer-file-attachments";
 import { ChatMessagesPane } from "@/components/chat-messages-pane";
 import { useChatScroll } from "@/hooks/use-chat-scroll";
 import { useChatStream } from "@/hooks/use-chat-stream";
+import {
+  mergeLiveToolEventIntoAssistantMessages,
+  useAgentToolStream,
+} from "@/hooks/use-agent-tool-stream";
 import { useChatSend } from "@/hooks/use-chat-send";
 import { WorkbenchPanelToolbar } from "@/components/workbench-panel-toolbar";
 import { focusBottomPanel } from "@/lib/workbench-panel-init";
+import {
+  requestWorkbenchCommandPalette,
+  requestWorkbenchQuickOpen,
+  requestWorkbenchSideTab,
+  subscribeWorkbenchSideTab,
+} from "@/lib/workbench-side-tab";
 import { ChatPanelToolbar } from "@/components/chat-panel-toolbar";
 import { ChatResendConfirmDialog } from "@/components/chat-resend-confirm-dialog";
 import { GithubDialog } from "@/components/chat/github-dialog";
@@ -185,6 +203,7 @@ import {
   pickActiveSessionId,
   pruneDuplicateEmptySessions,
   resolveWorkspaceChatSessions,
+  agentBasenameForWorkspace,
   sessionMatchesWorkspaceTab,
   backfillSessionWorkspaceFromActiveMap,
   stampSessionWorkspaceIfMissing,
@@ -214,7 +233,6 @@ import {
   formatAssistantFailure,
   fullChatSettingsPayload,
   genSessionId,
-  lastAgentStemFromHistory,
   mergeSessionsPreferLongerHistory,
   needsCheckpointConfirm,
   newLocalId,
@@ -228,6 +246,7 @@ import {
   type Msg,
   type OrchMode,
 } from "@/lib/chat-send-helpers";
+import { chooseWorkspaceWithFeedback } from "@/lib/choose-workspace";
 
 export const Route = createFileRoute("/")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -352,7 +371,8 @@ function ChatPage() {
     pendingFiles: PendingFileEntry[];
     pendingTerminalSnippets: PendingTerminalSnippet[];
     pendingDomElements?: PendingDomElement[];
-    editCutoff: number;
+    /** 省略则保留完整历史；0 表示截断为空（如 WBS 生成） */
+    editCutoff?: number;
   } | null>(null);
   const newSessionInFlightRef = useRef(false);
   const closingSessionTargetRef = useRef<string | null>(null);
@@ -416,6 +436,14 @@ function ChatPage() {
 
   const openChatPanel = useCallback(() => {
     setChatPanelOpen(true);
+  }, []);
+
+  const prefillComposer = useCallback((text: string) => {
+    const t = String(text || "").trim();
+    if (!t) return;
+    setChatPanelOpen(true);
+    setInput(t);
+    requestAnimationFrame(() => taRef.current?.focus());
   }, []);
 
   const pickLocalFiles = useCallback(async (opts?: { onlyImages?: boolean }) => {
@@ -590,7 +618,8 @@ function ChatPage() {
     chatCtx.syncOpenTabIds(openTabIds);
   }, [chatCtx, openTabIds]);
 
-  const sending = Boolean(sendingSessions[activeId]);
+  // 流式 requestId 也算 busy，避免 sending 标志竞态时仍显示发送钮
+  const sending = Boolean(sendingSessions[activeId]) || Boolean(activeStreamRequestId);
   const [stopRequested, setStopRequested] = useState(false);
   useEffect(() => {
     chainRunningRef.current = chainRunning;
@@ -679,11 +708,29 @@ function ChatPage() {
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (!last || last.role !== "assistant") return prev;
+        // 已停止 / 错误气泡不再拼接 delta（避免 Thinking 已清后仍被流式刷回）
+        if (last.requestError || last.content === "（生成已停止）") return prev;
         const nextContent = last.content === "__WAITING__" ? chunk : `${last.content}${chunk}`;
         const updated = [...prev.slice(0, -1), { ...last, content: nextContent }];
         // 写入 per-session 累积池（切换菜单/对话后 GlobalChatPanel 通过此池恢复）
         chatCtx.syncSessionMessages(activeIdRef.current, updated);
         return updated;
+      });
+    },
+  });
+
+  useAgentToolStream({
+    activeSessionId: activeId,
+    requestId: activeStreamRequestId,
+    requestIdRef: activeStreamRequestIdRef,
+    enabled: sending,
+    onToolEvent: (_sessionId, event, _requestId) => {
+      if (activeIdRef.current !== _sessionId) return;
+      setMessages((prev) => {
+        const next = mergeLiveToolEventIntoAssistantMessages(prev, event);
+        if (next === prev) return prev;
+        chatCtx.syncSessionMessages(activeIdRef.current, next);
+        return next;
       });
     },
   });
@@ -707,22 +754,56 @@ function ChatPage() {
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      if (ev.key !== "`" || (!ev.metaKey && !ev.ctrlKey)) return;
+      const mod = ev.metaKey || ev.ctrlKey;
+      const key = ev.key.toLowerCase();
       const t = ev.target;
-      if (
+      const inField =
         t instanceof HTMLElement &&
         (t.isContentEditable ||
           t.tagName === "INPUT" ||
           t.tagName === "TEXTAREA" ||
-          t.tagName === "SELECT")
-      ) {
+          t.tagName === "SELECT");
+
+      // Cmd/Ctrl+Shift+P：命令面板
+      if (mod && ev.shiftKey && !ev.altKey && key === "p") {
+        ev.preventDefault();
+        requestWorkbenchCommandPalette();
         return;
       }
+      // Cmd/Ctrl+P：转到文件（输入框内也允许，对齐 Cursor）
+      if (mod && !ev.shiftKey && !ev.altKey && key === "p") {
+        ev.preventDefault();
+        requestWorkbenchQuickOpen();
+        return;
+      }
+      // Cmd/Ctrl+Shift+F：打开侧栏搜索
+      if (mod && ev.shiftKey && !ev.altKey && key === "f") {
+        ev.preventDefault();
+        setLeftSidebarOpen(true);
+        requestWorkbenchSideTab("search");
+        return;
+      }
+      // Cmd/Ctrl+B：切换左侧栏
+      if (mod && !ev.shiftKey && !ev.altKey && key === "b") {
+        if (inField) return;
+        ev.preventDefault();
+        setLeftSidebarOpen((v) => !v);
+        return;
+      }
+      if (ev.key !== "`" || !mod) return;
+      if (inField) return;
       ev.preventDefault();
       setTerminalOpen((v) => !v);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // 活动栏切视图时确保左侧栏展开（Cursor：点 Explorer/Search/SCM 必须可见）
+  useEffect(() => {
+    return subscribeWorkbenchSideTab(() => {
+      setLeftSidebarOpen(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -901,10 +982,11 @@ function ChatPage() {
       const defaultPath = settings.defaultConfirmWritePath?.trim() || "";
       const sess = sessions.find((s) => s.id === activeId);
       if (!sess) return;
-      const agentStem = lastAgentStemFromHistory(sess.history);
-      const items = buildConfirmWriteItems(trimmed, defaultPath, agentStem);
+      const items = buildConfirmWriteItems(trimmed, defaultPath);
       if (!items.length) {
-        toast.warning("内容经处理后为空，无法写入。");
+        toast.error(
+          "无法写入：正文中无 workspace-write 围栏，且未配置默认写入路径。请先在回复中使用围栏，或在设置中配置默认确认写入路径。",
+        );
         return;
       }
       setStopRequested(false);
@@ -913,11 +995,8 @@ function ChatPage() {
         const res = await api.workspaceApplyWriteFence(items);
         const written = res?.written ?? [];
         if (written.length > 0) {
-          const pathNote = agentStem
-            ? `\n（按 Agent \`${agentStem}\` → \`${defaultArtifactPathForAgent(agentStem)}\`）`
-            : "";
           const summary =
-            `【一键写入】已将内容写入当前工作区：${pathNote}\n` +
+            `【一键写入】已将内容写入当前工作区：\n` +
             written.map((p) => `- \`${p}\``).join("\n");
           const writtenSet = new Set(written.map((p) => p.replace(/\\/g, "/")));
           const hist = sess.history.map((m) => {
@@ -949,7 +1028,7 @@ function ChatPage() {
           setSessions(nextSessions);
           setMessages(diskToDisplay(hist, modelLabel));
           await persist(nextSessions, activeId);
-          toastWorkspaceWriteSuccess(`已写入 ${written.length} 个文件`, {
+          toastWorkspaceWriteSuccess("", {
             writtenPaths: written,
           });
         } else if (res?.error) {
@@ -966,11 +1045,78 @@ function ChatPage() {
     [activeId, sessions, persist],
   );
 
+  /** 气泡右键写入：仅 workspace-write 围栏（无关键词硬编码路径） */
   const handleBubbleWriteToWorkspace = useCallback(
     (content: string) => {
-      void performConfirmWriteForText(content, "确认写入（本条气泡）");
+      const items = buildFenceOnlyWriteItems(content);
+      if (!items.length) {
+        toast.error("本条无 workspace-write 围栏，无法写入工作区。");
+        return;
+      }
+      void (async () => {
+        const api = getDesktop();
+        if (!api?.workspaceApplyWriteFence) {
+          toast.error("当前无法写入工作区。");
+          return;
+        }
+        const sess = sessions.find((s) => s.id === activeId);
+        if (!sess) return;
+        setStopRequested(false);
+        setSessionSending(activeId, true);
+        try {
+          const res = await api.workspaceApplyWriteFence(items);
+          const written = res?.written ?? [];
+          if (written.length > 0) {
+            const summary =
+              `【一键写入】已将内容写入当前工作区：\n` +
+              written.map((p) => `- \`${p}\``).join("\n");
+            const writtenSet = new Set(written.map((p) => p.replace(/\\/g, "/")));
+            const hist = sess.history.map((m) => {
+              if (m.role !== "assistant") return m;
+              if (!m.content.includes("```workspace-write")) return m;
+              const hit = [...writtenSet].some(
+                (p) =>
+                  m.content.includes(`"path":"${p}"`) ||
+                  m.content.includes(`"path": "${p}"`) ||
+                  m.content.includes(`\`${p}\``),
+              );
+              if (!hit) return m;
+              return {
+                ...m,
+                content: collapseWorkspaceWriteForHistory(m.content, written),
+              };
+            });
+            const userLine: DiskMsg = {
+              role: "user",
+              content: "确认写入（本条气泡）",
+              ts: Date.now(),
+            };
+            const asstLine: DiskMsg = { role: "assistant", content: summary, ts: Date.now() };
+            hist.push(userLine, asstLine);
+            const settings = await getCachedSettings(api);
+            const modelLabel = sess.modelId?.trim() || settings.model || "模型";
+            const nextSessions = sessions.map((s) =>
+              s.id === activeId ? { ...s, history: hist } : s,
+            );
+            setSessions(nextSessions);
+            setMessages(diskToDisplay(hist, modelLabel));
+            await persist(nextSessions, activeId);
+            toastWorkspaceWriteSuccess("", {
+              writtenPaths: written,
+            });
+          } else if (res?.error) {
+            toast.error(`未能写入：${res.error}`);
+          } else if (res?.errors?.length) {
+            toast.error(res.errors.slice(0, 2).join("; "));
+          } else {
+            toast.error("未写入任何路径（请检查工作区是否已选择）。");
+          }
+        } finally {
+          setSessionSending(activeId, false);
+        }
+      })();
     },
-    [performConfirmWriteForText],
+    [activeId, sessions, persist],
   );
 
   const handleBubbleGenerateChain = useCallback(
@@ -1141,7 +1287,7 @@ function ChatPage() {
         setMessages(diskToDisplay(hist, modelLabel));
         await persist(nextSessions, activeId);
         if (res.ok && written.length > 0) {
-          toast.success(`已从 ${res.scanned ?? "?"} 条历史回复写入 ${written.length} 个文件`);
+          toastWorkspaceWriteSuccess("", { writtenPaths: written });
         } else {
           toast.warning(res.error || "未找到可落盘的代码块");
         }
@@ -1351,7 +1497,9 @@ function ChatPage() {
       const mode: OrchMode =
         settings.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
       setOrchMode(mode);
-      setLocalAgentBasename(settings.localAgentBasename?.trim() ?? "");
+      setLocalAgentBasename(
+        agentBasenameForWorkspace(settings, workspacePathRef.current),
+      );
 
       let claudePool: string[] = [];
       let localPool: string[] = [];
@@ -1796,13 +1944,30 @@ function ChatPage() {
     const nextBasename = basename.trim();
     setLocalAgentBasename(nextBasename);
     const s = await api.getChatSettings();
-    await api.saveChatSettings({ ...fullChatSettingsPayload(s), localAgentBasename: nextBasename });
+    const wsKey = workspaceSessionKey(workspacePathRef.current);
+    const byWs = {
+      ...(s.agentBasenameByWorkspace && typeof s.agentBasenameByWorkspace === "object"
+        ? s.agentBasenameByWorkspace
+        : {}),
+    } as Record<string, string>;
+    if (wsKey) byWs[wsKey] = nextBasename;
+    await api.saveChatSettings({
+      ...fullChatSettingsPayload(s),
+      localAgentBasename: nextBasename,
+      agentBasenameByWorkspace: byWs,
+    });
     // 同步到 sessionStorage 缓存，确保跨路由切换后立即恢复
     const cached = getChatSessionsCache();
     if (cached) {
       setChatSessionsCache({ ...cached, localAgentBasename: nextBasename });
     }
   };
+
+  const handleWorkspaceChipClick = useCallback(() => {
+    const api = getDesktop();
+    if (!api) return;
+    void chooseWorkspaceWithFeedback(api);
+  }, []);
 
   const handleModelPick = async (pick: { mode: OrchMode; model: string }) => {
     const api = getDesktop();
@@ -2075,13 +2240,39 @@ function ChatPage() {
 
   const cancelEditUserMessage = useCallback(() => {
     if (editHistoryIndexRef.current == null) return;
+    const sessionId = activeIdRef.current;
     setEditHistoryIndex(null);
     editHistoryIndexRef.current = null;
     setEditComposer(null);
-    const sess = sessionsRef.current.find((s) => s.id === activeIdRef.current);
+    // 已发起退回（检查点已存）：取消编辑 = 终止退回，把后续消息接回去（对齐 Cursor）
+    const cp = loadSessionHistoryCheckpoint(sessionId);
+    if (cp?.sessionId === sessionId && Array.isArray(cp.discarded) && cp.discarded.length > 0) {
+      void (async () => {
+        try {
+          const nextSessions = await patchSession(sessionId, (s) => {
+            const head = s.history.slice(0, cp.keepUntil);
+            return { ...s, history: [...head, ...(cp.discarded as DiskMsg[])] };
+          });
+          clearSessionHistoryCheckpoint();
+          const updated = nextSessions.find((s) => s.id === sessionId);
+          if (updated && sessionId === activeIdRef.current) {
+            syncMessagesFromSession(updated);
+            loadComposerDraft(sessionId);
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+        const sess = sessionsRef.current.find((s) => s.id === sessionId);
+        syncMessagesFromSession(sess);
+        loadComposerDraft(sessionId);
+      })();
+      return;
+    }
+    const sess = sessionsRef.current.find((s) => s.id === sessionId);
     syncMessagesFromSession(sess);
-    loadComposerDraft(activeIdRef.current);
-  }, [loadComposerDraft, syncMessagesFromSession]);
+    loadComposerDraft(sessionId);
+  }, [loadComposerDraft, syncMessagesFromSession, patchSession]);
 
   const beginEditUserMessageImpl = useCallback(
     (historyIndex: number) => {
@@ -2596,6 +2787,8 @@ function ChatPage() {
       allCloudModels: configuredPoolsRef.current.cloudModels,
       allLocalModels: configuredPoolsRef.current.localModels,
       preferredMode: orchMode,
+      preferredCloudModel: settings.preferredCloudModel,
+      preferredLocalModel: settings.preferredLocalModel,
     });
     if (!resolved) {
       toast.error("请先在「模型配置」添加云或本地模型。");
@@ -2644,6 +2837,10 @@ function ChatPage() {
           requestError: true,
         });
       } else {
+        const lastUserLine = [...hist]
+          .reverse()
+          .find((m) => m.role === "user" && String(m.content || "").trim());
+        const chainDisplayLine = String(lastUserLine?.content || "").trim();
         let block = "【Multi-Agent Runtime · delegation-v1】\n\n";
         for (const step of r.stepResults ?? []) {
           if (step.ok) {
@@ -2653,7 +2850,11 @@ function ChatPage() {
               const chainIngest = await ingestChainStepWorkspaceWrites(
                 api,
                 raw,
-                { agentName: step.agentName, taskId: step.taskId },
+                {
+                  agentName: step.agentName,
+                  taskId: step.taskId,
+                  displayLine: chainDisplayLine,
+                },
                 toastIngestWorkspaceHint,
               );
               const collapsed = stripLargeAssistantArtifacts(chainIngest.displayText);
@@ -2672,7 +2873,11 @@ function ChatPage() {
             const synIngest = await ingestChainStepWorkspaceWrites(
               api,
               synRaw,
-              { agentName: r.synthesis.agentName, taskId: "synthesis" },
+              {
+                agentName: r.synthesis.agentName,
+                taskId: "synthesis",
+                displayLine: chainDisplayLine,
+              },
               toastIngestWorkspaceHint,
             );
             const synCollapsed = stripLargeAssistantArtifacts(synIngest.displayText);
@@ -2743,7 +2948,11 @@ function ChatPage() {
               const chainIngest = await ingestChainStepWorkspaceWrites(
                 api,
                 raw,
-                { agentName: output.agentName, taskId: "parallel" },
+                {
+                  agentName: output.agentName,
+                  taskId: "parallel",
+                  displayLine: config.task,
+                },
                 toastIngestWorkspaceHint,
               );
               const collapsed = stripLargeAssistantArtifacts(chainIngest.displayText);
@@ -2830,6 +3039,7 @@ function ChatPage() {
     activeIdRef,
     sendingSessionsRef,
     workspacePathRef,
+    setWorkspacePath,
     activeByWorkspaceRef,
     sessionsRef,
     composerDraftsRef,
@@ -2842,51 +3052,112 @@ function ChatPage() {
     stopChainExecution,
   });
 
+  useEffect(() => {
+    setPlanBuildHandler((path) => {
+      const mode = getWorkbenchInteractionMode();
+      if (mode === "ask") {
+        toast.message(PLAN_BUILD_ASK_BLOCKED);
+        return;
+      }
+      setWorkbenchInteractionMode("agent");
+      sendPayloadOverrideRef.current = {
+        text: `按方案执行：${path}`,
+        pendingImages: [],
+        pendingFiles: [],
+        pendingTerminalSnippets: [],
+        pendingDomElements: [],
+      };
+      void sendChat();
+    });
+    setAgentFixHandler((snippet) => {
+      setWorkbenchInteractionMode("agent");
+      sendPayloadOverrideRef.current = {
+        text: `请根据以下终端失败输出修复相关代码并落盘：\n\n\`\`\`\n${snippet}\n\`\`\``,
+        pendingImages: [],
+        pendingFiles: [],
+        pendingTerminalSnippets: [],
+        pendingDomElements: [],
+      };
+      void sendChat();
+    });
+    return () => {
+      setPlanBuildHandler(null);
+      setAgentFixHandler(null);
+    };
+  }, [sendChat]);
+
+  const restoreSessionCheckpoint = useCallback(
+    async (preferSessionId?: string) => {
+      const cp =
+        (preferSessionId ? loadSessionHistoryCheckpoint(preferSessionId) : null) ??
+        loadSessionHistoryCheckpoint();
+      if (!cp?.discarded?.length) {
+        toast.error("检查点不存在或已失效");
+        return false;
+      }
+      const sessionId = cp.sessionId;
+      try {
+        const nextSessions = await patchSession(sessionId, (s) => {
+          const head = s.history.slice(0, cp.keepUntil);
+          const restored = [...head, ...(cp.discarded as DiskMsg[])];
+          return { ...s, history: restored };
+        });
+        clearSessionHistoryCheckpoint();
+        const updated = nextSessions.find((s) => s.id === sessionId);
+        if (!updated) {
+          toast.error("恢复检查点失败：会话不存在");
+          return false;
+        }
+        if (sessionId === activeIdRef.current) {
+          const ml = updated.modelId?.trim() || globalModel || "模型";
+          const display = diskToDisplay(updated.history, ml);
+          setMessages(display);
+          chatCtx.syncMessages(display);
+          chatCtx.syncSessionMessages(sessionId, display);
+        } else {
+          toast.success("已恢复检查点（请切换到对应会话查看）");
+          return true;
+        }
+        toast.success("已恢复检查点之后的消息");
+        return true;
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "恢复检查点失败");
+        return false;
+      }
+    },
+    [patchSession, globalModel, chatCtx],
+  );
+
   const runCheckpointAction = useCallback(
     (historyIndex: number, action: "edit" | "resend") => {
       const sessionId = activeIdRef.current;
       const sess = sessionsRef.current.find((s) => s.id === sessionId);
       if (sess && historyIndex < sess.history.length - 1) {
-        saveSessionHistoryCheckpoint({
+        const discarded = sess.history.slice(historyIndex);
+        const saved = saveSessionHistoryCheckpoint({
           sessionId,
           savedAt: Date.now(),
           keepUntil: historyIndex,
-          discarded: sess.history.slice(historyIndex),
+          discarded,
         });
-        toast.message("已保存检查点", {
-          description: "可恢复被截断的后续消息",
-          duration: 10_000,
-          action: {
-            label: "撤销截断",
-            onClick: () => {
-              const cp = loadSessionHistoryCheckpoint(sessionId);
-              if (!cp?.discarded?.length) return;
-              void (async () => {
-                const nextSessions = await patchSession(sessionId, (s) => {
-                  const head = s.history.slice(0, cp.keepUntil);
-                  const restored = [...head, ...(cp.discarded as DiskMsg[])];
-                  return { ...s, history: restored };
-                });
-                clearSessionHistoryCheckpoint();
-                const updated = nextSessions.find((s) => s.id === sessionId);
-                if (updated && sessionId === activeIdRef.current) {
-                  const ml = updated.modelId?.trim() || globalModel || "模型";
-                  const display = diskToDisplay(updated.history, ml);
-                  setMessages(display);
-                  chatCtx.syncMessages(display);
-                  chatCtx.syncSessionMessages(sessionId, display);
-                }
-                toast.success("已恢复检查点之后的消息");
-              })();
-            },
-          },
-        });
+        if (!saved) {
+          toast.error("无法保存检查点（存储失败），已取消截断。请重试或清理浏览器存储。");
+          return;
+        }
+        // 检查点静默保存；恢复入口在命令面板「恢复会话检查点」/ 取消编辑
       }
       if (action === "edit") beginEditUserMessageImpl(historyIndex);
       else void resendUserMessageImpl(historyIndex);
     },
-    [beginEditUserMessageImpl, resendUserMessageImpl, patchSession, globalModel, chatCtx],
+    [beginEditUserMessageImpl, resendUserMessageImpl],
   );
+
+  useEffect(() => {
+    return subscribeRestoreSessionCheckpoint(() => {
+      const sessionId = activeIdRef.current;
+      void restoreSessionCheckpoint(sessionId);
+    });
+  }, [restoreSessionCheckpoint]);
 
   const requestCheckpointAction = useCallback(
     (historyIndex: number, action: "edit" | "resend") => {
@@ -2909,11 +3180,20 @@ function ChatPage() {
     [runCheckpointAction],
   );
 
+  /** 点气泡正文：直接进编辑，不弹确认框（确认框仅留给右下角 Icon / 重新发送） */
   const beginEditUserMessage = useCallback(
-    (historyIndex: number) => requestCheckpointAction(historyIndex, "edit"),
-    [requestCheckpointAction],
+    (historyIndex: number) => {
+      const sessionId = activeIdRef.current;
+      if (sendingSessionsRef.current[sessionId]) {
+        toast.warning("请等待当前回复完成后再编辑历史消息。");
+        return;
+      }
+      runCheckpointAction(historyIndex, "edit");
+    },
+    [runCheckpointAction],
   );
 
+  /** 点气泡 Icon / 右键「重新发送」：弹出检查点确认 */
   const requestResendUserMessage = useCallback(
     (historyIndex: number) => requestCheckpointAction(historyIndex, "resend"),
     [requestCheckpointAction],
@@ -2957,6 +3237,7 @@ function ChatPage() {
         const settings = await getCachedSettings(api);
         const mode: OrchMode =
           settings.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
+        setLocalAgentBasename(agentBasenameForWorkspace(settings, nextWs));
         const modelId = pickOrchestratorModel(
           settings.model,
           chatModelPoolCombined({
@@ -3332,6 +3613,13 @@ function ChatPage() {
       onCancelEdit: cancelEditUserMessage,
       selectedSkillStems,
       onSelectedSkillStemsChange: setSelectedSkillStems,
+      workspacePath,
+      onWorkspaceChipClick: handleWorkspaceChipClick,
+      onParallelClick: () => {
+        setParallelDialogPreset(undefined);
+        setParallelDialogDefaultTask(undefined);
+        setParallelDialogOpen(true);
+      },
     };
   }, [
     editHistoryIndex,
@@ -3340,6 +3628,8 @@ function ChatPage() {
     hasDesktopApi,
     orchMode,
     localAgentBasename,
+    workspacePath,
+    handleWorkspaceChipClick,
     orchestratorModels,
     localOllamaTags,
     activeSession?.modelId,
@@ -3382,6 +3672,7 @@ function ChatPage() {
           onOpenChatPanel={openChatPanel}
           onInsertTerminalSelection={insertTerminalSelection}
           onInsertDomElement={insertDomElement}
+          onPrefillComposer={prefillComposer}
           chatHeader={
             <ChatPanelToolbar
               sessions={tabSessions}
@@ -3477,6 +3768,13 @@ function ChatPage() {
                   onModelPick={(pick) => void handleModelPick(pick)}
                   selectedSkillStems={selectedSkillStems}
                   onSelectedSkillStemsChange={setSelectedSkillStems}
+                  workspacePath={workspacePath}
+                  onWorkspaceChipClick={handleWorkspaceChipClick}
+                  onParallelClick={() => {
+                    setParallelDialogPreset(undefined);
+                    setParallelDialogDefaultTask(undefined);
+                    setParallelDialogOpen(true);
+                  }}
                   chainStatusLabel={chainStatusBadge.label}
                   chainStatusTone={chainStatusBadge.tone}
                   onStopChain={

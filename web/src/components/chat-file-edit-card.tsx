@@ -1,20 +1,19 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronRight, FileCode2, FolderOpen, RotateCcw, X } from "lucide-react";
+import { Check, ChevronRight, FolderOpen, RotateCcw, X } from "lucide-react";
 import {
   ChatDockCollapsible,
-  ChatDockCollapsibleChevron,
   useDockCollapsibleState,
 } from "@/components/chat-dock-collapsible";
-import { highlightDiffLine } from "@/components/chat-diff-highlight";
+import { CursorDiffLines } from "@/components/cursor-diff-lines";
+import { SetiFileIcon } from "@/lib/seti/seti-file-icon";
 import { cn } from "@/lib/utils";
 import {
   dedupeEditsByPath,
-  expandFoldLine,
-  fileBadgeFromPath,
   type ChatFileEdit,
-  type ChatFileEditLine,
   type ChatFileEditStatus,
 } from "@/lib/parse-chat-file-edits";
+import { isPlanDocumentPath } from "@/lib/plan-build-request";
+import { PLAN_BUILD_BUTTON } from "@/lib/ui-copy";
 
 /** 返回 `false` 表示操作未成功，不更新本地 status（如写入失败仍保持「待应用」） */
 export type ChatFileEditActionResult = boolean | void;
@@ -26,134 +25,9 @@ export type ChatFileEditActions = {
   onUndoReject?: (edit: ChatFileEdit) => ChatFileEditActionResult | Promise<ChatFileEditActionResult>;
   onOpen?: (edit: ChatFileEdit) => ChatFileEditActionResult | Promise<ChatFileEditActionResult>;
   onRevert?: (edit: ChatFileEdit) => ChatFileEditActionResult | Promise<ChatFileEditActionResult>;
+  /** Plan→Build：按方案文档执行（复用 write 意图） */
+  onBuildFromPlan?: (edit: ChatFileEdit) => ChatFileEditActionResult | Promise<ChatFileEditActionResult>;
 };
-
-function gutterLineNo(line: ChatFileEditLine): string {
-  if (line.kind === "fold") return "";
-  if (line.kind === "del") return line.oldLine != null ? String(line.oldLine) : "";
-  if (line.kind === "add") return line.newLine != null ? String(line.newLine) : "";
-  return line.newLine != null
-    ? String(line.newLine)
-    : line.oldLine != null
-      ? String(line.oldLine)
-      : "";
-}
-
-function EditLine({
-  line,
-  language,
-  compactStyle,
-  onExpandFold,
-}: {
-  line: ChatFileEditLine;
-  language: string;
-  compactStyle?: boolean;
-  onExpandFold?: () => void;
-}) {
-  if (line.kind === "fold") {
-    const Tag = onExpandFold ? "button" : "div";
-    return (
-      <Tag
-        type={onExpandFold ? "button" : undefined}
-        className={cn(
-          "chat-file-edit-line chat-file-edit-line--fold font-mono",
-          compactStyle && "chat-file-edit-line--compact",
-          onExpandFold && "chat-file-edit-line--fold-clickable",
-        )}
-        onClick={
-          onExpandFold
-            ? (e) => {
-                e.stopPropagation();
-                onExpandFold();
-              }
-            : undefined
-        }
-      >
-        <span className="chat-file-edit-gutter" aria-hidden />
-        <span className="chat-file-edit-prefix" aria-hidden />
-        <span className="chat-file-edit-fold-label">{line.text || "⋯"}</span>
-      </Tag>
-    );
-  }
-  const prefix = line.prefix ?? (line.kind === "add" ? "+" : line.kind === "del" ? "-" : " ");
-  return (
-    <div
-      className={cn(
-        "chat-file-edit-line font-mono whitespace-pre-wrap break-all",
-        compactStyle ? "chat-file-edit-line--compact" : "text-[11.5px] leading-[1.45]",
-        line.kind === "add" && "chat-file-edit-line--add",
-        line.kind === "del" && "chat-file-edit-line--del",
-        line.kind === "ctx" && (compactStyle ? "chat-file-edit-line--ctx" : "text-muted-foreground"),
-      )}
-    >
-      {compactStyle ? (
-        <>
-          <span className="chat-file-edit-gutter" aria-hidden>
-            {gutterLineNo(line)}
-          </span>
-          <span
-            className={cn(
-              "chat-file-edit-prefix",
-              line.kind === "add" && "chat-file-edit-prefix--add",
-              line.kind === "del" && "chat-file-edit-prefix--del",
-            )}
-            aria-hidden
-          >
-            {prefix}
-          </span>
-        </>
-      ) : null}
-      <span className="chat-file-edit-code">
-        {highlightDiffLine(line.text || " ", language)}
-      </span>
-    </div>
-  );
-}
-
-function DiffPreviewBody({
-  lines,
-  language,
-  compactStyle,
-}: {
-  lines: ChatFileEditLine[];
-  language: string;
-  compactStyle?: boolean;
-}) {
-  const [localLines, setLocalLines] = useState(lines);
-  useEffect(() => {
-    setLocalLines(lines);
-  }, [lines]);
-  return (
-    <>
-      {localLines.map((line, i) => (
-        <EditLine
-          key={`${i}:${line.kind}:${line.oldLine ?? ""}:${line.newLine ?? ""}:${line.text.slice(0, 24)}`}
-          line={line}
-          language={language}
-          compactStyle={compactStyle}
-          onExpandFold={
-            line.kind === "fold"
-              ? () =>
-                  setLocalLines((prev) => {
-                    const idx =
-                      prev[i]?.kind === "fold"
-                        ? i
-                        : prev.findIndex(
-                            (l) =>
-                              l.kind === "fold" &&
-                              l.text === line.text &&
-                              l.oldLine === line.oldLine &&
-                              l.newLine === line.newLine,
-                          );
-                    return idx >= 0 ? expandFoldLine(prev, idx) : prev;
-                  })
-              : undefined
-          }
-        />
-      ))}
-    </>
-  );
-}
 
 function statusLabel(
   status: ChatFileEditStatus | undefined,
@@ -183,7 +57,16 @@ function EditStats({
       ? ""
       : statusLabel(status, edit.source, edit.summaryOnly);
   return (
-    <span className="chat-file-edit-stats inline-flex items-center gap-1.5 font-mono tabular-nums">
+    <span
+      className="chat-file-edit-stats inline-flex items-center gap-2 font-mono tabular-nums shrink-0"
+      aria-label={[
+        edit.added > 0 ? `增加 ${edit.added} 行` : "",
+        edit.removed > 0 ? `删除 ${edit.removed} 行` : "",
+        label || "",
+      ]
+        .filter(Boolean)
+        .join("，")}
+    >
       {label ? (
         <span
           className={cn(
@@ -198,9 +81,11 @@ function EditStats({
       ) : null}
       {showStats ? (
         <>
-          {edit.added > 0 ? <span className="chat-file-edit-stat-add">+{edit.added}</span> : null}
+          {edit.added > 0 ? (
+            <span className="chat-file-edit-stat-add">+{edit.added}</span>
+          ) : null}
           {edit.removed > 0 ? (
-            <span className="chat-file-edit-stat-del">-{edit.removed}</span>
+            <span className="chat-file-edit-stat-del">−{edit.removed}</span>
           ) : null}
         </>
       ) : null}
@@ -239,17 +124,17 @@ function EditActionBar({
     (actions.onApply || actions.onReject)
   ) {
     return (
-      <div className="flex flex-wrap items-center gap-1 border-t border-border/50 px-2 py-1.5">
+      <div className="chat-file-edit-actions flex flex-wrap items-center gap-1 border-t border-border/40 px-2 py-1">
         <button
           type="button"
           disabled={busy || !actions.onApply}
-          className="btn-row text-[11px]"
+          className="btn-row text-[11px] font-medium"
           onClick={(e) => {
             e.stopPropagation();
             void run(() => actions.onApply?.(edit), "applied");
           }}
         >
-          <Check className="h-3 w-3" /> 接受
+          <Check className="h-3 w-3" /> Keep
         </button>
         <button
           type="button"
@@ -260,7 +145,7 @@ function EditActionBar({
             void run(() => actions.onReject?.(edit), "rejected");
           }}
         >
-          <X className="h-3 w-3" /> 拒绝
+          <X className="h-3 w-3" /> Undo
         </button>
       </div>
     );
@@ -287,7 +172,12 @@ function EditActionBar({
   // 已落盘卡：不挂「打开/撤销」条，点文件名进 Review
   if (status === "applied" && edit.summaryOnly) return null;
 
-  if (status === "applied" && (actions.onOpen || actions.onRevert)) {
+  const showBuild =
+    Boolean(actions.onBuildFromPlan) &&
+    isPlanDocumentPath(edit.path) &&
+    status === "applied";
+
+  if (status === "applied" && (actions.onOpen || actions.onRevert || showBuild)) {
     return (
       <div className="flex flex-wrap items-center gap-1 border-t border-border/50 px-2 py-1.5">
         {actions.onOpen ? (
@@ -300,7 +190,20 @@ function EditActionBar({
               void run(() => actions.onOpen?.(edit));
             }}
           >
-            <FolderOpen className="h-3 w-3" /> 打开
+            <FolderOpen className="h-3 w-3" /> Open
+          </button>
+        ) : null}
+        {showBuild ? (
+          <button
+            type="button"
+            disabled={busy}
+            className="btn-row text-[11px] font-medium"
+            onClick={(e) => {
+              e.stopPropagation();
+              void run(() => actions.onBuildFromPlan?.(edit));
+            }}
+          >
+            <ChevronRight className="h-3 w-3" /> {PLAN_BUILD_BUTTON}
           </button>
         ) : null}
         {actions.onRevert ? (
@@ -313,7 +216,7 @@ function EditActionBar({
               void run(() => actions.onRevert?.(edit));
             }}
           >
-            <RotateCcw className="h-3 w-3" /> 撤销
+            <RotateCcw className="h-3 w-3" /> Undo
           </button>
         ) : null}
       </div>
@@ -348,12 +251,13 @@ function useEditCardState(edit: ChatFileEdit) {
       onUndoReject: actions.onUndoReject ? wrap(actions.onUndoReject) : undefined,
       onOpen: actions.onOpen ? wrap(actions.onOpen) : undefined,
       onRevert: actions.onRevert ? wrap(actions.onRevert) : undefined,
+      onBuildFromPlan: actions.onBuildFromPlan ? wrap(actions.onBuildFromPlan) : undefined,
     };
   };
   return { status, setStatus, busy, wrapActions };
 }
 
-/** 长 Diff 默认收起约 8 行，点头部或底部 chevron 展开/收起 */
+/** 长 Diff 默认收起约 8 行，点头部或底部 chevron 展开/收起（对齐 Cursor） */
 const DOCK_DIFF_COLLAPSE_AFTER = 8;
 
 function DockFileEditCard({
@@ -363,12 +267,10 @@ function DockFileEditCard({
   edit: ChatFileEdit;
   actions?: ChatFileEditActions;
 }) {
-  const badge = fileBadgeFromPath(edit.path);
   const fileName = edit.path.split("/").pop() ?? edit.path;
   const hasPreview = edit.previewLines.length > 0;
   const appliedSummary =
     (edit.status === "applied" || edit.summaryOnly) && hasPreview;
-  // 与底部折叠共用阈值；默认收起（紧凑卡，避免一直通栏展开）
   const { expanded, setExpanded, collapsible, toggle } = useDockCollapsibleState(
     edit.previewLines.length,
     DOCK_DIFF_COLLAPSE_AFTER,
@@ -380,7 +282,6 @@ function DockFileEditCard({
   const openFile = () => {
     void wired?.onOpen?.(edit);
   };
-  // 可折叠：点头部切换展开；不可折叠：点头部打开文件
   const onHeadClick = () => {
     if (collapsible) {
       toggle();
@@ -408,9 +309,7 @@ function DockFileEditCard({
         onClick={HeadTag === "button" ? onHeadClick : undefined}
         aria-expanded={collapsible ? expanded : undefined}
       >
-        <ChatDockCollapsibleChevron expanded={expanded} collapsible={collapsible} />
-        <span className="chat-file-edit-badge">{badge}</span>
-        <FileCode2 className="chat-file-edit-card-icon" aria-hidden />
+        <SetiFileIcon fileName={fileName} className="chat-file-edit-card-icon" />
         <span
           className="chat-file-edit-card-name"
           title={edit.path}
@@ -433,84 +332,8 @@ function DockFileEditCard({
           expanded={expanded}
           onExpandedChange={setExpanded}
         >
-          <DiffPreviewBody
-            lines={edit.previewLines}
-            language={edit.language}
-            compactStyle
-          />
+          <CursorDiffLines lines={edit.previewLines} language={edit.language} />
         </ChatDockCollapsible>
-      ) : null}
-      <EditActionBar
-        edit={edit}
-        status={status}
-        busy={busy}
-        actions={wired}
-        onLocalStatus={setStatus}
-      />
-    </div>
-  );
-}
-
-/** 经典：紧凑行，点击展开 */
-function ClassicFileEditCard({
-  edit,
-  actions,
-}: {
-  edit: ChatFileEdit;
-  actions?: ChatFileEditActions;
-}) {
-  const [open, setOpen] = useState(false);
-  const badge = fileBadgeFromPath(edit.path);
-  const fileName = edit.path.split("/").pop() ?? edit.path;
-  const hasPreview = edit.previewLines.length > 0;
-  const expandable = hasPreview;
-  const { status, setStatus, busy, wrapActions } = useEditCardState(edit);
-  const wired = wrapActions(actions);
-
-  return (
-    <div className="chat-file-edit-row">
-      <button
-        type="button"
-        className={cn(
-          "chat-file-edit-row-btn flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left transition",
-          expandable && "hover:bg-muted/40",
-          !expandable && "cursor-default",
-        )}
-        onClick={() => expandable && setOpen((v) => !v)}
-        aria-expanded={expandable ? open : undefined}
-      >
-        {expandable ? (
-          <ChevronRight
-            className={cn(
-              "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform",
-              open && "rotate-90",
-            )}
-          />
-        ) : (
-          <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-            <span className="chat-file-edit-badge">{badge}</span>
-          </span>
-        )}
-        <FileCode2
-          className="h-3.5 w-3.5 shrink-0 text-sky-500/85 dark:text-sky-400/90"
-          aria-hidden
-        />
-        <span
-          className="min-w-0 truncate font-mono text-[12px] text-foreground/90"
-          title={edit.path}
-        >
-          {fileName}
-        </span>
-        <span className="ml-auto shrink-0">
-          <EditStats edit={edit} status={status} />
-        </span>
-      </button>
-      {open && hasPreview ? (
-        <div className="chat-file-edit-preview mt-0.5 overflow-hidden rounded-md border border-border/50 bg-code-bg/70">
-          <div className="max-h-[min(220px,32vh)] overflow-auto px-2.5 py-2">
-            <DiffPreviewBody lines={edit.previewLines} language={edit.language} />
-          </div>
-        </div>
       ) : null}
       <EditActionBar
         edit={edit}
@@ -525,21 +348,18 @@ function ClassicFileEditCard({
 
 export function ChatFileEditCard({
   edit,
-  variant = "classic",
   actions,
 }: {
   edit: ChatFileEdit;
+  /** @deprecated 仅 dock；保留参数以免旧调用崩 */
   variant?: "classic" | "dock";
   actions?: ChatFileEditActions;
 }) {
-  if (variant === "dock") return <DockFileEditCard edit={edit} actions={actions} />;
-  return <ClassicFileEditCard edit={edit} actions={actions} />;
+  return <DockFileEditCard edit={edit} actions={actions} />;
 }
 
 export function ChatFileEditList({
   edits,
-  usePanel = false,
-  variant = "classic",
   actions,
   onApplyAll,
   onRejectAll,
@@ -564,53 +384,38 @@ export function ChatFileEditList({
   ).length;
   const showBulk = pendingCount > 1 && (onApplyAll || onRejectAll);
 
-  const bulkBar = showBulk ? (
-    <div className="chat-file-edit-bulk flex flex-wrap items-center gap-1.5 px-1 py-1">
-      <span className="text-[11px] text-muted-foreground">{pendingCount} 个待应用</span>
-      {onApplyAll ? (
-        <button
-          type="button"
-          className="btn-row text-[11px]"
-          disabled={bulkBusy}
-          onClick={() => void onApplyAll()}
-        >
-          <Check className="h-3 w-3" /> 全部接受
-        </button>
+  return (
+    <div className="chat-file-edit-stack">
+      {showBulk ? (
+        <div className="chat-file-edit-bulk flex flex-wrap items-center gap-1.5 px-1 py-1">
+          <span className="text-[length:var(--font-size-xs)] text-muted-foreground">
+            {pendingCount} 个待应用
+          </span>
+          {onApplyAll ? (
+            <button
+              type="button"
+              className="btn-row text-[length:var(--font-size-xs)]"
+              disabled={bulkBusy}
+              onClick={() => void onApplyAll()}
+            >
+              <Check className="h-3 w-3" /> 全部保留
+            </button>
+          ) : null}
+          {onRejectAll ? (
+            <button
+              type="button"
+              className="btn-row text-[length:var(--font-size-xs)]"
+              disabled={bulkBusy}
+              onClick={() => void onRejectAll()}
+            >
+              <X className="h-3 w-3" /> 全部撤销
+            </button>
+          ) : null}
+        </div>
       ) : null}
-      {onRejectAll ? (
-        <button
-          type="button"
-          className="btn-row text-[11px]"
-          disabled={bulkBusy}
-          onClick={() => void onRejectAll()}
-        >
-          <X className="h-3 w-3" /> 全部拒绝
-        </button>
-      ) : null}
-    </div>
-  ) : null;
-
-  if (variant === "dock") {
-    return (
-      <div className="chat-file-edit-stack">
-        {bulkBar}
-        {uniqueEdits.map((edit) => (
-          <ChatFileEditCard key={edit.id} edit={edit} variant="dock" actions={actions} />
-        ))}
-      </div>
-    );
-  }
-
-  const list = (
-    <div className={cn("chat-file-edit-list", !usePanel && "mt-2 space-y-0.5")}>
-      {bulkBar}
       {uniqueEdits.map((edit) => (
-        <ChatFileEditCard key={edit.id} edit={edit} variant="classic" actions={actions} />
+        <ChatFileEditCard key={edit.id} edit={edit} actions={actions} />
       ))}
     </div>
   );
-  if (usePanel) {
-    return <div className="chat-file-edit-panel">{list}</div>;
-  }
-  return list;
 }

@@ -11,16 +11,34 @@ import { loadChatSettings, loadWorkspace } from './store.mjs'
 import { searchCodeIndex } from './code-index.mjs'
 import { workspaceRipgrep } from './workspace-ripgrep.mjs'
 import { workspaceGraphifyQuery } from './workspace-graphify-query.mjs'
-import { workspaceRunCommand, workspaceRunTests } from './workspace-run-command.mjs'
+import {
+  workspaceRunCommand,
+  workspaceRunTests,
+  abortWorkspaceRunCommand,
+} from './workspace-run-command.mjs'
 import { updateCodeIndexForFiles } from './code-index.mjs'
 import { markGraphifyNeedsUpdate } from './ensure-graphify.mjs'
 import { lintWorkspaceFiles } from './workspace-lint.mjs'
+import {
+  maybeOffloadToolResult,
+  clearStaleToolResults,
+  stringifyToolResult,
+} from './context-tool-results.mjs'
+import { compactMessagesIfNeeded, slimPriorMessagesForApi } from './session-compact.mjs'
+import {
+  HOST_MAX_TURNS,
+  HOST_VERIFY_EXTRA_TURNS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  PRIOR_KEEP_RECENT,
+  PRIOR_MESSAGE_CHAR_CAP,
+} from '../shared/context-budget.mjs'
+import { DEFAULT_OLLAMA_BASE } from '../shared/defaults.mjs'
 
 const require = createRequire(import.meta.url)
 const cloudProviders = require('./cloud-providers.cjs')
 
-const MAX_TURNS = 16
-const VERIFY_EXTRA_TURNS = 4
+const MAX_TURNS = HOST_MAX_TURNS
+const VERIFY_EXTRA_TURNS = HOST_VERIFY_EXTRA_TURNS
 const TOOL_NUDGE_MAX = 2
 
 /** @type {Map<string, { cancelled: boolean }>} */
@@ -30,6 +48,11 @@ export function abortHostAgent(requestId) {
   const id = String(requestId || '').trim()
   const st = id ? activeHost.get(id) : null
   if (st) st.cancelled = true
+  try {
+    abortWorkspaceRunCommand(id)
+  } catch {
+    /* ignore */
+  }
   return { ok: Boolean(st) }
 }
 
@@ -236,13 +259,9 @@ export function buildHostAgentDisplayContent(opts) {
     .trim()
   if (!prose) {
     const pass = raw.match(/(\d+)\s+passed/i)?.[1]
-    const parts = []
-    if (paths.length) parts.push(`已完成 ${paths.length} 处改动。`)
-    else parts.push('已处理完本轮任务。')
     if (opts.verified || pass) {
-      parts.push(pass ? `测试 ${pass} passed。` : '测试已通过。')
+      prose = pass ? `测试 ${pass} passed。` : '测试已通过。'
     }
-    prose = parts.join(' ')
   }
   return [...trails, ...(trails.length ? [''] : []), prose].join('\n')
 }
@@ -423,8 +442,16 @@ async function collectDiagnostics(paths, writtenPaths) {
   return { ok: Boolean(r.ok), problems, error: r.error }
 }
 
+const HOST_PATCH_CHAR_CAP = 120_000
+
+function capHostPatchText(s) {
+  const t = String(s ?? '')
+  if (t.length <= HOST_PATCH_CHAR_CAP) return t
+  return undefined
+}
+
 async function persistWrite(rel, content, ctx) {
-  const { root, mode, deferredWrites, writtenPaths } = ctx
+  const { root, mode, deferredWrites, writtenPaths, filePatches } = ctx
   if (mode === 'ask') {
     return { ok: false, error: 'Ask 模式禁止写盘；请切换 Agent/Plan' }
   }
@@ -435,9 +462,30 @@ async function persistWrite(rel, content, ctx) {
     writtenPaths.add(rel)
     return { ok: true, deferred: true, path: rel, note: 'Plan：已暂存待 Accept' }
   }
+  let before = ''
+  let isNewFile = true
+  if (fs.existsSync(abs)) {
+    isNewFile = false
+    try {
+      before = fs.readFileSync(abs, 'utf8')
+    } catch {
+      before = ''
+    }
+  }
   fs.mkdirSync(path.dirname(abs), { recursive: true })
   fs.writeFileSync(abs, content, 'utf8')
   writtenPaths.add(rel)
+  if (Array.isArray(filePatches)) {
+    const i = filePatches.findIndex((p) => p && p.path === rel)
+    const patch = {
+      path: rel,
+      before: capHostPatchText(before),
+      after: capHostPatchText(content),
+      isNewFile,
+    }
+    if (i >= 0) filePatches[i] = patch
+    else filePatches.push(patch)
+  }
   let indexUpdate = null
   try {
     indexUpdate = await updateCodeIndexForFiles([rel])
@@ -449,6 +497,9 @@ async function persistWrite(rel, content, ctx) {
     ok: true,
     written: true,
     path: rel,
+    before: capHostPatchText(before),
+    after: capHostPatchText(content),
+    isNewFile,
     indexUpdate,
     graphUpdate,
     hint: '写盘后请 run_tests 或 run_command 验证',
@@ -533,6 +584,7 @@ async function runTool(name, args, ctx) {
       cwd: args?.cwd,
       timeoutMs: args?.timeoutMs,
       mode,
+      runId: ctx.requestId || undefined,
     })
     if (r && r.ok === false && writtenPaths.size) {
       const diag = await collectDiagnostics([], writtenPaths)
@@ -546,6 +598,7 @@ async function runTool(name, args, ctx) {
       extraArgs: args?.extraArgs,
       timeoutMs: args?.timeoutMs,
       mode,
+      runId: ctx.requestId || undefined,
     })
     if (r && r.ok === false) {
       const diag = await collectDiagnostics([], writtenPaths)
@@ -646,7 +699,7 @@ function resolveChatBackend(preferredModel) {
     }
   }
 
-  const ollamaBase = String(settings?.ollamaBase || 'http://127.0.0.1:11434').replace(/\/$/, '')
+  const ollamaBase = String(settings?.ollamaBase || DEFAULT_OLLAMA_BASE).replace(/\/$/, '')
   const localPool = new Set(
     [
       ...(Array.isArray(settings?.chatEnabledLocalModels) ? settings.chatEnabledLocalModels : []),
@@ -702,7 +755,7 @@ function ollamaBackendFromSettings() {
   }
   return {
     kind: 'ollama',
-    base: String(settings?.ollamaBase || 'http://127.0.0.1:11434').replace(/\/$/, ''),
+    base: String(settings?.ollamaBase || DEFAULT_OLLAMA_BASE).replace(/\/$/, ''),
     model,
   }
 }
@@ -725,7 +778,7 @@ async function chatOnce(backend, messages, opts = {}) {
         tool_choice: toolChoice,
         stream: false,
       }),
-      signal: AbortSignal.timeout(180_000),
+      signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
     })
     if (!res.ok) {
       const errText = await res.text().catch(() => '')
@@ -774,7 +827,7 @@ async function chatOnce(backend, messages, opts = {}) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(180_000),
+      signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
     })
   } catch (e) {
     return {
@@ -792,7 +845,7 @@ async function chatOnce(backend, messages, opts = {}) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(180_000),
+        signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       })
       if (retry.ok) {
         const data = await retry.json()
@@ -845,11 +898,13 @@ function pushAssistantWithTools(messages, round, dialect) {
   }
 }
 
-function pushToolResults(messages, calls, results, dialect) {
+function pushToolResults(messages, calls, results, dialect, workspaceRoot) {
   for (let i = 0; i < calls.length; i++) {
     const call = calls[i]
     const result = results[i]
-    const content = JSON.stringify(result).slice(0, 12_000)
+    const raw = stringifyToolResult(result)
+    const packed = maybeOffloadToolResult(workspaceRoot, call.name, raw)
+    const content = packed.content
     if (dialect === 'openai') {
       messages.push({
         role: 'tool',
@@ -864,6 +919,7 @@ function pushToolResults(messages, calls, results, dialect) {
       })
     }
   }
+  clearStaleToolResults(messages, { keepRecent: 6 })
 }
 
 function toolArgHint(call) {
@@ -891,6 +947,7 @@ function toolArgHint(call) {
  *   requestId?: string,
  *   contextAppendix?: string,
  *   onDelta?: (chunk: string) => void,
+ *   onToolEvent?: (ev: { type: 'tool', name: string, arg?: string, path?: string, status: 'running'|'ok'|'fail', output?: string }) => void,
  * }} opts
  */
 export async function runHostAgentLoop(opts) {
@@ -926,6 +983,14 @@ export async function runHostAgentLoop(opts) {
     if (!chunk) return
     opts.onDelta?.(chunk)
   }
+  const emitTool = (ev) => {
+    if (!ev || typeof opts.onToolEvent !== 'function') return
+    try {
+      opts.onToolEvent(ev)
+    } catch {
+      /* ignore bridge errors */
+    }
+  }
 
   /** @type {{ path: string, content: string }[]} */
   const deferredWrites = []
@@ -933,9 +998,32 @@ export async function runHostAgentLoop(opts) {
   const writtenPaths = new Set()
   /** @type {Set<string>} */
   const readPaths = new Set()
-  const ctx = { root, mode, deferredWrites, writtenPaths, readPaths, ranVerify: false }
+  /** @type {Array<{ path: string, before?: string, after?: string, isNewFile?: boolean }>} */
+  const filePatches = []
+  const ctx = {
+    root,
+    mode,
+    deferredWrites,
+    writtenPaths,
+    readPaths,
+    filePatches,
+    ranVerify: false,
+    requestId,
+  }
 
   const systemConstraint = String(opts.systemConstraint || '').trim()
+  // 写盘/只读规则优先 systemConstraint（turn-policy 单源）；无约束时才用 mode 兜底
+  const modeWriteFallback = systemConstraint
+    ? ''
+    : mode === 'ask'
+      ? 'Ask：只读；禁止 write_file / search_replace / run_tests；run_command 仅只读探测。'
+      : mode === 'plan' || mode === 'propose'
+        ? 'Plan：用 search_replace / write_file 提出改动（暂存待 Accept）；可用 run_command 探测。'
+        : [
+            'Agent：仅当本轮用户明确要求修改时才 search_replace/write_file；纯问答禁止写盘。',
+            '写盘后必须 run_tests（或针对性 run_command），再 get_diagnostics；失败则修复再测。',
+            '无 Claude CLI 时本 Host 环即为完整开发路径；禁止假装已改盘。',
+          ].join('')
   const system = [
     '你是工作区编码 Agent。',
     '工具顺序：code_search → read_file → search_replace|write_file → run_tests|run_command → get_diagnostics|git_status。',
@@ -945,20 +1033,10 @@ export async function runHostAgentLoop(opts) {
     '过程发现勿写成长文；工具轨迹即可。收尾用 1–3 句自然语言，勿用「改动/路径/测试/未改」模板。',
     '禁止在正文假装已执行终端/Read。探索禁用 grep；写盘后核对可用 grep。',
     '不要编造文件内容。已有文件优先 search_replace。',
+    '写盘内容对齐 Cursor：先读同目录与入口；贴合已有框架；禁止模块头教学示例/双框架百科/注释墙；禁止代码内静默兜底假成功；禁止整文件注水。',
     '不允许兜底回答：无工具调用证据时禁止声称已改文件、已打开应用、已执行命令或测试通过；不确定则明确说缺证据。',
     `当前交互模式：${mode}。`,
-    mode === 'ask'
-      ? 'Ask：只读；禁止 write_file / search_replace / run_tests；run_command 仅只读探测。'
-      : mode === 'plan' || mode === 'propose'
-        ? 'Plan：用 search_replace / write_file 提出改动（暂存待 Accept）；可用 run_command 探测。'
-        : [
-            'Agent：用户已授权改文件。仅当本轮用户明确要求修改时才 search_replace/write_file；纯问答禁止写盘。',
-            '禁止询问「要我落盘吗」「只分析还是开始改」「memory 还是 Redis」「是否 flask db init」。',
-            '默认：限频 memory://；一并 migrations init/migrate；Redis 等写入「未改：…」。',
-            '写盘后必须 run_tests（或针对性 run_command）；失败则修复再测。',
-            '不要把「请用户自行跑测」当作收尾。',
-          ].join(''),
-    systemConstraint,
+    systemConstraint || modeWriteFallback,
     '收尾 1–3 句自然语言；禁止「改动/路径/测试/未改」模板与「下一步/P2」推销。',
   ]
     .filter(Boolean)
@@ -973,10 +1051,10 @@ export async function runHostAgentLoop(opts) {
   /** @type {any[]} */
   const messages = [
     { role: 'system', content: system },
-    ...(opts.priorMessages || [])
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .slice(-8)
-      .map((m) => ({ role: m.role, content: String(m.content || '').slice(0, 8000) })),
+    ...slimPriorMessagesForApi(opts.priorMessages || [], {
+      keepRecent: PRIOR_KEEP_RECENT,
+      charCap: PRIOR_MESSAGE_CHAR_CAP,
+    }),
     { role: 'user', content: userContent },
   ]
 
@@ -1009,6 +1087,7 @@ export async function runHostAgentLoop(opts) {
       error: `${error}（已试：${backendsTried.join(' → ')}）`,
       deferredWrites: [],
       writtenPaths: [...writtenPaths],
+      filePatches: [...filePatches],
       toolTrace,
       mode,
       model: usedModel,
@@ -1020,6 +1099,13 @@ export async function runHostAgentLoop(opts) {
   for (let turn = 0; turn < maxTurns; turn++) {
     if (cancelState.cancelled) {
       return failHost('aborted', { aborted: true, content: '（已中止）' })
+    }
+
+    const compacted = compactMessagesIfNeeded(messages)
+    if (compacted.compacted) {
+      emit(
+        `\n⋯ 上下文已压缩（${compacted.beforeChars}→${compacted.afterChars} 字符）…\n`,
+      )
     }
 
     const wantRequired =
@@ -1110,7 +1196,7 @@ export async function runHostAgentLoop(opts) {
         messages.push({
           role: 'user',
           content:
-            '【系统】你已改盘但尚未验证。立即调用 run_tests（或 run_command 跑 pytest/npm test）。失败则结合 diagnostics 修复后再测。不要询问用户。不要只输出计划。',
+            '【系统】你已改盘但尚未验证。立即调用 run_tests（或 run_command 跑 pytest/npm test），然后 get_diagnostics。失败则结合 diagnostics 修复后再测。不要询问用户。不要只输出计划。',
         })
         emit('\n⋯ 系统催促：写盘后验证…\n')
         continue
@@ -1210,6 +1296,7 @@ export async function runHostAgentLoop(opts) {
         content: finalText || '（无输出）',
         deferredWrites,
         writtenPaths: [...writtenPaths],
+        filePatches: [...filePatches],
         toolTrace,
         mode,
         model: usedModel,
@@ -1224,26 +1311,53 @@ export async function runHostAgentLoop(opts) {
       if (cancelState.cancelled) break
       const label = agentTraceToolLabel(call.name)
       const argHint = toolArgHint(call)
-      // 每个工具一行（勿双发 running + ✓）
+      const pathHint =
+        typeof call.args?.path === 'string'
+          ? String(call.args.path).replace(/\\/g, '/')
+          : undefined
+      // Cursor：先发 running 行 + 结构化事件，再执行（边跑边见轨迹）
+      emit(`\n⋯ ${label}${argHint ? ` · ${argHint}` : ''}…\n`)
+      emitTool({
+        type: 'tool',
+        name: label,
+        arg: argHint || undefined,
+        path: pathHint,
+        status: 'running',
+      })
       const result = await runTool(call.name, call.args, ctx)
       results.push(result)
       const fail = result?.ok === false
-      emit(
-        fail
-          ? `\n⋯ ${label}${argHint ? ` · ${argHint}` : ''} ✗\n`
-          : `\n⋯ ${label}${argHint ? ` · ${argHint}` : ''}\n`,
-      )
+      const output =
+        call.name === 'run_command' || call.name === 'run_tests'
+          ? String(result?.output || result?.error || '').slice(0, 8000)
+          : undefined
+      if (fail) {
+        emit(`\n⋯ ${label}${argHint ? ` · ${argHint}` : ''} ✗\n`)
+      }
+      emitTool({
+        type: 'tool',
+        name: label,
+        arg: argHint || undefined,
+        path: pathHint,
+        status: fail ? 'fail' : 'ok',
+        ...(output ? { output } : {}),
+      })
       toolTrace.push({
         tool: call.name,
         detail: argHint,
+        path: pathHint,
         args: call.args,
         ok: !fail,
+        // 供前端底栏回显 Bash（不重跑）；限长防刷屏
+        output,
+        exitCode:
+          typeof result?.exitCode === 'number' ? result.exitCode : fail ? 1 : 0,
       })
     }
     if (cancelState.cancelled) {
       return failHost('aborted', { aborted: true, content: '（已中止）' })
     }
-    pushToolResults(messages, calls, results, round.dialect)
+    pushToolResults(messages, calls, results, round.dialect, root)
 
     const lastTestFail = results.some(
       (r, i) =>
@@ -1256,6 +1370,15 @@ export async function runHostAgentLoop(opts) {
     if (lastTestFail && mode === 'agent' && turn + 3 > maxTurns) {
       maxTurns = Math.min(MAX_TURNS + VERIFY_EXTRA_TURNS, turn + 4)
     }
+
+    /** 写盘本轮后若未跑 diagnostics，下一轮强制工具（诊断闭环） */
+    const wroteThisRound = calls.some(
+      (c) => c.name === 'write_file' || c.name === 'search_replace',
+    )
+    const ranDiag = calls.some((c) => c.name === 'get_diagnostics')
+    if (wroteThisRound && !ranDiag && mode === 'agent') {
+      forceToolsNext = true
+    }
   }
 
   if (requestId) activeHost.delete(requestId)
@@ -1264,6 +1387,7 @@ export async function runHostAgentLoop(opts) {
     content: finalText || '（达到工具轮次上限）',
     deferredWrites,
     writtenPaths: [...writtenPaths],
+    filePatches: [...filePatches],
     toolTrace,
     mode,
     model: usedModel,

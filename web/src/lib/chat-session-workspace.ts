@@ -11,6 +11,22 @@ export function workspaceSessionKey(path: string | null | undefined): string {
   return p || "";
 }
 
+/** 按工作区取底栏 Agent；无记录则回落全局 localAgentBasename */
+export function agentBasenameForWorkspace(
+  settings: {
+    localAgentBasename?: string;
+    agentBasenameByWorkspace?: Record<string, string>;
+  } | null | undefined,
+  workspacePath: string | null | undefined,
+): string {
+  const key = workspaceSessionKey(workspacePath);
+  const map = settings?.agentBasenameByWorkspace;
+  if (key && map && typeof map === "object" && typeof map[key] === "string") {
+    return map[key].trim();
+  }
+  return String(settings?.localAgentBasename || "").trim();
+}
+
 /** sessionStorage 缓存是否可用于当前工作区（仅当路径与桌面端 getWorkspace 一致） */
 export function chatSessionsCacheMatchesWorkspace(
   cachedWorkspacePath: string | null | undefined,

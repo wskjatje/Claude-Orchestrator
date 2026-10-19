@@ -6,9 +6,11 @@ const MAX_APPENDIX = 8_000;
 /**
  * Host / 本地编排用的短上下文：用户偏好+项目规则，以及已有跨 Agent 记忆尾部。
  * 空则返回 ""（无经验库时不制造噪声）。
+ * @param opts.workspacePath 当前工作区根；传入后由 Bridge 过滤跨项目写盘索引
  */
 export async function loadAgentContextAppendix(
   api: DesktopApi | null | undefined,
+  opts?: { workspacePath?: string | null },
 ): Promise<string> {
   if (!api) return "";
   const parts: string[] = [];
@@ -22,7 +24,9 @@ export async function loadAgentContextAppendix(
 
   if (typeof api.getCrossAgentContext === "function") {
     try {
-      const cx = await api.getCrossAgentContext();
+      const cx = await api.getCrossAgentContext(
+        opts?.workspacePath ? { workspacePath: opts.workspacePath } : undefined,
+      );
       if (cx?.ok && typeof cx.text === "string" && cx.text.trim()) {
         parts.push(cx.text.trim());
       }

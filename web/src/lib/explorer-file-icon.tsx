@@ -14,6 +14,9 @@ export function explorerIconifyId(
   return icon.id;
 }
 
+/**
+ * 对齐 Cursor：目录仅 twistie、无文件夹图标；文件用 Seti，尺寸跟文字行齐。
+ */
 export function ExplorerTreeIcon({
   ext,
   fileName,
@@ -23,6 +26,7 @@ export function ExplorerTreeIcon({
   ext?: string;
   fileName?: string;
   isDir?: boolean;
+  /** 保留 API；目录不再渲染图标 */
   expanded?: boolean;
   className?: string;
 }) {

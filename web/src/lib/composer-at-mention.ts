@@ -105,6 +105,59 @@ export function formatAtMentionLabel(path: string): string {
   return `@${path}`;
 }
 
+/** Composer 内已插入的 @ 引用（去重，供 pill 展示） */
+export function extractAtMentionTokens(text: string): string[] {
+  const re =
+    /@(selection|git|problems|codebase(?::[^\s@]*)?|[A-Za-z0-9_.\-/]+(?:\.[A-Za-z0-9]+)?\/?)/g;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(String(text || ""))) !== null) {
+    const token = String(m[1] || "").trim();
+    if (!token || seen.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+  }
+  return out;
+}
+
+/** 从正文移除某一 @token（保留其余自然语言） */
+export function removeAtMentionToken(text: string, token: string): string {
+  const t = String(token || "").trim();
+  if (!t) return text;
+  const escaped = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(text || "")
+    .replace(new RegExp(`@${escaped}(?=\\s|$|[\\n，。,.!?；;])`, "g"), "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** pill 短标签（文件名优先） */
+export function atMentionPillLabel(token: string): string {
+  const t = String(token || "").trim();
+  if (!t) return "@";
+  if (t === "selection" || t === "git" || t === "problems") return `@${t}`;
+  if (t.startsWith("codebase")) return `@${t.length > 28 ? `${t.slice(0, 28)}…` : t}`;
+  const base = t.split("/").filter(Boolean).pop() || t;
+  return `@${base}`;
+}
+
+/**
+ * 用户气泡展示：抽出 @ 引用为 pill，正文去掉对应 token（保留自然语言）。
+ * 不改磁盘原文；仅影响渲染。
+ */
+export function splitLeadForAtPills(lead: string): { pills: string[]; text: string } {
+  const raw = String(lead || "");
+  const pills = extractAtMentionTokens(raw);
+  if (!pills.length) return { pills: [], text: raw };
+  let text = raw;
+  for (const token of pills) {
+    text = removeAtMentionToken(text, token);
+  }
+  return { pills, text: text.trim() };
+}
+
 /** 检测光标前是否处于 @query 片段 */
 export function detectAtMentionAtCursor(
   text: string,

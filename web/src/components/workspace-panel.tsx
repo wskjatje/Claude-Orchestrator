@@ -6,10 +6,6 @@ import {
   GitCompare,
   ChevronRight,
   ChevronDown,
-  FileText,
-  FileCode,
-  FileJson,
-  Folder,
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,6 +16,7 @@ import { toast } from "sonner";
 import { isBinaryFileResult } from "@/lib/is-binary-file";
 import { normalizeFileContentForEditor } from "@/lib/format-file-content";
 import { BinaryFileViewer } from "@/components/binary-file-viewer";
+import { ExplorerTreeIcon } from "@/lib/explorer-file-icon";
 import type { WorkspacePanelTreeNode } from "@/types/desktop";
 import {
   GIT_DIFF_OFFLINE,
@@ -531,7 +528,6 @@ function TreeRow({
   const isDir = node.type === "dir";
   const key = pathKey ? `${pathKey}/${node.name}` : node.name;
   const selected = !isDir && selectedRelPath === key;
-  const Icon = isDir ? Folder : iconFor(node.ext);
 
   const handleClick = () => {
     if (isDir) {
@@ -542,33 +538,35 @@ function TreeRow({
   };
 
   return (
-    <li>
+    <li className="explorer-tree-node">
       <button
         type="button"
         onClick={handleClick}
         className={cn(
-          "flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-left text-[12.5px] transition hover:bg-secondary",
-          selected && "bg-primary-soft text-primary",
+          "explorer-tree-row flex w-full items-center gap-0 pr-0 text-left",
+          selected && "explorer-tree-row-active",
         )}
-        style={{ paddingLeft: `${depth * 12 + 6}px` }}
+        style={{ paddingLeft: `${6 + depth * 12}px` }}
         title={isDir ? key : `打开 ${key}`}
       >
         {isDir ? (
-          expanded ? (
-            <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-          )
+          <span className="explorer-tree-twistie flex items-center justify-center">
+            {expanded ? (
+              <ChevronDown className="explorer-tree-twistie-icon" />
+            ) : (
+              <ChevronRight className="explorer-tree-twistie-icon" />
+            )}
+          </span>
         ) : (
-          <span className="w-3 shrink-0" />
+          <span className="explorer-tree-twistie" aria-hidden />
         )}
-        <Icon className={cn("h-3.5 w-3.5 shrink-0", isDir ? "text-amber-500" : "text-muted-foreground")} />
-        <span className={cn("truncate", isDir ? "font-medium text-foreground" : "text-foreground/85")}>
-          {node.name}
-        </span>
+        {!isDir ? (
+          <ExplorerTreeIcon ext={node.ext} fileName={node.name} isDir={false} />
+        ) : null}
+        <span className="explorer-tree-label">{node.name}</span>
       </button>
       {isDir && expanded && node.children?.length ? (
-        <ul className="space-y-0.5">
+        <ul>
           {node.children.map((c, i) => (
             <TreeRow
               key={`${key}/${c.name}-${i}`}
@@ -583,13 +581,6 @@ function TreeRow({
       ) : null}
     </li>
   );
-}
-
-function iconFor(ext?: string) {
-  if (ext === "json") return FileJson;
-  if (ext === "ts" || ext === "tsx" || ext === "js" || ext === "jsx" || ext === "mjs" || ext === "cjs")
-    return FileCode;
-  return FileText;
 }
 
 function ShellView({ text, error, loading }: { text: string; error: string | null; loading: boolean }) {

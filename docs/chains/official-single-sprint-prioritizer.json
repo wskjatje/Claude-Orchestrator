@@ -7,8 +7,8 @@
   "templateId": "single-sprint-prioritizer",
   "official": true,
   "userModified": false,
-  "createdAt": "2026-06-14T03:15:16.998Z",
-  "updatedAt": "2026-07-15T00:59:39.615Z",
+  "createdAt": "2026-06-29T11:00:00.000Z",
+  "updatedAt": "2026-06-29T11:00:00.000Z",
   "state": {
     "status": "idle",
     "currentIndex": 0,
@@ -16,13 +16,9 @@
       {
         "agentName": "product-sprint-prioritizer",
         "taskId": "SPRINT-1",
-        "instruction": "【Agent】global://product-sprint-prioritizer（~/.claude/agents/product-sprint-prioritizer.md）\n【输入】优先读 `docs/prd.md`\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】用户故事列表（含验收标准）、优先级排序、容量与依赖说明\n\n【禁止】不写页面布局/HTML\n\n【READ】Read upstream artifacts first (pre-injected if exist): `docs/prd.md`.\n【WARN】If a file path doesn't exist, do NOT read/fake it. Work with what's available or ask.\n\n【PATH】`docs/sprint-backlog.md`\n【WRITE】Use `workspace-write` fences or code blocks with file paths to write. System auto-saves your reply.\n\n【1】Base on pre-injected state. No fake docs. Never read/fake non-existent files.\n【2】Your reply IS the artifact. Produce structured Chinese markdown.",
-        "skills": [
-          "sprint-prioritization",
-          "rice-moscow-prioritization",
-          "user-story-split",
-          "capacity-dependencies"
-        ],
+        "artifactPath": "docs/sprint-backlog.md",
+        "instruction": "【Agent】global://product-sprint-prioritizer（~/.claude/agents/product-sprint-prioritizer.md）\n【输入】优先读 `docs/prd.md`\n【上下文】以当前工作区与用户本次对话中的需求为准；若工作区已有相关文档，优先阅读后再执行。\n\n【任务】用户故事列表（含验收标准）、优先级排序、容量与依赖说明\n\n【禁止】不写页面布局/HTML\n\n【READ】Read upstream artifacts first (pre-injected): `docs/prd.md`.\n\n【PATH】`docs/sprint-backlog.md`\n【WRITE】须输出合法 ```workspace-write``` JSON：{\"path\":\"docs/sprint-backlog.md\",\"content\":\"...\"}（也接受 contents；path 可改但必须显式）。无围栏则本步失败；系统不会猜路径、不会写默认 docs/chain-steps。\n【NO FAKE WRITE】无有效围栏勿声称已写入。\n\n【1】基于已注入工作区状态作答；禁止伪造不存在文件。\n【2】变更须经 ```workspace-write``` JSON 显式 path+content|contents；无围栏不落盘。\n【3】收尾 1～3 句；禁止下一步推销。",
+        "skills": [],
         "mcps": []
       }
     ]

@@ -145,11 +145,14 @@ export function createDesktopRpcApi(): DesktopApi {
     workspaceTsTypeDefinition: (payload) => rpc("workspace:tsTypeDefinition", payload),
     workspaceTsImplementation: (payload) => rpc("workspace:tsImplementation", payload),
     workspaceTsHover: (payload) => rpc("workspace:tsHover", payload),
+    workspaceTsNavigationTree: (payload) => rpc("workspace:tsNavigationTree", payload),
     workspaceTsSignatureHelp: (payload) => rpc("workspace:tsSignatureHelp", payload),
     workspaceTsCompletions: (payload) => rpc("workspace:tsCompletions", payload),
     workspaceTsReferences: (payload) => rpc("workspace:tsReferences", payload),
+    workspaceTsCallHierarchy: (payload) => rpc("workspace:tsCallHierarchy", payload),
     workspaceTsRename: (payload) => rpc("workspace:tsRename", payload),
     workspaceTsOrganizeImports: (payload) => rpc("workspace:tsOrganizeImports", payload),
+    workspaceTsFormatDocument: (payload) => rpc("workspace:tsFormatDocument", payload),
     workspaceRipgrep: (payload) => rpc("workspace:ripgrep", payload),
     workspaceGraphifyQuery: (payload) => rpc("workspace:graphifyQuery", payload),
     graphifyStatus: () => rpc("workspace:graphifyStatus"),
@@ -164,6 +167,8 @@ export function createDesktopRpcApi(): DesktopApi {
       rpc("workspace:codeIndexEnsureHybrid", payload || {}),
     hostAgentPrompt: (payload) => rpc("host-agent:prompt", payload),
     hostAgentAbort: (requestId) => rpc("host-agent:abort", requestId),
+    workspaceAbortRunCommand: (runId) =>
+      rpc("workspace:abortRunCommand", runId ? { runId } : {}),
     claudeCodeEnsureCli: () => rpc("claude-code:ensureCli"),
     workspaceTsCodeFixes: (payload) => rpc("workspace:tsCodeFixes", payload),
     workspaceTsApplyCodeFix: (payload) => rpc("workspace:tsApplyCodeFix", payload),
@@ -180,6 +185,10 @@ export function createDesktopRpcApi(): DesktopApi {
       rpc("workspace:externalLspCompletions", payload),
     workspaceExternalLspReferences: (payload) => rpc("workspace:externalLspReferences", payload),
     workspaceExternalLspRename: (payload) => rpc("workspace:externalLspRename", payload),
+    workspaceExternalLspDocumentSymbols: (payload) =>
+      rpc("workspace:externalLspDocumentSymbols", payload),
+    workspaceExternalLspCallHierarchy: (payload) =>
+      rpc("workspace:externalLspCallHierarchy", payload),
     listWorkspaceMarkdownFiles: () => rpc("workspace:listMarkdownFiles"),
     listWorkspacePanelTree: () => rpc("workspace:listPanelTree"),
     workspaceGetShellSnapshot: () => rpc("workspace:getShellSnapshot"),
@@ -198,7 +207,8 @@ export function createDesktopRpcApi(): DesktopApi {
       rpc("workspace:gitRemoteSync", payload),
     onWorkspaceChanged: (fn) => onBridgeEvent("workspace:changed", fn),
     onWorkspaceRulesChanged: (fn) => onBridgeEvent("workspace:rules-changed", fn),
-    getCrossAgentContext: () => rpc("memory:getCrossAgentContextText"),
+    getCrossAgentContext: (opts) =>
+      rpc("memory:getCrossAgentContextText", opts || {}),
     getChatSettings: () => rpc("chat-settings:get"),
     saveChatSettings: (body) => rpc("chat-settings:save", body),
     getUiPrefs: () => rpc("ui-prefs:get"),
@@ -311,6 +321,7 @@ export function createDesktopRpcApi(): DesktopApi {
     logsReadTail: (opts) => rpc("logs:readTail", opts),
     logsOverviewSnapshot: () => rpc("logs:overviewSnapshot"),
     logsClear: () => rpc("logs:clear"),
+    logsAppend: (opts) => rpc("logs:append", opts),
     agentDailyReportsListDates: () => rpc("agent-daily-reports:listDates"),
     agentDailyReportsListAgents: (date) => rpc("agent-daily-reports:listAgents", date),
     agentDailyReportsListAgentRegistry: (date) =>
@@ -349,6 +360,48 @@ export function createDesktopRpcApi(): DesktopApi {
 /** Electron preload 保留的原生能力（勿被相对路径 RPC 覆盖） */
 const ELECTRON_NATIVE_DESKTOP_KEYS = ["chooseReferenceFiles"] as const;
 
+/**
+ * contextBridge / 宿主环境可能把 window.desktop 做成只读；
+ * 禁止 `window.desktop = …` 硬赋值，改为就地合并或 defineProperty。
+ */
+function attachDesktopApi(api: DesktopApi): void {
+  const prev = window.desktop;
+  const desc = Object.getOwnPropertyDescriptor(window, "desktop");
+  const canReassign =
+    !desc || (desc.writable === true && desc.configurable !== false);
+
+  if (prev && typeof prev === "object") {
+    try {
+      Object.assign(prev, api);
+      return;
+    } catch {
+      /* frozen proxy：继续尝试重挂 */
+    }
+  }
+
+  if (canReassign) {
+    try {
+      window.desktop = api;
+      return;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  try {
+    Object.defineProperty(window, "desktop", {
+      value: api,
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
+  } catch {
+    // 宿主完全锁死时挂旁路，getDesktop 仍读 window.desktop；至少不抛 Unhandled Rejection
+    (window as Window & { __DESKTOP_API_FALLBACK__?: DesktopApi }).__DESKTOP_API_FALLBACK__ =
+      api;
+  }
+}
+
 export function installDesktopBridge() {
   if (typeof window === "undefined") return;
 
@@ -365,17 +418,17 @@ export function installDesktopBridge() {
         }
       }
     }
-    window.desktop = Object.assign({}, prev || {}, rpcApi, native) as DesktopApi;
+    attachDesktopApi(Object.assign({}, prev || {}, rpcApi, native) as DesktopApi);
     return;
   }
 
   if (window.desktop) {
-    Object.assign(window.desktop, rpcApi);
+    attachDesktopApi(rpcApi);
     return;
   }
 
   window.__WEB_BRIDGE__ = true;
-  window.desktop = rpcApi;
+  attachDesktopApi(rpcApi);
   installEmbeddedBrowserBridge();
   connectBridgeEvents();
 }

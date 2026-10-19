@@ -130,6 +130,8 @@ export type ChatHistoryMsg = {
   latencyMs?: number;
   /** Ollama/API 失败写入助手气泡时为 true */
   requestError?: boolean;
+  /** 硬失败详情（横幅）；有正文时不得用此字段替换 content */
+  requestErrorDetail?: string;
   /** 计费来源：云端 API 或本地 Ollama */
   billingSource?: "cloud" | "local";
   /** 本条助手消息使用的模型（用于费用估算） */
@@ -204,17 +206,20 @@ export type DesktopApi = {
     error?: string;
     written?: string[];
     errors?: string[];
+    /** 写前/写后（Undo / Diff 卡） */
+    patches?: {
+      path: string;
+      before?: string;
+      after?: string;
+      isNewFile?: boolean;
+    }[];
   }>;
   /** 解析助手全文；默认不落盘（deferred）。须 applyWrites:true 才写盘（用户 Accept / 主动 ingest） */
   workspaceIngestFromAssistantText?: (payload: {
     text: string;
     agentName?: string;
     taskId?: string;
-    ensureChainArtifact?: boolean;
-    ensureAgentArtifact?: boolean;
-    /** 仅 applyWrites:true 时：从围栏/代码块启发式落盘 */
-    autoWriteProject?: boolean;
-    /** Plan 模式：显式 true 才落盘；Agent 默认自动落盘 */
+    /** Plan/Accept：显式 true 才落盘；仅认 ```workspace-write``` JSON */
     applyWrites?: boolean;
   }) => Promise<{
     ok: boolean;
@@ -224,8 +229,9 @@ export type DesktopApi = {
     displayText?: string;
     deferred?: boolean;
     pendingCount?: number;
+    missingWriteFence?: boolean;
   }>;
-  /** 扫描多条助手回复，合并代码块/workspace-write 后批量落盘 */
+  /** 扫描多条助手回复，仅合并合法 ```workspace-write``` JSON 后批量落盘 */
   workspaceBulkIngestFromHistory?: (payload: { texts: string[]; agentName?: string }) => Promise<{
     ok: boolean;
     error?: string;
@@ -343,6 +349,15 @@ export type DesktopApi = {
     } | null;
     error?: string;
   }>;
+  /** TS Language Service：当前文件导航树（大纲） */
+  workspaceTsNavigationTree?: (payload: {
+    relPath: string;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    symbols?: { name: string; kind: string; line: number }[];
+    error?: string;
+  }>;
   /** TS Language Service：悬停类型信息 */
   workspaceTsHover?: (payload: {
     relPath: string;
@@ -396,6 +411,15 @@ export type DesktopApi = {
       name?: string | null;
       kind?: string | null;
     } | null;
+    definitions?: {
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+      name?: string | null;
+      kind?: string | null;
+    }[];
     error?: string;
   }>;
   workspaceTsCompletions?: (payload: {
@@ -430,6 +454,44 @@ export type DesktopApi = {
       endLine?: number;
       endColumn?: number;
     }[];
+    error?: string;
+  }>;
+  /** TS/JS Call Hierarchy（真 Language Service） */
+  workspaceTsCallHierarchy?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    item?: {
+      name: string;
+      kind?: string;
+      containerName?: string | null;
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+    } | null;
+    incoming?: Array<{
+      name: string;
+      kind?: string;
+      containerName?: string | null;
+      relPath: string;
+      line: number;
+      column: number;
+      callCount?: number;
+    }>;
+    outgoing?: Array<{
+      name: string;
+      kind?: string;
+      containerName?: string | null;
+      relPath: string;
+      line: number;
+      column: number;
+      callCount?: number;
+    }>;
     error?: string;
   }>;
   workspaceTsRename?: (payload: {
@@ -468,6 +530,16 @@ export type DesktopApi = {
     error?: string;
   }>;
   workspaceTsOrganizeImports?: (payload: {
+    relPath: string;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    content?: string | null;
+    changed?: boolean;
+    error?: string;
+  }>;
+  /** TS Language Service 格式化整份文档 */
+  workspaceTsFormatDocument?: (payload: {
     relPath: string;
     content?: string;
   }) => Promise<{
@@ -593,6 +665,12 @@ export type DesktopApi = {
     aborted?: boolean;
     deferredWrites?: { path: string; content: string }[];
     writtenPaths?: string[];
+    filePatches?: {
+      path: string;
+      before?: string;
+      after?: string;
+      isNewFile?: boolean;
+    }[];
     verified?: boolean;
     toolTrace?: {
       tool: string;
@@ -600,12 +678,18 @@ export type DesktopApi = {
       path?: string;
       args?: Record<string, unknown>;
       ok?: boolean;
+      output?: string;
+      exitCode?: number;
     }[];
     mode?: string;
     model?: string;
     backend?: string;
   }>;
   hostAgentAbort?: (requestId: string) => Promise<{ ok: boolean }>;
+  /** 中止 Agent 工具环中的受控 run_command（可按 runId） */
+  workspaceAbortRunCommand?: (
+    runId?: string,
+  ) => Promise<{ ok: boolean; aborted?: number }>;
   /** npm 全局安装并探测 Claude Code CLI */
   claudeCodeEnsureCli?: () => Promise<{
     ok: boolean;
@@ -771,6 +855,61 @@ export type DesktopApi = {
   workspaceExternalLspCompletions?: DesktopApi["workspacePythonCompletions"];
   workspaceExternalLspReferences?: DesktopApi["workspacePythonReferences"];
   workspaceExternalLspRename?: DesktopApi["workspacePythonRename"];
+  /** Python/Go/Rust DocumentSymbol（真 LSP） */
+  workspaceExternalLspDocumentSymbols?: (payload: {
+    relPath: string;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    symbols?: {
+      name: string;
+      kind: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+      depth?: number;
+    }[];
+    error?: string;
+  }>;
+  /** Python/Go/Rust Call Hierarchy（真 LSP） */
+  workspaceExternalLspCallHierarchy?: (payload: {
+    relPath: string;
+    line: number;
+    column: number;
+    content?: string;
+  }) => Promise<{
+    ok: boolean;
+    item?: {
+      name: string;
+      kind?: string;
+      containerName?: string | null;
+      relPath: string;
+      line: number;
+      column: number;
+      endLine?: number;
+      endColumn?: number;
+    } | null;
+    incoming?: Array<{
+      name: string;
+      kind?: string;
+      containerName?: string | null;
+      relPath: string;
+      line: number;
+      column: number;
+      callCount?: number;
+    }>;
+    outgoing?: Array<{
+      name: string;
+      kind?: string;
+      containerName?: string | null;
+      relPath: string;
+      line: number;
+      column: number;
+      callCount?: number;
+    }>;
+    error?: string;
+  }>;
   listWorkspaceMarkdownFiles?: () => Promise<{
     ok: boolean;
     files?: { relPath: string; mtimeMs: number; size: number }[];
@@ -908,7 +1047,9 @@ export type DesktopApi = {
     totalElapsed?: number;
   }>;
   /** ~/.claude/memory/ 下经验库与写盘索引尾部，供多 Agent 共享（见 memory-cross-agent.js；仅 Electron 预加载） */
-  getCrossAgentContext?: () => Promise<{
+  getCrossAgentContext?: (opts?: {
+    workspacePath?: string | null;
+  }) => Promise<{
     ok: boolean;
     text: string;
     error?: string | null;
@@ -923,6 +1064,8 @@ export type DesktopApi = {
     orchestrationMode?: "claude-code" | "local-mcp";
     /** 本地编排时注入的 Agent 文件名（可带或不带 .md） */
     localAgentBasename?: string;
+    /** 按工作区根路径记忆的 Agent basename */
+    agentBasenameByWorkspace?: Record<string, string>;
     /** 一键确认写入时的默认相对路径（无可解析 workspace-write 时使用） */
     defaultConfirmWritePath?: string;
     /**
@@ -940,6 +1083,10 @@ export type DesktopApi = {
     chatEnabledCloudProviders?: string[];
     /** 聊天区已启用的本地模型 ID */
     chatEnabledLocalModels?: string[];
+    /** Auto 优先云模型（须在启用池内；空=池首） */
+    preferredCloudModel?: string;
+    /** Auto 优先本地模型（须在启用池内；空=池首） */
+    preferredLocalModel?: string;
     /** 模型能力显式覆盖 { [modelId]: { tools?, vision? } } */
     modelCapabilityOverrides?: Record<string, { tools?: boolean; vision?: boolean }>;
     /** 个人 fork：push 与个人 pull 共用（origin） */
@@ -1010,6 +1157,7 @@ export type DesktopApi = {
     claudeCliPath?: string;
     orchestrationMode?: "claude-code" | "local-mcp";
     localAgentBasename?: string;
+    agentBasenameByWorkspace?: Record<string, string>;
     defaultConfirmWritePath?: string;
     mcpConfigAbsolutePath?: string;
     devMcpOrchDebug?: boolean;
@@ -1018,6 +1166,8 @@ export type DesktopApi = {
     cloudProviderCatalog?: string[];
     chatEnabledCloudProviders?: string[];
     chatEnabledLocalModels?: string[];
+    preferredCloudModel?: string;
+    preferredLocalModel?: string;
     modelCapabilityOverrides?: Record<string, { tools?: boolean; vision?: boolean }>;
     personalGithubRepo?: string;
     gitUserName?: string;
@@ -1226,6 +1376,16 @@ export type DesktopApi = {
     error?: string | null;
     aborted?: boolean;
     claudeSessionId?: string;
+    /** CLI Edit/Write 已落盘路径 */
+    writtenPaths?: string[];
+    toolWrittenPaths?: string[];
+    /** 写前/写后补丁（气泡 Diff；tool_use 时快照） */
+    filePatches?: {
+      path: string;
+      before?: string;
+      after?: string;
+      isNewFile?: boolean;
+    }[];
   }>;
   /** 中止对应 requestId 的 Claude Code CLI 子进程 */
   claudeCodeAbort: (requestId: string) => Promise<{ ok: boolean }>;
@@ -1267,6 +1427,18 @@ export type DesktopApi = {
     aborted?: boolean;
     /** 本地编排层附加说明（如 Ollama 曾拒绝 tools 而已降级重试） */
     orchestrationHints?: string[];
+    /** Agent 模式：search_replace / write_file / workspace-write 工具已落盘路径 */
+    toolWrittenPaths?: string[];
+    /** 写前/写后补丁（气泡 Diff） */
+    filePatches?: {
+      path: string;
+      before?: string;
+      after?: string;
+      isNewFile?: boolean;
+    }[];
+    /** Plan 模式：暂存待 Accept 的路径 */
+    deferredWritePaths?: string[];
+    writeMode?: "ask" | "plan" | "agent";
   }>;
   localOrchestrationAbort: (requestId: string) => Promise<{ ok: boolean }>;
   /** 直接调用云供应商 API（绕过 Claude CLI，适用于未安装 Claude Code 的用户） */
@@ -1677,6 +1849,13 @@ export type DesktopApi = {
     error?: string;
   }>;
   logsClear: () => Promise<{ ok: boolean; error?: string }>;
+  /** 回合审计等：追加一条应用日志 */
+  logsAppend: (opts: {
+    message: string;
+    level?: string;
+    source?: string;
+    meta?: unknown;
+  }) => Promise<{ ok: boolean; error?: string }>;
   agentDailyReportsListDates: () => Promise<{ ok: boolean; dates?: string[]; error?: string }>;
   agentDailyReportsListAgents: (
     date: string,

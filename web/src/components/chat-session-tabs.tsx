@@ -75,7 +75,7 @@ export function ChatSessionTabs({
   };
 
   return (
-    <div className="chat-session-tabs-bar group/chat-tabs flex h-[35px] min-h-[35px] shrink-0 items-stretch border-b border-border bg-card/90">
+    <div className="chat-session-tabs-bar group/chat-tabs flex h-8 min-h-8 shrink-0 items-stretch border-b border-border/80 bg-background/80">
       <div
         ref={tabsRef}
         onWheel={onTabsWheel}
@@ -94,39 +94,35 @@ export function ChatSessionTabs({
               aria-selected={active}
               aria-busy={sending || undefined}
               className={cn(
-                "chat-session-tab group relative flex h-[35px] max-w-[200px] min-w-[72px] shrink-0 cursor-pointer items-center gap-1.5 border-r border-border/70 px-2 text-[12px] transition-colors",
+                "chat-session-tab group relative flex h-8 max-w-[180px] min-w-[64px] shrink-0 cursor-pointer items-center gap-1 border-r border-border/50 px-2 text-[11.5px] transition-colors",
                 active
-                  ? "bg-background text-foreground"
-                  : "bg-transparent text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                  ? "bg-background text-foreground shadow-[inset_0_-1px_0_0_var(--primary)]"
+                  : "bg-transparent text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
                 active && sending && "chat-session-tab--sending",
               )}
               onClick={() => onSessionChange(s.id)}
               title={s.title}
             >
-              {/* 思考指示器：均衡条动画 */}
               {sending ? (
                 <span className="thinking-dots shrink-0" aria-hidden>
                   <span className="thinking-dot" />
                   <span className="thinking-dot" />
                   <span className="thinking-dot" />
                 </span>
-              ) : (
-                <span className="inline-block h-2 w-2 shrink-0 rounded-full opacity-40" aria-hidden />
-              )}
+              ) : null}
               <span
                 className={cn(
-                  "chat-tab-title",
+                  "chat-tab-title truncate",
                   sending && "chat-tab-title--sending",
                 )}
               >
                 {s.title}
               </span>
-              {/* 底部思考进度条 */}
               {sending && active && <span className="chat-tab-progress" aria-hidden />}
               {sessions.length > 1 ? (
                 <button
                   type="button"
-                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-80 transition hover:bg-secondary hover:text-foreground group-hover:opacity-100"
+                  className="ml-auto inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition hover:bg-secondary hover:text-foreground group-hover:opacity-100"
                   title="关闭会话"
                   aria-label={`关闭 ${s.title}`}
                   onClick={(e) => {
@@ -134,14 +130,14 @@ export function ChatSessionTabs({
                     onCloseSession(s.id);
                   }}
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-2.5 w-2.5" />
                 </button>
               ) : null}
             </div>
           );
         })}
 
-        <div className="chat-session-tabs-empty min-h-[35px] min-w-[8px] flex-1" aria-hidden />
+        <div className="chat-session-tabs-empty min-h-8 min-w-[8px] flex-1" aria-hidden />
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5 border-l border-border/70 px-1">

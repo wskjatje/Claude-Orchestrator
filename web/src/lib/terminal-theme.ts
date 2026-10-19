@@ -1,40 +1,47 @@
 import type { ITheme } from "@xterm/xterm";
 
-/** 将 CSS 变量（含 oklch）解析为 xterm 可用的 rgb/rgba 字符串 */
-export function readCssVarAsColor(varName: string, fallback: string): string {
-  if (typeof document === "undefined") return fallback;
+/**
+ * 将 CSS 变量（含 oklch）解析为 xterm 可用的 rgb/rgba。
+ * 禁止与主题无关的静默色兜底；变量缺失或解析失败时抛错。
+ */
+export function readCssVarAsColor(varName: string): string {
+  if (typeof document === "undefined") {
+    throw new Error(`readCssVarAsColor(${varName}) 需要 document`);
+  }
   const probe = document.createElement("div");
   probe.style.display = "none";
   probe.style.backgroundColor = `var(${varName})`;
   document.body.appendChild(probe);
   const resolved = getComputedStyle(probe).backgroundColor;
   probe.remove();
-  if (!resolved || resolved === "rgba(0, 0, 0, 0)" || resolved === "transparent") return fallback;
+  if (!resolved || resolved === "rgba(0, 0, 0, 0)" || resolved === "transparent") {
+    throw new Error(`CSS 变量 ${varName} 未解析到有效颜色`);
+  }
   return resolved;
 }
 
 export function buildXtermTheme(_resolved: "light" | "dark"): ITheme {
-  const background = readCssVarAsColor("--terminal-bg", "#f8f6f3");
-  const foreground = readCssVarAsColor("--terminal-fg", "#3f3f46");
-  const cursor = readCssVarAsColor("--terminal-cursor", "#52525b");
-  const selectionBackground = readCssVarAsColor("--terminal-selection-bg", "#e4e4e7");
-  const selectionForeground = readCssVarAsColor("--terminal-selection-fg", foreground);
-  const black = readCssVarAsColor("--terminal-ansi-black", "#52525b");
-  const red = readCssVarAsColor("--terminal-ansi-red", "#dc2626");
-  const green = readCssVarAsColor("--terminal-ansi-green", "#16a34a");
-  const yellow = readCssVarAsColor("--terminal-ansi-yellow", "#ca8a04");
-  const blue = readCssVarAsColor("--terminal-ansi-blue", "#2563eb");
-  const magenta = readCssVarAsColor("--terminal-ansi-magenta", "#9333ea");
-  const cyan = readCssVarAsColor("--terminal-ansi-cyan", "#0891b2");
-  const white = readCssVarAsColor("--terminal-ansi-white", foreground);
-  const brightBlack = readCssVarAsColor("--terminal-ansi-bright-black", "#71717a");
-  const brightRed = readCssVarAsColor("--terminal-ansi-bright-red", "#ef4444");
-  const brightGreen = readCssVarAsColor("--terminal-ansi-bright-green", "#22c55e");
-  const brightYellow = readCssVarAsColor("--terminal-ansi-bright-yellow", "#eab308");
-  const brightBlue = readCssVarAsColor("--terminal-ansi-bright-blue", "#3b82f6");
-  const brightMagenta = readCssVarAsColor("--terminal-ansi-bright-magenta", "#a855f7");
-  const brightCyan = readCssVarAsColor("--terminal-ansi-bright-cyan", "#06b6d4");
-  const brightWhite = readCssVarAsColor("--terminal-ansi-bright-white", foreground);
+  const background = readCssVarAsColor("--terminal-bg");
+  const foreground = readCssVarAsColor("--terminal-fg");
+  const cursor = readCssVarAsColor("--terminal-cursor");
+  const selectionBackground = readCssVarAsColor("--terminal-selection-bg");
+  const selectionForeground = readCssVarAsColor("--terminal-selection-fg");
+  const black = readCssVarAsColor("--terminal-ansi-black");
+  const red = readCssVarAsColor("--terminal-ansi-red");
+  const green = readCssVarAsColor("--terminal-ansi-green");
+  const yellow = readCssVarAsColor("--terminal-ansi-yellow");
+  const blue = readCssVarAsColor("--terminal-ansi-blue");
+  const magenta = readCssVarAsColor("--terminal-ansi-magenta");
+  const cyan = readCssVarAsColor("--terminal-ansi-cyan");
+  const white = readCssVarAsColor("--terminal-ansi-white");
+  const brightBlack = readCssVarAsColor("--terminal-ansi-bright-black");
+  const brightRed = readCssVarAsColor("--terminal-ansi-bright-red");
+  const brightGreen = readCssVarAsColor("--terminal-ansi-bright-green");
+  const brightYellow = readCssVarAsColor("--terminal-ansi-bright-yellow");
+  const brightBlue = readCssVarAsColor("--terminal-ansi-bright-blue");
+  const brightMagenta = readCssVarAsColor("--terminal-ansi-bright-magenta");
+  const brightCyan = readCssVarAsColor("--terminal-ansi-bright-cyan");
+  const brightWhite = readCssVarAsColor("--terminal-ansi-bright-white");
 
   return {
     background,

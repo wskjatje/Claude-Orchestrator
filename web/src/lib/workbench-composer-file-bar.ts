@@ -1,10 +1,11 @@
 export type ComposerFileBarState = {
   count: number;
+  paths: string[];
   undoAll: (() => void) | null;
   review: (() => void) | null;
 };
 
-let state: ComposerFileBarState = { count: 0, undoAll: null, review: null };
+let state: ComposerFileBarState = { count: 0, paths: [], undoAll: null, review: null };
 const listeners = new Set<() => void>();
 
 function emit() {

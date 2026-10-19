@@ -1,14 +1,58 @@
 /**
  * 工作区内安全执行命令（终端进工具环）。
+ * 优先 node-pty（真 TTY）；失败硬降级为管道 spawn，并在结果中标明 ptyMode。
  */
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 import { loadWorkspace } from './store.mjs'
+
+const require = createRequire(import.meta.url)
 
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_TIMEOUT_MS = 180_000
 const MAX_OUTPUT = 24_000
+
+/**
+ * @typedef {{ kind: 'pty', handle: { kill: Function, onData: Function, onExit: Function } } | { kind: 'child', handle: import('node:child_process').ChildProcess }}
+ * ActiveRun
+ */
+
+/** @type {Map<string, ActiveRun>} */
+const activeByRunId = new Map()
+
+/**
+ * 中止 Agent 工具环中的受控命令（可按 requestId / runId）
+ * @param {string} [runId]
+ */
+export function abortWorkspaceRunCommand(runId) {
+  const id = String(runId || '').trim()
+  const killOne = (entry) => {
+    try {
+      if (entry.kind === 'pty') entry.handle.kill()
+      else entry.handle.kill('SIGKILL')
+    } catch {
+      /* ignore */
+    }
+  }
+  if (id) {
+    const entry = activeByRunId.get(id)
+    if (entry) {
+      killOne(entry)
+      activeByRunId.delete(id)
+      return { ok: true, aborted: 1 }
+    }
+    return { ok: false, aborted: 0 }
+  }
+  let n = 0
+  for (const [k, entry] of activeByRunId) {
+    killOne(entry)
+    activeByRunId.delete(k)
+    n += 1
+  }
+  return { ok: n > 0, aborted: n }
+}
 
 const DENY_RE =
   /\b(rm\s+-rf\s+[\/~]|mkfs|dd\s+if=|:(){:|:&};:|curl\s+[^\n|]*\|\s*(ba)?sh|wget\s+[^\n|]*\|\s*(ba)?sh|shutdown|reboot|diskutil\s+erase|chmod\s+-R\s+777\s+\/)/i
@@ -46,12 +90,21 @@ function resolveCwd(root, cwdRel) {
   return abs
 }
 
+function tryLoadNodePty() {
+  try {
+    return require('node-pty')
+  } catch {
+    return null
+  }
+}
+
 /**
  * @param {{
  *   command?: string,
  *   cwd?: string,
  *   timeoutMs?: number,
  *   mode?: string,
+ *   runId?: string,
  * }} body
  */
 export function workspaceRunCommand(body) {
@@ -73,16 +126,136 @@ export function workspaceRunCommand(body) {
     MAX_TIMEOUT_MS,
     Math.max(5_000, Number(body?.timeoutMs) || DEFAULT_TIMEOUT_MS),
   )
+  const runId = String(body?.runId || '').trim()
+  const env = { ...process.env, FORCE_COLOR: '0', PYTHONUNBUFFERED: '1', TERM: 'xterm-256color' }
 
+  const nodePty = tryLoadNodePty()
+  if (nodePty) {
+    return runViaPty(nodePty, {
+      command,
+      cwd,
+      root,
+      env,
+      timeoutMs,
+      runId,
+    })
+  }
+
+  return runViaPipe({ command, cwd, root, env, timeoutMs, runId, ptyMode: 'pipe' })
+}
+
+/**
+ * @param {typeof import('node-pty')} nodePty
+ * @param {{ command: string, cwd: string, root: string, env: NodeJS.ProcessEnv, timeoutMs: number, runId: string }} opts
+ */
+function runViaPty(nodePty, opts) {
+  const { command, cwd, root, env, timeoutMs, runId } = opts
+  return new Promise((resolve) => {
+    let ptyProc
+    try {
+      ptyProc = nodePty.spawn('/bin/zsh', ['-lc', command], {
+        name: 'xterm-256color',
+        cols: 120,
+        rows: 40,
+        cwd,
+        env,
+      })
+    } catch (e) {
+      // 硬降级：标明非完整 PTY，禁止假装成功
+      void runViaPipe({
+        command,
+        cwd,
+        root,
+        env,
+        timeoutMs,
+        runId,
+        ptyMode: 'pipe',
+        ptyFallbackReason: e?.message || String(e),
+      }).then(resolve)
+      return
+    }
+
+    if (runId) activeByRunId.set(runId, { kind: 'pty', handle: ptyProc })
+    let stdout = ''
+    let killed = false
+    let settled = false
+    const timer = setTimeout(() => {
+      killed = true
+      try {
+        ptyProc.kill()
+      } catch {
+        /* ignore */
+      }
+    }, timeoutMs)
+
+    const finish = (payload) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (runId) activeByRunId.delete(runId)
+      resolve(payload)
+    }
+
+    ptyProc.onData((d) => {
+      if (stdout.length < MAX_OUTPUT) stdout += String(d)
+    })
+    ptyProc.onExit(({ exitCode, signal }) => {
+      const aborted = Boolean(signal) && !killed
+      const code = killed || aborted ? 124 : exitCode ?? 1
+      // PTY 常带 ANSI；工具环回显保留可读正文，去掉光标控制以免污染气泡/trace
+      const scrubbed = scrubPtyOutput(stdout).slice(0, MAX_OUTPUT)
+      finish({
+        ok: code === 0,
+        exitCode: code,
+        timedOut: killed,
+        aborted,
+        command,
+        cwd: path.relative(root, cwd) || '.',
+        output:
+          scrubbed ||
+          (killed ? '（超时无输出）' : aborted ? '（已中止）' : '（无输出）'),
+        truncated: stdout.length > MAX_OUTPUT,
+        ptyMode: 'pty',
+      })
+    })
+  })
+}
+
+/** 去掉常见 CSI/OSC，保留换行与可打印字符 */
+function scrubPtyOutput(text) {
+  return String(text || '')
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    .replace(/\x1b[()][0-9A-Za-z]/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+}
+
+/**
+ * @param {{
+ *   command: string,
+ *   cwd: string,
+ *   root: string,
+ *   env: NodeJS.ProcessEnv,
+ *   timeoutMs: number,
+ *   runId: string,
+ *   ptyMode?: string,
+ *   ptyFallbackReason?: string,
+ * }} opts
+ */
+function runViaPipe(opts) {
+  const { command, cwd, root, env, timeoutMs, runId, ptyMode = 'pipe', ptyFallbackReason } = opts
   return new Promise((resolve) => {
     const child = spawn('/bin/zsh', ['-lc', command], {
       cwd,
-      env: { ...process.env, FORCE_COLOR: '0', PYTHONUNBUFFERED: '1' },
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
+    if (runId) activeByRunId.set(runId, { kind: 'child', handle: child })
     let stdout = ''
     let stderr = ''
     let killed = false
+    let aborted = false
     const timer = setTimeout(() => {
       killed = true
       try {
@@ -99,20 +272,35 @@ export function workspaceRunCommand(body) {
     })
     child.on('error', (e) => {
       clearTimeout(timer)
-      resolve({ ok: false, error: e.message, command, cwd: path.relative(root, cwd) || '.' })
+      if (runId) activeByRunId.delete(runId)
+      resolve({
+        ok: false,
+        error: e.message,
+        command,
+        cwd: path.relative(root, cwd) || '.',
+        ptyMode,
+        ...(ptyFallbackReason ? { ptyFallbackReason } : {}),
+      })
     })
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer)
-      const exitCode = killed ? 124 : code ?? 1
+      if (runId) activeByRunId.delete(runId)
+      aborted = signal === 'SIGKILL' && !killed
+      const exitCode = killed || aborted ? 124 : code ?? 1
       const out = (stdout + (stderr ? `\n${stderr}` : '')).slice(0, MAX_OUTPUT)
       resolve({
         ok: exitCode === 0,
         exitCode,
         timedOut: killed,
+        aborted,
         command,
         cwd: path.relative(root, cwd) || '.',
-        output: out || (killed ? '（超时无输出）' : '（无输出）'),
+        output:
+          out ||
+          (killed ? '（超时无输出）' : aborted ? '（已中止）' : '（无输出）'),
         truncated: stdout.length + stderr.length > MAX_OUTPUT,
+        ptyMode,
+        ...(ptyFallbackReason ? { ptyFallbackReason } : {}),
       })
     })
   })
@@ -176,6 +364,7 @@ export async function workspaceRunTests(body) {
     command,
     mode,
     timeoutMs: body?.timeoutMs || 150_000,
+    runId: body?.runId,
   })
   return { ...r, detected: hasPytest ? 'pytest' : 'npm-test' }
 }

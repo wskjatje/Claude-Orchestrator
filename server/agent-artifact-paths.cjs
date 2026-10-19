@@ -165,12 +165,8 @@ function buildAgentArtifactPathHint(stemRaw) {
   const stem = normalizeAgentStem(stemRaw)
   if (!stem) return ''
   const path = defaultArtifactPathForAgent(stem)
-  return (
-    `【落盘路径】global://${stem} 默认 => \`${path}\`；` +
-    `同一 Agent 多次交付仍用此路径（追加/覆盖须说明）。` +
-    `禁止写入其它 Agent 专属文件（如 product-manager→docs/prd.md）。` +
-    `未映射角色 => \`docs/agents/{stem}.md\` 或 \`docs/{类别}/{名}.md\`。`
-  )
+  // 仅建议 path；须出现在 ```workspace-write``` JSON，系统不据此自动写
+  return `【PATH】\`${path}\``
 }
 
 module.exports = {

@@ -14,7 +14,14 @@ type OrchMode = "claude-code" | "local-mcp";
 export type ResolvedExecutionModel = {
   mode: OrchMode;
   modelId: string;
+  /** 本轮是否用户显式指定（非 Auto） */
+  userPinned?: boolean;
+  /** Auto 时实际采用的路由偏好 */
+  routeHint?: ModelRouteHint;
 };
+
+/** Auto 时的双轨偏好：改码偏云、问答偏本地；手选模型时忽略 */
+export type ModelRouteHint = "prefer-cloud" | "prefer-local" | "prefer-mode";
 
 type ProviderCatalogEntry = {
   id: string;
@@ -64,9 +71,29 @@ export function normalizeChatModelSelection(model: string | undefined): string {
 }
 
 /**
- * 解析本轮实际执行的模型：
- * 1. Agent frontmatter 显式 model → 使用该模型
- * 2. 否则 → 聊天区所选模型（含 Auto：按 preferredMode 从云/本地池取首项）
+ * 根据回合策略推断 Auto 路由：
+ * - 允许写盘 / 工具环 → 偏云
+ * - 只读 / 直聊问答 → 偏本地（无本地则回落云）
+ */
+export function inferModelRouteHint(input: {
+  allowWrites?: boolean;
+  forceDirectChat?: boolean;
+  allowTools?: boolean;
+  intent?: "readonly" | "write" | "chat";
+}): ModelRouteHint {
+  if (input.allowWrites || input.intent === "write") return "prefer-cloud";
+  if (input.forceDirectChat || input.intent === "readonly" || input.allowTools === false) {
+    return "prefer-local";
+  }
+  if (input.intent === "chat") return "prefer-local";
+  return "prefer-cloud";
+}
+
+/**
+ * 解析本轮实际执行的模型（优先级从高到低）：
+ * 1. 聊天区用户显式指定的模型（非 Auto）→ 原样使用
+ * 2. Agent frontmatter 显式 model（若调用方传入）
+ * 3. Auto → 按 routeHint（改码偏云 / 问答偏本地），再回落 preferredMode
  */
 export function resolveModelForExecution(input: {
   selectedModel: string | undefined;
@@ -75,46 +102,95 @@ export function resolveModelForExecution(input: {
   agentModel?: string;
   /** 聊天 Auto 时的编排偏好（与底部模型选择器的 mode 一致） */
   preferredMode?: OrchMode;
+  /** Auto 任务偏好；手选模型时忽略 */
+  routeHint?: ModelRouteHint;
   /** Agent 专用：未启用到聊天的模型仍可解析 */
   allCloudModels?: string[];
   allLocalModels?: string[];
+  /** Auto 时优先（须在对应池内） */
+  preferredCloudModel?: string;
+  preferredLocalModel?: string;
 }): ResolvedExecutionModel | null {
   const cloud = input.cloudModels.map((m) => m.trim()).filter(Boolean);
   const local = input.localModels.map((m) => m.trim()).filter(Boolean);
   const cloudAll = (input.allCloudModels ?? cloud).map((m) => m.trim()).filter(Boolean);
   const localAll = (input.allLocalModels ?? local).map((m) => m.trim()).filter(Boolean);
-  const agentRaw = input.agentModel?.trim();
-  const agent = agentRaw && !isInheritedAgentModel(agentRaw) ? agentRaw : undefined;
-
-  if (agent) {
-    if (cloudAll.includes(agent)) return { mode: "claude-code", modelId: agent };
-    if (localAll.includes(agent)) return { mode: "local-mcp", modelId: agent };
-    return { mode: "claude-code", modelId: agent };
-  }
 
   const selected = normalizeChatModelSelection(input.selectedModel);
+  // 1) 用户手选：最高优先级，绝不被 Auto 策略覆盖；池外硬失败
   if (selected && !isAutoModelSelection(selected)) {
-    if (local.includes(selected)) return { mode: "local-mcp", modelId: selected };
-    if (cloud.includes(selected)) return { mode: "claude-code", modelId: selected };
-    if (/^(sonnet|opus|haiku|claude-)/i.test(selected)) {
-      return { mode: "claude-code", modelId: selected };
+    if (local.includes(selected) || localAll.includes(selected)) {
+      return { mode: "local-mcp", modelId: selected, userPinned: true };
     }
-    return resolveAutoModelFromPools(cloud, local, input.preferredMode);
+    if (cloud.includes(selected) || cloudAll.includes(selected)) {
+      return { mode: "claude-code", modelId: selected, userPinned: true };
+    }
+    return null;
   }
 
-  return resolveAutoModelFromPools(cloud, local, input.preferredMode);
+  // 2) Agent frontmatter（仅 Auto / 未选手选时）；池外硬失败
+  const agentRaw = input.agentModel?.trim();
+  const agent = agentRaw && !isInheritedAgentModel(agentRaw) ? agentRaw : undefined;
+  if (agent) {
+    if (cloudAll.includes(agent)) {
+      return { mode: "claude-code", modelId: agent, userPinned: false };
+    }
+    if (localAll.includes(agent)) {
+      return { mode: "local-mcp", modelId: agent, userPinned: false };
+    }
+    return null;
+  }
+
+  // 3) Auto
+  const hint = input.routeHint || "prefer-mode";
+  const auto = resolveAutoModelFromPools(cloud, local, input.preferredMode, hint, {
+    preferredCloudModel: input.preferredCloudModel,
+    preferredLocalModel: input.preferredLocalModel,
+  });
+  return auto ? { ...auto, userPinned: false, routeHint: hint } : null;
 }
 
 function resolveAutoModelFromPools(
   cloud: string[],
   local: string[],
   preferredMode?: OrchMode,
+  routeHint: ModelRouteHint = "prefer-mode",
+  prefs?: { preferredCloudModel?: string; preferredLocalModel?: string },
 ): ResolvedExecutionModel | null {
-  if (preferredMode === "local-mcp") {
-    return local.length ? { mode: "local-mcp", modelId: local[0]! } : null;
-  }
-  return cloud.length ? { mode: "claude-code", modelId: cloud[0]! } : null;
+  const preferCloud = String(prefs?.preferredCloudModel || "").trim();
+  const preferLocal = String(prefs?.preferredLocalModel || "").trim();
+  const pickFrom = (list: string[], preferred: string) => {
+    if (preferred && list.includes(preferred)) return preferred;
+    return list[0] || null;
+  };
+  const pickCloud = (): ResolvedExecutionModel | null => {
+    const id = pickFrom(cloud, preferCloud);
+    return id ? { mode: "claude-code", modelId: id } : null;
+  };
+  const pickLocal = (): ResolvedExecutionModel | null => {
+    const id = pickFrom(local, preferLocal);
+    return id ? { mode: "local-mcp", modelId: id } : null;
+  };
+  const pickByMode = (): ResolvedExecutionModel | null => {
+    if (preferredMode === "local-mcp") return pickLocal() || pickCloud();
+    return pickCloud() || pickLocal();
+  };
+
+  // prefer-cloud / prefer-local：对侧池空禁止静默换通道
+  if (routeHint === "prefer-cloud") return pickCloud();
+  if (routeHint === "prefer-local") return pickLocal();
+  return pickByMode();
 }
+
+/** 与 server/resolve-execution-model.mjs 同源 */
+export const CLOUD_PROVIDER_REQUIRED_ERROR =
+  "未启用云供应商：请在「设置 → 模型与连接」添加并启用云模型；不会自动改用本地模型。";
+
+export const LOCAL_PROVIDER_REQUIRED_ERROR =
+  "未启用本地模型：请在「设置 → 模型与连接」配置 Ollama/本地池；不会自动改用云模型。";
+
+export const MODEL_NOT_IN_POOL_ERROR =
+  "所选模型不在已启用池内：请在「设置 → 模型与连接」启用该模型后再选；不会按名称启发式推断通道。";
 
 /** 聊天区已启用模型的合并列表（云 + 本地） */
 export function chatModelPoolCombined(pools: ModelCatalogPools): string[] {
@@ -127,6 +203,16 @@ export function chatModelPoolForMode(
   mode: OrchMode,
 ): string[] {
   return mode === "local-mcp" ? pools.localModels : pools.cloudModels;
+}
+
+/**
+ * Cursor：选中的模型就是本轮调用的模型。
+ * 只有 Claude 系进入 Claude CLI 工具环；其余云供应商模型走该供应商 API。
+ */
+export function isClaudeCliModel(modelId: string | undefined): boolean {
+  const id = String(modelId || "").trim();
+  if (!id || isAutoModelSelection(id)) return false;
+  return /^(sonnet|opus|haiku|claude)(-|$)/i.test(id);
 }
 
 export function inferOrchModeForChatModel(
@@ -155,20 +241,22 @@ export function formatChatModelOverviewDisplay(input: {
 
   if (isAutoModelSelection(raw)) {
     const hint = chatEnabledPoolHint(input.cloudModels, input.localModels);
-    if (hint === "云+本地") return { value: "Auto", caption: `Auto · ${hint}` };
-    if (hint === "本地") return { value: "Auto", caption: "本地 MCP 编排" };
-    if (hint === "云端") return { value: "Auto", caption: "Claude Code CLI" };
+    if (hint === "云+本地") {
+      return { value: "Auto", caption: "Auto · 改码偏云 / 问答偏本地" };
+    }
+    if (hint === "本地") return { value: "Auto", caption: "本地 · Host 编排" };
+    if (hint === "云端") return { value: "Auto", caption: "云端 · CLI/Host" };
     const orch = input.orchMode === "local-mcp" ? "local-mcp" : "claude-code";
     return {
       value: "Auto",
-      caption: orch === "local-mcp" ? "本地 MCP 编排" : "Claude Code CLI",
+      caption: orch === "local-mcp" ? "本地 · Host 编排" : "云端 · CLI/Host",
     };
   }
 
   const mode = inferOrchModeForChatModel(raw, pools);
   return {
     value: shortModelPickerLabel(raw),
-    caption: mode === "local-mcp" ? "本地 MCP 编排" : "Claude Code CLI",
+    caption: mode === "local-mcp" ? "手选 · 本地" : "手选 · 云端",
   };
 }
 
@@ -307,6 +395,7 @@ export function chatSettingsPreservePayload(
     claudeCliPath: s.claudeCliPath ?? "",
     orchestrationMode: s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code",
     localAgentBasename: s.localAgentBasename ?? "",
+    agentBasenameByWorkspace: s.agentBasenameByWorkspace ?? {},
     defaultConfirmWritePath: s.defaultConfirmWritePath ?? "",
     mcpConfigAbsolutePath: s.mcpConfigAbsolutePath ?? "",
     devMcpOrchDebug: s.devMcpOrchDebug === true,
@@ -315,6 +404,8 @@ export function chatSettingsPreservePayload(
     cloudProviderCatalog: s.cloudProviderCatalog ?? [],
     chatEnabledCloudProviders: s.chatEnabledCloudProviders ?? [],
     chatEnabledLocalModels: s.chatEnabledLocalModels ?? [],
+    preferredCloudModel: s.preferredCloudModel ?? "",
+    preferredLocalModel: s.preferredLocalModel ?? "",
     modelCapabilityOverrides: s.modelCapabilityOverrides ?? {},
     personalGithubRepo: s.personalGithubRepo ?? "",
     gitUserName: s.gitUserName ?? "",

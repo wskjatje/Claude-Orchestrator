@@ -14,6 +14,7 @@ import {
 } from "./paths.mjs";
 import { createRequire } from "node:module";
 import crypto from "node:crypto";
+import { DEFAULT_OLLAMA_BASE } from "../shared/defaults.mjs";
 
 const require = createRequire(import.meta.url);
 const projectDb = require("./project-db.cjs");
@@ -247,12 +248,14 @@ const CLAUDE_CODE_MODEL_ALIASES = ["sonnet", "opus", "haiku"];
 
 function defaultChatSettings() {
   return {
-    ollamaBase: "http://127.0.0.1:11434",
+    ollamaBase: DEFAULT_OLLAMA_BASE,
     model: "auto",
     localOllamaModel: "",
     claudeCliPath: DEFAULT_CLAUDE_CLI,
     orchestrationMode: "claude-code",
     localAgentBasename: "",
+    /** 按工作区根路径记忆底栏 Agent basename */
+    agentBasenameByWorkspace: {},
     defaultConfirmWritePath: "",
     mcpConfigAbsolutePath: "",
     devMcpOrchDebug: false,
@@ -263,6 +266,9 @@ function defaultChatSettings() {
     chatEnabledCloudProviders: [],
     /** 已在聊天区启用的本地模型 ID */
     chatEnabledLocalModels: [],
+    /** Auto 时优先选用的云/本地模型（须在启用池内；空=取池首项） */
+    preferredCloudModel: "",
+    preferredLocalModel: "",
     /**
      * 模型能力显式覆盖（仅覆盖探测缺失；不默认全支持）
      * { [modelId]: { tools?: boolean, vision?: boolean } }
@@ -500,6 +506,12 @@ export function loadChatSettings() {
     const data = projectDb.loadKv(db(), KV.chatSettings, null);
     if (!data || typeof data !== "object") return defaults;
     const merged = { ...defaults, ...data };
+    if (
+      !merged.agentBasenameByWorkspace ||
+      typeof merged.agentBasenameByWorkspace !== "object"
+    ) {
+      merged.agentBasenameByWorkspace = {};
+    }
     const legacyAgent = String(merged.localAgentBasename || "")
       .trim()
       .toLowerCase();
@@ -563,6 +575,21 @@ export function saveChatSettings(body) {
       typeof body?.localAgentBasename === "string"
         ? body.localAgentBasename.trim().slice(0, 200)
         : cur.localAgentBasename,
+    agentBasenameByWorkspace: (() => {
+      if (body?.agentBasenameByWorkspace && typeof body.agentBasenameByWorkspace === "object") {
+        /** @type {Record<string, string>} */
+        const out = {};
+        for (const [k, v] of Object.entries(body.agentBasenameByWorkspace)) {
+          const key = String(k || "").trim().replace(/\/+$/, "");
+          const val = typeof v === "string" ? v.trim().slice(0, 200) : "";
+          if (key) out[key] = val;
+        }
+        return out;
+      }
+      return cur.agentBasenameByWorkspace && typeof cur.agentBasenameByWorkspace === "object"
+        ? cur.agentBasenameByWorkspace
+        : {};
+    })(),
     defaultConfirmWritePath:
       typeof body?.defaultConfirmWritePath === "string" &&
       body.defaultConfirmWritePath.trim()
@@ -609,6 +636,14 @@ export function saveChatSettings(body) {
     chatEnabledLocalModels: Array.isArray(body?.chatEnabledLocalModels)
       ? normalizeStringList(body.chatEnabledLocalModels)
       : cur.chatEnabledLocalModels || [],
+    preferredCloudModel:
+      typeof body?.preferredCloudModel === "string"
+        ? body.preferredCloudModel.trim().slice(0, 200)
+        : cur.preferredCloudModel || "",
+    preferredLocalModel:
+      typeof body?.preferredLocalModel === "string"
+        ? body.preferredLocalModel.trim().slice(0, 200)
+        : cur.preferredLocalModel || "",
     modelCapabilityOverrides:
       body?.modelCapabilityOverrides != null &&
       typeof body.modelCapabilityOverrides === "object" &&

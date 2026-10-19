@@ -75,6 +75,14 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
     return "";
   };
 
+  const priorUserHistoryIndexFor = (assistantIndex: number): number | undefined => {
+    for (let j = assistantIndex - 1; j >= 0; j--) {
+      const prev = messages[j];
+      if (prev?.role === "user" && prev.historyIndex != null) return prev.historyIndex;
+    }
+    return undefined;
+  };
+
   const renderUser = (m: ChatBubbleMessage, turnIndex: number) => (
     <div key={`user:${m.historyIndex ?? turnIndex}`} ref={setUserRef(turnIndex)} className="chat-turn-user">
       <MessageBubble
@@ -83,6 +91,7 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
         onWriteToWorkspace={onWriteToWorkspace}
         onGenerateChain={onGenerateChain}
         onEditUserMessage={onEditUserMessage}
+        onRequestResendUserMessage={onRequestResendUserMessage}
         onAssistantContentPatch={onAssistantContentPatch}
       />
     </div>
@@ -93,10 +102,12 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
       key={`${i}:${messages[i].role}:${messages[i].content.length}`}
       m={messages[i]}
       priorUserLine={priorUserLineFor(i)}
+      priorUserHistoryIndex={priorUserHistoryIndexFor(i)}
       hasDesktopApi={hasDesktopApi}
       onWriteToWorkspace={onWriteToWorkspace}
       onGenerateChain={onGenerateChain}
       onEditUserMessage={onEditUserMessage}
+      onRequestResendUserMessage={onRequestResendUserMessage}
       onAssistantContentPatch={onAssistantContentPatch}
     />
   );
@@ -116,8 +127,6 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
           isEditing={isEditingSticky}
           inlineComposer={isEditingSticky ? inlineComposer : null}
           hasDesktopApi={hasDesktopApi}
-          onWriteToWorkspace={onWriteToWorkspace}
-          onGenerateChain={onGenerateChain}
           onEditUserMessage={onEditUserMessage}
           onRequestResendUserMessage={onRequestResendUserMessage}
         />

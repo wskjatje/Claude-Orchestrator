@@ -65,6 +65,8 @@ function extractToolPath(input) {
   return String(p || '').trim().replace(/\\/g, '/')
 }
 
+const MAX_TOOL_OUTPUT = 8000
+
 /**
  * @typedef {object} StreamAgentEvent
  * @property {'thinking'|'tool'|'text'} type
@@ -72,6 +74,8 @@ function extractToolPath(input) {
  * @property {string} [arg]
  * @property {'running'|'ok'|'fail'} [status]
  * @property {string} [path]
+ * @property {string} [output]
+ * @property {string} [toolUseId]
  */
 
 /**
@@ -82,6 +86,7 @@ function extractToolPath(input) {
  * @property {string} [lastTextTail]
  * @property {StreamAgentEvent[]} events
  * @property {boolean} eventsFlushed
+ * @property {Map<string, { name: string, arg: string }>} toolUseById
  */
 
 /** @returns {StreamDisplayState} */
@@ -93,13 +98,85 @@ export function createStreamDisplayState() {
     lastTextTail: '',
     events: [],
     eventsFlushed: false,
+    toolUseById: new Map(),
   }
 }
 
-function pushToolEvent(state, name, arg, status = 'ok') {
+/**
+ * 从 tool_result / content 块抽出可回显正文（兼容多版 Claude Code NDJSON）。
+ * 导出供闸门脚本直接测。
+ * @param {unknown} raw
+ */
+export function extractToolResultOutput(raw) {
+  if (raw == null) return ''
+  if (typeof raw === 'string') return raw.slice(0, MAX_TOOL_OUTPUT)
+  if (Array.isArray(raw)) {
+    const parts = []
+    for (const block of raw) {
+      if (typeof block === 'string') {
+        parts.push(block)
+      } else if (block && typeof block === 'object') {
+        const t = String(block.type || '')
+        if (typeof block.text === 'string') parts.push(block.text)
+        else if (typeof block.content === 'string') parts.push(block.content)
+        else if (t === 'text' && typeof block.text === 'string') parts.push(block.text)
+        else if (typeof block.stdout === 'string' || typeof block.stderr === 'string') {
+          const out = [block.stdout, block.stderr].filter(Boolean).join('\n')
+          if (out) parts.push(out)
+        } else if (block.content != null) {
+          const nested = extractToolResultOutput(block.content)
+          if (nested) parts.push(nested)
+        }
+      }
+      if (parts.join('\n').length >= MAX_TOOL_OUTPUT) break
+    }
+    return parts.join('\n').slice(0, MAX_TOOL_OUTPUT)
+  }
+  if (typeof raw === 'object') {
+    if (typeof raw.stdout === 'string' || typeof raw.stderr === 'string') {
+      return [raw.stdout, raw.stderr].filter(Boolean).join('\n').slice(0, MAX_TOOL_OUTPUT)
+    }
+    if (typeof raw.output === 'string') return raw.output.slice(0, MAX_TOOL_OUTPUT)
+    if (typeof raw.result === 'string') return raw.result.slice(0, MAX_TOOL_OUTPUT)
+    if (typeof raw.text === 'string') return raw.text.slice(0, MAX_TOOL_OUTPUT)
+    if (typeof raw.content === 'string') return raw.content.slice(0, MAX_TOOL_OUTPUT)
+    if (raw.content != null) return extractToolResultOutput(raw.content)
+  }
+  const s = String(raw)
+  // 避免把 [object Object] 当输出
+  if (s === '[object Object]') return ''
+  return s.slice(0, MAX_TOOL_OUTPUT)
+}
+
+/**
+ * @param {StreamDisplayState} state
+ * @param {string} name
+ * @param {string} arg
+ * @param {'running'|'ok'|'fail'} [status]
+ * @param {{ path?: string, output?: string, toolUseId?: string }} [extra]
+ */
+function pushToolEvent(state, name, arg, status = 'ok', extra = {}) {
   const tool = normalizeToolName(name)
   const detail = String(arg || '').trim().replace(/^[`'"]|[`'"]$/g, '')
-  const path = FILE_EDIT_TOOLS.has(tool) && /\.\w+$/.test(detail) ? detail : undefined
+  const path =
+    extra.path ||
+    (FILE_EDIT_TOOLS.has(tool) && /\.\w+$/.test(detail) ? detail : undefined)
+  const output = extra.output != null ? String(extra.output).slice(0, MAX_TOOL_OUTPUT) : undefined
+  const toolUseId = extra.toolUseId ? String(extra.toolUseId) : undefined
+
+  if (toolUseId && status !== 'running') {
+    const byId = state.events.find(
+      (e) => e.type === 'tool' && e.toolUseId === toolUseId && e.status === 'running',
+    )
+    if (byId) {
+      byId.status = status
+      if (path) byId.path = path
+      if (output) byId.output = output
+      if (detail && !byId.arg) byId.arg = detail
+      return
+    }
+  }
+
   const last = state.events[state.events.length - 1]
   if (
     last &&
@@ -111,14 +188,50 @@ function pushToolEvent(state, name, arg, status = 'ok') {
   ) {
     last.status = status
     if (path) last.path = path
+    if (output) last.output = output
     return
   }
+
+  // Bash 结果常缺 name/arg：挂到最近 running 的 Bash
+  if (
+    status !== 'running' &&
+    (!tool || tool === 'Tool') &&
+    output
+  ) {
+    for (let i = state.events.length - 1; i >= 0; i--) {
+      const e = state.events[i]
+      if (e.type === 'tool' && e.status === 'running' && /^(Bash|Ran)$/i.test(String(e.name || ''))) {
+        e.status = status
+        e.output = output
+        return
+      }
+    }
+  }
+
+  if (
+    status !== 'running' &&
+    /^(Bash|Ran)$/i.test(tool) &&
+    output &&
+    (!detail || detail === '')
+  ) {
+    for (let i = state.events.length - 1; i >= 0; i--) {
+      const e = state.events[i]
+      if (e.type === 'tool' && e.status === 'running' && /^(Bash|Ran)$/i.test(String(e.name || ''))) {
+        e.status = status
+        e.output = output
+        return
+      }
+    }
+  }
+
   state.events.push({
     type: 'tool',
     name: tool,
     arg: detail || undefined,
     status,
     path,
+    ...(output ? { output } : {}),
+    ...(toolUseId ? { toolUseId } : {}),
   })
 }
 
@@ -206,11 +319,31 @@ export function appendStreamJsonLine(line, state) {
           state.seenTools.add(key)
           const arg = extractToolArg(block.input)
           const path = extractToolPath(block.input)
+          const toolUseId = block.id ? String(block.id) : undefined
+          if (toolUseId) {
+            state.toolUseById.set(toolUseId, { name: String(block.name || ''), arg: path || arg })
+          }
           state.display += `\n${formatToolLine(block.name, arg)}…\n`
           // 工具开始时标 running；ok/fail 等 tool_result（finalize 仍会把遗留 running 收成 ok）
-          pushToolEvent(state, block.name, path || arg, 'running')
+          pushToolEvent(state, block.name, path || arg, 'running', { path: path || undefined, toolUseId })
         }
       }
+    }
+    return state.display.slice(before)
+  }
+
+  // user 消息里的 tool_result（Claude Code stream-json 常见）
+  if (type === 'user' && ev.message?.content) {
+    for (const block of ev.message.content) {
+      if (!block || typeof block !== 'object') continue
+      if (String(block.type || '') !== 'tool_result') continue
+      const toolUseId = block.tool_use_id ? String(block.tool_use_id) : undefined
+      const meta = toolUseId ? state.toolUseById.get(toolUseId) : null
+      const name = meta?.name || block.tool_name || block.name || 'Bash'
+      const arg = meta?.arg || extractToolArg(block.input ?? block.args)
+      const output = extractToolResultOutput(block.content ?? block.output ?? block.result)
+      const fail = Boolean(block.is_error)
+      pushToolEvent(state, name, arg, fail ? 'fail' : 'ok', { output: output || undefined, toolUseId })
     }
     return state.display.slice(before)
   }
@@ -218,11 +351,13 @@ export function appendStreamJsonLine(line, state) {
   if (type === 'tool_use' || type === 'tool_use_summary') {
     const name = ev.name || ev.tool_name || ev.tool
     const arg = extractToolArg(ev.input ?? ev.args ?? ev.parameters)
+    const toolUseId = ev.id || ev.tool_use_id ? String(ev.id || ev.tool_use_id) : undefined
     const key = `${name}:${arg}`
     if (!state.seenTools.has(key)) {
       state.seenTools.add(key)
+      if (toolUseId) state.toolUseById.set(toolUseId, { name: String(name || ''), arg })
       state.display += `\n${formatToolLine(name, arg)}…\n`
-      pushToolEvent(state, name, arg, 'running')
+      pushToolEvent(state, name, arg, 'running', { toolUseId })
     }
     return state.display.slice(before)
   }
@@ -242,9 +377,37 @@ export function appendStreamJsonLine(line, state) {
   }
 
   if (type === 'tool_result' || type === 'tool_finished' || type === 'tool_end') {
-    const name = ev.tool_name || ev.name || ev.tool
-    const arg = extractToolArg(ev.input ?? ev.args ?? ev.parameters ?? ev.message)
-    if (name) pushToolEvent(state, name, arg, ev.is_error ? 'fail' : 'ok')
+    const toolUseId = ev.tool_use_id || ev.toolUseId ? String(ev.tool_use_id || ev.toolUseId) : undefined
+    const meta = toolUseId ? state.toolUseById.get(toolUseId) : null
+    const name = ev.tool_name || ev.name || ev.tool || meta?.name || 'Bash'
+    const arg = extractToolArg(ev.input ?? ev.args ?? ev.parameters ?? ev.message) || meta?.arg || ''
+    const output = extractToolResultOutput(
+      ev.content ??
+        ev.result ??
+        ev.output ??
+        ev.message?.content ??
+        (ev.stdout != null || ev.stderr != null
+          ? { stdout: ev.stdout, stderr: ev.stderr }
+          : undefined),
+    )
+    pushToolEvent(state, name, arg, ev.is_error ? 'fail' : 'ok', {
+      output: output || undefined,
+      toolUseId,
+    })
+    return state.display.slice(before)
+  }
+
+  // content_block 形态的 tool_result（部分 stream-json 变体）
+  if (type === 'content_block_start' && ev.content_block?.type === 'tool_result') {
+    const block = ev.content_block
+    const toolUseId = block.tool_use_id ? String(block.tool_use_id) : undefined
+    const meta = toolUseId ? state.toolUseById.get(toolUseId) : null
+    const name = meta?.name || block.tool_name || 'Bash'
+    const output = extractToolResultOutput(block.content ?? block.output)
+    pushToolEvent(state, name, meta?.arg || '', block.is_error ? 'fail' : 'ok', {
+      output: output || undefined,
+      toolUseId,
+    })
     return state.display.slice(before)
   }
 

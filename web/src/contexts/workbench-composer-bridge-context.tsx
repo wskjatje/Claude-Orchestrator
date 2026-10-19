@@ -7,12 +7,15 @@ type ComposerHandlers = {
   insertTerminalSelection: (payload: TerminalSelectionPayload) => void;
   insertDomElement?: (payload: DomElementPayload) => void;
   openChatPanel?: () => void;
+  /** 预填 Composer 正文并聚焦（用选区提问 / 用 Agent 修） */
+  prefillComposer?: (text: string) => void;
 };
 
 type WorkbenchComposerBridgeValue = {
   registerComposerHandlers: (handlers: ComposerHandlers) => () => void;
   addTerminalSelectionToChat: (payload: TerminalSelectionPayload) => void;
   addDomElementToChat: (payload: DomElementPayload) => void;
+  prefillComposer: (text: string) => void;
 };
 
 const WorkbenchComposerBridgeContext = createContext<WorkbenchComposerBridgeValue | null>(null);
@@ -40,9 +43,26 @@ export function WorkbenchComposerBridgeProvider({ children }: { children: ReactN
     handlersRef.current?.insertDomElement?.(payload);
   }, []);
 
+  const prefillComposer = useCallback((text: string) => {
+    const t = String(text || "").trim();
+    if (!t) return;
+    handlersRef.current?.openChatPanel?.();
+    handlersRef.current?.prefillComposer?.(t);
+  }, []);
+
   const value = useMemo(
-    () => ({ registerComposerHandlers, addTerminalSelectionToChat, addDomElementToChat }),
-    [registerComposerHandlers, addTerminalSelectionToChat, addDomElementToChat],
+    () => ({
+      registerComposerHandlers,
+      addTerminalSelectionToChat,
+      addDomElementToChat,
+      prefillComposer,
+    }),
+    [
+      registerComposerHandlers,
+      addTerminalSelectionToChat,
+      addDomElementToChat,
+      prefillComposer,
+    ],
   );
 
   return (

@@ -8,7 +8,6 @@ const {
   defaultArtifactPathForAgent,
   buildAgentArtifactPathHint,
 } = require('./agent-artifact-paths.cjs')
-const { agentAutoWritesToProject } = require('./write-policy.cjs')
 
 function expandUserPath(p) {
   let s = String(p || '').trim()
@@ -76,34 +75,58 @@ function resolveSafeWorkspacePath(workspaceDir, relPath) {
   return null
 }
 
+/** 持久化到会话的 before/after 上限（过大则省略，Undo 靠本会话内存 checkpoint） */
+const PATCH_CHAR_CAP = 120_000
+
+function capPatchText(s) {
+  const t = String(s ?? '')
+  if (t.length <= PATCH_CHAR_CAP) return t
+  return undefined
+}
+
 function applyWorkspaceWriteFenceItems(workspaceDir, items) {
   const written = []
   const errors = []
+  /** @type {Array<{ path: string, before?: string, after?: string, isNewFile?: boolean }>} */
+  const patches = []
   for (const item of items) {
-    const rel =
-      typeof item?.path === 'string'
-        ? item.path
-        : typeof item?.file === 'string'
-          ? item.file
-          : typeof item?.filePath === 'string'
-            ? item.filePath
-            : ''
-    const content = item?.content != null ? String(item.content) : ''
+    // Cursor 契约：须显式 path；content|contents；禁止 file/filePath 别名兜底
+    const rel = typeof item?.path === 'string' ? item.path : ''
+    const contentRaw =
+      item?.content != null ? item.content : item?.contents != null ? item.contents : null
+    const content = contentRaw != null ? String(contentRaw) : ''
     const abs = resolveSafeWorkspacePath(workspaceDir, rel)
     if (!abs) {
       errors.push(rel || '(无效路径)')
       continue
     }
     try {
+      let before = ''
+      let isNewFile = true
+      if (fs.existsSync(abs)) {
+        isNewFile = false
+        try {
+          before = fs.readFileSync(abs, 'utf8')
+        } catch {
+          before = ''
+        }
+      }
       fs.mkdirSync(path.dirname(abs), { recursive: true })
       fs.writeFileSync(abs, content, 'utf8')
-      written.push(rel.replace(/\\/g, '/'))
+      const norm = rel.replace(/\\/g, '/')
+      written.push(norm)
+      patches.push({
+        path: norm,
+        before: capPatchText(before),
+        after: capPatchText(content),
+        isNewFile,
+      })
     } catch (e) {
       errors.push(`${rel || '?'}: ${e?.message || String(e)}`)
     }
   }
   if (written.length > 0) {
-    appendWorkspaceArtifactLog(written)
+    appendWorkspaceArtifactLog(written, workspaceDir)
     // 追加写盘日志供 node-status-tracker 使用
     try {
       const logPath = path.join(workspaceDir, 'graphify-out', '.chain_writes.log')
@@ -120,7 +143,12 @@ function applyWorkspaceWriteFenceItems(workspaceDir, items) {
         console.warn('[workspace-write] TS 快照失效失败', e?.message || e)
       })
   }
-  return { ok: written.length > 0, written, errors: errors.length ? errors : undefined }
+  return {
+    ok: written.length > 0,
+    written,
+    errors: errors.length ? errors : undefined,
+    patches,
+  }
 }
 
 function findTopLevelJsonEnd(s, start) {
@@ -215,23 +243,6 @@ function parseWorkspaceWriteFences(text) {
   return out
 }
 
-function buildChainStepArtifactRelPath(agentName, taskId) {
-  const stem =
-    String(agentName || 'agent')
-      .trim()
-      .replace(/\.md$/i, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 48) || 'agent'
-  const tid =
-    String(taskId || 'step')
-      .trim()
-      .replace(/[^\w.-]+/g, '_')
-      .slice(0, 48) || 'step'
-  return `docs/chain-steps/${tid}-${stem}.md`
-}
-
 function extractMarkdownPaths(text) {
   if (!text || typeof text !== 'string') return []
   const pathRegex = /`([a-zA-Z0-9_.\\/-]+)\.(md|py|js|ts|tsx|jsx|json|txt|yml|yaml|html|css|sql|go|rs|java|kt|swift|rb|php|vue|svelte|sh|toml|cjs|mjs)`/gi
@@ -259,194 +270,22 @@ function stripFakeWorkspaceWriteClaims(text) {
   return out
 }
 
-function extractAllCodeBlockBodies(text) {
-  if (!text || typeof text !== 'string') return []
-  const bodies = []
-  const parts = text.split('```')
-  for (let i = 1; i + 1 < parts.length; i += 2) {
-    const block = parts[i]
-    const nl = block.indexOf('\n')
-    if (nl === -1) continue
-    const content = block.slice(nl + 1).replace(/\n$/, '')
-    if (content.trim()) bodies.push(content.endsWith('\n') ? content : `${content}\n`)
-  }
-  return bodies
+/** Cursor 契约：仅 ```workspace-write``` JSON（显式 path + content|contents）；禁止代码块猜路径。 */
+function normalizeFenceWriteItem(it) {
+  if (!it || typeof it !== 'object') return null
+  if (typeof it.path !== 'string') return null
+  const p = it.path.trim().replace(/\\/g, '/')
+  if (!p || p.includes('..')) return null
+  const contentRaw = it.content != null ? it.content : it.contents != null ? it.contents : null
+  if (contentRaw == null) return null
+  return { path: p, content: String(contentRaw) }
 }
 
-const CODE_FILE_EXT =
-  /\.(?:py|js|ts|tsx|jsx|json|yaml|yml|html|css|scss|sql|go|rs|c|cpp|h|java|kt|swift|rb|php|vue|svelte|sh|toml|txt|md|mjs|cjs)$/i
-
-/** 从 ``` 代码块 + 邻近路径行提取可落盘文件（实现类 Agent 自动写代码，无需手动确认） */
-function extractCodeFenceWrites(text) {
-  if (!text || typeof text !== 'string') return []
-  const items = []
-  const seen = new Set()
-  const parts = text.split('```')
-  for (let i = 1; i + 1 < parts.length; i += 2) {
-    const block = parts[i]
-    const nl = block.indexOf('\n')
-    if (nl === -1) continue
-    const firstLine = block.slice(0, nl).trim()
-    let content = block.slice(nl + 1)
-    if (content.endsWith('\n')) content = content.slice(0, -1)
-    if (!content.trim()) continue
-
-    let relPath = ''
-    const headerMatch = firstLine.match(
-      /^(?:[\w+#.-]+\s+)?([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z0-9]{2,6})$/,
-    )
-    if (headerMatch && CODE_FILE_EXT.test(headerMatch[1])) {
-      relPath = headerMatch[1].replace(/\\/g, '/')
-    }
-
-    if (!relPath) {
-      const contentFirstLine = content.split(/\r?\n/, 1)[0].trim()
-      const commentPath = contentFirstLine.match(
-        /^#\s*([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z0-9]{2,6})\s*$/,
-      )
-      if (commentPath && CODE_FILE_EXT.test(commentPath[1])) {
-        relPath = commentPath[1].replace(/\\/g, '/')
-      }
-    }
-
-    if (!relPath) {
-      const preBlock = parts[i - 1] || ''
-      const preLines = preBlock.split(/\r?\n/).slice(-6)
-      for (let j = preLines.length - 1; j >= 0; j--) {
-        const line = preLines[j].trim()
-        if (!line) continue
-        const tick = line.match(/`([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z0-9]{2,6})`/)
-        if (tick && !tick[1].includes('..') && CODE_FILE_EXT.test(tick[1])) {
-          relPath = tick[1].replace(/\\/g, '/')
-          break
-        }
-        const bare = line.match(
-          /(?:^#{1,4}\s*)?(?:File|文件|路径)?[：:\s]*`?([a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z0-9]{2,6})`?/i,
-        )
-        if (bare && !bare[1].includes('..') && CODE_FILE_EXT.test(bare[1])) {
-          relPath = bare[1].replace(/\\/g, '/')
-          break
-        }
-      }
-    }
-
-    if (!relPath || relPath.includes('..') || seen.has(relPath)) continue
-    seen.add(relPath)
-    items.push({ path: relPath, content: content.endsWith('\n') ? content : `${content}\n` })
-  }
-  return items
-}
-
-/** 「涉及文件路径」列表与全文代码块按顺序配对（模型常把路径与代码块分开写） */
-function extractOrderedPathCodeWrites(text) {
-  const paths = extractInvolvedSectionPaths(text)
-  if (!paths.length) return []
-  const bodies = extractAllCodeBlockBodies(text)
-  if (!bodies.length) return []
-
-  const items = []
-  const seen = new Set()
-
-  if (paths.length === bodies.length) {
-    for (let i = 0; i < paths.length; i++) {
-      const p = paths[i]
-      if (seen.has(p) || p.includes('..')) continue
-      seen.add(p)
-      items.push({ path: p, content: bodies[i] })
-    }
-    return items
-  }
-
-  const codePaths = paths.filter((p) => !/\.md$/i.test(p))
-  const mdPaths = paths.filter((p) => /\.md$/i.test(p))
-  const codeBodies = bodies.filter((b) => !/^#\s/m.test(b.trim()) && !/^>\s/m.test(b.trim()))
-  const mdBodies = bodies.filter((b) => /^#\s/m.test(b.trim()) || /^>\s/m.test(b.trim()) || /markdown|api-summary|\.md/i.test(b.slice(0, 120)))
-
-  if (codePaths.length && codeBodies.length) {
-    const n = Math.min(codePaths.length, codeBodies.length)
-    for (let i = 0; i < n; i++) {
-      const p = codePaths[i]
-      if (seen.has(p)) continue
-      seen.add(p)
-      items.push({ path: p, content: codeBodies[i] })
-    }
-  }
-  if (mdPaths.length && mdBodies.length) {
-    for (let i = 0; i < Math.min(mdPaths.length, mdBodies.length); i++) {
-      const p = mdPaths[i]
-      if (seen.has(p)) continue
-      seen.add(p)
-      items.push({ path: p, content: mdBodies[i] })
-    }
-  }
-  return items
-}
-
-/** 解析 ```json { "path": "...", "content": "..." } ``` 形式的落盘块（本地模型常用） */
-function extractJsonPathContentWrites(text) {
-  if (!text || typeof text !== 'string') return []
-  const items = []
-  const seen = new Set()
-  const parts = text.split('```')
-  for (let i = 1; i + 1 < parts.length; i += 2) {
-    const block = parts[i]
-    const nl = block.indexOf('\n')
-    if (nl === -1) continue
-    const lang = block.slice(0, nl).trim().toLowerCase()
-    if (lang !== 'json') continue
-    const jsonStr = block.slice(nl + 1).trim()
-    try {
-      const parsed = JSON.parse(jsonStr)
-      const pushItem = (it) => {
-        const rawPath = String(it?.path || it?.filePath || it?.file || '').replace(/\\/g, '/')
-        const content = it?.content != null ? String(it.content) : ''
-        if (!rawPath || rawPath.includes('..') || !content.trim() || seen.has(rawPath)) return
-        seen.add(rawPath)
-        items.push({ path: rawPath, content: content.endsWith('\n') ? content : `${content}\n` })
-      }
-      if (Array.isArray(parsed)) {
-        for (const it of parsed) pushItem(it)
-      } else if (parsed && typeof parsed === 'object') {
-        pushItem(parsed)
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return items
-}
-
-function collectWritableItemsFromText(body, meta) {
-  const m = meta && typeof meta === 'object' ? meta : {}
-  const agentName = typeof m.agentName === 'string' ? m.agentName.trim() : ''
-  const autoWriteProject =
-    typeof m.autoWriteProject === 'boolean'
-      ? m.autoWriteProject
-      : agentName
-        ? agentAutoWritesToProject(agentName)
-        : Boolean(m.allowAutoProjectWrite)
-
-  const fenceItems = parseWorkspaceWriteFences(body).filter(
-    (it) => String(it?.content ?? '').trim().length > 0,
-  )
-  if (fenceItems.length > 0) return fenceItems
-
-  if (!autoWriteProject || !body.trim()) return []
-
-  /** 统一路径读取：兼顾 path/file/filePath */
-  const getPath = (it) => String(it?.path || it?.filePath || it?.file || '').replace(/\\/g, '/')
-
-  const merged = new Map()
-  for (const it of [
-    ...extractOrderedPathCodeWrites(body),
-    ...extractJsonPathContentWrites(body),
-    ...extractCodeFenceWrites(body),
-  ]) {
-    const p = getPath(it)
-    if (!p || p.includes('..') || !String(it?.content ?? '').trim()) continue
-    merged.set(p, it)
-  }
-  return [...merged.values()]
+function collectWritableItemsFromText(body, _meta) {
+  const fenceItems = parseWorkspaceWriteFences(body)
+    .map(normalizeFenceWriteItem)
+    .filter((it) => it && String(it.content).trim().length > 0)
+  return fenceItems
 }
 
 /**
@@ -469,7 +308,7 @@ function bulkIngestAssistantTexts(texts, workspaceDir, meta) {
     if (!text.trim() || text.trim() === '__WAITING__') continue
     scanned++
     for (const p of extractInvolvedSectionPaths(text)) allClaimed.add(p.replace(/\\/g, '/'))
-    for (const it of collectWritableItemsFromText(text, { ...meta, autoWriteProject: true })) {
+    for (const it of collectWritableItemsFromText(text, meta)) {
       const p = String(it?.path || '').replace(/\\/g, '/')
       if (!p || p.includes('..')) continue
       merged.set(p, it)
@@ -480,10 +319,13 @@ function bulkIngestAssistantTexts(texts, workspaceDir, meta) {
     const missingNote = buildMissingWriteNotice([...allClaimed], [])
     return {
       ok: false,
-      error: missingNote || '未在会话历史中找到可落盘的代码块或 workspace-write',
+      error:
+        missingNote ||
+        '未在会话历史中找到合法 ```workspace-write``` JSON（须显式 path+content|contents；已禁止代码块猜路径）',
       written: [],
       scanned,
       displayText: missingNote || '',
+      missingWriteFence: true,
     }
   }
 
@@ -511,10 +353,13 @@ function buildMissingWriteNotice(claimedPaths, writtenPaths) {
   const missing = (claimedPaths || []).filter((p) => !written.has(p.replace(/\\/g, '/')))
   if (!missing.length) return ''
   return (
-    `【未落盘】以下路径缺少可解析的 \`\`\`workspace-write\`\`\` 或代码块，磁盘未修改：\n` +
+    `【未落盘】以下路径缺少合法 \`\`\`workspace-write\`\`\` JSON（须显式 path），磁盘未修改：\n` +
     missing.map((p) => `- \`${p}\``).join('\n')
   )
 }
+
+const MISSING_WRITE_FENCE_ERROR =
+  '未找到有效的 ```workspace-write``` JSON（须含显式 path 与 content|contents）；已禁止猜路径 / 默认产物兜底'
 
 function stripWorkspaceWriteFencesForDisplay(text) {
   if (!text || typeof text !== 'string') return ''
@@ -561,18 +406,18 @@ function collapseWrittenSummary(body, writtenPaths, opts) {
 
 function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
   const m = meta && typeof meta === 'object' ? meta : {}
-  const agentName = typeof m.agentName === 'string' ? m.agentName.trim() : ''
-  const taskId = typeof m.taskId === 'string' ? m.taskId.trim() : ''
-  const ensureChainArtifact = Boolean(m.ensureChainArtifact)
-  const ensureAgentArtifact = Boolean(m.ensureAgentArtifact)
-  // 产品规则 A：默认不自动落盘；仅显式 applyWrites:true（如用户点 Accept / IPC 主动 ingest）才写盘。
+  // 产品规则：默认不自动落盘；仅显式 applyWrites:true 才写盘。
+  // Cursor 契约：只认 ```workspace-write``` JSON；ensure*Artifact / 代码块猜路径 / 默认 docs 已废除。
+  if (m.ensureChainArtifact === true || m.ensureAgentArtifact === true) {
+    return {
+      ok: false,
+      error: 'ensure*Artifact 已废除：须合法 ```workspace-write``` JSON，禁止默认产物兜底',
+      written: [],
+      displayText: text,
+      missingWriteFence: true,
+    }
+  }
   const applyWrites = m.applyWrites === true
-  const autoWriteProject =
-    typeof m.autoWriteProject === 'boolean'
-      ? m.autoWriteProject
-      : agentName
-        ? agentAutoWritesToProject(agentName)
-        : Boolean(m.allowAutoProjectWrite)
 
   if (!workspaceDir || !fs.existsSync(workspaceDir)) {
     return { ok: false, error: '未选择工作区或工作区不存在', written: [], displayText: text }
@@ -580,9 +425,7 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
 
   const body = stripFakeWorkspaceWriteClaims(String(text || ''))
   const claimedPaths = extractInvolvedSectionPaths(body)
-  const fenceItems = parseWorkspaceWriteFences(body).filter(
-    (it) => String(it?.content ?? '').trim().length > 0,
-  )
+  const fenceItems = collectWritableItemsFromText(body, m)
 
   if (!applyWrites) {
     return {
@@ -592,6 +435,7 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
       pendingCount: fenceItems.length,
       displayText: body,
       error: null,
+      missingWriteFence: fenceItems.length === 0,
     }
   }
 
@@ -600,107 +444,26 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
     return {
       ...r,
       displayText: collapseWrittenSummary(body, r.written, { claimedPaths }),
+      missingWriteFence: false,
     }
   }
 
-  if (autoWriteProject && body.trim()) {
-    const fromAdjacent = extractCodeFenceWrites(body)
-    const fromOrdered = extractOrderedPathCodeWrites(body)
-    const fromJson = extractJsonPathContentWrites(body)
-    const merged = new Map()
-    for (const it of [...fromOrdered, ...fromJson, ...fromAdjacent]) {
-      const p = String(it?.path || '').replace(/\\/g, '/')
-      if (!p || p.includes('..') || !String(it?.content ?? '').trim()) continue
-      merged.set(p, it)
-    }
-    const extracted = [...merged.values()]
-    if (extracted.length > 0) {
-      const r = applyWorkspaceWriteFenceItems(workspaceDir, extracted)
-      // 有代码被提取写入后，额外将 Agent 输出的正文（去除 workspace-write 围栏后的可读内容）
-      // 写入 Agent 的默认产物路径，确保链回路也能保留每步说明性输出
-      let allWritten = r.written || []
-      if (agentName) {
-        const docRel = defaultArtifactPathForAgent(agentName)
-        if (docRel) {
-          const docBody = stripFakeWorkspaceWriteClaims(stripWorkspaceWriteFencesForDisplay(body))
-          if (docBody.trim().length > 80) {
-            const docWr = applyWorkspaceWriteFenceItems(workspaceDir, [{ path: docRel, content: docBody.trim() }])
-            if (docWr.written?.length) {
-              allWritten = [...new Set([...allWritten, ...docWr.written])]
-            }
-          }
-        }
-      }
-      return {
-        ...r,
-        written: allWritten,
-        displayText: collapseWrittenSummary(body, allWritten, { claimedPaths }),
-      }
-    }
-    if (agentName && body.trim().length > 80) {
-      const rel = defaultArtifactPathForAgent(agentName)
-      if (rel) {
-        const r = applyWorkspaceWriteFenceItems(workspaceDir, [{ path: rel, content: body.trim() }])
-        return {
-          ...r,
-          displayText: collapseWrittenSummary(body, r.written, { claimedPaths }),
-        }
-      }
-    }
+  const missingNote = buildMissingWriteNotice(claimedPaths, [])
+  return {
+    ok: false,
+    error: MISSING_WRITE_FENCE_ERROR,
+    written: [],
+    displayText: missingNote ? `${body}\n\n${missingNote}` : body,
+    missingWriteFence: true,
   }
-
-  if (ensureChainArtifact && body.trim()) {
-    const rel = buildChainStepArtifactRelPath(agentName, taskId)
-    const header = [
-      `# 任务链步骤产物 · ${taskId || '—'} · ${agentName || '—'}`,
-      '',
-      '> 本步未解析到 workspace-write 围栏或代码块；系统已将执行摘要自动落盘。',
-      '',
-      '---',
-      '',
-    ].join('\n')
-    const r = applyWorkspaceWriteFenceItems(workspaceDir, [{ path: rel, content: header + body.trim() }])
-    return {
-      ...r,
-      displayText: collapseWrittenSummary(body, r.written, { claimedPaths }),
-    }
-  }
-
-  if (ensureAgentArtifact && agentName && body.trim()) {
-    const rel = defaultArtifactPathForAgent(agentName)
-    const header = [
-      `# Agent 产物 · ${agentName}`,
-      '',
-      '> 本步未解析到 workspace-write 围栏；系统已自动写入专属路径。',
-      '',
-      '---',
-      '',
-    ].join('\n')
-    const r = applyWorkspaceWriteFenceItems(workspaceDir, [{ path: rel, content: header + body.trim() }])
-    return {
-      ...r,
-      displayText: collapseWrittenSummary(body, r.written, { claimedPaths }),
-    }
-  }
-
-  if (autoWriteProject) {
-    const missingNote = buildMissingWriteNotice(claimedPaths, [])
-    if (missingNote) {
-      return { ok: false, error: '未找到可落盘的 workspace-write 或代码块', written: [], displayText: `${body}\n\n${missingNote}` }
-    }
-  }
-
-  return { ok: false, error: '未找到有效的 workspace-write 围栏或文件路径', written: [], displayText: body }
 }
 
 module.exports = {
   resolveSafeWorkspacePath,
   applyWorkspaceWriteFenceItems,
   parseWorkspaceWriteFences,
-  extractCodeFenceWrites,
-  extractJsonPathContentWrites,
+  normalizeFenceWriteItem,
   extractInvolvedSectionPaths,
-  extractOrderedPathCodeWrites,
   collectWritableItemsFromText,
   bulkIngestAssistantTexts,
   stripFakeWorkspaceWriteClaims,
@@ -709,4 +472,5 @@ module.exports = {
   collapseWrittenSummary,
   defaultArtifactPathForAgent,
   buildAgentArtifactPathHint,
+  MISSING_WRITE_FENCE_ERROR,
 }

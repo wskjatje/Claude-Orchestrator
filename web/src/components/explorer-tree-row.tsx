@@ -95,17 +95,17 @@ export function ExplorerTreeRow({
             }}
           >
             {expanded ? (
-              <ChevronDown className="h-4 w-4 text-[var(--explorer-twistie)]" />
+              <ChevronDown className="explorer-tree-twistie-icon" />
             ) : (
-              <ChevronRight className="h-4 w-4 text-[var(--explorer-twistie)]" />
+              <ChevronRight className="explorer-tree-twistie-icon" />
             )}
           </span>
         ) : (
-          <>
-            <span className="explorer-tree-twistie" aria-hidden />
-            <ExplorerTreeIcon ext={node.ext} fileName={node.name} isDir={false} />
-          </>
+          <span className="explorer-tree-twistie" aria-hidden />
         )}
+        {!isDir ? (
+          <ExplorerTreeIcon ext={node.ext} fileName={node.name} isDir={false} />
+        ) : null}
 
         <span
           className={cn(

@@ -66,24 +66,29 @@ function buildChainStepReadBlock(stem) {
 
 function buildChainStepWriteBlock(stem) {
   if (!stem || stem === "__general__") {
-    return "【WRITE】```workspace-write``` JSON auto-writes. Docs→docs/, code→src/.";
+    return (
+      "【WRITE】须输出合法 ```workspace-write``` JSON：{\"path\":\"...\",\"content\":\"...\"}（也接受 contents）。" +
+      "path 必须写明；无围栏则本步失败，系统不会猜路径或写默认 docs/chain-steps。"
+    );
   }
   const p = defaultArtifactPath(stem);
-  const pathHint = `【ARTIFACT PATH】global://${stem} default => \`${p}\`. Subsequent deliveries reuse same path (append/overwrite explicitly). Do NOT write into other agent files (e.g. product-manager→docs/prd.md). Unmapped stem => \`docs/agents/{stem}.md\` or \`docs/{category}/{name}.md\`.`;
+  const pathHint = `【PATH】\`${p}\``;
   const lines = [pathHint];
-  lines.push(`【WRITE】Output valid \`\`\`workspace-write\`\`\` JSON. No fence → system writes summary to docs/chain-steps/{taskId}-${stem}.md.`);
-  lines.push("【NO FAKE WRITE】Don't claim 'written' without a valid workspace-write fence.");
+  lines.push(
+    `【WRITE】须输出合法 \`\`\`workspace-write\`\`\` JSON：{"path":"${p}","content":"..."}（也接受 contents；path 可改但必须显式）。` +
+      "无围栏则本步失败；系统不会猜路径、不会写默认 docs/chain-steps。",
+  );
+  lines.push("【NO FAKE WRITE】无有效围栏勿声称已写入。");
   if (IMPLEMENTATION_STEMS.has(stem)) {
-    lines.push("【CODE WRITE】Business code → src/ (first line = relative path). Docs use default md path.");
+    lines.push("【CODE WRITE】业务代码 path 指向 src/（或仓库约定目录）；文档用建议 md 路径。");
   }
   return lines.join("\n");
 }
 
 const MUST_DO = [
-  "【1】Base reply on pre-injected file state.",
-  "【2】Leave verifiable artifact via ```workspace-write``` JSON.",
-  "【3】Don't claim 'written' without a valid workspace-write fence.",
-  "【4】Reply in short Chinese (≤5 points): conclusion, paths, verification, next step.",
+  "【1】基于已注入工作区状态作答；禁止伪造不存在文件。",
+  "【2】变更须经 ```workspace-write``` JSON 显式 path+content|contents；无围栏不落盘。",
+  "【3】收尾 1～3 句；禁止下一步推销。",
 ].join("\n");
 
 // ===== 与 chain-templates.ts 一致 =====
@@ -96,10 +101,11 @@ const GENERIC_DELIVERY =
 
 function step(stem, taskId, body, skillsOverride) {
   const instruction =
-    `【Agent】global://${stem}（~/.claude/agents/${stem}.md）\n${body}\n\n${buildChainStepReadBlock(stem)}\n\n${buildChainStepWriteBlock(stem)}`;
+    `【Agent】global://${stem}（~/.claude/agents/${stem}.md）\n${body}\n\n${buildChainStepReadBlock(stem)}\n\n${buildChainStepWriteBlock(stem)}\n\n${MUST_DO}`;
   return {
     agentName: stem,
     taskId,
+    artifactPath: defaultArtifactPath(stem),
     instruction,
     skills: skillsOverride || [],
     mcps: [],

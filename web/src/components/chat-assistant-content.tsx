@@ -29,6 +29,7 @@ import {
   editsPreviewFromUnifiedDiff,
   parseChatFileEdits,
   splitWorkspaceEditPaths,
+  editFromFilePatch,
   summaryEditForPath,
   takeEditForPath,
   type ChatFileEdit,
@@ -50,6 +51,7 @@ import {
   stripForceContinueMarkers,
   trailLinesToStreamEvents,
 } from "@/lib/compress-agent-display";
+import { sanitizeDirectChatReply } from "../../../shared/sanitize-direct-reply.mjs";
 import type { AgentTurnMeta } from "@/lib/agent-turn-meta";
 import {
   peekWorkspaceWriteCheckpoint,
@@ -58,9 +60,13 @@ import {
 } from "@/lib/workspace-write-checkpoint";
 import { applyUnifiedDiff } from "@/lib/apply-unified-diff";
 import { resolveWorkspaceEditContent } from "@/lib/resolve-workspace-edit-content";
+import { isPlanDocumentPath, requestPlanBuild } from "@/lib/plan-build-request";
+import { ComposerTurnFooterPanel } from "@/components/composer-turn-footer-panel";
 
 function sanitizeThoughtForUnit(body: string): string {
-  let t = stripForceContinueMarkers(stripDsmlToolMarkup(body).text);
+  // 先剥伪工具协议（含 thinking 内模拟 Bash/DSML），再进 Thought 折叠
+  let t = sanitizeDirectChatReply(body);
+  t = stripForceContinueMarkers(stripDsmlToolMarkup(t).text);
   t = t.replace(/^要不要我[^\n]*\??\s*$/gm, "");
   return t.replace(/\n{3,}/g, "\n\n").trim();
 }
@@ -108,16 +114,34 @@ type RenderUnit =
   | { kind: "file-edit"; edit: ChatFileEdit }
   | { kind: "bulk-bar"; edits: ChatFileEdit[] };
 
+/** 终端卡正文：优先 tool output，截成关键 1～3 行 */
+function summarizeToolOutput(raw: string | undefined, maxLines = 3, maxChars = 480): string {
+  const t = String(raw || "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+  if (!t) return "";
+  const lines = t
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.trim());
+  const pick = lines.slice(-Math.max(1, maxLines));
+  let out = pick.join("\n");
+  if (out.length > maxChars) out = `${out.slice(0, maxChars - 1)}…`;
+  return out;
+}
+
 function streamEventsToToolItems(events: StreamAgentEvent[]): ToolActivityItem[] {
   return events
     .filter((e) => e.type === "tool" && isAgentTraceToolName(e.name || ""))
     .map((e) => {
       const path = e.path?.trim() || undefined;
       const arg = path || e.arg;
+      const output = summarizeToolOutput(e.output);
       return {
         name: e.name || "Tool",
         arg,
         status: e.status === "running" ? "running" : e.status === "fail" ? "fail" : "ok",
+        ...(output ? { output } : {}),
       } satisfies ToolActivityItem;
     });
 }
@@ -205,11 +229,15 @@ function groupAgentTurnUnits(
       if (/^(Bash|run_command|run_tests)$/i.test(t.name)) {
         flushTools();
         const raw = (t.arg || "").trim();
-        if (!raw) continue;
+        if (!raw && !t.output) continue;
         // "pytest · 143 passed" → 标题 pytest，正文展示结果
         const split = raw.match(/^(.{1,80}?)\s*[·•]\s*(.+)$/);
-        const title = (split?.[1] || raw).trim() || "命令";
-        const body = (split?.[2] || (/^\d+\s+passed/i.test(raw) ? raw : "")).trim();
+        const title = (split?.[1] || raw || "命令").trim() || "命令";
+        const fromArg = (split?.[2] || (/^\d+\s+passed/i.test(raw) ? raw : "")).trim();
+        const body =
+          summarizeToolOutput(t.output) ||
+          fromArg ||
+          (/passed|failed|error|===/i.test(raw) && raw !== title ? raw : "");
         // 合成的空 pytest：不展示
         if (!body && /^(pytest|python|命令)$/i.test(title) && raw.length < 24) {
           continue;
@@ -220,7 +248,7 @@ function groupAgentTurnUnits(
         out.push({
           kind: "terminal",
           title: title.length > 100 ? `${title.slice(0, 97)}…` : title,
-          body: body || (/passed|failed|error|===/i.test(raw) && raw !== title ? raw : ""),
+          body,
         });
         continue;
       }
@@ -524,12 +552,14 @@ async function enrichEditsAgainstDisk(edits: ChatFileEdit[]): Promise<ChatFileEd
 function useFileEditActions(opts: {
   content: string;
   edits: ChatFileEdit[];
+  filePatches?: AgentTurnMeta["filePatches"];
   onContentPatch?: (nextContent: string) => void | Promise<void>;
   onRejectedPaths?: (paths: string[]) => void;
   onUnrejectedPaths?: (paths: string[]) => void;
 }) {
   const ws = useWorkbenchWorkspaceOptional();
-  const { content, edits, onContentPatch, onRejectedPaths, onUnrejectedPaths } = opts;
+  const { content, edits, filePatches, onContentPatch, onRejectedPaths, onUnrejectedPaths } =
+    opts;
   const [bulkBusy, setBulkBusy] = useState(false);
 
   const applyOne = useCallback(async (edit: ChatFileEdit): Promise<boolean> => {
@@ -576,6 +606,16 @@ function useFileEditActions(opts: {
       if (next !== content && onContentPatch) await onContentPatch(next.replace(/\n{3,}/g, "\n\n").trim());
       void ws?.refreshFiles?.();
       void ws?.refreshDiff?.();
+      // Plan Accept：对齐 Cursor——挂方案底栏；Plan 模式再打开文件供审阅后 Build
+      if (isPlanDocumentPath(edit.path)) {
+        const { toastWorkspaceWriteSuccess } = await import("@/lib/toast-workspace-write");
+        // 静默：方案挂底栏 Open/Build，不弹「已保留」
+        toastWorkspaceWriteSuccess("", {
+          writtenPaths: [edit.path],
+          refreshDiff: () => void ws?.refreshDiff?.(),
+          refreshFiles: () => void ws?.refreshFiles?.(),
+        });
+      }
       return true;
     },
     [applyOne, content, onContentPatch, ws],
@@ -624,7 +664,7 @@ function useFileEditActions(opts: {
       }
       if (writtenPaths.length && onContentPatch) await onContentPatch(text);
       if (writtenPaths.length) {
-        toastWorkspaceWriteSuccess(`已接受 ${writtenPaths.length} 个文件`, {
+        toastWorkspaceWriteSuccess("", {
           refreshDiff: () => ws?.refreshDiff?.(),
           refreshFiles: () => ws?.refreshFiles?.(),
           writtenPaths,
@@ -687,48 +727,72 @@ function useFileEditActions(opts: {
   const onRevert = useCallback(
     async (edit: ChatFileEdit): Promise<ChatFileEditActionResult> => {
       const api = getDesktop();
-      const snap = takeWorkspaceWriteCheckpoint(edit.path);
-      if (api?.workspaceApplyWriteFence && snap !== undefined) {
-        try {
-          if (snap === "") {
-            // 新建文件：尽量 git discard；否则保留空写提示
-            if (api.workspaceGitDiscardFile) {
-              const d = await api.workspaceGitDiscardFile({ path: edit.path });
-              if (d.ok) {
-                void ws?.refreshFiles?.();
-                void ws?.refreshDiff?.();
-                return true;
-              }
-            }
-          } else {
-            const r = await api.workspaceApplyWriteFence([{ path: edit.path, content: snap }]);
-            if (r?.written?.length) {
+      // Cursor 对齐：Undo 仅还原写前快照；禁止默默 git discard 误伤同文件其它脏改动
+      let snap = takeWorkspaceWriteCheckpoint(edit.path);
+      if (snap === undefined && filePatches?.length) {
+        const hit = filePatches.find(
+          (p) => p.path.replace(/\\/g, "/") === edit.path.replace(/\\/g, "/"),
+        );
+        if (hit && hit.before !== undefined) snap = hit.before;
+      }
+      if (snap === undefined) {
+        toast.error("无法精确撤销：缺少写前快照（请用 Git 自行还原）");
+        return false;
+      }
+      if (!api?.workspaceApplyWriteFence) {
+        toast.error("无法撤销");
+        return false;
+      }
+      try {
+        if (snap === "") {
+          // 本轮新建：仅当仍无 HEAD 跟踪时 discard；否则写回空内容不安全 → 硬提示
+          if (api.workspaceGitDiscardFile) {
+            const d = await api.workspaceGitDiscardFile({ path: edit.path });
+            if (d.ok) {
               void ws?.refreshFiles?.();
               void ws?.refreshDiff?.();
               return true;
             }
           }
-        } catch {
-          /* fall through */
+          toast.error("无法撤销新建文件：请手动删除或用 Git 还原");
+          return false;
         }
-      }
-      if (!api?.workspaceGitDiscardFile) {
-        toast.error("无法撤销");
+        const r = await api.workspaceApplyWriteFence([{ path: edit.path, content: snap }]);
+        if (r?.written?.length) {
+          void ws?.refreshFiles?.();
+          void ws?.refreshDiff?.();
+          return true;
+        }
+        toast.error(r?.error || "撤销写回失败");
+        return false;
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "撤销失败");
         return false;
       }
-      const r = await api.workspaceGitDiscardFile({ path: edit.path });
-      if (!r.ok) {
-        toast.error(r.error || "撤销失败");
-        return false;
-      }
-      void ws?.refreshFiles?.();
-      void ws?.refreshDiff?.();
-      return true;
     },
-    [ws],
+    [ws, filePatches],
   );
 
-  return { onApply, onReject, onUndoReject, onOpen, onRevert, onApplyAll, onRejectAll, bulkBusy };
+  const onBuildFromPlan = useCallback(
+    async (edit: ChatFileEdit): Promise<ChatFileEditActionResult> => {
+      if (!isPlanDocumentPath(edit.path)) return false;
+      requestPlanBuild(edit.path);
+      return true;
+    },
+    [],
+  );
+
+  return {
+    onApply,
+    onReject,
+    onUndoReject,
+    onOpen,
+    onRevert,
+    onBuildFromPlan,
+    onApplyAll,
+    onRejectAll,
+    bulkBusy,
+  };
 }
 
 function DockAssistantContent({
@@ -749,7 +813,7 @@ function DockAssistantContent({
   });
   // 禁兜底：无可见单元时不合成伪结论；保留空容器避免空气泡壳异常
   if (visible.length === 0) {
-    return <div className="chat-assistant-blocks" />;
+    return <div className="chat-assistant-blocks chat-assistant-blocks--compact" />;
   }
 
   const pathKey = (p: string) => {
@@ -766,7 +830,7 @@ function DockAssistantContent({
     );
 
   return (
-    <div className="chat-assistant-blocks">
+    <div className="chat-assistant-blocks chat-assistant-blocks--compact">
       {visible.map((u, i) => {
         if (u.kind === "bulk-bar") {
           // Agent 已自动落盘：不显示「全部接受」
@@ -781,7 +845,7 @@ function DockAssistantContent({
                 disabled={actions.bulkBusy}
                 onClick={() => void actions.onApplyAll()}
               >
-                <Check className="h-3 w-3" /> 全部接受
+                <Check className="h-3 w-3" /> 全部保留
               </button>
               <button
                 type="button"
@@ -789,7 +853,7 @@ function DockAssistantContent({
                 disabled={actions.bulkBusy}
                 onClick={() => void actions.onRejectAll()}
               >
-                <X className="h-3 w-3" /> 全部拒绝
+                <X className="h-3 w-3" /> 全部撤销
               </button>
             </div>
           );
@@ -835,11 +899,15 @@ function DockAssistantContent({
               e.source === "summary" ||
               e.source === "cli");
           if (liteRow) {
+            const showBuild = Boolean(actions.onBuildFromPlan) && isPlanDocumentPath(e.path);
             return (
               <ChatEditedFileRow
                 key={e.id}
                 path={e.path}
                 onOpen={() => void actions.onOpen?.(e)}
+                onBuildFromPlan={
+                  showBuild ? () => void actions.onBuildFromPlan?.(e) : undefined
+                }
               />
             );
           }
@@ -892,17 +960,23 @@ export function ChatAssistantContent({
       looksLikeAgentTurnReport(source) ||
       looksLikeUserFacingAnswer(source);
     if (!agentish) return null;
+    // 直播中仅有 streamEvents 时不要 shape（避免边跑边把正文折进 Thought）；
+    // 收尾后有 backend / 写盘 / 报告特征再 shape。
     if (
       !looksLikeAgentTurnReport(source) &&
       !looksLikeUserFacingAnswer(source) &&
-      !agentTurn?.streamEvents?.length &&
-      !agentTurn?.writtenPaths?.length
+      !agentTurn?.writtenPaths?.length &&
+      !agentTurn?.backend
     ) {
       return null;
     }
     // 仅信任本轮 agentTurn 写盘/工具证据；禁止仅凭正文「像报告」就 shape 出 Edit 卡
     const written = agentTurn?.writtenPaths?.length ? agentTurn.writtenPaths : [];
-    if (!written.length && !agentTurn?.streamEvents?.length) {
+    if (
+      !written.length &&
+      !agentTurn?.backend &&
+      !looksLikeAgentTurnReport(source)
+    ) {
       return null;
     }
     return shapeAgentTurnDisplay({
@@ -951,12 +1025,20 @@ export function ChatAssistantContent({
       setRejectedPaths([]);
       return;
     }
+    const patches = agentTurn?.filePatches || [];
     const written = [...(agentTurn?.writtenPaths || [])].flatMap((p) =>
       splitWorkspaceEditPaths(p),
     );
     const seq = { n: 20_000 };
     const fromTurn: ChatFileEdit[] = [];
     const seen = new Set(parsedEdits.map((e) => e.path.replace(/\\/g, "/")));
+    // 优先真 Diff 卡（filePatches）；无补丁时回落路径摘要
+    for (const patch of patches) {
+      const n = String(patch.path || "").replace(/\\/g, "/");
+      if (!n || seen.has(n)) continue;
+      seen.add(n);
+      fromTurn.push(editFromFilePatch(patch, seq));
+    }
     for (const path of written) {
       const n = path.replace(/\\/g, "/");
       if (!n || seen.has(n)) continue;
@@ -966,6 +1048,13 @@ export function ChatAssistantContent({
     const seed = dedupeEditsByPath([...parsedEdits, ...fromTurn]);
     setEdits(seed);
     setRejectedPaths([]);
+    // Plan 产物出现即挂 Composer 底栏（对齐 Cursor 方案条，Accept 前也可 Open/Build）
+    const planHit = seed.find((e) => isPlanDocumentPath(e.path));
+    if (planHit) {
+      void import("@/lib/workbench-composer-turn-footer").then(({ trackComposerCanvasPlan }) => {
+        trackComposerCanvasPlan(planHit.path);
+      });
+    }
     let cancelled = false;
     void enrichEditsAgainstDisk(seed).then((next) => {
       if (!cancelled) setEdits(next);
@@ -973,7 +1062,13 @@ export function ChatAssistantContent({
     return () => {
       cancelled = true;
     };
-  }, [parsedEdits, agentTurn?.writtenPaths, renderContent, suppressFileEdits]);
+  }, [
+    parsedEdits,
+    agentTurn?.writtenPaths,
+    agentTurn?.filePatches,
+    renderContent,
+    suppressFileEdits,
+  ]);
 
   const editsForUi = useMemo(() => {
     if (!rejectedPaths.length) return edits;
@@ -986,6 +1081,7 @@ export function ChatAssistantContent({
   const actions = useFileEditActions({
     content,
     edits: editsForUi,
+    filePatches: agentTurn?.filePatches,
     onContentPatch,
     onRejectedPaths: (paths) =>
       setRejectedPaths((prev) => [...new Set([...prev, ...paths])]),
@@ -1003,7 +1099,17 @@ export function ChatAssistantContent({
   }, [blocks, editsForUi, streamTools]);
 
   const agentMode = getWorkbenchInteractionMode() === "agent";
+  const frozenFooter = agentTurn?.turnFooter;
+  const showFrozenSignals = Boolean(frozenFooter?.canvas || frozenFooter?.terminals?.length);
   return (
-    <DockAssistantContent units={cursorUnits} actions={actions} agentMode={agentMode} />
+    <div className="flex flex-col gap-2">
+      <DockAssistantContent units={cursorUnits} actions={actions} agentMode={agentMode} />
+      {showFrozenSignals ? (
+        <ComposerTurnFooterPanel
+          canvas={frozenFooter?.canvas}
+          terminals={frozenFooter?.terminals}
+        />
+      ) : null}
+    </div>
   );
 }

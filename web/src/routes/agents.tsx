@@ -802,8 +802,19 @@ function AgentsPage() {
                       }
                       const modelId =
                         settings.localOllamaModel?.trim() ||
-                        settings.model?.trim() ||
-                        "llama3";
+                        settings.preferredLocalModel?.trim() ||
+                        settings.chatEnabledLocalModels?.[0]?.trim() ||
+                        (settings.model?.trim() && settings.model !== "auto"
+                          ? settings.model.trim()
+                          : "");
+                      if (!modelId) {
+                        setTryRun((t) => ({
+                          ...t,
+                          running: false,
+                          output: "请先在「设置 → 模型与连接」配置本地模型后再试跑。",
+                        }));
+                        return;
+                      }
                       const r = await api.localOrchestrationPrompt({
                         priorMessages: [],
                         userLine: prompt,

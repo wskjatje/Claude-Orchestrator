@@ -37,6 +37,16 @@ export function getRecentlyWrittenPaths(): Set<string> {
   return paths;
 }
 
+export function clearRecentlyWrittenPaths() {
+  if (clearTimer) {
+    clearTimeout(clearTimer);
+    clearTimer = null;
+  }
+  if (!paths.size) return;
+  paths = new Set();
+  bump();
+}
+
 export function isRecentlyWrittenPath(relPath: string): boolean {
   const n = relPath.replace(/\\/g, "/");
   return paths.has(n) || [...paths].some((p) => p.endsWith("/" + n) || n.endsWith("/" + p));

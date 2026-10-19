@@ -5,6 +5,8 @@ import {
   classifyTurnIntent,
   resolveTurnPolicy,
   shouldInjectProjectBootstrap,
+  isPlanDocumentRequest,
+  suggestPlanDocumentRelPath,
   effectiveWriteMode,
   cliPermissionModeFromWriteMode,
 } from '../server/turn-policy.mjs'
@@ -23,6 +25,86 @@ assert(classifyTurnIntent('这个项目主要做了什么') === 'readonly', 'Q2 
 assert(classifyTurnIntent('请把登录文案改成中文并写入 templates/login.html') === 'write', 'mutation → write')
 assert(classifyTurnIntent('修复 auth.py 里的 token 过期 bug') === 'write', 'fix → write')
 assert(shouldInjectProjectBootstrap('告诉我这个项目是做什么的'), 'slim context')
+
+assert(classifyTurnIntent('架构怎么样') === 'readonly', 'tech: 架构 → readonly')
+assert(classifyTurnIntent('依赖有哪些') === 'readonly', 'tech: 依赖 → readonly')
+assert(classifyTurnIntent('登录怎么用') === 'readonly', 'tech: 怎么用 → readonly')
+assert(classifyTurnIntent('性能瓶颈在哪') === 'readonly', 'tech: 性能 → readonly')
+assert(classifyTurnIntent('告诉我这个项目该怎么优化') === 'readonly', 'tech: 怎么优化 → readonly')
+assert(shouldInjectProjectBootstrap('架构怎么样'), 'tech: slim bootstrap')
+assert(classifyTurnIntent('按照方案执行') === 'write', 'execute plan → write')
+assert(classifyTurnIntent('按上面的优化方案执行') === 'write', 'execute prior plan → write')
+assert(classifyTurnIntent('开始执行优化方案') === 'write', 'start execute → write')
+assert(classifyTurnIntent('请按方案改代码并落盘') === 'write', '改代码落盘 → write')
+assert(classifyTurnIntent('执行P2') === 'write', '执行P2 → write')
+assert(classifyTurnIntent('你好') === 'chat', 'hi stays chat')
+assert(isPlanDocumentRequest('给我一个合理优化方案'), 'plan-doc speech')
+assert(isPlanDocumentRequest('根据以上优化给我一个优化方案'), 'plan-doc follow-up')
+assert(!isPlanDocumentRequest('告诉我这个项目是做什么的'), 'product Q not plan-doc')
+
+const agentPlanDoc = resolveTurnPolicy({
+  displayLine: '给我一个合理优化方案',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  agentPlanDoc.allowWrites &&
+    agentPlanDoc.autoApplyWrites &&
+    !agentPlanDoc.forceDirectChat &&
+    agentPlanDoc.allowTools,
+  'Agent+优化方案 → write plan doc (Cursor parity)',
+)
+assert(
+  /方案文档/.test(agentPlanDoc.systemConstraint) &&
+    /禁止硬编码固定文件名/.test(agentPlanDoc.systemConstraint) &&
+    !/docs\/optimization-plan\.md/.test(agentPlanDoc.systemConstraint),
+  'Agent plan constraint (no hardcoded path)',
+)
+
+const planModeDoc = resolveTurnPolicy({
+  displayLine: '给我一个完整优化方案',
+  interactionMode: 'plan',
+  isGeneralTurn: true,
+})
+assert(
+  planModeDoc.allowWrites &&
+    !planModeDoc.autoApplyWrites &&
+    !planModeDoc.forceDirectChat,
+  'Plan+优化方案 → staged write',
+)
+
+const askPlanDoc = resolveTurnPolicy({
+  displayLine: '给我一个合理优化方案',
+  interactionMode: 'ask',
+  isGeneralTurn: true,
+})
+assert(!askPlanDoc.allowWrites && askPlanDoc.forceDirectChat, 'Ask+优化方案 still chat-only')
+
+const agentExec = resolveTurnPolicy({
+  displayLine: '按照方案执行',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  agentExec.allowWrites && agentExec.autoApplyWrites && !agentExec.forceDirectChat,
+  'Agent+按方案执行 → write tools',
+)
+const askExec = resolveTurnPolicy({
+  displayLine: '按照方案执行',
+  interactionMode: 'ask',
+  isGeneralTurn: true,
+})
+assert(!askExec.allowWrites && askExec.forceDirectChat, 'Ask+按方案执行 still readonly channel')
+
+const techArch = resolveTurnPolicy({
+  displayLine: '架构怎么样',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  !techArch.allowWrites && techArch.forceDirectChat && techArch.contextLevel === 'slim-product',
+  'Agent+架构 → slim readonly',
+)
 
 const askQ = resolveTurnPolicy({
   displayLine: '告诉我这个项目是做什么的',
@@ -60,9 +142,11 @@ const agentChatNamed = resolveTurnPolicy({
 })
 assert(!agentChatNamed.allowWrites, 'Agent+named+chat → no writes')
 
-/** 云端路由语义（与 use-chat-send wantsToolLoop 对齐） */
-function cloudWantsToolLoop(policy, ixMode) {
+/** 与 use-chat-send wantsToolLoop 对齐：仅 Claude 系进 CLI */
+function cloudWantsToolLoop(policy, ixMode, modelId = 'claude-sonnet') {
+  const claude = /^(sonnet|opus|haiku|claude)(-|$)/i.test(String(modelId || ''))
   return (
+    claude &&
     Boolean(policy.allowTools) &&
     !policy.forceDirectChat &&
     (ixMode === 'agent' || ixMode === 'plan')
@@ -75,7 +159,8 @@ function cloudCliPerm(policy, ixMode) {
 
 assert(!cloudWantsToolLoop(agentQ, 'agent'), 'cloud: Agent+Q → no tool loop')
 assert(cloudCliPerm(agentQ, 'agent') === 'plan', 'cloud: Agent+Q → plan perm')
-assert(cloudWantsToolLoop(agentW, 'agent'), 'cloud: Agent+mutation → tool loop')
+assert(cloudWantsToolLoop(agentW, 'agent', 'claude-sonnet'), 'cloud: Claude Agent+mutation → CLI')
+assert(!cloudWantsToolLoop(agentW, 'agent', 'deepseek-v4-flash'), 'cloud: DeepSeek Agent → 供应商 API，不进 CLI')
 assert(cloudCliPerm(agentW, 'agent') === 'acceptEdits', 'cloud: Agent+mutation → acceptEdits')
 assert(!cloudWantsToolLoop(askQ, 'ask'), 'cloud: Ask+Q → no tool loop')
 
@@ -90,6 +175,44 @@ const planW = resolveTurnPolicy({
 assert(effectiveWriteMode(planW) === 'plan', 'writeMode: Plan+mutation → plan')
 assert(cliPermissionModeFromWriteMode('ask') === 'plan', 'cliPerm: ask→plan')
 assert(cliPermissionModeFromWriteMode('agent') === 'acceptEdits', 'cliPerm: agent→acceptEdits')
+
+/** 工作区保真：换仓后首问仍绑定只读 + slim（门禁） */
+const afterWsSwitch = resolveTurnPolicy({
+  displayLine: '这个项目主要做了什么',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  !afterWsSwitch.allowWrites && afterWsSwitch.contextLevel === 'slim-product',
+  'gate: post-switch Q → slim readonly',
+)
+assert(classifyTurnIntent('性能怎么样') === 'readonly', 'gate: 性能怎么样 → readonly')
+assert(classifyTurnIntent('请修复登录超时并写入 auth.ts') === 'write', 'gate: 修复写入 → write')
+
+/** 边界句回归：少改规则，用用例锁行为（误判风险显式可见） */
+assert(classifyTurnIntent('怎么改比较好') === 'readonly', 'boundary: 怎么改比较好 → readonly')
+assert(classifyTurnIntent('优化一下') === 'chat' || classifyTurnIntent('优化一下') === 'readonly', 'boundary: 优化一下 not write')
+assert(classifyTurnIntent('优化一下') !== 'write', 'boundary: 优化一下 ≠ write')
+assert(classifyTurnIntent('还有哪些可以优化') === 'readonly', 'boundary: 还有哪些可以优化 → readonly')
+assert(classifyTurnIntent('改成什么比较合适？') === 'write' || classifyTurnIntent('改成什么比较合适？') === 'readonly', 'boundary: 改成什么？ classified')
+assert(classifyTurnIntent('请动手改') === 'write', 'boundary: 请动手改 → write')
+assert(classifyTurnIntent('go ahead') === 'write', 'boundary: go ahead → write')
+assert(classifyTurnIntent('写一份优化方案') !== 'write' || isPlanDocumentRequest('写一份优化方案'), 'boundary: 写方案 is plan-doc speech')
+assert(isPlanDocumentRequest('写一份优化方案'), 'boundary: 写一份优化方案 → plan-doc')
+assert(classifyTurnIntent('写一份优化方案') === 'chat' || classifyTurnIntent('写一份优化方案') === 'readonly', 'boundary: 写方案 alone not mutation write')
+
+const planSuggest = suggestPlanDocumentRelPath('给我一个合理优化方案')
+assert(/^docs\/.+\.md$/i.test(planSuggest), 'suggest plan path under docs/*.md')
+assert(!/optimization-plan\.md/i.test(planSuggest), 'suggest path not hardcoded optimization-plan.md')
+const agentPlanSuggested = resolveTurnPolicy({
+  displayLine: '给我一个合理优化方案',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  agentPlanSuggested.systemConstraint.includes(planSuggest),
+  'Agent plan constraint embeds suggested path',
+)
 
 if (process.exitCode) {
   console.error('\ncheck-turn-policy: FAILED')

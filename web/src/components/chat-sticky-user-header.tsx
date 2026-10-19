@@ -9,8 +9,6 @@ type Props = {
   isEditing?: boolean;
   inlineComposer?: ChatComposerShellProps | null;
   hasDesktopApi?: boolean;
-  onWriteToWorkspace?: (content: string) => void;
-  onGenerateChain?: (content: string) => void;
   onEditUserMessage?: (historyIndex: number) => void;
   /** Parent shows checkpoint dialog before resend when needed. */
   onRequestResendUserMessage?: (historyIndex: number) => void;
@@ -22,8 +20,6 @@ export function ChatStickyUserHeader({
   isEditing = false,
   inlineComposer,
   hasDesktopApi,
-  onWriteToWorkspace,
-  onGenerateChain,
   onEditUserMessage,
   onRequestResendUserMessage,
 }: Props) {
@@ -54,11 +50,21 @@ export function ChatStickyUserHeader({
 
   return (
     <ChatMessageContextMenu
+        role="user"
         rowRef={rowRef}
         content={message.content}
+        historyIndex={message.historyIndex}
         hasDesktopApi={hasDesktopApi}
-        onWriteToWorkspace={onWriteToWorkspace}
-        onGenerateChain={onGenerateChain}
+        onEdit={
+          editable && message.historyIndex != null
+            ? () => onEditUserMessage!(message.historyIndex!)
+            : undefined
+        }
+        onResend={
+          canResend && message.historyIndex != null
+            ? () => onRequestResendUserMessage!(message.historyIndex!)
+            : undefined
+        }
       >
         <div ref={headerRef} className="chat-sticky-user-header group/bubble">
           <div className="chat-bubble-user chat-sticky-user-header-bubble">

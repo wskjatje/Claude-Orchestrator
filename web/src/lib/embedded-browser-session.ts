@@ -64,7 +64,7 @@ export async function ensureEmbeddedBrowserTab(
 async function doNavigate(
   tabId: string,
   url: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; reused?: boolean }> {
   const id = String(tabId || "").trim();
   const api = getEmbeddedBrowserNative();
   if (!api) return { ok: false, error: "embedded browser unavailable" };
@@ -73,12 +73,13 @@ async function doNavigate(
   if (isBlankBrowserUrl(trimmed)) {
     await api.setLayout(id, { visible: false });
     sessionFor(id).lastLoadedUrl = null;
-    return { ok: true };
+    return { ok: true, reused: true };
   }
 
   const session = sessionFor(id);
   if (session.lastLoadedUrl && browserUrlsEquivalent(session.lastLoadedUrl, trimmed)) {
-    return { ok: true };
+    // 同 URL 不重载：主进程不会再发 loading/stop，调用方须据此收口 UI
+    return { ok: true, reused: true };
   }
 
   const ready = await ensureEmbeddedBrowserTab(id, trimmed);
@@ -87,18 +88,18 @@ async function doNavigate(
   const res = await api.loadURL(id, trimmed);
   if (res.ok === false) return { ok: false, error: res.error || "导航失败" };
   session.lastLoadedUrl = trimmed;
-  return { ok: true };
+  return { ok: true, reused: false };
 }
 
 export async function navigateEmbeddedBrowserTab(
   tabId: string,
   url: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; reused?: boolean }> {
   const id = String(tabId || "").trim();
   const session = sessionFor(id);
-  const prev = session.navPromise ?? Promise.resolve({ ok: true });
+  const prev = session.navPromise ?? Promise.resolve({ ok: true as const, reused: true });
   const job = prev
-    .catch(() => ({ ok: false as const, error: "aborted" }))
+    .catch(() => ({ ok: false as const, error: "aborted", reused: false }))
     .then(() => doNavigate(id, url));
   session.navPromise = job;
   return job;
@@ -128,7 +129,7 @@ export async function reloadEmbeddedBrowserTab(tabId: string): Promise<{ ok: boo
   const ready = await ensureEmbeddedBrowserTab(id);
   if (!ready) return { ok: false, error: "browser-host-unavailable" };
   const res = await api.reload(id);
-  return { ok: res.ok !== false, error: res.error };
+  return { ok: res.ok !== false };
 }
 
 export async function destroyEmbeddedBrowserTab(tabId: string): Promise<void> {

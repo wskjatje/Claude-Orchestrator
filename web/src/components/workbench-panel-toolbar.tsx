@@ -1,14 +1,14 @@
 import {
-  MessageCircle,
+  PanelBottom,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 import { focusBottomPanel } from "@/lib/workbench-panel-init";
 import { cn } from "@/lib/utils";
-import { SetiShellIcon } from "@/lib/seti/seti-file-icon";
 
-/** 编辑器区右上角：侧栏 / 聊天 / 终端开关（与聊天顶栏高度、按钮语义一致） */
+/** 编辑器区右上角：侧栏 / 聊天 / 终端开关（与 Cursor 布局图标语义一致） */
 export function WorkbenchPanelToolbar({
   leftOpen,
   onLeftOpenChange,
@@ -42,7 +42,11 @@ export function WorkbenchPanelToolbar({
         title={chatOpen ? "隐藏聊天" : "显示聊天"}
         ariaLabel={chatOpen ? "隐藏聊天" : "显示聊天"}
       >
-        {chatOpen ? <PanelRightClose className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
+        {chatOpen ? (
+          <PanelRightClose className="h-3.5 w-3.5" />
+        ) : (
+          <PanelRightOpen className="h-3.5 w-3.5" />
+        )}
       </ToolbarBtn>
       <ToolbarBtn
         pressed={terminalOpen}
@@ -54,7 +58,7 @@ export function WorkbenchPanelToolbar({
         title={terminalOpen ? "隐藏底部面板" : "显示底部面板（控制台/终端）"}
         ariaLabel={terminalOpen ? "隐藏底部面板" : "显示底部面板"}
       >
-        <SetiShellIcon className="text-[14px]" />
+        <PanelBottom className="h-3.5 w-3.5" />
       </ToolbarBtn>
     </div>
   );

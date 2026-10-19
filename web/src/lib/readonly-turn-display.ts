@@ -6,6 +6,7 @@ import { stripAllWorkspaceWritePayloads } from "@/lib/assistant-reply";
 import { parseChatFileEdits } from "@/lib/parse-chat-file-edits";
 import { getWorkbenchInteractionMode } from "@/lib/workbench-interaction-mode";
 import type { AgentTurnMeta } from "@/lib/agent-turn-meta";
+import { sanitizeDirectChatReply } from "../../../shared/sanitize-direct-reply.mjs";
 
 export function previousUserLineForAssistant(
   history: { role: string; content: string }[],
@@ -24,15 +25,17 @@ export function shouldForceReadonlyAssistantDisplay(opts: {
   suppressFileEdits?: boolean;
   requestError?: boolean;
 }): boolean {
-  if (opts.requestError) return true;
+  // requestError 不强制只读消毒：保留围栏/半截原文供对照横幅；Edit 卡仍由气泡侧 suppressEdits 压制
+  if (opts.requestError) return false;
   if (opts.suppressFileEdits) return true;
   if (getWorkbenchInteractionMode() === "ask") return true;
   return isReadOnlyUserIntent(opts.userLine);
 }
 
-/** 剥写盘载荷 + 文件卡可解析块；去掉「已完成 N 处改动」类 Agent 收尾 */
+/** 剥写盘载荷 + 文件卡可解析块；去掉「已完成 N 处改动」类 Agent 收尾；剥伪工具协议（shared 单源） */
 export function sanitizeReadonlyAssistantContent(text: string): string {
-  let out = stripAllWorkspaceWritePayloads(String(text || ""));
+  let out = sanitizeDirectChatReply(String(text || ""));
+  out = stripAllWorkspaceWritePayloads(out);
   const { edits, stripped } = parseChatFileEdits(out);
   if (edits.length) out = stripped.trim() || out;
   out = out

@@ -197,6 +197,38 @@ export async function findAllReferences(view: EditorView, pos: number, handlers?
   return refs.length;
 }
 
+/** TS/JS 或 Python/Go/Rust Call Hierarchy Peek（无 LSP 结果不弹假树） */
+export async function showCallHierarchyAt(view: EditorView, pos: number) {
+  const h = getEditorIdeHandlers();
+  if (!/\.(tsx?|jsx?|mjs|cjs|py|go|rs)$/i.test(h.relPath)) {
+    void import("sonner").then(({ toast }) =>
+      toast.message("调用层次结构仅支持 TypeScript/JavaScript 或已配置 LSP 的 Python/Go/Rust"),
+    );
+    return false;
+  }
+  const { line, column } = offsetToLineCol(view.state.doc, pos);
+  const { fetchTsCallHierarchy } = await import("@/lib/workspace-tsservice-client");
+  const { setCallHierarchyPeek } = await import("@/lib/workbench-call-hierarchy");
+  const r = await fetchTsCallHierarchy({
+    relPath: h.relPath,
+    line,
+    column,
+    content: view.state.doc.toString(),
+  });
+  if (!r?.item) {
+    void import("sonner").then(({ toast }) =>
+      toast.message(r?.error || "此处无调用层次（须符号位置）"),
+    );
+    return false;
+  }
+  setCallHierarchyPeek({
+    item: r.item,
+    incoming: r.incoming,
+    outgoing: r.outgoing,
+  });
+  return true;
+}
+
 export async function renameSymbolAt(view: EditorView, pos: number, readOnly?: boolean) {
   if (readOnly) return false;
   const h = getEditorIdeHandlers();
@@ -594,7 +626,12 @@ async function goToKind(
           column,
           content: view.state.doc.toString(),
         });
-  if (!hit) return;
+  if (!hit) {
+    void import("sonner").then(({ toast }) =>
+      toast.message(kind === "impl" ? "未找到实现" : "未找到类型定义"),
+    );
+    return;
+  }
   const same =
     hit.relPath.replace(/\\/g, "/") === h.relPath.replace(/\\/g, "/") ||
     h.relPath.replace(/\\/g, "/").endsWith("/" + hit.relPath.replace(/\\/g, "/"));
@@ -606,6 +643,86 @@ async function goToKind(
   if (h.onOpenFile) {
     setPendingLineGoto(hit.relPath, hit.line, hit.column);
     h.onOpenFile(hit.relPath);
+  }
+}
+
+/** 转到实现（TS Language Service；无结果硬提示，不静默回落） */
+export async function goToImplementation(view: EditorView, pos: number) {
+  await goToKind(view, pos, "impl");
+}
+
+/** 查找所有实现 → Peek（同引用面板） */
+export async function findAllImplementations(view: EditorView, pos: number) {
+  const h = getEditorIdeHandlers();
+  if (!/\.(tsx?|jsx?|mjs|cjs)$/i.test(h.relPath)) {
+    void import("sonner").then(({ toast }) => toast.message("仅 TS/JS 支持查找实现"));
+    return 0;
+  }
+  const { line, column } = offsetToLineCol(view.state.doc, pos);
+  const { fetchTsImplementations } = await import("@/lib/workspace-tsservice-client");
+  const hits = await fetchTsImplementations({
+    relPath: h.relPath,
+    line,
+    column,
+    content: view.state.doc.toString(),
+  });
+  if (!hits.length) {
+    void import("sonner").then(({ toast }) => toast.message("未找到实现"));
+    return 0;
+  }
+  const word = wordAtPos(view.state.doc, pos)?.word || "";
+  setLastReferencesPeek(hits.map((r) => ({ ...r, word })));
+  const first = hits[0]!;
+  const same =
+    first.relPath.replace(/\\/g, "/") === h.relPath.replace(/\\/g, "/") ||
+    h.relPath.replace(/\\/g, "/").endsWith("/" + first.relPath.replace(/\\/g, "/"));
+  if (same) {
+    const from = lineColumnToPos(view.state.doc, first.line, first.column);
+    scrollToLocation(view, { from, to: from + 1 });
+  } else if (h.onOpenFile) {
+    setPendingLineGoto(first.relPath, first.line, first.column);
+    h.onOpenFile(first.relPath);
+  }
+  return hits.length;
+}
+
+/** 格式化文档（TS Language Service） */
+export async function formatDocumentAt(view: EditorView, readOnly?: boolean) {
+  if (readOnly) return false;
+  const h = getEditorIdeHandlers();
+  if (!/\.(tsx?|jsx?|mjs|cjs)$/i.test(h.relPath)) {
+    void import("sonner").then(({ toast }) => toast.message("仅 TS/JS 支持 Language Service 格式化"));
+    return false;
+  }
+  const api = (await import("@/lib/desktop-api")).getDesktop();
+  if (!api?.workspaceTsFormatDocument) {
+    void import("sonner").then(({ toast }) => toast.error("格式化不可用（桌面桥未就绪）"));
+    return false;
+  }
+  try {
+    const r = await api.workspaceTsFormatDocument({
+      relPath: h.relPath,
+      content: view.state.doc.toString(),
+    });
+    if (!r?.ok) {
+      void import("sonner").then(({ toast }) =>
+        toast.error(r?.error || "格式化失败"),
+      );
+      return false;
+    }
+    if (!r.changed || typeof r.content !== "string") {
+      void import("sonner").then(({ toast }) => toast.message("无需格式化"));
+      return false;
+    }
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: r.content },
+    });
+    return true;
+  } catch (e) {
+    void import("sonner").then(({ toast }) =>
+      toast.error(e instanceof Error ? e.message : "格式化失败"),
+    );
+    return false;
   }
 }
 
@@ -653,7 +770,21 @@ const ideKeymap = keymap.of([
   {
     key: "Mod-F12",
     run: (view) => {
-      void goToKind(view, view.state.selection.main.head, "impl");
+      void goToImplementation(view, view.state.selection.main.head);
+      return true;
+    },
+  },
+  {
+    key: "Shift-Alt-H",
+    run: (view) => {
+      void showCallHierarchyAt(view, view.state.selection.main.head);
+      return true;
+    },
+  },
+  {
+    key: "Shift-Alt-F",
+    run: (view) => {
+      void formatDocumentAt(view, getEditorIdeHandlers().readOnly);
       return true;
     },
   },

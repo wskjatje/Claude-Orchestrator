@@ -8,6 +8,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { copyTextToClipboard } from "@/lib/copy-to-clipboard";
+import { buildFenceOnlyWriteItems } from "@/lib/confirm-write";
 import { parseActiveChainFromBubbleText } from "@/lib/parse-active-chain";
 import { toast } from "sonner";
 
@@ -32,32 +33,56 @@ function copyTextForMessage(content: string, container: HTMLElement | null): str
 }
 
 type ChatMessageContextMenuProps = {
+  role: "user" | "assistant";
   rowRef: RefObject<HTMLDivElement | null>;
   content: string;
   disabled?: boolean;
   hasDesktopApi?: boolean;
+  historyIndex?: number | null;
   onWriteToWorkspace?: (content: string) => void;
   onGenerateChain?: (content: string) => void;
+  onEdit?: () => void;
+  onResend?: () => void;
+  onRetry?: () => void;
   children: ReactNode;
 };
 
-/** 聊天气泡右键：复制 / 写入工作区 / 从本条生成任务链 */
+/**
+ * 聊天气泡右键：按角色只暴露已接线能力（无灰项占位）。
+ * - 用户：复制 / 全选 / 编辑 / 重发
+ * - 助手：复制 / 全选 / 围栏写入 / 可解析时生成链 / 失败时可重试
+ */
 export function ChatMessageContextMenu({
+  role,
   rowRef,
   content,
   disabled,
   hasDesktopApi,
+  historyIndex,
   onWriteToWorkspace,
   onGenerateChain,
+  onEdit,
+  onResend,
+  onRetry,
   children,
 }: ChatMessageContextMenuProps) {
   const actionable =
     !disabled && typeof content === "string" && content.trim().length > 0 && content !== "__WAITING__";
 
+  const canWriteFence = useMemo(() => {
+    if (role !== "assistant" || !actionable || !hasDesktopApi || !onWriteToWorkspace) return false;
+    return buildFenceOnlyWriteItems(content).length > 0;
+  }, [role, actionable, content, hasDesktopApi, onWriteToWorkspace]);
+
   const canChain = useMemo(() => {
-    if (!actionable || !hasDesktopApi || !onGenerateChain) return false;
+    if (role !== "assistant" || !actionable || !hasDesktopApi || !onGenerateChain) return false;
     return parseActiveChainFromBubbleText(content).ok;
-  }, [actionable, content, hasDesktopApi, onGenerateChain]);
+  }, [role, actionable, content, hasDesktopApi, onGenerateChain]);
+
+  const canEdit = role === "user" && actionable && historyIndex != null && typeof onEdit === "function";
+  const canResend =
+    role === "user" && actionable && historyIndex != null && typeof onResend === "function";
+  const canRetry = role === "assistant" && actionable && typeof onRetry === "function";
 
   const onCopy = async () => {
     if (!actionable) return;
@@ -92,16 +117,34 @@ export function ChatMessageContextMenu({
           全选
           <ContextMenuShortcut>{selectAllShortcutLabel()}</ContextMenuShortcut>
         </ContextMenuItem>
-        {hasDesktopApi && onWriteToWorkspace ? (
+
+        {role === "user" && (canEdit || canResend) ? (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => onWriteToWorkspace(content)}>
-              将本条气泡写入工作区
-            </ContextMenuItem>
-            {canChain && onGenerateChain ? (
-              <ContextMenuItem onSelect={() => onGenerateChain(content)}>
+            {canEdit ? (
+              <ContextMenuItem onSelect={() => onEdit!()}>编辑此消息</ContextMenuItem>
+            ) : null}
+            {canResend ? (
+              <ContextMenuItem onSelect={() => onResend!()}>重新发送</ContextMenuItem>
+            ) : null}
+          </>
+        ) : null}
+
+        {role === "assistant" && (canWriteFence || canChain || canRetry) ? (
+          <>
+            <ContextMenuSeparator />
+            {canWriteFence ? (
+              <ContextMenuItem onSelect={() => onWriteToWorkspace!(content)}>
+                将本条气泡写入工作区
+              </ContextMenuItem>
+            ) : null}
+            {canChain ? (
+              <ContextMenuItem onSelect={() => onGenerateChain!(content)}>
                 从本条生成任务链
               </ContextMenuItem>
+            ) : null}
+            {canRetry ? (
+              <ContextMenuItem onSelect={() => onRetry!()}>重试本轮</ContextMenuItem>
             ) : null}
           </>
         ) : null}

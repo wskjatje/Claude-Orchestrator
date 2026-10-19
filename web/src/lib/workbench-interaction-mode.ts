@@ -71,9 +71,9 @@ export function setWorkbenchInteractionMode(next: WorkbenchInteractionMode) {
   void persistInteractionModeToWorkspace(next);
 }
 
-/** Shift+Tab 循环模式 */
+/** Shift+Tab 循环模式（对齐 Cursor：Agent → Plan → Ask，一键到 Plan） */
 export function cycleWorkbenchInteractionMode(): WorkbenchInteractionMode {
-  const order: WorkbenchInteractionMode[] = ["agent", "ask", "plan"];
+  const order: WorkbenchInteractionMode[] = ["agent", "plan", "ask"];
   const i = order.indexOf(mode);
   const next = order[(i + 1) % order.length]!;
   setWorkbenchInteractionMode(next);
@@ -148,7 +148,10 @@ export function shouldAutoApplyWorkspaceWritesForTurn(opts: {
   return true;
 }
 
-/** 注入到 Claude prompt 的模式约束 */
+/**
+ * 注入到 Claude/plain prompt 的模式约束（仅作无 turn-policy.systemConstraint 时的兜底）。
+ * 有 systemConstraint 时调用方应跳过本块，避免与回合策略双源冲突。
+ */
 export function interactionModePromptBlock(m: WorkbenchInteractionMode): string {
   if (m === "ask") {
     return [
@@ -166,8 +169,8 @@ export function interactionModePromptBlock(m: WorkbenchInteractionMode): string 
     ].join("\n");
   }
   return [
-    "【交互模式·Plan】先调研并给出可执行方案，不要直接落盘。",
-    "MUST：说明步骤、影响文件、风险；改动用 ```workspace-write``` 或 ```diff``` 提出。",
-    "MUST_NOT：Edit/Write 静默改盘；勿宣称已写入——用户 Accept 后才落盘。",
+    "【交互模式·Plan】对齐 Cursor Plan：先调研并写出可执行方案文档。",
+    "MUST：用 ```workspace-write 写入方案 Markdown（JSON path+content，path 自拟如 docs/<主题>-plan.md）；说明步骤、影响文件、风险。",
+    "MUST_NOT：静默改业务源码；勿宣称已写入——用户 Accept 后才落盘；勿用 path:/content: YAML 伪结构。",
   ].join("\n");
 }

@@ -223,6 +223,20 @@ export async function buildSlimProjectBrief(desktop: DesktopApi): Promise<string
   const seen = new Set<string>();
   const read = desktop.readWorkspaceTextFile;
 
+  let absRoot = "";
+  try {
+    if (typeof desktop.getWorkspace === "function") {
+      const w = await desktop.getWorkspace();
+      absRoot = typeof w === "string" ? w.trim().replace(/\/+$/, "") : "";
+    }
+  } catch {
+    /* ignore */
+  }
+  if (absRoot) {
+    const base = absRoot.split(/[/\\]/).filter(Boolean).pop() || absRoot;
+    parts.push(`【当前工作区】${absRoot}\n【项目名】${base}`);
+  }
+
   const pushFile = async (rel: string, cap: number) => {
     if (!read || seen.has(rel) || parts.length >= 5) return;
     try {
@@ -288,14 +302,18 @@ export async function buildSlimProjectBrief(desktop: DesktopApi): Promise<string
     }
   }
 
+  // 仅有工作区路径、无任何文件摘录时也返回路径行，避免模型瞎猜项目
   if (!parts.length) return "";
+  const onlyPath = parts.length === 1 && parts[0]!.startsWith("【当前工作区】");
   return (
     "\n\n---\n【项目摘录·仅供回答问题】\n" +
     parts.join("\n\n") +
-    "\n\n【回答约束】用与用户相同的语言概述「这个产品/应用做什么」。" +
-    "证据优先级：依赖清单与应用入口/路由/页面 > 项目状态或概要文档 > 目录结构；" +
-    "WBS、Agent 指派、chain-steps、任务链文档只说明「如何被开发管理」，不得据此把产品本身概括为多智能体编排平台或自动化工作流运行时。" +
-    "禁止声称用户未提供任何资料；禁止复述本段标题或自称待命。"
+    (onlyPath
+      ? "\n\n【回答约束】仅知工作区路径，请据路径名谨慎推断；勿虚构文件内容。"
+      : "\n\n【回答约束】用与用户相同的语言直接回答所问（是什么/怎么优化/架构等）。" +
+        "证据优先级：依赖清单与应用入口/路由/页面 > 项目状态或概要文档 > 目录结构；" +
+        "WBS、Agent 指派、chain-steps、任务链文档只说明「如何被开发管理」，不得据此把产品本身概括为多智能体编排平台或自动化工作流运行时。" +
+        "禁止声称用户未提供任何资料；禁止复述本段标题或自称待命。")
   );
 }
 

@@ -6,6 +6,8 @@ export type StreamAgentEvent = {
   arg?: string;
   status?: "running" | "ok" | "fail";
   path?: string;
+  /** Bash/run_command 等工具 stdout/stderr（截断后）；无则回显「（无输出）」 */
+  output?: string;
 };
 
 const BEGIN = "<<<stream-events>>>";

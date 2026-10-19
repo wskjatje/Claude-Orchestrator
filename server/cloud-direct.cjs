@@ -3,7 +3,28 @@
 const https = require('node:https')
 const http = require('node:http')
 const dns = require('node:dns')
+const path = require('node:path')
+const { pathToFileURL } = require('node:url')
 const cloudProviders = require('./cloud-providers.cjs')
+
+/** @type {null | ((text: string) => string)} */
+let sanitizeDirectChatReplyFn = null
+
+async function sanitizeCloudDirectContent(content) {
+  const raw = String(content || '')
+  if (!raw.trim()) return raw
+  try {
+    if (!sanitizeDirectChatReplyFn) {
+      const mod = await import(
+        pathToFileURL(path.join(__dirname, '../shared/sanitize-direct-reply.mjs')).href
+      )
+      sanitizeDirectChatReplyFn = mod.sanitizeDirectChatReply
+    }
+    return sanitizeDirectChatReplyFn(raw)
+  } catch {
+    return raw
+  }
+}
 
 /** requestId → ClientRequest 实例，用于中止 */
 const activeRequests = new Map()
@@ -125,6 +146,192 @@ function extractGeminiContent(data) {
  * @param {{ prompt: string; model?: string; requestId?: string; timeoutMs?: number }} payload
  * @returns {Promise<{ ok: boolean; content?: string; error?: string | null; aborted?: boolean }>}
  */
+
+/**
+ * OpenAI 兼容 SSE 流式 POST。onDelta(chunk) 逐步回调；失败硬抛错（不回落非流式）。
+ * @param {string} url
+ * @param {object} bodyJson
+ * @param {object} [headers]
+ * @param {number} [timeoutMs]
+ * @param {string} [requestId]
+ * @param {(chunk: string) => void} onDelta
+ * @returns {Promise<{ status: number, content: string }>}
+ */
+/**
+ * @param {object} [streamOpts]
+ * @param {boolean} [streamOpts.injectStreamFlag=true] OpenAI 需 body.stream=true；Gemini SSE 端点勿注入
+ */
+function httpPostJsonStream(url, bodyJson, headers = {}, timeoutMs = 120_000, requestId = '', onDelta, streamOpts = {}) {
+  return new Promise((resolve, reject) => {
+    const isHttps = url.startsWith('https://')
+    const parsed = new URL(url)
+    const hostname = parsed.hostname
+    const injectStream = streamOpts?.injectStreamFlag !== false
+    const body = JSON.stringify(injectStream ? { ...bodyJson, stream: true } : bodyJson)
+
+    resolveHostname(hostname).then((realIp) => {
+      const opts = {
+        hostname: realIp || hostname,
+        port: parsed.port || (isHttps ? 443 : 80),
+        path: parsed.pathname + parsed.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          ...headers,
+          Host: hostname,
+          'Content-Length': Buffer.byteLength(body),
+        },
+        timeout: timeoutMs,
+        servername: hostname,
+        rejectUnauthorized: true,
+      }
+      const lib = isHttps ? https : http
+      const req = lib.request(opts, (res) => {
+        let buf = ''
+        let content = ''
+        let reasoning = ''
+        let status = res.statusCode || 0
+        res.setEncoding('utf8')
+        res.on('data', (chunk) => {
+          buf += chunk
+          const parts = buf.split(/\n/)
+          buf = parts.pop() || ''
+          for (const line of parts) {
+            const t = line.trim()
+            if (!t.startsWith('data:')) continue
+            const payload = t.slice(5).trim()
+            if (!payload || payload === '[DONE]') continue
+            try {
+              const j = JSON.parse(payload)
+              const openai = cloudProviders.openAiVisibleText(j?.choices?.[0])
+              let delta = openai.content
+              if (!delta && openai.reasoning) reasoning += openai.reasoning
+              // Gemini streamGenerateContent?alt=sse
+              if (!delta && Array.isArray(j?.candidates)) {
+                const parts = j.candidates[0]?.content?.parts
+                if (Array.isArray(parts)) {
+                  delta = parts.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('')
+                }
+              }
+              if (delta) {
+                content += delta
+                if (typeof onDelta === 'function') onDelta(delta)
+              }
+            } catch {
+              /* ignore bad sse line */
+            }
+          }
+        })
+        res.on('end', () => {
+          if (requestId) activeRequests.delete(requestId)
+          if (status !== 200) {
+            reject(new Error(`云模型流式 API 错误 (${status}): ${content.slice(0, 300) || '请求失败'}`))
+            return
+          }
+          const visible = cloudProviders.finalizeOpenAiVisible(content, reasoning)
+          resolve({ status, content: visible.content || content })
+        })
+      })
+      req.on('error', (e) => {
+        if (requestId) activeRequests.delete(requestId)
+        reject(e)
+      })
+      req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')) })
+      if (requestId) activeRequests.set(requestId, req)
+      req.write(body)
+      req.end()
+    }).catch((e) => reject(e))
+  })
+}
+
+/** @type {null | typeof import('../shared/direct-chat-policy.mjs')} */
+let directChatPolicyMod = null
+
+async function loadDirectChatPolicy() {
+  if (!directChatPolicyMod) {
+    directChatPolicyMod = await import(
+      pathToFileURL(path.join(__dirname, '../shared/direct-chat-policy.mjs')).href
+    )
+  }
+  return directChatPolicyMod
+}
+
+/**
+ * @param {string} content
+ * @param {null | {
+ *   url: string,
+ *   apiKey: string,
+ *   apiModel: string,
+ *   prompt: string,
+ *   timeoutMs: number,
+ *   requestId: string,
+ *   extras?: object,
+ *   onDelta?: ((chunk: string) => void) | null,
+ * }} [continueCtx] 半截时再打一轮（仅 OpenAI 兼容）
+ */
+async function finishDirectOk(content, continueCtx = null) {
+  let out = await sanitizeCloudDirectContent(content)
+  if (continueCtx?.url && continueCtx.apiKey && continueCtx.apiModel && continueCtx.prompt) {
+    try {
+      const pol = await loadDirectChatPolicy()
+      if (typeof pol.looksLikeTruncatedDirectReply === 'function' && pol.looksLikeTruncatedDirectReply(out)) {
+        const tail = out.slice(-72).replace(/\s+/g, ' ')
+        const contBody = {
+          model: continueCtx.apiModel,
+          messages: [
+            { role: 'user', content: continueCtx.prompt },
+            { role: 'assistant', content: out },
+            {
+              role: 'user',
+              content: `上一条在半句处截断。截断处：「${tail}」。请只补后半句并立刻结束；禁止重写全文、禁止新开长章节。`,
+            },
+          ],
+          stream: false,
+          ...(continueCtx.extras && typeof continueCtx.extras === 'object' ? continueCtx.extras : {}),
+        }
+        const { status, data } = await httpPostJson(
+          continueCtx.url,
+          contBody,
+          { Authorization: `Bearer ${continueCtx.apiKey}` },
+          continueCtx.timeoutMs || 120_000,
+          continueCtx.requestId || '',
+        )
+        if (status === 200) {
+          const openai = cloudProviders.openAiVisibleText(data?.choices?.[0])
+          const visible = cloudProviders.finalizeOpenAiVisible(
+            openai.content || data?.content?.[0]?.text || data?.response || '',
+            openai.reasoning,
+          )
+          const cont = await sanitizeCloudDirectContent(visible.ok ? visible.content : '')
+          if (cont && cont !== out) {
+            // 简单拼接；若续写重复开头则去重
+            let piece = cont
+            const overlap = Math.min(48, Math.floor(out.length / 4), piece.length)
+            for (let n = overlap; n >= 12; n--) {
+              if (piece.startsWith(out.slice(-n))) {
+                piece = piece.slice(n).trimStart()
+                break
+              }
+            }
+            if (piece) {
+              if (typeof continueCtx.onDelta === 'function') continueCtx.onDelta(piece)
+              out = await sanitizeCloudDirectContent(`${out}${piece}`)
+            }
+          }
+        }
+      }
+    } catch {
+      /* 续写失败仍返回已有正文，不硬失败 */
+    }
+  }
+  return {
+    ok: true,
+    content: out,
+    aborted: false,
+  }
+}
+
 async function directPrompt(payload) {
   const prompt = String(payload?.prompt || '').trim()
   if (!prompt) return { ok: false, error: '提示词为空', content: '', aborted: false }
@@ -132,6 +339,7 @@ async function directPrompt(payload) {
   const model = String(payload?.model || '').trim()
   const requestId = String(payload?.requestId || '').trim()
   const timeoutMs = Number.isFinite(payload?.timeoutMs) && payload.timeoutMs > 0 ? payload.timeoutMs : 120_000
+  const onDelta = typeof payload?.onDelta === 'function' ? payload.onDelta : null
 
   // 1. 通过 cloud-providers 解析当前供应商配置
   const resolved = cloudProviders.resolveEnvForModel(model)
@@ -190,12 +398,35 @@ async function directPrompt(payload) {
       const apiBase = cleanBase.includes('/v1beta')
         ? cleanBase
         : cleanBase + '/v1beta'
-      const url = `${apiBase}/models/${apiModel}:generateContent`
+      const geminiBody = { contents: [{ role: 'user', parts: [{ text: prompt }] }] }
+      const geminiHeaders = { 'x-goog-api-key': apiKey }
 
+      // 有 onDelta：必须 streamGenerateContent，断流硬失败，禁止静默回落 generateContent
+      if (onDelta) {
+        const streamUrl = `${apiBase}/models/${apiModel}:streamGenerateContent?alt=sse`
+        try {
+          const streamed = await httpPostJsonStream(
+            streamUrl,
+            geminiBody,
+            geminiHeaders,
+            timeoutMs,
+            requestId,
+            onDelta,
+            { injectStreamFlag: false },
+          )
+          return finishDirectOk(streamed.content || '')
+        } catch (e) {
+          const msg = e?.message || String(e)
+          if (msg === '请求超时') return { ok: false, error: '请求超时', content: '', aborted: true }
+          return { ok: false, error: msg, content: '', aborted: false }
+        }
+      }
+
+      const url = `${apiBase}/models/${apiModel}:generateContent`
       const { status, data } = await httpPostJson(
         url,
-        { contents: [{ role: 'user', parts: [{ text: prompt }] }] },
-        { 'x-goog-api-key': apiKey },
+        geminiBody,
+        geminiHeaders,
         timeoutMs,
         requestId,
       )
@@ -211,7 +442,7 @@ async function directPrompt(payload) {
       }
 
       const content = extractGeminiContent(data)
-      return { ok: true, content: content || '', aborted: false }
+      return finishDirectOk(content || '')
     }
 
     // ---------- OpenAI 兼容 API ----------
@@ -221,12 +452,50 @@ async function directPrompt(payload) {
       ? `${effectiveBase}/chat/completions`
       : `${effectiveBase}/v1/chat/completions`
 
+    const openaiExtras = cloudProviders.deepSeekRequestExtras(apiModel)
+    const continueCtx = {
+      url,
+      apiKey,
+      apiModel,
+      prompt,
+      timeoutMs,
+      requestId,
+      extras: openaiExtras,
+      onDelta,
+    }
+
+    if (onDelta) {
+      try {
+        const streamed = await httpPostJsonStream(
+          url,
+          {
+            model: apiModel,
+            messages: [{ role: 'user', content: prompt }],
+            ...openaiExtras,
+          },
+          { Authorization: `Bearer ${apiKey}` },
+          timeoutMs,
+          requestId,
+          onDelta,
+        )
+        if (!String(streamed.content || '').trim()) {
+          return { ok: false, error: '云模型未返回可显示正文。', content: '', aborted: false }
+        }
+        return finishDirectOk(streamed.content, continueCtx)
+      } catch (e) {
+        const msg = e?.message || String(e)
+        if (msg === '请求超时') return { ok: false, error: '请求超时', content: '', aborted: true }
+        return { ok: false, error: msg, content: '', aborted: false }
+      }
+    }
+
     const { status, data } = await httpPostJson(
       url,
       {
         model: apiModel,
         messages: [{ role: 'user', content: prompt }],
         stream: false,
+        ...openaiExtras,
       },
       { Authorization: `Bearer ${apiKey}` },
       timeoutMs,
@@ -243,13 +512,15 @@ async function directPrompt(payload) {
       }
     }
 
-    const content =
-      data?.choices?.[0]?.message?.content ||
-      data?.content?.[0]?.text ||
-      data?.response ||
-      ''
-
-    return { ok: true, content, aborted: false }
+    const openai = cloudProviders.openAiVisibleText(data?.choices?.[0])
+    const visible = cloudProviders.finalizeOpenAiVisible(
+      openai.content || data?.content?.[0]?.text || data?.response || '',
+      openai.reasoning,
+    )
+    if (!visible.ok) {
+      return { ok: false, error: visible.error, content: '', aborted: false }
+    }
+    return finishDirectOk(visible.content, continueCtx)
   } catch (e) {
     const msg = e?.message || String(e)
     // 超时

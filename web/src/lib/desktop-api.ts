@@ -6,6 +6,8 @@ declare global {
     __WEB_BRIDGE__?: boolean
     /** Electron 桌面客户端 preload 注入 */
     __ELECTRON_DESKTOP__?: boolean
+    /** window.desktop 只读锁死时的旁路（install-desktop-bridge） */
+    __DESKTOP_API_FALLBACK__?: DesktopApi
   }
 }
 
@@ -19,12 +21,12 @@ export function markDesktopHydrated() {
 
 export function hasDesktop(): boolean {
   if (typeof window === 'undefined' || !desktopHydrated) return false
-  return !!window.desktop
+  return !!(window.desktop || window.__DESKTOP_API_FALLBACK__)
 }
 
 /** 事件处理器、useEffect 内需要真实 desktop 时调用（不受 hydration 门控） */
 export function hasDesktopRuntime(): boolean {
-  return typeof window !== 'undefined' && !!window.desktop
+  return typeof window !== 'undefined' && !!(window.desktop || window.__DESKTOP_API_FALLBACK__)
 }
 
 /** 浏览器 + 本机 Web Bridge RPC（非 Electron） */
@@ -39,5 +41,5 @@ export function isElectronDesktop(): boolean {
 
 export function getDesktop(): DesktopApi | null {
   if (typeof window === 'undefined') return null
-  return window.desktop ?? null
+  return window.desktop ?? window.__DESKTOP_API_FALLBACK__ ?? null
 }

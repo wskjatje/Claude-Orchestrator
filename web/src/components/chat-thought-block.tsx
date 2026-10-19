@@ -16,6 +16,9 @@ function normalizeThoughtTitle(title: string): { head: string; hint: string } {
 function sanitizeThoughtBody(body: string): string {
   let t = stripForceContinueMarkers(stripDsmlToolMarkup(body).text);
   t = t.replace(/^要不要我[^\n]*\??\s*$/gm, "");
+  t = t.replace(/^\(执行:[^)]+\)\s*$/gm, "");
+  t = t.replace(/\s*\(执行:\s*Claude CLI[^)]*\)\s*/gi, " ");
+  t = t.replace(/\s*·\s*acceptEdits\b/gi, "");
   return t.replace(/\n{3,}/g, "\n\n").trim();
 }
 

@@ -14,11 +14,18 @@ export type DiskMsg = {
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; costUsd?: number };
   latencyMs?: number;
   requestError?: boolean;
+  requestErrorDetail?: string;
   billingSource?: "cloud" | "local";
   modelId?: string;
   /** Agent 过程轨迹等（与 index DiskMsg.agentTurn 对齐） */
   agentTurn?: {
     writtenPaths?: string[];
+    filePatches?: {
+      path: string;
+      before?: string;
+      after?: string;
+      isNewFile?: boolean;
+    }[];
     verified?: boolean;
     backend?: "cli" | "host" | "local";
     mcpUsed?: boolean;
@@ -48,6 +55,7 @@ export type Msg = {
   ts?: number;
   name?: string;
   requestError?: boolean;
+  requestErrorDetail?: string;
   historyIndex?: number;
   agentTurn?: DiskMsg["agentTurn"];
   suppressFileEdits?: boolean;

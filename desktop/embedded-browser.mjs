@@ -291,6 +291,16 @@ export class EmbeddedBrowserManager {
 
     if (layout.visible !== undefined) {
       entry.userVisible = !!layout.visible
+      // 显示某一 tab 时隐藏其它 in-window view，避免叠层抢点击
+      if (entry.userVisible && entry.kind === 'in-window') {
+        for (const [otherId, other] of this.#views) {
+          if (otherId === id || other.kind !== 'in-window') continue
+          if (other.userVisible) {
+            other.userVisible = false
+            this.#applyVisible(other)
+          }
+        }
+      }
     }
 
     this.#applyVisible(entry)
@@ -299,10 +309,28 @@ export class EmbeddedBrowserManager {
 
   /** @param {string} tabId */
   focus(tabId) {
-    const entry = this.#entry(tabId)
+    const id = String(tabId || '').trim()
+    const entry = this.#entry(id)
     if (!entry) return { ok: false, error: 'missing view' }
     try {
+      // 同一时刻只让目标 in-window view 可见并置顶（对齐 Cursor 切页签）
       if (entry.kind === 'in-window') {
+        for (const [otherId, other] of this.#views) {
+          if (otherId === id || other.kind !== 'in-window') continue
+          if (other.userVisible) {
+            other.userVisible = false
+            this.#applyVisible(other)
+          }
+        }
+        entry.userVisible = true
+        this.#applyVisible(entry)
+        const win = this.#getWindow()
+        try {
+          win?.contentView.removeChildView(entry.view)
+          win?.contentView.addChildView(entry.view)
+        } catch {
+          /* ignore reorder */
+        }
         entry.view.webContents.focus()
       } else if (!entry.window.isDestroyed()) {
         entry.window.focus()

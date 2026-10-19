@@ -26,6 +26,7 @@ import { isFileTab } from "@/types/workbench-editor";
 import {
   AlertCircle,
   AlertTriangle,
+  AtSign,
   ChevronDown,
   ChevronUp,
   Copy,
@@ -45,6 +46,10 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getDesktop } from "@/lib/desktop-api";
+import {
+  requestPrefillComposer,
+  requestWorkbenchLayoutToggle,
+} from "@/lib/workbench-side-tab";
 import { useWorkbenchProblems } from "@/contexts/workbench-problems-context";
 import { useWorkbenchWorkspace } from "@/contexts/workbench-workspace-context";
 import type { WorkbenchProblem } from "@/types/workbench-problems";
@@ -71,7 +76,7 @@ import type { WorkspaceTerminalMeta } from "@/components/workspace-terminal";
 const PANEL_TABS = [
   { id: "problems", label: "问题" },
   { id: "output", label: "输出" },
-  { id: "debug", label: "调试控制台" },
+  { id: "debug", label: "控制台" },
   { id: "terminal", label: "终端" },
   { id: "ports", label: "端口" },
 ] as const;
@@ -89,7 +94,7 @@ function channelLabel(id: OutputChannelId): string {
   return OUTPUT_CHANNELS.find((c) => c.id === id)?.label ?? id;
 }
 
-/** 最底部面板（问题 / 输出 / 调试 / 终端 / 端口） */
+/** 最底部面板（问题 / 输出 / 控制台 / 终端 / 端口） */
 export function WorkbenchBottomPanel({ onClose }: { onClose: () => void }) {
   const { problems, errorCount, warningCount, lintOpenFiles, linting } = useWorkbenchProblems();
   const ws = useWorkbenchWorkspace();
@@ -109,6 +114,7 @@ export function WorkbenchBottomPanel({ onClose }: { onClose: () => void }) {
     shellLabel: "zsh",
     status: "idle",
     hint: null,
+    ptyMode: null,
   });
   const [problemsFilter, setProblemsFilter] = useState("");
   const [problemsSeverity, setProblemsSeverity] = useState<ProblemsSeverityFilter>(DEFAULT_SEVERITY_FILTER);
@@ -159,7 +165,8 @@ export function WorkbenchBottomPanel({ onClose }: { onClose: () => void }) {
       prev.cwdFull === next.cwdFull &&
       prev.shellLabel === next.shellLabel &&
       prev.status === next.status &&
-      prev.hint === next.hint
+      prev.hint === next.hint &&
+      prev.ptyMode === next.ptyMode
         ? prev
         : next,
     );
@@ -261,7 +268,7 @@ export function WorkbenchBottomPanel({ onClose }: { onClose: () => void }) {
         onDebugFilterChange={setDebugFilter}
         onClearDebug={() => {
           clearDebugLog();
-          toast.success("调试控制台已清除");
+          toast.success("控制台已清除");
         }}
         outputScrollLock={outputScrollLock}
         onOutputScrollLockToggle={() => setOutputScrollLock((v) => !v)}
@@ -285,6 +292,7 @@ export function WorkbenchBottomPanel({ onClose }: { onClose: () => void }) {
         onCopyPath={copyPath}
         terminalHeader={terminalHeader}
         terminalHint={meta.hint}
+        terminalPtyMode={meta.ptyMode}
       />
 
       <div className="relative min-h-0 flex-1 overflow-hidden bg-background">
@@ -351,6 +359,7 @@ function PanelHeader({
   onCopyPath,
   terminalHeader,
   terminalHint,
+  terminalPtyMode,
 }: {
   activeTab: PanelTabId;
   onTabChange: (tab: PanelTabId) => void;
@@ -381,6 +390,7 @@ function PanelHeader({
   onCopyPath: () => void;
   terminalHeader: TerminalSessionsHeaderState | null;
   terminalHint: string | null;
+  terminalPtyMode: WorkspaceTerminalMeta["ptyMode"];
 }) {
   return (
     <div className="workbench-bottom-panel-header flex h-[35px] shrink-0 items-stretch gap-0 border-b border-border bg-surface-elevated/95">
@@ -393,7 +403,7 @@ function PanelHeader({
               type="button"
               onClick={() => onTabChange(tab.id)}
               className={cn(
-                "shrink-0 px-2.5 py-1.5 text-[12px] font-medium uppercase tracking-wide transition",
+                "shrink-0 px-2.5 py-1.5 text-[length:var(--font-size-xs)] font-medium tracking-normal transition",
                 active
                   ? "border-b-2 border-primary text-foreground"
                   : "border-b-2 border-transparent text-muted-foreground hover:text-foreground",
@@ -467,6 +477,15 @@ function PanelHeader({
               <LayoutList className="h-3.5 w-3.5" />
             </HeaderIcon>
             <HeaderIcon
+              title="添加到对话 (@problems)"
+              onClick={() => {
+                requestWorkbenchLayoutToggle("chat", { ensure: true });
+                requestPrefillComposer("@problems ");
+              }}
+            >
+              <AtSign className="h-3.5 w-3.5" />
+            </HeaderIcon>
+            <HeaderIcon
               title="换行显示"
               onClick={() => toast.message("问题列表已启用自动换行")}
             >
@@ -537,6 +556,44 @@ function PanelHeader({
                 onSelect={terminalHeader.selectSession}
               />
             ) : null}
+            {terminalPtyMode ? (
+              <button
+                type="button"
+                className={
+                  terminalPtyMode === "pipe"
+                    ? "ml-1 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200 bg-amber-500/15 hover:bg-amber-500/25"
+                    : "ml-1 shrink-0 cursor-default rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground bg-secondary/80"
+                }
+                title={
+                  terminalPtyMode === "pty"
+                    ? "真 PTY（node-pty）"
+                    : terminalPtyMode === "python-pty"
+                      ? "Python PTY 桥"
+                      : "管道模式（非完整 PTY）。点击查看修复提示"
+                }
+                aria-label={
+                  terminalPtyMode === "pipe" ? "管道模式，查看 node-pty 修复提示" : `终端模式 ${terminalPtyMode}`
+                }
+                onClick={() => {
+                  if (terminalPtyMode !== "pipe") return;
+                  toast.message("管道模式：在 desktop 目录执行 npm i node-pty 后重启应用", {
+                    description: "真 PTY 支持交互式程序；当前为硬降级，非完整终端。",
+                    action: {
+                      label: "复制命令",
+                      onClick: () => {
+                        void navigator.clipboard.writeText("cd desktop && npm i node-pty");
+                      },
+                    },
+                  });
+                }}
+              >
+                {terminalPtyMode === "pty"
+                  ? "PTY"
+                  : terminalPtyMode === "python-pty"
+                    ? "PTY·py"
+                    : "PIPE"}
+              </button>
+            ) : null}
             <HeaderIcon title="拆分终端" onClick={onSplitTerminal}>
               <SplitSquareHorizontal className="h-3.5 w-3.5" />
             </HeaderIcon>
@@ -560,6 +617,16 @@ function PanelHeader({
                   <RefreshCw className="mr-2 h-3.5 w-3.5" />
                   重启终端
                 </DropdownMenuItem>
+                {terminalPtyMode === "pipe" ? (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      void navigator.clipboard.writeText("cd desktop && npm i node-pty");
+                      toast.message("已复制：cd desktop && npm i node-pty（安装后请重启）");
+                    }}
+                  >
+                    修复真 PTY（复制安装命令）
+                  </DropdownMenuItem>
+                ) : null}
                 {terminalHint ? (
                   <DropdownMenuItem disabled className="max-w-[16rem] text-[12px] text-amber-700 dark:text-amber-300">
                     {terminalHint}
@@ -961,7 +1028,7 @@ function PortsView({ ports }: { ports: readonly ForwardedPort[] }) {
     return (
       <div className="flex h-full flex-col items-start gap-4 p-4">
         <p className="max-w-lg text-[13px] leading-relaxed text-muted-foreground">
-          暂无转发的端口。运行 dev server 或终端输出中的 localhost 地址会自动出现在此。
+          暂无端口
         </p>
         <button
           type="button"
@@ -988,7 +1055,7 @@ function PortsView({ ports }: { ports: readonly ForwardedPort[] }) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto scrollbar-thin">
         <table className="w-full border-collapse text-left text-[12px]">
-          <thead className="sticky top-0 bg-background/95 text-[11px] uppercase tracking-wide text-muted-foreground">
+          <thead className="sticky top-0 bg-background/95 text-[length:var(--font-size-xs)] text-muted-foreground">
             <tr className="border-b border-border/60">
               <th className="px-3 py-1.5 font-medium">端口</th>
               <th className="px-3 py-1.5 font-medium">地址</th>

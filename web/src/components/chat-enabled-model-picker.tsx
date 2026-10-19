@@ -232,10 +232,19 @@ export function buildAutoLeadingOption(
   localModels: string[],
   isAuto: (value: string) => boolean,
 ): ModelPickerLeadingOption {
+  const pool = chatEnabledPoolHint(cloudModels, localModels);
+  const hint =
+    pool === "云+本地"
+      ? "改码偏云 · 问答偏本地（可选手选覆盖）"
+      : pool === "本地"
+        ? "仅本地"
+        : pool === "云端"
+          ? "仅云端"
+          : pool;
   return {
     value: "auto",
     label: "Auto",
-    hint: chatEnabledPoolHint(cloudModels, localModels),
+    hint,
     isSelected: isAuto,
     matchesQuery: (q) => "auto".includes(q),
   };

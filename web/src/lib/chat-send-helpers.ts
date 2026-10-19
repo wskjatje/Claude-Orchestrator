@@ -60,6 +60,8 @@ export type DiskMsg = {
   };
   latencyMs?: number;
   requestError?: boolean;
+  /** 写盘/执行硬失败详情；有正文时气泡顶部横幅展示，禁止用此文案替换 content */
+  requestErrorDetail?: string;
   billingSource?: "cloud" | "local";
   modelId?: string;
   /** 只读问答：禁止解析/展示文件编辑卡（对齐 Cursor Ask） */
@@ -148,6 +150,7 @@ export type Msg = {
   terminalSnippets?: TerminalSelectionPayload[];
   historyIndex?: number;
   requestError?: boolean;
+  requestErrorDetail?: string;
   agentTurn?: AgentTurnMeta;
   suppressFileEdits?: boolean;
   localChannel?: "direct" | "orch";
@@ -266,6 +269,10 @@ export function diskToDisplay(list: DiskMsg[], modelLabel: string): Msg[] {
       time: m.ts ? new Date(m.ts).toLocaleString() : undefined,
       historyIndex,
       requestError: m.requestError === true ? true : undefined,
+      requestErrorDetail:
+        typeof m.requestErrorDetail === "string" && m.requestErrorDetail.trim()
+          ? m.requestErrorDetail.trim()
+          : undefined,
       agentTurn: forceReadonly
         ? stripAgentTurnForReadonlyDisplay(m.agentTurn)
         : m.agentTurn,
@@ -293,10 +300,16 @@ export async function buildPlainChatPrompt(
     preamble.push(`【工作区】${workspaceDir}`);
   }
   preamble.push("【语言】zh_CN（代码/路径除外）。");
-  preamble.push(interactionModePromptBlock(mode));
+  // 有回合策略时不再叠 mode 块，避免与 turn-policy 双源冲突
   if (opts?.systemConstraint?.trim()) {
     preamble.push(opts.systemConstraint.trim());
+  } else {
+    preamble.push(interactionModePromptBlock(mode));
   }
+  const { buildDirectChatPolicyBlock } = await import(
+    "../../../shared/direct-chat-policy.mjs"
+  );
+  preamble.push(buildDirectChatPolicyBlock(userLine));
   preamble.push(
     "【注意】你是普通聊天助手，没有实时工具；但本轮用户消息可能已嵌入 @selection / @git / @codebase / @problems / @文件 的展开内容，请据此回答。不要输出 XML 工具调用标签，勿声称已自行读盘或写盘。",
   );

@@ -111,15 +111,17 @@ export function buildAgentRoutedInstruction(
 ): string {
   const cleanBody = body.trim();
 
+  // 写盘细则以 turn-policy systemConstraint 为准；此处只提示勿伪称已落盘
   const writePolicy =
-    "【WRITE】```workspace-write``` on user file request only. Don't claim 'written' without a valid fence.";
+    "【写盘·Cursor】仅当用户明确要求写/保存/生成文件时输出 ```workspace-write``` JSON（{\"path\":\"...\",\"content\":\"...\"}；也接受 contents）。" +
+    "禁止 YAML、禁止 ```json/裸 JSON 当写盘、禁止缺 path 猜 docs；无有效围栏勿声称已写入。回合策略见系统约束。";
 
   // 通用 Agent：无角色锁
   if (stem === "__general__") {
     return [
-      "【SCOPE】General-purpose. Read workspace files first. Chat/code/UI/arch/terminal/deploy as needed.",
-      "【REPLY】Short Chinese (≤5 points): conclusion, paths, next. No long plans or JSON echo.",
-      "【MUST_NOT】No workspace-write unless user explicitly asks to write/save/create/生成/保存/写入/更新. Pure Q&A → never write.",
+      "【范围】通用助手。先读工作区相关文件；按需聊天/代码/UI/架构/终端。",
+      "【回复】简体中文短要点（≤5 条）：结论、路径、下一步。勿长篇计划或回显 JSON。",
+      writePolicy,
       cleanBody,
     ]
       .filter(Boolean)
@@ -140,8 +142,8 @@ export function buildAgentRoutedInstruction(
   }
 
   const routingBlock = [
-    `【ROUTE】${stem} → Skills: ${preset.skills.join("、")} → Tools: ${buildRoutingToolHint(stem, mode, preset, toolOverrides?.mcpChatToolName, toolOverrides?.mcpListModelsToolName)}.`,
-    "【REPLY】Short Chinese (≤5 points): conclusion, paths, verification, next.",
+    `【路由】${stem} → Skills: ${preset.skills.join("、")} → Tools: ${buildRoutingToolHint(stem, mode, preset, toolOverrides?.mcpChatToolName, toolOverrides?.mcpListModelsToolName)}.`,
+    "【回复】简体中文短要点（≤5 条）：结论、路径、验证、下一步。",
   ];
 
   return [lock, scopeGuard, artifactPathHint, cleanBody, ...routingBlock, writePolicy]

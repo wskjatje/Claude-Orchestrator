@@ -20,7 +20,7 @@ import {
   type ChatFileEditLine,
 } from "@/lib/parse-chat-file-edits";
 import { setPendingLineGoto } from "@/lib/codemirror-pending-goto";
-import { highlightDiffLine } from "@/components/chat-diff-highlight";
+import { CursorDiffLines } from "@/components/cursor-diff-lines";
 
 type PreviewState = {
   before: string;
@@ -183,7 +183,7 @@ export function WorkbenchDiffReview({
   return (
     <div className="flex h-full min-h-0 flex-col bg-code-bg/30">
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <span className="text-[12px] font-medium">Diff Review</span>
+        <span className="text-[12px] font-medium">Review</span>
         <span className="text-[11px] text-muted-foreground">
           {safeIdx + 1}/{items.length}
         </span>
@@ -228,7 +228,7 @@ export function WorkbenchDiffReview({
             disabled={busy || !pending.applyOne}
             onClick={() => void accept()}
           >
-            <Check className="h-3 w-3" /> 接受
+            <Check className="h-3 w-3" /> 保留
           </button>
           <button
             type="button"
@@ -236,7 +236,7 @@ export function WorkbenchDiffReview({
             disabled={busy || !pending.rejectOne}
             onClick={reject}
           >
-            <X className="h-3 w-3" /> 拒绝
+            <X className="h-3 w-3" /> 撤销
           </button>
           {pending.applyAll && items.length > 1 ? (
             <button
@@ -245,7 +245,7 @@ export function WorkbenchDiffReview({
               disabled={busy}
               onClick={() => void pending.applyAll?.()}
             >
-              全部接受
+              全部保留
             </button>
           ) : null}
         </div>
@@ -272,32 +272,20 @@ export function WorkbenchDiffReview({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-auto font-mono text-[11.5px] leading-[1.45]">
+      <div className="min-h-0 flex-1 overflow-auto">
         {preview?.error ? (
           <p className="p-3 text-[12px] text-destructive">{preview.error}</p>
         ) : null}
-        {preview?.lines.map((line, i) => (
-          <button
-            key={`${i}-${line.kind}-${line.text.slice(0, 24)}`}
-            type="button"
-            className={cn(
-              "chat-file-edit-line flex w-full border-0 px-3 py-0 text-left hover:bg-secondary/40",
-              line.kind === "add" && "chat-file-edit-line--add",
-              line.kind === "del" && "chat-file-edit-line--del",
-              line.kind === "ctx" && "chat-file-edit-line--ctx text-muted-foreground",
-              line.kind === "fold" && "text-muted-foreground",
-            )}
-            onClick={() => {
+        {preview?.lines?.length ? (
+          <CursorDiffLines
+            lines={preview.lines}
+            language={lang}
+            onLineClick={(line) => {
               if (line.kind === "fold") return;
               gotoLine(line.text, line.kind);
             }}
-            title="跳转到编辑器"
-          >
-            {line.kind === "fold"
-              ? line.text
-              : highlightDiffLine(line.text || " ", lang)}
-          </button>
-        ))}
+          />
+        ) : null}
         {!preview ? (
           <p className="p-3 text-[12px] text-muted-foreground">加载预览…</p>
         ) : null}

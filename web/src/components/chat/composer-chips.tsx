@@ -5,8 +5,6 @@ import {
   AlignLeft,
   Check,
   ChevronDown,
-  Circle,
-  Diamond,
   Disc,
   GitBranch,
   Loader,
@@ -29,42 +27,6 @@ export function SkillChip({ label, icon: Icon, onRemove }: { label: string; icon
         <X className="h-2.5 w-2.5" />
       </button>
     </span>
-  );
-}
-
-export function SpeedChip({ open, setOpen, speed, setSpeed }: { open: boolean; setOpen: (v: boolean) => void; speed: string; setSpeed: (v: string) => void }) {
-  const opts = [
-    { label: "快速", desc: "适用于大部分情况", icon: Zap, color: "text-amber-500" },
-    { label: "思考", desc: "擅长解决更难的问题", icon: Circle, color: "text-foreground" },
-    { label: "专家", desc: "研究级智能模型", icon: Diamond, color: "text-muted-foreground", badge: "新" },
-  ];
-  return (
-    <div className="relative">
-      <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-[11.5px] font-medium text-muted-foreground transition hover:text-foreground">
-        <Zap className="h-3 w-3 text-amber-500" /> {speed} <ChevronDown className="h-2.5 w-2.5" />
-      </button>
-      {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-64 rounded-2xl border border-border bg-surface p-2 shadow-lg">
-          {opts.map((o, i) => {
-            const Icon = o.icon;
-            const sel = o.label === speed;
-            return (
-              <button key={i} onClick={() => { setSpeed(o.label); setOpen(false); }} className={cn("flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition", sel ? "bg-primary-soft/50" : "hover:bg-secondary")}>
-                <Icon className={cn("mt-0.5 h-4 w-4", o.color)} />
-                <div className="flex-1">
-                  <div className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-                    {o.label}
-                    {o.badge && <span className="rounded bg-primary-soft px-1 py-px text-[12px] font-medium text-primary">{o.badge}</span>}
-                  </div>
-                  <div className="text-[11.5px] text-muted-foreground">{o.desc}</div>
-                </div>
-                {sel && <Check className="h-3.5 w-3.5 text-primary" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -338,11 +300,11 @@ export function GraphifyChip({
       <button
         type="button"
         onClick={onBuild}
-        title={buildError || "生成结构索引"}
-        className="composer-chrome-chip inline-flex items-center gap-1"
+        title={buildError || "结构索引未就绪：点击生成（否则 @codebase 不准）"}
+        className="composer-chrome-chip inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"
       >
         <Plus className="h-3 w-3" />
-        生成图谱
+        索引未就绪
       </button>
     );
   }
@@ -356,7 +318,7 @@ export function GraphifyChip({
         className="composer-chrome-chip inline-flex items-center gap-1 text-amber-700 dark:text-amber-300"
       >
         <RefreshCw className="h-3 w-3" />
-        更新图谱
+        索引已陈旧
       </button>
     );
   }

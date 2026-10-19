@@ -115,23 +115,21 @@ export function FileBrowser({
               className="explorer-tree-twistie flex items-center justify-center"
             >
               {isExpanded ? (
-                <ChevronDown className="h-4 w-4 text-[var(--explorer-twistie)]" />
+                <ChevronDown className="explorer-tree-twistie-icon" />
               ) : (
-                <ChevronRight className="h-4 w-4 text-[var(--explorer-twistie)]" />
+                <ChevronRight className="explorer-tree-twistie-icon" />
               )}
             </button>
           ) : (
             <span className="explorer-tree-twistie" aria-hidden />
           )}
 
-          {item.type === "dir" ? (
-            <ExplorerTreeIcon fileName={item.name} isDir expanded={isExpanded} />
-          ) : (
+          {item.type !== "dir" ? (
             <ExplorerTreeIcon
               ext={item.ext ?? (item.name.includes(".") ? item.name.split(".").pop() : undefined)}
               fileName={item.name}
             />
-          )}
+          ) : null}
 
           {isEditing ? (
             <Input

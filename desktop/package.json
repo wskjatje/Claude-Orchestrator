@@ -60,6 +60,11 @@
         ]
       },
       {
+        "from": "../shared",
+        "to": "backend/shared",
+        "filter": ["**/*", "!**/.DS_Store"]
+      },
+      {
         "from": "../web/dist-electron",
         "to": "backend/web-dist",
         "filter": [

@@ -4,6 +4,8 @@ import {
   collapseAcceptedWorkspaceWriteForHistory,
   collapseWorkspaceWriteForHistory,
 } from "@/lib/assistant-reply";
+import type { AgentFilePatch } from "@/lib/agent-file-patch";
+import { mergeAgentFilePatches } from "@/lib/agent-file-patch";
 import { dedupeEditsByPath, parseChatFileEdits } from "@/lib/parse-chat-file-edits";
 import { stripStreamEventsBlock } from "@/lib/stream-agent-events";
 import { resolveWorkspaceEditContent } from "@/lib/resolve-workspace-edit-content";
@@ -25,13 +27,24 @@ function normPath(p: string): string {
  */
 export async function autoAcceptPendingFromAssistantReply(
   assistantContent: string,
-  opts?: { alreadyWrittenPaths?: string[] },
-): Promise<{ written: string[]; nextContent: string; failed: string[] }> {
+  opts?: {
+    alreadyWrittenPaths?: string[];
+    /** Host/本地工具已返回的写前/写后 */
+    alreadyPatches?: AgentFilePatch[];
+  },
+): Promise<{
+  written: string[];
+  nextContent: string;
+  failed: string[];
+  patches: AgentFilePatch[];
+}> {
   if (getWorkbenchInteractionMode() !== "agent") {
-    return { written: [], nextContent: assistantContent, failed: [] };
+    return { written: [], nextContent: assistantContent, failed: [], patches: [] };
   }
   const api = getDesktop();
-  if (!api) return { written: [], nextContent: assistantContent, failed: [] };
+  if (!api) {
+    return { written: [], nextContent: assistantContent, failed: [], patches: [] };
+  }
 
   const already = new Set(
     (opts?.alreadyWrittenPaths || []).map(normPath).filter(Boolean),
@@ -39,6 +52,14 @@ export async function autoAcceptPendingFromAssistantReply(
   let text = assistantContent;
   const written: string[] = [];
   const failed: string[] = [];
+  const patches: AgentFilePatch[] = [];
+
+  for (const p of opts?.alreadyPatches || []) {
+    const path = normPath(p.path);
+    if (!path) continue;
+    if (p.before !== undefined) stashWorkspaceWriteCheckpoint(path, p.before);
+    patches.push({ ...p, path });
+  }
 
   // 已直写：统一标成已写入，避免「半写半挂」
   for (const p of already) {
@@ -60,6 +81,7 @@ export async function autoAcceptPendingFromAssistantReply(
       written: uniq,
       nextContent: uniq.length ? collapseWorkspaceWriteForHistory(text, uniq) : text,
       failed,
+      patches: mergeAgentFilePatches(patches),
     };
   }
 
@@ -109,9 +131,20 @@ export async function autoAcceptPendingFromAssistantReply(
     clearRejectedWorkspaceWrite(path, edit.diffBody || edit.writeContent || "");
     text = collapseAcceptedWorkspaceWriteForHistory(text, path);
     written.push(path);
+    patches.push({
+      path,
+      before: resolved.previous,
+      after: resolved.text,
+      isNewFile: resolved.previous === "",
+    });
   }
   const uniq = [...new Set(written)];
-  // Host 已写或刚 Accept：折叠整文件代码块，只留路径摘要（）
+  // Host 已写或刚 Accept：折叠整文件代码块，只留路径摘要
   const nextContent = uniq.length ? collapseWorkspaceWriteForHistory(text, uniq) : text;
-  return { written: uniq, nextContent, failed: [...new Set(failed)] };
+  return {
+    written: uniq,
+    nextContent,
+    failed: [...new Set(failed)],
+    patches: mergeAgentFilePatches(patches),
+  };
 }

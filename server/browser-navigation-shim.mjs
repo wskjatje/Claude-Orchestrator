@@ -178,6 +178,13 @@ function resolveLogicalNavigateUrl(rawUrl){
       }
     }
     if(!/^https?:\\/\\//i.test(a))a=logicalUrl();
+    // postMessage 开页签/导航必须是逻辑上游，禁止把代理壳 URL 当成页面地址
+    var upstream=extractUpstreamFromFrame(a);
+    if(upstream)return upstream;
+    try{
+      var parsed=new URL(a,location.origin);
+      if(isProxyPath(parsed.pathname)||parsed.pathname===P)return logicalUrl();
+    }catch(e){}
     return a;
   }catch(e){
     return logicalUrl();

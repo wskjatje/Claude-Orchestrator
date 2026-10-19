@@ -28,11 +28,11 @@
 - 左栏：文件树、Git；工作目录入口在资源管理器与设置
 - 中栏：多文件编辑与预览
 - 右栏：会话与流式对话（**默认 Agent**：CLI `--permission-mode acceptEdits`，Edit/Write 直接落盘；**禁止征求「要不要落盘」**，若模型停问则强制续写一轮）
-- 气泡密度：过程轨迹持久化为 `agentTurn.streamEvents`（成功回合不压缩替换）；`Explored N tools` 可展开；`Edit`/`Bash` 顶层；Agent 写盘后轻量 Edit 行（点开中栏 Diff）；收尾短自然语言
+- 气泡密度（对齐 Cursor 执行反馈）：过程轨迹持久化为 `agentTurn.streamEvents`；`Explored N tools` 可展开；`Edit`/`Bash` 顶层；Agent 写盘后轻量 Edit 行（点开中栏 Diff）；正文仅 1～3 句短收尾，禁止「下一步/P2」推销与接入点百科
 - **Ask**：只读；**Plan**：需 Accept 才落盘；**Agent**：默认可写盘
 - 中栏：**Diff Review**（Manual 待审；Agent 写盘后默认聚合已写入；支持按 hunk 接受）；**⌘/Ctrl+K Inline Edit**；幽灵文本 / LS 补全；符号跳转 / Lint
 - 底栏 Composer：Agent / Ask / Plan（Shift+Tab 切换）；`@selection` `@git` `@codebase[:query]` `@rule:path` 真实展开；项目规则注入 prompt
-- 任务链：Agent 模式下围栏自动落盘（模式写入 `.claudecode/interaction-mode.json`）
+- 任务链 / 回合执行（对齐 Cursor Ask·Plan·Agent）：Ask 禁写；Plan 仅排队围栏待 Accept/Build；Agent 才自动落盘。合法写盘仅 ` ```workspace-write` JSON（显式 path+content|contents）或真工具；禁止代码块猜路径 / 默认 `docs/chain-steps` / `ensure*Artifact`。变更意图缺围栏则续写一轮，仍无则硬失败。工作区模式写入 `.claudecode/interaction-mode.json`（服务端须认 `plan`，禁止把 Plan 当成 Agent）
 
 #### IDE 能力矩阵
 
@@ -46,17 +46,26 @@
 | 项目规则 | 已实现 | `.cursor/rules` 热更新；`alwaysApply` / `globs`；排除 AGENTS/CLAUDE 双重注入 |
 | `@codebase` | 已实现 | **结构索引（graph.json，`file_type=code` 加权）+ 语义索引 + ripgrep**；缺图/陈旧显式报错；写盘节流 `graphify update`；Composer 图谱芯片可重建 |
 | 本地语义索引 | 已实现 | BM25 + Ollama embeddings hybrid；`codeIndexEnsureHybrid` 可启动 Ollama/拉模型/重建；写盘后 `updateCodeIndexForFiles` 增量 |
-| Claude CLI 自愈 | 已实现 | 失效路径清空；`ensureCli` npm 安装；Bridge 启动探测；**Agent 发送前再 ensureCli 一次**再回落 Host |
+| Claude CLI 自愈 | 已实现 | 失效路径清空；`ensureCli` npm 安装；Bridge 启动探测；**Agent 发送前再 ensureCli**；CLI 失败硬报错，**禁止静默回落 Host** |
 | Host Agent 工具环 | 已实现 | search/read/**search_replace**/write/**run_command/run_tests/get_diagnostics/git_status**；探索禁裸 grep；气泡（工具行/`Explored N`/Edit 行 + 短自然语言，无四行模板）；写盘默认开聚合 Diff Review；无 tool_calls 强制续轮；`host-agent:abort` |
 | `@problems` / 打开文件上下文 | 已实现 | Ask/Agent/Manual 自动注入 Problems + 打开文件列表；`@problems` 仍可显式展开 |
 | Diff Review | 已实现 | Manual 待审；Agent 写盘后默认中栏「已写入」聚合 Diff（不抢开首文件）+ SCM |
 | 跨文件 Rename | 已实现 | F2 后 Peek 勾选批写；同文件即时改 |
 | Organize Imports | 已实现 | `Shift+Alt+O`（TS/JS Language Service） |
+| 格式化文档 | 已实现 | `Shift+Alt+F`；仅 TS/JS（`workspace:tsFormatDocument`）；其它语言不显示菜单项 |
+| 转到 / 查找实现 | 已实现 | `⌘F12`；TS Language Service；无结果硬提示；菜单仅 tsLike 文件出现 |
+| 调用层次结构 | 已实现 | TS/JS Language Service；Python/Go/Rust 真 LSP（缺服务器硬提示）；Peek Incoming/Outgoing + 展开历史返回；`⇧⌥H` / 命令面板；**无假树** |
+| 命令面板 | 已实现 | `⌘⇧P`；仅注册已接线动作（打开文件/侧栏/终端/模式/@problems/调用层次 等）；**禁止灰项占位** |
 | Quick Fix | 已实现 | `Alt+.` / `⌘.`；可跨文件写盘 |
 | Agent 瞬态重试 | 已实现 | timeout / 限流 / 网络失败退避重试（对齐链步骤） |
-| 多语言 LSP | Python/Go/Rust | 崩溃自动重启；状态栏显示缺命令/运行中/错误 |
+| 多语言 LSP | Python/Go/Rust | 崩溃自动重启；状态栏显示缺命令/运行中/错误；含 DocumentSymbol / Call Hierarchy |
+| 大纲 | 已实现 | TS→NavigationTree；Python/Go/Rust→DocumentSymbol；其它→当前文件正则。标题标明来源（语言服务 / LSP / 当前文件） |
+| 底栏终端 | 已实现 | node-pty → Python PTY → pipe；徽章标明模式；Agent Bash/`run_command` 回显（不重跑） |
+| Host `run_command` | 已实现 | 优先真 PTY（node-pty）；失败硬降级管道并标明 `ptyMode`；Ask 白名单 / 拒绝危险命令 / 超时 / Abort |
+| 底栏「控制台」 | 已实现 | 页面 console 捕获（**非**调试器）；原「调试控制台」已改名 |
+| 底栏「预览端口」 | 已实现 | localhost 扫描 + 手动添加（**非** Dev Tunnel） |
 
-> **诚实差距**：无 VS Code 扩展生态与 Background Agent；终端为受控非交互命令子集（非完整 PTY 进环）。语义索引依赖本机 Ollama 嵌入。Agent 发送链：**ensureCli → CLI → Host（云端无 tools 则回落 Ollama）**；若已启用需 MCP 的服务器（不含自动三省六部），CLI/本地编排失败则**硬失败**，禁止 Host/cloudDirect 静默兜底。失败只显示真实 error、**不产生待应用 Diff**；禁止无工具证据冒充已改盘/已开应用。
+> **诚实差距**：无 VS Code 扩展生态与 Background Agent；无真调试器。语义索引依赖本机 Ollama 嵌入。Agent/Plan 工具环：**ensureCli → Claude CLI**（附图可随 CLI）；CLI 失败**硬失败**（不自动 Host / cloudDirect）。若已启用需 MCP 的服务器（不含自动三省六部），MCP 全挂或快照异常亦**硬失败**。prefer-cloud / prefer-local 对侧池空禁止静默换通道。失败只显示真实 error、**不产生待应用 Diff**；禁止无工具证据冒充已改盘/已开应用。编辑器右键**不出现**未接线能力（无永久 `disabled` 占位）。PTY 进环仍受命令闸与超时约束，不是完整交互式 shell 会话。
 
 #### 工作目录 `/workspaces`
 

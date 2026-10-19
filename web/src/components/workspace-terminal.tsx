@@ -34,6 +34,7 @@ import {
 } from "@/lib/terminal-selection-meta";
 import { TerminalAddToChatButton } from "@/components/terminal-add-to-chat-button";
 import { TERMINAL_OFFLINE } from "@/lib/ui-copy";
+import { looksLikeTerminalFailure } from "@/lib/agent-fix-request";
 
 const MIN_TERMINAL_COLS = 24;
 const MIN_TERMINAL_ROWS = 2;
@@ -152,12 +153,16 @@ function syncTerminalSize(
   }
 }
 
+export type TerminalPtyMode = "pty" | "python-pty" | "pipe" | null;
+
 export type WorkspaceTerminalMeta = {
   cwdLabel: string;
   cwdFull: string | null;
   shellLabel: string;
   status: "idle" | "connecting" | "ready" | "closed" | "error";
   hint: string | null;
+  /** 后端会话模式：pty / python-pty / pipe（pipe 非完整交互） */
+  ptyMode: TerminalPtyMode;
 };
 
 export type WorkspaceTerminalHandle = {
@@ -169,6 +174,11 @@ export type WorkspaceTerminalHandle = {
   clear: () => void;
   /** 向 Shell 发送一行命令 */
   runCommand: (command: string) => boolean;
+  /**
+   * 将 Agent 已执行的命令与输出回显到终端（不重跑，避免双执行）。
+   * 对齐 Cursor：底栏可见 Ran 轨迹。
+   */
+  echoAgentRun: (command: string, output: string, ok: boolean) => boolean;
   isReady: () => boolean;
 };
 
@@ -229,12 +239,13 @@ export const WorkspaceTerminal = forwardRef<
   const [shellLabel, setShellLabel] = useState("zsh");
   const [status, setStatus] = useState<WorkspaceTerminalMeta["status"]>("idle");
   const [hint, setHint] = useState<string | null>(null);
+  const [ptyMode, setPtyMode] = useState<TerminalPtyMode>(null);
 
-  const meta: WorkspaceTerminalMeta = { cwdLabel, cwdFull, shellLabel, status, hint };
+  const meta: WorkspaceTerminalMeta = { cwdLabel, cwdFull, shellLabel, status, hint, ptyMode };
 
   useEffect(() => {
     onMetaChange?.(meta);
-  }, [cwdLabel, cwdFull, shellLabel, status, hint, onMetaChange]);
+  }, [cwdLabel, cwdFull, shellLabel, status, hint, ptyMode, onMetaChange]);
 
   const teardown = () => {
     if (resizeDebounceRef.current) {
@@ -370,6 +381,10 @@ export const WorkspaceTerminal = forwardRef<
         }
       } else if (msg.type === "terminal:started") {
         setStatus("ready");
+        const modeRaw = String(msg.mode || "").trim();
+        const mode: TerminalPtyMode =
+          modeRaw === "pty" || modeRaw === "python-pty" || modeRaw === "pipe" ? modeRaw : null;
+        setPtyMode(mode);
         if (msg.cwd) {
           setCwdFull(msg.cwd);
           setCwdLabel(shortenHomeInPath(msg.cwd));
@@ -378,7 +393,21 @@ export const WorkspaceTerminal = forwardRef<
           const base = msg.shell.split("/").pop() || msg.shell;
           setShellLabel(base);
         }
-        if (msg.warning) setHint(msg.warning);
+        if (msg.warning) {
+          setHint(msg.warning);
+          void import("sonner").then(({ toast }) => {
+            toast.message(String(msg.warning), { duration: 8000 });
+          });
+        } else if (mode === "pipe") {
+          const pipeHint =
+            "终端为管道模式（非完整 PTY）：交互式程序可能异常；请安装/修复 node-pty。";
+          setHint(pipeHint);
+          void import("sonner").then(({ toast }) => {
+            toast.message(pipeHint, { duration: 8000 });
+          });
+        } else {
+          setHint(null);
+        }
         term.scrollToBottom();
       } else if (msg.type === "terminal:error") {
         setStatus("error");
@@ -534,12 +563,38 @@ export const WorkspaceTerminal = forwardRef<
     [status],
   );
 
+  const echoAgentRun = useCallback(
+    (command: string, output: string, ok: boolean) => {
+      const term = termRef.current;
+      if (!term || status !== "ready") return false;
+      const cmd = String(command || "").trim();
+      if (!cmd) return false;
+      const body = String(output || "").replace(/\r?\n/g, "\r\n").slice(0, 12_000);
+      const statusColor = ok ? "32" : "31";
+      const statusLabel = ok ? "ok" : "fail";
+      term.writeln("");
+      term.writeln(`\x1b[90m── Agent · Bash (${statusLabel}) ──\x1b[0m`);
+      term.writeln(`\x1b[1m$ ${cmd}\x1b[0m`);
+      if (body.trim()) {
+        for (const line of body.split(/\r?\n/)) {
+          term.writeln(line);
+        }
+      } else {
+        term.writeln("\x1b[90m（无输出）\x1b[0m");
+      }
+      term.writeln(`\x1b[${statusColor}mexit ${ok ? 0 : 1}\x1b[0m`);
+      term.scrollToBottom();
+      return true;
+    },
+    [status],
+  );
+
   const isReady = useCallback(() => status === "ready" && Boolean(sessionRef.current), [status]);
 
   useImperativeHandle(
     ref,
-    () => ({ restart, kill, dispose, focus, clear, runCommand, isReady }),
-    [restart, kill, dispose, focus, clear, runCommand, isReady],
+    () => ({ restart, kill, dispose, focus, clear, runCommand, echoAgentRun, isReady }),
+    [restart, kill, dispose, focus, clear, runCommand, echoAgentRun, isReady],
   );
 
   const addSelectionToChat = useCallback(() => {
@@ -556,6 +611,18 @@ export const WorkspaceTerminal = forwardRef<
     term?.clearSelection();
     setSelectionText("");
   }, [composerBridge, selectionText, shellLabel]);
+
+  /** 失败输出 → Agent 修：仅 fail 模式匹配时自动发送（禁纯预填占位） */
+  const fixWithAgent = useCallback(() => {
+    const term = termRef.current;
+    const text = term?.getSelection()?.trim() ?? selectionText.trim();
+    if (!text) return;
+    void import("@/lib/agent-fix-request").then(({ requestAgentFix }) => {
+      requestAgentFix(text);
+    });
+    term?.clearSelection();
+    setSelectionText("");
+  }, [selectionText]);
 
   useEffect(() => {
     if (!active || !composerBridge) return;
@@ -635,8 +702,24 @@ export const WorkspaceTerminal = forwardRef<
         </div>
       ) : null}
       <div className="relative min-h-0 flex-1">
-        {active && selectionText && composerBridge ? (
-          <TerminalAddToChatButton onClick={addSelectionToChat} />
+        {active && selectionText && (composerBridge || looksLikeTerminalFailure(selectionText)) ? (
+          <div className="pointer-events-none absolute right-2 top-2 z-20 flex flex-col items-end gap-1">
+            {composerBridge ? (
+              <TerminalAddToChatButton
+                onClick={addSelectionToChat}
+                className="pointer-events-auto !static"
+              />
+            ) : null}
+            {looksLikeTerminalFailure(selectionText) ? (
+              <button
+                type="button"
+                className="pointer-events-auto rounded-md border border-border/80 bg-popover/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-md backdrop-blur-sm hover:bg-secondary"
+                onClick={fixWithAgent}
+              >
+                用 Agent 修
+              </button>
+            ) : null}
+          </div>
         ) : null}
         <div
           ref={containerRef}
