@@ -92,8 +92,8 @@ export default defineConfig({
           timeout: 600_000,
           proxyTimeout: 600_000,
           configure: (proxy) => {
-            proxy.on("error", (err, _req, res) => {
-              if (!res || res.headersSent) return;
+            proxy.on("error", (_err, _req, res) => {
+              if (!res || !("writeHead" in res) || res.headersSent) return;
               res.writeHead(503, { "Content-Type": "application/json" });
               res.end(
                 JSON.stringify({

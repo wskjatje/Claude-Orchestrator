@@ -14,6 +14,7 @@ const {
   appendStreamJsonLine,
   finalizeStreamDisplay,
   extractToolResultOutput,
+  extractClaudeStreamUsage,
 } = await import(parseUrl)
 
 function ok(cond, msg) {
@@ -79,6 +80,39 @@ ok(extractToolResultOutput({}) === '', 'empty object not [object Object]')
   finalizeStreamDisplay(s)
   const ev = s.events.find((e) => e.toolUseId === 'tu2' || e.arg === 'pwd')
   ok(ev?.output?.includes('/tmp'), 'tool_result stdout 字段')
+}
+
+// —— Claude stream usage 实参抽取（无字段则 null，禁估算） ——
+{
+  ok(
+    extractClaudeStreamUsage({ input_tokens: 12, output_tokens: 3 })?.prompt_tokens === 12,
+    'extractClaudeStreamUsage input/output_tokens',
+  )
+  ok(extractClaudeStreamUsage({}) === null, 'extractClaudeStreamUsage 空对象 → null')
+  ok(extractClaudeStreamUsage(null) === null, 'extractClaudeStreamUsage null → null')
+  const s = createStreamDisplayState()
+  appendStreamJsonLine(
+    JSON.stringify({
+      type: 'assistant',
+      message: {
+        content: [{ type: 'text', text: 'hi' }],
+        usage: { input_tokens: 40, output_tokens: 2 },
+      },
+    }),
+    s,
+  )
+  ok(s.usage?.prompt_tokens === 40 && s.usage?.completion_tokens === 2, 'assistant.message.usage → state')
+  appendStreamJsonLine(
+    JSON.stringify({
+      type: 'result',
+      result: 'hi',
+      usage: { input_tokens: 55, output_tokens: 4 },
+    }),
+    s,
+  )
+  ok(s.usage?.prompt_tokens === 55 && s.usage?.completion_tokens === 4, 'result.usage 覆盖为终态')
+  const cli = fs.readFileSync(path.join(root, 'server/claude-cli.mjs'), 'utf8')
+  ok(/streamState\?\.usage/.test(cli), 'claude-cli 透传 streamState.usage')
 }
 
 // —— 前端 fromEvents 不得写死 output:"" ——

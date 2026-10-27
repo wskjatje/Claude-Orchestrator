@@ -75,7 +75,8 @@ function normalizeImportedMcpServer(name, cfg) {
   return normalizeMcpServerEntry(next)
 }
 
-function importMcpFromRepo(customPath, mcpSrc) {
+/** 将指定 .mcp.json 合并写入本机 MCP 配置（自定义路径或 ~/.claude/mcp.json） */
+export function importMcpFromRepo(customPath, mcpSrc) {
   if (!fs.existsSync(mcpSrc)) {
     return { ok: true, imported: 0, path: null, reason: '无 .mcp.json' }
   }
@@ -104,6 +105,47 @@ function importMcpFromRepo(customPath, mcpSrc) {
 
   const written = writeMcpConfigFile(customPath, data)
   return { ok: true, imported, path: written.path }
+}
+
+/** 探测工作区根下 .mcp.json 是否含 mcpServers（不写入） */
+export function peekWorkspaceMcpJson(workspaceRoot) {
+  const root = String(workspaceRoot || '').trim()
+  if (!root) return { ok: true, present: false, count: 0, path: null }
+  const mcpSrc = path.join(root, '.mcp.json')
+  if (!fs.existsSync(mcpSrc)) {
+    return { ok: true, present: false, count: 0, path: mcpSrc }
+  }
+  try {
+    const data = JSON.parse(fs.readFileSync(mcpSrc, 'utf8'))
+    const servers = data?.mcpServers
+    const names =
+      servers && typeof servers === 'object'
+        ? Object.keys(servers).filter((k) => servers[k] && typeof servers[k] === 'object')
+        : []
+    return {
+      ok: true,
+      present: names.length > 0,
+      count: names.length,
+      names,
+      path: mcpSrc,
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      present: false,
+      count: 0,
+      path: mcpSrc,
+      error: e instanceof Error ? e.message : String(e),
+    }
+  }
+}
+
+/** 将当前工作区 .mcp.json 合并写入本机 MCP 配置（显式导入，不静默） */
+export function importMcpFromWorkspace(workspaceRoot, customPath) {
+  const root = String(workspaceRoot || '').trim()
+  if (!root) return { ok: false, imported: 0, error: '未选择工作区' }
+  const mcpSrc = path.join(root, '.mcp.json')
+  return importMcpFromRepo(customPath, mcpSrc)
 }
 
 function loadChainRecordsFromDocs(chainsSrc) {

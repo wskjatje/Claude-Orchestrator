@@ -77,29 +77,31 @@ export const AGENT_STEM_ALIASES: Record<string, string> = {
 };
 
 /** 类别前缀 → docs 子目录（长前缀优先匹配） */
-const CATEGORY_PREFIX_DIRS: readonly [string, string][] = [
-  ["project-management", "docs/project"],
-  ["paid-media", "docs/paid-media"],
-  ["product", "docs/product"],
-  ["engineering", "docs/engineering"],
-  ["design", "docs/design"],
-  ["testing", "docs/testing"],
-  ["marketing", "docs/marketing"],
-  ["sales", "docs/sales"],
-  ["finance", "docs/finance"],
-  ["support", "docs/support"],
-  ["specialized", "docs/specialized"],
-  ["legal", "docs/legal"],
-  ["healthcare", "docs/healthcare"],
-  ["government", "docs/government"],
-  ["hospitality", "docs/hospitality"],
-  ["game", "docs/game"],
-  ["godot", "docs/godot"],
-  ["unity", "docs/unity"],
-  ["unreal", "docs/unreal"],
-  ["roblox", "docs/roblox"],
-  ["medical", "docs/medical"],
-].sort((a, b) => b[0].length - a[0].length);
+const CATEGORY_PREFIX_DIRS: readonly [string, string][] = (
+  [
+    ["project-management", "docs/project"],
+    ["paid-media", "docs/paid-media"],
+    ["product", "docs/product"],
+    ["engineering", "docs/engineering"],
+    ["design", "docs/design"],
+    ["testing", "docs/testing"],
+    ["marketing", "docs/marketing"],
+    ["sales", "docs/sales"],
+    ["finance", "docs/finance"],
+    ["support", "docs/support"],
+    ["specialized", "docs/specialized"],
+    ["legal", "docs/legal"],
+    ["healthcare", "docs/healthcare"],
+    ["government", "docs/government"],
+    ["hospitality", "docs/hospitality"],
+    ["game", "docs/game"],
+    ["godot", "docs/godot"],
+    ["unity", "docs/unity"],
+    ["unreal", "docs/unreal"],
+    ["roblox", "docs/roblox"],
+    ["medical", "docs/medical"],
+  ] as [string, string][]
+).sort((a, b) => b[0].length - a[0].length);
 
 /** 链步日志存放的相对目录 */
 export const CHAIN_STEP_DIR = "docs/chain-steps";

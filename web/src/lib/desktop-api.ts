@@ -1,5 +1,7 @@
 import type { DesktopApi } from '@/types/desktop'
 
+export type { DesktopApi }
+
 declare global {
   interface Window {
     /** Web Bridge 垫片注入时标记，区别于 Electron preload */

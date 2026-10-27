@@ -27,7 +27,20 @@
 
 /** 祈使 / 变更言语行为 → 需要写盘或改仓库（含「按方案执行」类，对齐 Cursor Agent 跟进） */
 const MUTATION_SPEECH_ACT_RE =
-  /(?:请?(?:帮我)?(?:把|将|给|对).{0,40}?(?:改成|改为|修改|更新|替换|写入|写到|写进|保存|落盘|删除|移除|重命名)|(?:请?修改|修复|重构|实现|添加|新增|创建|生成|写入|保存|更新|删除|改一下|改掉|补上|接上).{0,60}?(?:文件|代码|函数|组件|页面|配置|README|测试|bug|缺陷|[\w./-]+\.[a-zA-Z0-9]+)|(?:改代码|改文件|改一下代码)|(?:并写入|写到|写进)\s*[\w./-]+\.[a-zA-Z0-9]+|(?:按(?:照)?|根据|依据).{0,20}(?:方案|计划|建议|优化).{0,16}(?:执行|落地|实施|改)|(?:开始|请|帮我)?(?:执行|落地|实施)(?:一下|吧)?\s*(?:优化|方案|计划|改动|P\d+)?|(?:请|帮我|去|继续)?(?:动手(?:改|做)|落盘|开改)|^(?:改|写)(?:一下|吧)?$|(?:commit|apply|patch|refactor|implement|fix|add|create|write|save|update|delete|go\s*ahead|do\s*it)\b)/i
+  /(?:请?(?:帮我)?(?:把|将|给|对).{0,40}?(?:改成|改为|修改|更新|替换|写入|写到|写进|保存|落盘|删除|移除|重命名)|(?:请?修改|修复|重构|实现|添加|新增|创建|生成|写入|保存|更新|删除|改一下|改掉|补上|接上).{0,60}?(?:文件|代码|函数|组件|页面|配置|README|测试|bug|缺陷|[\w./-]+\.[a-zA-Z0-9]+)|(?:改代码|改文件|改一下代码)|(?:写(?:一?[个份])?文件)\s*[\w./-]+\.[a-zA-Z0-9]+|(?:并写入|写到|写进|写入)\s*[\w./-]+\.[a-zA-Z0-9]+|(?:按(?:照)?|根据|依据).{0,20}(?:方案|计划|建议|优化).{0,16}(?:执行|落地|实施|改)|(?:开始|请|帮我)?(?:执行|落地|实施)(?:一下|吧)?\s*(?:优化|方案|计划|改动|P\d+)?|(?:请|帮我|去|继续)?(?:动手(?:改|做)|落盘|开改)|^(?:改|写)(?:一下|吧)?$|(?:commit|apply|patch|refactor|implement|fix|add|create|write|save|update|delete|go\s*ahead|do\s*it)\b)/i
+
+/**
+ * 用户明确要求调用 MCP/工具（含本机 memory 服务器）。
+ * 不以「怎么/如何/为什么」开头，避免把用法咨询送进工具环。
+ */
+const EXPLICIT_TOOL_INVOCATION_RE =
+  /(?:调用|使用).{0,48}(?:\bMCP\b|mcp__|工具|\bmemory\b)|(?:\b(?:call|use|invoke)\b.{0,60}\b(?:mcp|tools?)\b)/i
+
+export function isExplicitToolInvocation(displayLine) {
+  const s = String(displayLine || '').trim()
+  if (!s || /^(?:怎么|如何|为什么|为何)/.test(s)) return false
+  return EXPLICIT_TOOL_INVOCATION_RE.test(s)
+}
 
 /** 问句 / 求解释言语行为 → 只读 */
 const INTERROGATIVE_SPEECH_ACT_RE =
@@ -39,14 +52,14 @@ const WORKSPACE_TOPIC_RE =
 
 /** 技术/产品只读问答（无「?」也可）→ readonly + slim 摘录 */
 const TECHNICAL_QA_RE =
-  /(?:架构|性能|瓶颈|依赖|模块|技术栈|目录结构|怎么用|如何用|如何运行|如何启动|怎么跑|优化建议|该怎么优化|如何优化|有哪些依赖|还有哪些可以优化|怎么改比较好)/i
+  /(?:架构|性能|瓶颈|依赖|模块|技术栈|目录结构|怎么用|如何用|如何运行|如何启动|怎么跑|优化建议|该怎么优化|如何优化|优化方案|合理优化|完整优化|改进方案|实施计划|给我.{0,10}方案|给出.{0,10}方案|有哪些依赖|还有哪些可以优化|怎么改比较好)/i
 
 /**
- * 对齐 Cursor Plan/CreatePlan：用户在要「方案文档」产物（非立刻改业务源码）。
- * Ask 仍只聊；Plan/Agent 须允许写入 Markdown 方案文件。
+ * 对齐 Cursor：仅当用户明确要「落到仓库的方案文档」时才开写盘。
+ * 「告诉我/给我一个优化方案」等咨询句 → 只聊（Ask 同构），不强制写 md、不弹落盘失败横幅。
  */
 const PLAN_DOCUMENT_SPEECH_ACT_RE =
-  /(?:优化方案|合理优化|完整优化|改进方案|实施计划|方案文档|给我.{0,10}方案|给出.{0,10}方案|写一份?.{0,8}方案|制定.{0,10}(?:方案|计划)|根据以上.{0,16}方案|(?:create|write).{0,16}\bplan\b)/i
+  /(?:方案文档|写一份?.{0,12}(?:优化|改进)?方案|把方案写[到入].{0,32}|保存(?:为|成|到).{0,20}(?:方案|计划|\.md)|落到?\s*docs\/|制定.{0,10}方案文档|(?:create|write)\s+(?:a\s+)?(?:plan|optimization)(?:\s+file|\s+doc|\.md)?|(?:write|save).{0,24}\bplan\b.{0,16}(?:file|markdown|\.md|docs))/i
 
 /**
  * @param {string} displayLine
@@ -122,22 +135,34 @@ export function resolveTurnPolicy(input) {
   const interactionMode = input.interactionMode || 'ask'
   const intent = classifyTurnIntent(input.displayLine)
   const isGeneral = Boolean(input.isGeneralTurn) || !input.isNamedAgent
+  const line = String(input.displayLine || '')
+  const explicitToolCall =
+    isExplicitToolInvocation(line) && interactionMode !== 'ask'
+  const explicitPlanDoc = isPlanDocumentRequest(line)
+  // 咨询类优先只读；显式「写一份方案/落到 docs」仍可开方案文档写盘
+  const advisoryAsk =
+    !explicitPlanDoc &&
+    (intent === 'readonly' ||
+      INTERROGATIVE_SPEECH_ACT_RE.test(line) ||
+      TECHNICAL_QA_RE.test(line))
   const planArtifact =
-    isPlanDocumentRequest(input.displayLine) &&
+    explicitPlanDoc &&
     (interactionMode === 'plan' || interactionMode === 'agent') &&
     intent !== 'write'
 
-  // 不问改就不写：变更言语 或 Plan/Agent 方案文档；Ask / 纯问句禁写
+  // 不问改就不写：变更言语 或 显式方案文档；Ask / 咨询禁写
   const allowWrites =
     (intent === 'write' || planArtifact) &&
     (interactionMode === 'agent' || interactionMode === 'plan')
   const autoApplyWrites = allowWrites && interactionMode === 'agent'
   const readOnly = !allowWrites
 
-  // 直聊：Ask、或非写盘意图。方案文档 / 变更 → 进工具环
+  // 直聊：Ask、或非写盘且未明确要工具。显式方案文档 / 变更 / 点名调用工具 → 进工具环
   const forceDirectChat =
     interactionMode === 'ask' ||
-    (!allowWrites && (intent === 'readonly' || (isGeneral && intent !== 'write')))
+    (!allowWrites &&
+      !explicitToolCall &&
+      (intent === 'readonly' || (isGeneral && intent !== 'write')))
   const allowTools =
     !forceDirectChat &&
     (interactionMode === 'agent' || interactionMode === 'plan' || Boolean(input.isNamedAgent))
@@ -148,7 +173,8 @@ export function resolveTurnPolicy(input) {
   else if (
     shouldInjectProjectBootstrap(input.displayLine) ||
     intent === 'readonly' ||
-    planArtifact
+    planArtifact ||
+    advisoryAsk
   ) {
     contextLevel = 'slim-product'
   }
@@ -164,6 +190,11 @@ export function resolveTurnPolicy(input) {
       '只写方案/计划文档，禁止改业务源码与配置（除非用户明确要求执行/落代码）。' +
       'content 内若含代码示例，用缩进或单行反引号，避免在 content 里再套 ``` 围栏。' +
       '聊天可附短摘要；勿宣称已落盘（由应用落盘/Accept）；落盘后底栏可 Open/Build。'
+  } else if (readOnly && allowTools) {
+    systemConstraint =
+      '【回合策略·只读工具】用户明确要求调用工具。可调用已启用的 MCP/只读工具并依据返回作答。' +
+      '禁止 write_file、search_replace、```workspace-write``` 与任何落盘。' +
+      '无工具返回不得编造调用结果。'
   } else if (readOnly) {
     systemConstraint =
       '【回合策略·只读】用户在提问/求解释。只用自然语言回答。' +

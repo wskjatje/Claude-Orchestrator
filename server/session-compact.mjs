@@ -1,20 +1,51 @@
 /**
  * 结构化会话 compact：窗口过大时用摘要替换旧 user/assistant，保留近 N 轮原文。
  * compact 管本会话；跨会话经验仍走 memory。
+ * 对齐 Cursor：自动保近尾；手动 force 更狠；旧对话可归档供 read_file 回查。
  */
-import { estimateMessagesChars, clearStaleToolResults } from './context-tool-results.mjs'
+import fs from 'node:fs'
+import path from 'node:path'
+import { clearStaleToolResults, estimateMessagesChars } from './context-tool-results.mjs'
 import {
   COMPACT_CHAR_THRESHOLD,
+  COMPACT_TOKEN_THRESHOLD,
   COMPACT_KEEP_RECENT_TURNS,
+  COMPACT_FORCE_KEEP_RECENT,
+  COMPACT_MIN_DIALOGUE_MESSAGES,
   PRIOR_MESSAGE_CHAR_CAP,
   PRIOR_KEEP_RECENT,
+  PRIOR_KEEP_RECENT_DIRECT,
+  PRIOR_MESSAGE_CHAR_CAP_DIRECT,
+  resolvePriorBudget,
+  resolveLocalGenBudget,
+  resolveCompactThresholds,
 } from '../shared/context-budget.mjs'
+import {
+  buildStructuredCompactSummary,
+  compactDialogueBody,
+  shouldAutoCompact,
+  isSummarizeSlashCommand,
+  estimateMessagesTokens,
+} from '../shared/compact-summary.mjs'
 
 export {
   COMPACT_CHAR_THRESHOLD,
+  COMPACT_TOKEN_THRESHOLD,
   COMPACT_KEEP_RECENT_TURNS,
+  COMPACT_FORCE_KEEP_RECENT,
+  COMPACT_MIN_DIALOGUE_MESSAGES,
   PRIOR_MESSAGE_CHAR_CAP,
   PRIOR_KEEP_RECENT,
+  PRIOR_KEEP_RECENT_DIRECT,
+  PRIOR_MESSAGE_CHAR_CAP_DIRECT,
+  resolvePriorBudget,
+  resolveLocalGenBudget,
+  resolveCompactThresholds,
+  buildStructuredCompactSummary,
+  shouldAutoCompact,
+  isSummarizeSlashCommand,
+  estimateMessagesTokens,
+  estimateMessagesChars,
 }
 
 /**
@@ -45,92 +76,135 @@ export function slimPriorMessagesForApi(prior, opts = {}) {
 }
 
 /**
- * @param {any[]} messages — 含 system 的完整列表
- * @returns {{ summary: string, keptFrom: number } | null}
+ * @param {string} workspaceRoot
+ * @param {any[]} dropped
+ * @returns {string} relative path or ''
  */
-export function buildStructuredCompactSummary(messages) {
-  const body = (messages || []).filter((m) => m.role === 'user' || m.role === 'assistant')
-  if (body.length < COMPACT_KEEP_RECENT_TURNS + 2) return null
-
-  const goals = []
-  const decisions = []
-  const todos = []
-  const files = new Set()
-  const errors = []
-
-  for (const m of body) {
-    const t = String(m.content || '')
-    if (m.role === 'user') {
-      const line = t.split('\n').find((l) => l.trim()) || ''
-      if (line && goals.length < 8) goals.push(line.slice(0, 200))
-    }
-    for (const fm of t.matchAll(
-      /(?:^|[\s`"'(])((?:src|web|server|desktop|app|lib|components|hooks|routes)\/[\w./-]+\.[a-zA-Z0-9]+)/g,
-    )) {
-      files.add(fm[1])
-    }
-    if (/决定|采用|改为|选择|default|改用/i.test(t) && decisions.length < 8) {
-      decisions.push(t.slice(0, 180).replace(/\s+/g, ' '))
-    }
-    if (/待办|TODO|FIXME|未完成|下一步/i.test(t) && todos.length < 8) {
-      todos.push(t.slice(0, 160).replace(/\s+/g, ' '))
-    }
-    if (/error|失败|✗|Error:|Traceback/i.test(t) && errors.length < 6) {
-      errors.push(t.slice(0, 160).replace(/\s+/g, ' '))
-    }
-  }
-
-  const lines = [
-    '【会话摘要·compact】',
-    goals.length ? `目标：\n- ${goals.slice(0, 5).join('\n- ')}` : null,
-    decisions.length ? `决策：\n- ${decisions.slice(0, 5).join('\n- ')}` : null,
-    files.size ? `涉及文件：${[...files].slice(0, 20).join(', ')}` : null,
-    todos.length ? `待办：\n- ${todos.slice(0, 5).join('\n- ')}` : null,
-    errors.length ? `近期错误：\n- ${errors.slice(0, 4).join('\n- ')}` : null,
-    '（以上为压缩摘要；近几轮原文仍保留在后文。）',
-  ].filter(Boolean)
-
-  return {
-    summary: lines.join('\n'),
-    keptFrom: Math.max(0, body.length - COMPACT_KEEP_RECENT_TURNS),
+function archiveDroppedTurns(workspaceRoot, dropped) {
+  const root = String(workspaceRoot || '').trim()
+  if (!root || !dropped?.length) return ''
+  try {
+    const dir = path.join(root, '.claudecode', 'compact-archive')
+    fs.mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, `${Date.now()}-turns.jsonl`)
+    const lines = dropped.map((m) =>
+      JSON.stringify({
+        role: m.role,
+        content: String(m.content || '').slice(0, 50_000),
+        ts: Date.now(),
+      }),
+    )
+    fs.writeFileSync(file, `${lines.join('\n')}\n`, 'utf8')
+    return path.relative(root, file).replace(/\\/g, '/')
+  } catch {
+    return ''
   }
 }
 
 /**
- * 就地 compact：保留首条 system；插入摘要 user；保留最近 turns 的 user/assistant；清空旧 tool。
+ * 就地 compact：保留 system；插入摘要；保留最近 turns；清空旧 tool。
  * @param {any[]} messages
- * @param {{ threshold?: number, keepRecent?: number }} [opts]
- * @returns {{ compacted: boolean, beforeChars: number, afterChars: number }}
+ * @param {{
+ *   threshold?: number
+ *   thresholdTokens?: number
+ *   keepRecent?: number
+ *   keepRecentTool?: number
+ *   force?: boolean
+ *   workspaceRoot?: string
+ *   contextLength?: number|null
+ *   isLocal?: boolean
+ * }} [opts]
+ * @returns {{
+ *   compacted: boolean
+ *   beforeChars: number
+ *   afterChars: number
+ *   archivePath?: string
+ *   beforeTokens?: number
+ *   afterTokens?: number
+ * }}
  */
 export function compactMessagesIfNeeded(messages, opts = {}) {
-  const threshold = Number(opts.threshold) || COMPACT_CHAR_THRESHOLD
+  const force = Boolean(opts.force)
   const beforeChars = estimateMessagesChars(messages)
+  const beforeTokens = estimateTokensFromMessages(beforeChars)
   clearStaleToolResults(messages, { keepRecent: opts.keepRecentTool ?? 4 })
 
-  if (beforeChars < threshold) {
-    return { compacted: false, beforeChars, afterChars: estimateMessagesChars(messages) }
-  }
+  const modelTh = resolveCompactThresholds({
+    contextLength: opts.contextLength,
+    isLocal: opts.isLocal,
+  })
+  const thresholdChars = Number(opts.threshold) || modelTh.thresholdChars
+  const thresholdTokens = Number(opts.thresholdTokens) || modelTh.thresholdTokens
 
   const system = messages.filter((m) => m.role === 'system')
   const rest = messages.filter((m) => m.role !== 'system')
-  const built = buildStructuredCompactSummary(rest)
-  if (!built) {
-    return { compacted: false, beforeChars, afterChars: estimateMessagesChars(messages) }
+  const dialogue = rest.filter((m) => m.role === 'user' || m.role === 'assistant')
+
+  // 功能优先：对话太短不自动压（手动 force 除外）
+  if (!force && dialogue.length < COMPACT_MIN_DIALOGUE_MESSAGES) {
+    return {
+      compacted: false,
+      beforeChars,
+      afterChars: estimateMessagesChars(messages),
+      beforeTokens,
+      afterTokens: estimateTokensFromMessages(estimateMessagesChars(messages)),
+    }
   }
 
-  const dialogue = rest.filter((m) => m.role === 'user' || m.role === 'assistant')
-  const keepN = Number(opts.keepRecent) || COMPACT_KEEP_RECENT_TURNS
-  const recent = dialogue.slice(-keepN)
+  if (
+    !force &&
+    !shouldAutoCompact(beforeChars, {
+      thresholdChars,
+      thresholdTokens,
+    })
+  ) {
+    return {
+      compacted: false,
+      beforeChars,
+      afterChars: estimateMessagesChars(messages),
+      beforeTokens,
+      afterTokens: estimateTokensFromMessages(estimateMessagesChars(messages)),
+    }
+  }
+
+  const keepN = force
+    ? Number(opts.keepRecent) || COMPACT_FORCE_KEEP_RECENT
+    : Number(opts.keepRecent) || COMPACT_KEEP_RECENT_TURNS
+
+  const droppedPreview =
+    keepN > 0 ? dialogue.slice(0, Math.max(0, dialogue.length - keepN)) : dialogue
+  const archivePath = archiveDroppedTurns(opts.workspaceRoot || '', droppedPreview)
+
+  const packed = compactDialogueBody(rest, {
+    keepRecent: keepN,
+    force,
+    archivePath: archivePath || undefined,
+  })
+  if (!packed) {
+    return {
+      compacted: false,
+      beforeChars,
+      afterChars: estimateMessagesChars(messages),
+      beforeTokens,
+      afterTokens: beforeTokens,
+    }
+  }
 
   messages.length = 0
   for (const s of system) messages.push(s)
-  messages.push({ role: 'user', content: built.summary })
-  messages.push({
-    role: 'assistant',
-    content: '已理解会话摘要，将基于摘要与后续原文继续。',
-  })
-  for (const m of recent) messages.push({ role: m.role, content: String(m.content || '').slice(0, 6000) })
+  for (const m of packed.messages) messages.push(m)
 
   const afterChars = estimateMessagesChars(messages)
-  return { compacted: true, beforeChars, afterChars }
+  return {
+    compacted: true,
+    beforeChars,
+    afterChars,
+    archivePath: archivePath || undefined,
+    beforeTokens,
+    afterTokens: estimateTokensFromMessages(afterChars),
+  }
+}
+
+function estimateTokensFromMessages(chars) {
+  return Math.ceil(Math.max(0, chars) / 4)
 }

@@ -307,6 +307,8 @@ const KNOWN_CLOUD_PROVIDERS = [
     name: "Anthropic",
     needsCcr: false,
     capabilities: { tools: true, vision: true },
+    /** 供应商声明的默认上下文窗口（token），非按模型名猜 */
+    defaultContextLength: 200_000,
     defaultPricing: { inputPer1M: 3, outputPer1M: 15 },
   },
   {
@@ -317,6 +319,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     fetchModelsStrategy: "openai-compatible",
     fetchModelsPath: "/v1/models",
     capabilities: { tools: true, vision: false },
+    defaultContextLength: 128_000,
     defaultPricing: { inputPer1M: 0.27, outputPer1M: 1.1 },
   },
   {
@@ -326,6 +329,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApiBase: "https://api.openai.com/v1",
     fetchModelsStrategy: "openai-compatible",
     capabilities: { tools: true, vision: true },
+    defaultContextLength: 128_000,
     defaultPricing: { inputPer1M: 2.5, outputPer1M: 10 },
   },
   {
@@ -335,6 +339,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApiBase: "https://generativelanguage.googleapis.com/v1beta/models/",
     fetchModelsStrategy: "gemini",
     capabilities: { tools: true, vision: true },
+    defaultContextLength: 128_000,
     defaultPricing: { inputPer1M: 0.15, outputPer1M: 0.6 },
   },
   {
@@ -344,6 +349,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApiBase: "https://api.groq.com/openai/v1",
     fetchModelsStrategy: "openai-compatible",
     capabilities: { tools: true, vision: false },
+    defaultContextLength: 128_000,
     defaultPricing: { inputPer1M: 0.2, outputPer1M: 0.6 },
   },
   {
@@ -353,6 +359,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApiBase: "https://api.mistral.ai/v1",
     fetchModelsStrategy: "openai-compatible",
     capabilities: { tools: true, vision: true },
+    defaultContextLength: 128_000,
     defaultPricing: { inputPer1M: 0.5, outputPer1M: 1.5 },
   },
   {
@@ -362,6 +369,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApiBase: "https://api.x.ai/v1",
     fetchModelsStrategy: "openai-compatible",
     capabilities: { tools: true, vision: true },
+    defaultContextLength: 128_000,
     defaultPricing: { inputPer1M: 2, outputPer1M: 8 },
   },
   {
@@ -371,6 +379,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApiBase: "https://api.cohere.com/v1",
     fetchModelsStrategy: "openai-compatible",
     capabilities: { tools: true, vision: false },
+    defaultContextLength: 128_000,
     defaultPricing: { inputPer1M: 0.5, outputPer1M: 1.5 },
   },
   {
@@ -380,6 +389,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApiBase: "https://api.together.xyz/v1",
     fetchModelsStrategy: "openai-compatible",
     capabilities: { tools: true, vision: false },
+    defaultContextLength: 128_000,
     defaultPricing: { inputPer1M: 0.5, outputPer1M: 1.5 },
   },
   {
@@ -389,6 +399,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApiBase: "https://api.perplexity.ai",
     fetchModelsStrategy: "openai-compatible",
     capabilities: { tools: true, vision: false },
+    defaultContextLength: 128_000,
     defaultPricing: { inputPer1M: 1, outputPer1M: 5 },
   },
   {
@@ -398,6 +409,7 @@ const KNOWN_CLOUD_PROVIDERS = [
     directApiBase: "https://api.fireworks.ai/v1",
     fetchModelsStrategy: "openai-compatible",
     capabilities: { tools: true, vision: false },
+    defaultContextLength: 128_000,
     defaultPricing: { inputPer1M: 0.2, outputPer1M: 0.6 },
   },
   { name: "Replicate", needsCcr: false, directApi: true },
@@ -1395,6 +1407,142 @@ function isLocalOllamaModel(modelId, ollamaTags) {
   return false;
 }
 
+/**
+ * 可调用本地模型：必须落在本机 Ollama /api/tags。
+ * 仅允许精确标签，或 bare↔`:latest` 等价；禁止把 `foo:7b` 当成任意 `foo:*`。
+ * @param {string} modelId
+ * @param {string[]} ollamaTags
+ * @returns {string | null} 返回 tags 中的规范名供 /api/chat
+ */
+function resolveInstalledOllamaTag(modelId, ollamaTags) {
+  const m = String(modelId || "").trim();
+  if (!m) return null;
+  const tags = Array.isArray(ollamaTags)
+    ? ollamaTags.map((t) => String(t || "").trim()).filter(Boolean)
+    : [];
+  if (!tags.length) return null;
+  if (tags.includes(m)) return m;
+  const colon = m.indexOf(":");
+  if (colon === -1) {
+    if (tags.includes(`${m}:latest`)) return `${m}:latest`;
+    const sameBase = tags.filter((t) => t === m || t.startsWith(`${m}:`));
+    // 仅当本机只装了一个同名基座标签时才归一，避免误点未安装的 :latest
+    if (sameBase.length === 1) return sameBase[0];
+    return null;
+  }
+  const base = m.slice(0, colon);
+  const tag = m.slice(colon + 1);
+  if (tag === "latest" && tags.includes(base)) return base;
+  return null;
+}
+
+/** 设置池 ∩ 本机已安装；输出规范 tag，去重保序 */
+function filterLocalModelsToInstalled(models, ollamaTags) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(models) ? models : []) {
+    const canon = resolveInstalledOllamaTag(raw, ollamaTags);
+    if (!canon || seen.has(canon)) continue;
+    seen.add(canon);
+    out.push(canon);
+  }
+  return out;
+}
+
+/**
+ * 聊天/配置本地池与本机 Ollama tags 求交（异步）。
+ * 仅认本机 live /api/tags；不可达或空 tags → 本地池空（禁止用缓存标签冒充已安装）。
+ * lastSuccessfulOllamaTags 仅由 getModelPools 在 tags 可达时落盘备查，不参与池过滤。
+ */
+async function buildModelPoolsInstalled(settings) {
+  const pools = buildModelPools(settings);
+  const tags = await fetchOllamaModelTags(settings?.ollamaBase);
+  return {
+    chat: {
+      cloudModels: pools.chat.cloudModels,
+      localModels: tags.length
+        ? filterLocalModelsToInstalled(pools.chat.localModels, tags)
+        : [],
+    },
+    configured: {
+      cloudModels: pools.configured.cloudModels,
+      localModels: tags.length
+        ? filterLocalModelsToInstalled(pools.configured.localModels, tags)
+        : [],
+    },
+    invokableProviderIds: pools.invokableProviderIds,
+    catalogProviderIds: pools.catalogProviderIds,
+    ollamaTags: tags,
+  };
+}
+
+/**
+ * 本机 tags 可达时，持久化剔除设置里未安装的本地标签（编目/启用/偏好/默认 model）。
+ * tags 空（Ollama 不可达）时不改设置，避免误清空。
+ * @param {object} settings
+ * @param {string[]} ollamaTags
+ * @returns {{ settings: object, changed: boolean }}
+ */
+function pruneLocalModelsAgainstInstalled(settings, ollamaTags) {
+  if (!settings || typeof settings !== "object") {
+    return { settings, changed: false };
+  }
+  const tags = Array.isArray(ollamaTags)
+    ? ollamaTags.map((t) => String(t || "").trim()).filter(Boolean)
+    : [];
+  if (!tags.length) return { settings, changed: false };
+
+  const keepList = (list) =>
+    filterLocalModelsToInstalled(
+      (list || []).map((m) => String(m || "").trim()).filter(Boolean),
+      tags,
+    );
+
+  let changed = false;
+  const next = { ...settings };
+  const nextCatalog = keepList(settings.localModelCatalog);
+  const nextEnabled = keepList(settings.chatEnabledLocalModels).filter((m) =>
+    nextCatalog.includes(m),
+  );
+  if (
+    JSON.stringify(nextCatalog) !==
+    JSON.stringify(settings.localModelCatalog || [])
+  ) {
+    next.localModelCatalog = nextCatalog;
+    changed = true;
+  }
+  if (
+    JSON.stringify(nextEnabled) !==
+    JSON.stringify(settings.chatEnabledLocalModels || [])
+  ) {
+    next.chatEnabledLocalModels = nextEnabled;
+    changed = true;
+  }
+
+  const prefer = String(settings.preferredLocalModel || "").trim();
+  if (prefer) {
+    const canon = resolveInstalledOllamaTag(prefer, tags);
+    const nextPrefer = canon && nextEnabled.includes(canon) ? canon : nextEnabled[0] || "";
+    if (nextPrefer !== prefer) {
+      next.preferredLocalModel = nextPrefer;
+      changed = true;
+    }
+  }
+
+  const mid = String(settings.model || "").trim();
+  if (mid && mid !== "auto") {
+    const wasLocal =
+      (settings.localModelCatalog || []).includes(mid) ||
+      (settings.chatEnabledLocalModels || []).includes(mid);
+    if (wasLocal && !resolveInstalledOllamaTag(mid, tags)) {
+      next.model = "auto";
+      changed = true;
+    }
+  }
+
+  return { settings: next, changed };
+}
+
 async function filterCloudModelList(models, settings = {}) {
   const ollamaTags = await fetchOllamaModelTags(settings.ollamaBase);
   const localHint = String(settings.localOllamaModel || "").trim();
@@ -1570,6 +1718,20 @@ function getKnownProviderCapabilities(providerName) {
   return { tools: true };
 }
 
+/**
+ * 供应商声明的默认上下文窗口（token）。
+ * 仅读 KNOWN 表字段，禁止按模型 id 启发式。
+ * @param {string} providerName
+ * @returns {number|null}
+ */
+function getKnownProviderContextLength(providerName) {
+  const n = String(providerName || "").trim();
+  const known = KNOWN_CLOUD_PROVIDERS.find((p) => p.name === n);
+  const cl = Number(known?.defaultContextLength);
+  if (Number.isFinite(cl) && cl >= 1024) return Math.floor(cl);
+  return null;
+}
+
 /** OpenAI 兼容流/非流：正文在 content；推理模型可能只填 reasoning_content */
 function textFromUnknown(value) {
   if (typeof value === "string") return value;
@@ -1617,6 +1779,7 @@ function finalizeOpenAiVisible(content, reasoning) {
 
 module.exports = {
   getKnownProviderCapabilities,
+  getKnownProviderContextLength,
   attachDb,
   attachChatSettings,
   listProviders,
@@ -1654,6 +1817,12 @@ module.exports = {
   isUserManagedProvider,
   providerSource,
   buildModelPools,
+  buildModelPoolsInstalled,
+  pruneLocalModelsAgainstInstalled,
+  fetchOllamaModelTags,
+  isLocalOllamaModel,
+  resolveInstalledOllamaTag,
+  filterLocalModelsToInstalled,
   sanitizeChatModelState,
   PROVIDER_SOURCE_USER,
   PROVIDER_SOURCE_LEGACY_IMPORT,

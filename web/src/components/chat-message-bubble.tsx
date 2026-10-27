@@ -12,6 +12,10 @@ import {
   shouldForceReadonlyAssistantDisplay,
   stripAgentTurnForReadonlyDisplay,
 } from "@/lib/readonly-turn-display";
+import {
+  softenStoredAssistantFailure,
+  softenStoredRequestError,
+} from "@/lib/turn-write-close";
 
 export type ChatBubbleMessage = {
   role: "user" | "assistant";
@@ -29,6 +33,8 @@ export type ChatBubbleMessage = {
   agentTurn?: AgentTurnMeta;
   suppressFileEdits?: boolean;
   localChannel?: "direct" | "orch";
+  /** 工具环实测轨迹；called===0 时展示「未调用工具」 */
+  toolsTrace?: { offered: string[]; called: number };
 };
 
 function UserMessageBody({
@@ -169,17 +175,18 @@ function MessageBubbleInner({
     );
   }
 
+  const softenedError = softenStoredRequestError(m.requestErrorDetail);
   const forceReadonly = shouldForceReadonlyAssistantDisplay({
     userLine: priorUserLine || "",
     suppressFileEdits: m.suppressFileEdits,
-    requestError: m.requestError,
+    requestError: softenedError.suppressErrorChrome ? false : m.requestError,
   });
   const displayContent =
     m.content === "__WAITING__"
       ? m.content
-      : forceReadonly
-        ? sanitizeReadonlyAssistantContent(m.content)
-        : m.content;
+      : softenStoredAssistantFailure(
+          forceReadonly ? sanitizeReadonlyAssistantContent(m.content) : m.content,
+        );
   const displayAgentTurn = forceReadonly
     ? stripAgentTurnForReadonlyDisplay(m.agentTurn)
     : m.agentTurn;
@@ -217,7 +224,7 @@ function MessageBubbleInner({
               className="chat-backend-badge"
               title="执行通道：直聊问答（未使用 MCP/写盘工具）"
             >
-              {m.localChannel === "direct" || forceReadonly ? "Ask" : "直聊"}
+              直聊
             </span>
           ) : displayAgentTurn?.backend ? (
             (() => {
@@ -228,6 +235,21 @@ function MessageBubbleInner({
                 </span>
               );
             })()
+          ) : null}
+          {m.toolsTrace &&
+          Array.isArray(m.toolsTrace.offered) &&
+          m.toolsTrace.called === 0 ? (
+            <span
+              className="chat-backend-badge"
+              title={
+                m.toolsTrace.offered.length
+                  ? `本轮已向模型提供工具，但未发起任何 tool_calls：${m.toolsTrace.offered.join("、")}`
+                  : "本轮工具环已进入，模型未发起任何 tool_calls"
+              }
+              data-tools-trace="zero-call"
+            >
+              未调用工具
+            </span>
           ) : null}
           {!suppressEdits && displayAgentTurn?.mcpUsed && displayAgentTurn.backend !== "local" ? (
             <span
@@ -251,12 +273,15 @@ function MessageBubbleInner({
           className={cn(
             "chat-bubble-assistant",
             /* 仅「整段即错误文案」时整泡标红；有 detail+正文则横幅提示，正文正常展示 */
-            m.requestError && !m.requestErrorDetail && "chat-bubble-assistant--error",
+            m.requestError &&
+              !softenedError.suppressErrorChrome &&
+              !softenedError.text &&
+              "chat-bubble-assistant--error",
           )}
         >
-          {m.requestErrorDetail ? (
+          {softenedError.text ? (
             <div className="chat-assistant-fail-banner" role="alert">
-              {m.requestErrorDetail}
+              {softenedError.text}
             </div>
           ) : null}
           {displayContent === "__WAITING__" ? (
@@ -344,6 +369,9 @@ export const MessageBubble = memo(MessageBubbleInner, (prev, next) => {
     prev.m.requestErrorDetail === next.m.requestErrorDetail &&
     prev.m.suppressFileEdits === next.m.suppressFileEdits &&
     prev.m.localChannel === next.m.localChannel &&
+    prev.m.toolsTrace?.called === next.m.toolsTrace?.called &&
+    (prev.m.toolsTrace?.offered?.join("\0") ?? "") ===
+      (next.m.toolsTrace?.offered?.join("\0") ?? "") &&
     agentTurnEqual(prev.m.agentTurn, next.m.agentTurn) &&
     attachmentsEqual(prev.m.attachments, next.m.attachments) &&
     terminalSnippetsEqual(prev.m.terminalSnippets, next.m.terminalSnippets)

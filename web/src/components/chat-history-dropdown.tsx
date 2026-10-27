@@ -54,6 +54,11 @@ function HistoryRow({
         )}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-left text-[12px] leading-snug">{item.title}</span>
+          {item.preview && item.preview !== item.title ? (
+            <span className="mt-0.5 block truncate text-left text-[11px] text-muted-foreground">
+              {item.preview}
+            </span>
+          ) : null}
           {showWorkspace ? (
             <span className="mt-0.5 block truncate text-left text-[11px] text-muted-foreground">
               {shortenWorkspaceLabel(workspaceSessionKey(item.workspacePath))}
@@ -92,7 +97,10 @@ export function ChatHistoryDropdown({
   const workspaceGroups = useMemo(() => groupHistoryByWorkspace(filtered), [filtered]);
 
   return (
-    <div className="chat-history-dropdown flex max-h-[min(440px,70vh)] w-[min(320px,calc(100vw-24px))] flex-col">
+    <div
+      className="chat-history-dropdown flex max-h-[min(440px,70vh)] w-[min(320px,calc(100vw-24px))] flex-col"
+      data-testid="chat-history-dropdown"
+    >
       <div className="shrink-0 border-b border-border/60 p-2">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />

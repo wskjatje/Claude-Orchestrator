@@ -33,7 +33,7 @@ export function setLiveExecChannel(channel: LiveExecChannel, label?: string) {
     cli: "Agent",
     host: "Host",
     local: "本地",
-    direct: "Ask",
+    direct: "直聊",
   };
   state = {
     channel,

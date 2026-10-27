@@ -38,7 +38,11 @@ export function ChatStickyUserHeader({
 
   if (isEditing && inlineComposer) {
     return (
-      <div ref={headerRef} className="chat-sticky-user-header chat-sticky-user-header--editing">
+      <div
+        ref={headerRef}
+        className="chat-sticky-user-header chat-sticky-user-header--editing"
+        data-testid="chat-sticky-user-header"
+      >
         <ChatComposerShell
           {...inlineComposer}
           variant="inline"
@@ -66,7 +70,11 @@ export function ChatStickyUserHeader({
             : undefined
         }
       >
-        <div ref={headerRef} className="chat-sticky-user-header group/bubble">
+        <div
+          ref={headerRef}
+          className="chat-sticky-user-header group/bubble"
+          data-testid="chat-sticky-user-header"
+        >
           <div className="chat-bubble-user chat-sticky-user-header-bubble">
             <ChatUserMessageBody
               content={message.content}

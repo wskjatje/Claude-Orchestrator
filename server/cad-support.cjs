@@ -302,6 +302,98 @@ function extractAgentCategoryFromMarkdown(content) {
   return allowed.has(v) ? v : null
 }
 
+
+function extractFrontmatterBlock(content) {
+  const s = typeof content === 'string' ? content : ''
+  const trimmed = s.trimStart()
+  if (!trimmed.startsWith('---')) return { fm: '', body: s, hasFm: false, prefix: s.slice(0, s.length - trimmed.length) }
+  const closeIdx = trimmed.indexOf('\n---', 3)
+  if (closeIdx === -1) return { fm: '', body: s, hasFm: false, prefix: s.slice(0, s.length - trimmed.length) }
+  const prefix = s.slice(0, s.length - trimmed.length)
+  const fm = trimmed.slice(3, closeIdx)
+  const body = trimmed.slice(closeIdx + 4)
+  return { fm, body, hasFm: true, prefix }
+}
+
+/** frontmatter：缺省启用；disabled:true / enabled:false → 停用 */
+function parseMarkdownEnabled(content) {
+  const { fm, hasFm } = extractFrontmatterBlock(content)
+  if (!hasFm) return true
+  const disabledRaw = extractFrontmatterField(fm, 'disabled').toLowerCase()
+  if (disabledRaw === 'true' || disabledRaw === 'yes' || disabledRaw === '1') return false
+  const enabledRaw = extractFrontmatterField(fm, 'enabled').toLowerCase()
+  if (enabledRaw === 'false' || enabledRaw === 'no' || enabledRaw === '0') return false
+  if (enabledRaw === 'true' || enabledRaw === 'yes' || enabledRaw === '1') return true
+  return true
+}
+
+function applyMarkdownEnabled(content, enabled) {
+  const want = enabled !== false
+  const { fm, body, hasFm, prefix } = extractFrontmatterBlock(content)
+  const stripKeys = (raw) =>
+    String(raw || '')
+      .split('\n')
+      .filter((line) => !/^\s*(enabled|disabled)\s*:/i.test(line))
+      .join('\n')
+      .replace(/^\n+/, '')
+      .replace(/\n+$/, '')
+  let nextFm = stripKeys(fm)
+  if (!want) {
+    nextFm = nextFm ? `${nextFm}\ndisabled: true` : 'disabled: true'
+  }
+  if (!hasFm) {
+    const rest = typeof content === 'string' ? content : ''
+    return `---\n${nextFm || 'disabled: true'}\n---\n${rest.replace(/^\n+/, '')}`
+  }
+  return `${prefix}---\n${nextFm}\n---${body.startsWith('\n') ? body : `\n${body}`}`
+}
+
+function setClaudeAgentMarkdownEnabled(basename, enabled) {
+  const content = readClaudeAgentMarkdownContent(basename)
+  if (!content) return { ok: false, error: '文件不存在或无效' }
+  const next = applyMarkdownEnabled(content, enabled)
+  const w = writeClaudeAgentMarkdownContent(basename, next)
+  if (!w.ok) return w
+  return { ok: true, basename: w.basename, path: w.path, enabled: enabled !== false }
+}
+
+function readClaudeSkillMarkdownContent(basenameRaw, workspaceDir) {
+  const basename = typeof basenameRaw === 'string' ? basenameRaw.trim() : ''
+  if (!basename || !basename.toLowerCase().endsWith('.md') || basename.includes('..') || /[/\\]/.test(basename)) {
+    return { ok: false, error: '无效文件名', content: '', target: null }
+  }
+  const candidates = []
+  if (workspaceDir) {
+    candidates.push(path.resolve(path.join(path.resolve(workspaceDir), '.claude', 'skills', basename)))
+  }
+  candidates.push(path.resolve(path.join(os.homedir(), '.claude', 'skills', basename)))
+  for (const target of candidates) {
+    const root = path.dirname(target)
+    if (path.relative(root, target).startsWith('..')) continue
+    try {
+      if (fs.existsSync(target)) {
+        return { ok: true, content: fs.readFileSync(target, 'utf8'), target }
+      }
+    } catch {
+      /* continue */
+    }
+  }
+  return { ok: false, error: '文件不存在', content: '', target: null }
+}
+
+function setClaudeSkillMarkdownEnabled(basename, enabled, workspaceDir) {
+  const read = readClaudeSkillMarkdownContent(basename, workspaceDir)
+  if (!read.ok || !read.target) return { ok: false, error: read.error || '文件不存在' }
+  const next = applyMarkdownEnabled(read.content, enabled)
+  try {
+    fs.writeFileSync(read.target, next.endsWith('\n') ? next : `${next}\n`, 'utf8')
+    return { ok: true, basename, path: read.target, enabled: enabled !== false }
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) }
+  }
+}
+
+
 function collectAgentMarkdownEntries() {
   const agentsDir = path.resolve(path.join(os.homedir(), '.claude', 'agents'))
   const items = []
@@ -317,6 +409,7 @@ function collectAgentMarkdownEntries() {
     let nameZh = ''
     let heading = ''
     let skills = []
+    let enabled = true
     try {
       const raw = fs.readFileSync(full, 'utf8').slice(0, 32000)
       const meta = parseAgentMarkdownMeta(raw)
@@ -327,6 +420,7 @@ function collectAgentMarkdownEntries() {
       skills = meta.skills || []
       category = extractAgentCategoryFromMarkdown(raw)
       displayName = resolveAgentDisplayName(meta, d.name.slice(0, -3))
+      enabled = parseMarkdownEnabled(raw)
     } catch {
       /* ignore */
     }
@@ -337,6 +431,7 @@ function collectAgentMarkdownEntries() {
       stem,
       description,
       displayName: displayName || stem,
+      enabled,
       ...(name ? { name } : {}),
       ...(nameZh ? { nameZh } : {}),
       ...(heading ? { heading } : {}),
@@ -357,6 +452,7 @@ function collectAgentMarkdownEntries() {
       let nameZh = ''
       let heading = ''
       let skills = []
+      let enabled = true
       try {
         const raw = fs.readFileSync(full, 'utf8').slice(0, 32000)
         const meta = parseAgentMarkdownMeta(raw)
@@ -367,6 +463,7 @@ function collectAgentMarkdownEntries() {
         skills = meta.skills || []
         category = extractAgentCategoryFromMarkdown(raw)
         displayName = resolveAgentDisplayName(meta, d.name.slice(0, -3))
+        enabled = parseMarkdownEnabled(raw)
       } catch {
         /* ignore */
       }
@@ -376,6 +473,7 @@ function collectAgentMarkdownEntries() {
         stem: d.name.slice(0, -3),
         description,
         displayName: displayName || d.name.slice(0, -3),
+        enabled,
         ...(name ? { name } : {}),
         ...(nameZh ? { nameZh } : {}),
         ...(heading ? { heading } : {}),
@@ -408,6 +506,7 @@ function scanSkillMarkdownDir(skillsDir, source) {
     let name = ''
     let nameZh = ''
     let heading = ''
+    let enabled = true
     try {
       const raw = fs.readFileSync(full, 'utf8').slice(0, 32000)
       const meta = parseAgentMarkdownMeta(raw)
@@ -417,6 +516,7 @@ function scanSkillMarkdownDir(skillsDir, source) {
       heading = meta.heading
       category = extractAgentCategoryFromMarkdown(raw)
       displayName = resolveAgentDisplayName(meta, d.name.slice(0, -3))
+      enabled = parseMarkdownEnabled(raw)
     } catch {
       /* ignore */
     }
@@ -427,6 +527,7 @@ function scanSkillMarkdownDir(skillsDir, source) {
       stem,
       description,
       displayName: displayName || stem,
+      enabled,
       ...(name ? { name } : {}),
       ...(nameZh ? { nameZh } : {}),
       ...(heading ? { heading } : {}),
@@ -660,6 +761,10 @@ module.exports = {
   formatLocalYYYYMMDD,
   readTextFileTail,
   extractMarkdownDescription,
+  parseMarkdownEnabled,
+  applyMarkdownEnabled,
+  setClaudeAgentMarkdownEnabled,
+  setClaudeSkillMarkdownEnabled,
   collectAgentMarkdownEntries,
   collectSkillMarkdownEntries,
   listWorkspaceMarkdownFiles,

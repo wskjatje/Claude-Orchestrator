@@ -1,4 +1,5 @@
 import { getDesktop } from "@/lib/desktop-api";
+import { RPC_CONNECTION_ERROR } from "@/lib/ui-copy";
 
 const HANDOFF_COOLDOWN_MS = 4000;
 let lastHandoffAt = 0;
@@ -21,7 +22,7 @@ export async function launchDesktopBrowserHandoff(
   if (!desktop?.launchDesktopApp) {
     return {
       ok: false,
-      error: "本机 Bridge 未连接。请先运行 npm run web:dev:full，或使用 npm run desktop 启动桌面版。",
+      error: RPC_CONNECTION_ERROR(),
     };
   }
 

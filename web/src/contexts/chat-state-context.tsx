@@ -11,12 +11,26 @@ export type DiskMsg = {
   terminalSnippets?: unknown[];
   agentStem?: string;
   agentLabel?: string;
-  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; costUsd?: number };
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    costUsd?: number;
+    estimated?: boolean;
+  };
+  contextParts?: {
+    rulesEstTokens?: number;
+    mcpEstTokens?: number;
+    mcpCallCount?: number;
+  };
   latencyMs?: number;
   requestError?: boolean;
   requestErrorDetail?: string;
   billingSource?: "cloud" | "local";
   modelId?: string;
+  /** 本地通道：direct=直聊；orch=MCP 工具环（与 chat-send-helpers DiskMsg 对齐） */
+  localChannel?: "direct" | "orch";
+  suppressFileEdits?: boolean;
   /** Agent 过程轨迹等（与 index DiskMsg.agentTurn 对齐） */
   agentTurn?: {
     writtenPaths?: string[];
@@ -44,7 +58,15 @@ export type ChatSession = {
   id: string;
   title: string;
   modelId: string;
+  /** 界面完整对话（/summarize 后仍保留全文） */
   history: DiskMsg[];
+  /**
+   * 发给模型的 prior 基线（摘要+近尾）。有值时发送用它，不用全量 history。
+   * 编辑旧消息截断时清空。
+   */
+  modelHistory?: DiskMsg[] | null;
+  /** modelHistory 中「摘要核心」条数；其后为 summarize 之后的新轮 */
+  modelHistoryCoreLen?: number | null;
   workspacePath?: string | null;
   claudeSessionId?: string | null;
 };

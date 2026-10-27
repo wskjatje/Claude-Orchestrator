@@ -45,18 +45,27 @@ export type DiskMsg = {
   role: "user" | "assistant";
   content: string;
   ts?: number;
+  /** 系统标记等（如 /summarize 提示） */
+  name?: string;
   attachments?: UserImageAttachment[];
   terminalSnippets?: TerminalSelectionPayload[];
   /** 本轮若由 /agent 或底部 Agent pill 触发，记录 stem 便于气泡展示 */
   agentStem?: string;
   /** 界面展示用中文 Agent 名（与 agentStem 对应，不影响执行） */
   agentLabel?: string;
-  /** Ollama /v1/chat/completions 返回的 usage，assistant 且模型上报时有值 */
+  /** 接口 usage；无上报时客户端可写入 estimated 粗估 */
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
     costUsd?: number;
+    estimated?: boolean;
+  };
+  /** 本轮实测注入/MCP 调用与输出分桶（无测量不写） */
+  contextParts?: {
+    rulesEstTokens?: number;
+    mcpEstTokens?: number;
+    mcpCallCount?: number;
   };
   latencyMs?: number;
   requestError?: boolean;
@@ -68,6 +77,11 @@ export type DiskMsg = {
   suppressFileEdits?: boolean;
   /** 本地通道：direct=Ollama 直聊（未连 MCP 工具）；orch=MCP 工具环 */
   localChannel?: "direct" | "orch";
+  /**
+   * 工具环实测：offered=发给模型的工具名；called=已执行次数。
+   * called===0 时气泡展示「未调用工具」，禁止伪造 MCP·调用。
+   */
+  toolsTrace?: { offered: string[]; called: number };
   /** Agent 写盘/验证/过程轨迹，供续跑与气泡渲染 */
   agentTurn?: AgentTurnMeta;
 };
@@ -76,7 +90,12 @@ export type ChatSession = {
   id: string;
   title: string;
   modelId: string;
+  /** 界面完整对话（/summarize 后仍保留全文） */
   history: DiskMsg[];
+  /** 发给模型的 prior 基线；有则发送优先用它 */
+  modelHistory?: DiskMsg[] | null;
+  /** modelHistory 摘要核心条数 */
+  modelHistoryCoreLen?: number | null;
   workspacePath?: string | null;
   /** Claude Code CLI --resume / --session-id */
   claudeSessionId?: string | null;
@@ -154,6 +173,10 @@ export type Msg = {
   agentTurn?: AgentTurnMeta;
   suppressFileEdits?: boolean;
   localChannel?: "direct" | "orch";
+  toolsTrace?: { offered: string[]; called: number };
+  usage?: DiskMsg["usage"];
+  billingSource?: DiskMsg["billingSource"];
+  modelId?: string;
 };
 
 /** 旧版任务链写入的超长「用户」气泡，在列表中折叠为摘要（不改磁盘时可逆：仅展示层）。 */
@@ -255,12 +278,15 @@ export function diskToDisplay(list: DiskMsg[], modelLabel: string): Msg[] {
       requestError: m.requestError,
     });
     let content = stripLargeAssistantArtifacts(m.content);
+    content = softenHistoricLocalModelError(content);
     if (forceReadonly) content = sanitizeReadonlyAssistantContent(content);
 
     const localChannel =
-      forceReadonly && (m.billingSource === "local" || m.localChannel)
-        ? ("direct" as const)
-        : m.localChannel;
+      m.localChannel === "orch"
+        ? ("orch" as const)
+        : forceReadonly && (m.billingSource === "local" || m.localChannel)
+          ? ("direct" as const)
+          : m.localChannel;
 
     return {
       role: "assistant" as const,
@@ -278,6 +304,18 @@ export function diskToDisplay(list: DiskMsg[], modelLabel: string): Msg[] {
         : m.agentTurn,
       suppressFileEdits: forceReadonly ? true : undefined,
       localChannel,
+      ...(m.toolsTrace &&
+      Array.isArray(m.toolsTrace.offered)
+        ? {
+            toolsTrace: {
+              offered: m.toolsTrace.offered.map(String).filter(Boolean),
+              called: Math.max(0, Number(m.toolsTrace.called) || 0),
+            },
+          }
+        : {}),
+      ...(m.usage && typeof m.usage === "object" ? { usage: m.usage } : {}),
+      ...(m.billingSource ? { billingSource: m.billingSource } : {}),
+      ...(m.modelId ? { modelId: m.modelId } : {}),
     };
   });
 }
@@ -362,13 +400,20 @@ export function buildComposerUserLine(
   return parts.join("\n\n");
 }
 
-/** 按编排模式从池中选取会话 modelId；Auto / inherit 保留为 auto 哨兵值 */
+/**
+ * 按编排模式从「该通道池」选取会话 modelId。
+ * 调用方应传入 chatModelPoolForMode(...)，勿传云+本地合并池（否则本窗会残留云模型 id）。
+ * Auto / inherit 保留为 auto 哨兵值。
+ */
 export function pickOrchestratorModel(raw: string | undefined, pool: string[], mode: OrchMode): string {
   const t = normalizeChatModelSelection(raw);
   if (isAutoModelSelection(t)) return AUTO_MODEL_ID;
   const list = pool.filter(Boolean);
   if (t && list.includes(t)) return t;
+  // 仅云通道保留 Claude CLI 别名（可不在启用池）
   if (mode === "claude-code" && /^(sonnet|opus|haiku|claude-)/i.test(t)) return t;
+  // 本窗/云窗池非空时落到池首，避免 local-mcp 仍显示 deepseek 等云 id
+  if (list.length) return list[0]!;
   return AUTO_MODEL_ID;
 }
 
@@ -391,19 +436,38 @@ export function priorTurnsToOrchestrationMessages(prior: PriorTurn[]): PriorTurn
   }));
 }
 
-/** 将 RPC 失败映射为聊天区可见文案（超时/429 须展示具体原因，勿一律「生成已停止」） */
+/** 历史气泡：折叠「未安装 tag」长错误，避免旧 404 占满对话 */
+export function softenHistoricLocalModelError(raw: string): string {
+  const t = String(raw || "");
+  if (!/Ollama\s*\/api\/chat\s*HTTP\s*404|model '[^']+' not found/i.test(t)) {
+    return t;
+  }
+  const tag =
+    (t.match(/本地模型对话失败（([^）]+)）/) || [])[1] ||
+    (t.match(/model '([^']+)' not found/i) || [])[1] ||
+    "";
+  return tag
+    ? `本地模型「${tag}」当时未安装或不可用。请改选已安装模型后重试。`
+    : "本地模型当时未安装或不可用。请改选已安装模型后重试。";
+}
+
+/**
+ * 将已归一化的 RPC 失败映射为聊天区文案。
+ * 禁止把真桥接离线 / 未知网络错误软化成「生成已停止」（禁兜底）。
+ */
 export function formatAssistantFailure(res: { aborted?: boolean; error?: string | null }): string {
   const err = String(res.error || "").trim();
-  if (res.aborted || res.error === "请求已取消") {
-    if (err && /超时|429|配额|模型配置|deepseek|API Key|连接失败/i.test(err)) {
-      return `请求失败：${err}`;
-    }
-    if (err && /已取消|已中止|生成已停止/i.test(err)) {
-      return "（生成已停止）";
-    }
-    if (err && err.length > 24) {
-      return `请求失败：${err}`;
-    }
+  if (/无法连接本机服务/i.test(err)) {
+    return "无法连接本机服务。请确认应用已启动后重试。";
+  }
+  if (/请求已中断/i.test(err)) {
+    return err.startsWith("（") ? err : `（${err}）`;
+  }
+  if (
+    res.aborted ||
+    err === "请求已取消" ||
+    /^(请求已取消|生成已停止|AbortError)$/i.test(err)
+  ) {
     return "（生成已停止）";
   }
   if (/Agent 工具环|工具环不可用|Host：|ensureCli|Ollama|不支持 tools|本地 MCP 编排/i.test(err)) {
@@ -418,4 +482,74 @@ export function genSessionId() {
   } catch {
     return `s${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }
+}
+
+/** 流式/跨页恢复时比较哪份消息更新（含进行中的 assistant 正文）。 */
+export function assistantLiveScore(msgs: Msg[] | null | undefined): number {
+  if (!msgs?.length) return -1;
+  const last = msgs[msgs.length - 1];
+  if (last?.role === "assistant" && last.content && last.content !== "__WAITING__") {
+    return msgs.length * 1_000_000 + last.content.length;
+  }
+  return msgs.length;
+}
+
+/**
+ * remount / 切回聊天页：优先 perSession（ChatPage delta 只写池、ctx.messages 可能仍停在 WAITING），
+ * 流进行中时即使两边都空也返回 null（调用方勿回落磁盘）。
+ */
+export function pickLiveChatMessages(opts: {
+  sessionId: string;
+  ctxActiveId: string | null | undefined;
+  ctxMessages: Msg[];
+  perSession: Msg[] | undefined;
+  streamLive: boolean;
+}): Msg[] | null {
+  const { sessionId, ctxActiveId, ctxMessages, perSession, streamLive } = opts;
+  const ctx =
+    sessionId && ctxActiveId === sessionId && ctxMessages.length > 0 ? ctxMessages : null;
+  const per = perSession?.length ? perSession : null;
+  const perScore = assistantLiveScore(per);
+  const ctxScore = assistantLiveScore(ctx);
+  if (per && (streamLive || perScore >= ctxScore)) return per;
+  if (ctx) return ctx;
+  if (streamLive) return per ?? ctx;
+  return null;
+}
+
+/** activeRequestIdsRef: sessionId → requestId */
+export function isRequestIdInActiveMap(
+  map: Map<string, string>,
+  requestId: string,
+): boolean {
+  if (!requestId) return false;
+  for (const rid of map.values()) {
+    if (rid === requestId) return true;
+  }
+  return false;
+}
+
+export function sessionIdForActiveRequest(
+  map: Map<string, string>,
+  requestId: string,
+  fallbackSessionId: string,
+): string {
+  if (!requestId) return fallbackSessionId;
+  for (const [sid, rid] of map.entries()) {
+    if (rid === requestId) return sid;
+  }
+  return fallbackSessionId;
+}
+
+export function isChatStreamLive(opts: {
+  sessionId: string;
+  activeStreamRequestId: string | null | undefined;
+  activeRequestIds: Map<string, string>;
+  sendingSessions: Record<string, boolean>;
+}): boolean {
+  const { sessionId, activeStreamRequestId, activeRequestIds, sendingSessions } = opts;
+  if (activeStreamRequestId) return true;
+  if (activeRequestIds.has(sessionId)) return true;
+  if (sendingSessions[sessionId]) return true;
+  return activeRequestIds.size > 0;
 }

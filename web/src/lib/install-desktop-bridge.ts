@@ -7,8 +7,11 @@ import { appendOutput } from "@/lib/workbench-output-log";
 import { installEmbeddedBrowserBridge } from "@/lib/install-embedded-browser-bridge";
 import {
   formatBridgeConnectionError,
+  formatRpcAbortError,
+  formatRpcInterruptedError,
   getBridgeWsUrl,
   isBridgeConnectionError,
+  isRpcUserAbortError,
   normalizeRpcErrorMessage,
   normalizeRpcPayload,
 } from "@/lib/bridge-connection-error";
@@ -37,6 +40,15 @@ const QUIET_RPC = new Set([
   "system:localWallClock",
 ]);
 
+async function pingHealthQuick(): Promise<boolean> {
+  try {
+    const res = await fetch(`${RPC_BASE}/health`, { method: "GET" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function rpc<T>(channel: string, ...args: unknown[]): Promise<T> {
   let res: Response;
   try {
@@ -46,8 +58,17 @@ async function rpc<T>(channel: string, ...args: unknown[]): Promise<T> {
       body: JSON.stringify({ channel, args }),
     });
   } catch (e) {
+    if (isRpcUserAbortError(e)) {
+      throw new Error(formatRpcAbortError());
+    }
     const msg = e instanceof Error ? e.message : String(e);
     appendOutput("bridge", `RPC ${channel} 不可达: ${msg}`);
+    // 裸 Failed to fetch 常见于切页中断；桥仍健康时勿报「无法连接本机服务」
+    if (/^Failed to fetch$/i.test(msg) || /^NetworkError when attempting to fetch resource\.?$/i.test(msg)) {
+      const healthy = await pingHealthQuick();
+      if (healthy) throw new Error(formatRpcInterruptedError());
+      throw new Error(formatBridgeConnectionError(msg));
+    }
     if (isBridgeConnectionError(msg)) {
       throw new Error(formatBridgeConnectionError(msg));
     }
@@ -282,13 +303,17 @@ export function createDesktopRpcApi(): DesktopApi {
     openClaudeUserSubdir: (which) => rpc("claude:openUserSubdir", which),
     createClaudeAgentMarkdown: (stem) => rpc("claudeAgents:createMarkdown", stem),
     saveClaudeAgentMarkdown: (body) => rpc("claudeAgents:saveMarkdown", body),
+    setClaudeAgentMarkdownEnabled: (body) => rpc("claudeAgents:setMarkdownEnabled", body),
     openClaudeAgentMarkdownFile: (basename) => rpc("claudeAgents:openMarkdownFile", basename),
     listClaudeSkillMarkdown: () => rpc("claudeSkills:listMarkdown"),
+    setClaudeSkillMarkdownEnabled: (body) => rpc("claudeSkills:setMarkdownEnabled", body),
     readClaudeConfigJson: (name) => rpc("claudeConfig:readJson", name),
     bundledMcpCommandLines: () => rpc("claudeConfig:bundledMcpCommandLines"),
     upsertClaudeMcpServer: (payload) => rpc("claudeConfig:upsertMcpServer", payload),
     removeClaudeMcpServer: (name) => rpc("claudeConfig:removeMcpServer", { name }),
     setClaudeMcpServerEnabled: (payload) => rpc("claudeConfig:setMcpServerEnabled", payload),
+    peekWorkspaceMcp: () => rpc("claudeConfig:peekWorkspaceMcp"),
+    importWorkspaceMcp: () => rpc("claudeConfig:importWorkspaceMcp"),
     orchestrationLoadChain: () => rpc("orchestration:loadChain"),
     orchestrationAdvanceChain: () => rpc("orchestration:advanceChain"),
     orchestrationSaveChain: (payload) => rpc("orchestration:saveChain", payload),

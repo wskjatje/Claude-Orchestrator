@@ -12,6 +12,7 @@ export type ClaudeSkillRow = {
   heading?: string;
   source: "user" | "project";
   category?: "项目" | "通用" | "实验";
+  enabled?: boolean;
 };
 
 export function useClaudeSkillList() {
@@ -32,29 +33,32 @@ export function useClaudeSkillList() {
       return;
     }
     setSkills(
-      r.items.map((row) => {
-        const displayName =
-          row.displayName?.trim() ||
-          resolveAgentDisplayName({
-            stem: row.stem,
+      r.items
+        .filter((row) => row.enabled !== false)
+        .map((row) => {
+          const displayName =
+            row.displayName?.trim() ||
+            resolveAgentDisplayName({
+              stem: row.stem,
+              basename: row.basename,
+              name: row.name,
+              nameZh: row.nameZh,
+              heading: row.heading,
+              description: row.description,
+            });
+          return {
             basename: row.basename,
+            stem: row.stem,
+            description: row.description ?? "",
+            displayName,
             name: row.name,
             nameZh: row.nameZh,
             heading: row.heading,
-            description: row.description,
-          });
-        return {
-          basename: row.basename,
-          stem: row.stem,
-          description: row.description ?? "",
-          displayName,
-          name: row.name,
-          nameZh: row.nameZh,
-          heading: row.heading,
-          source: row.source ?? "user",
-          category: row.category,
-        };
-      }),
+            source: row.source ?? "user",
+            category: row.category,
+            enabled: row.enabled !== false,
+          };
+        }),
     );
   }, []);
 

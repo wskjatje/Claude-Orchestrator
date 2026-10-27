@@ -95,6 +95,8 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
 
   const slowNpx = timeoutMs > 20000
 
+  /** @type {string[]} */
+  const stderrChunks = []
   try {
     client = new Client({ name: 'claudecode-mcp-health', version: '1.0.0' })
     const env = { ...process.env, ...envExtra }
@@ -103,7 +105,14 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
       command,
       args,
       env,
+      stderr: 'pipe',
     })
+    const stderrStream = transport.stderr
+    if (stderrStream && typeof stderrStream.on === 'function') {
+      stderrStream.on('data', (chunk) => {
+        stderrChunks.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk))
+      })
+    }
 
     await Promise.race([
       client.connect(transport),
@@ -131,6 +140,14 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
   } catch (e) {
     const msg = e?.message || String(e)
     const cmdLine = [command, ...(Array.isArray(args) ? args : [])].join(' ')
+    // Python traceback 关键错误在尾部；截断时保留尾部，避免只剩无信息的 File 头
+    const stderrJoined = stderrChunks.join('').trim().replace(/\s+/g, ' ')
+    const stderrText =
+      stderrJoined.length <= 320
+        ? stderrJoined
+        : /Traceback \(most recent call last\)|AttributeError:|Error:/i.test(stderrJoined)
+          ? stderrJoined.slice(-320)
+          : stderrJoined.slice(0, 320)
     let hint = ''
     if (/server-fetch|@modelcontextprotocol\/server-fetch/i.test(cmdLine)) {
       hint =
@@ -143,11 +160,16 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
       hint = '（npx 未在 PATH 中，请确认 Node.js 已安装；使用桌面打包版请确保应用有 /opt/homebrew/bin 等系统 PATH 访问权限）'
     } else if (/\bnpx\b/.test(cmdLine) && /timed? ?out|Failed to fetch|resolve.*dependency/i.test(msg)) {
       hint = '（npx 拉包超时，无法连接 npm 源。国内用户可尝试：① 配置 npm 镜像 `npm config set registry https://registry.npmmirror.com`；② 检查代理；③ 稍后重试）'
-    } else if (/Connection closed|ERR_MODULE_NOT_FOUND|Cannot find module/i.test(msg)) {
+    } else if (
+      /\bnpx\b/.test(cmdLine) &&
+      /Connection closed|ERR_MODULE_NOT_FOUND|Cannot find module/i.test(msg)
+    ) {
+      // 仅 npx 命令才附 npx 缓存提示；uvx/其他命令禁止套用
       hint =
         '（npx 缓存可能损坏：可删除 ~/.npm/_npx 后重试；filesystem/memory 建议使用固定版本号）'
     }
-    return { ok: false, error: `${msg}${hint}`.slice(0, 420) }
+    const withStderr = stderrText ? `${msg}${hint}；stderr: ${stderrText}` : `${msg}${hint}`
+    return { ok: false, error: withStderr.slice(0, 520) }
   } finally {
     try {
       await client?.close?.()

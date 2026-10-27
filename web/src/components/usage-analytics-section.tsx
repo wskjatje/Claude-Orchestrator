@@ -93,8 +93,8 @@ function buildUsageKpis(agg: UsageStatsSummary | null, totalMsgs: number, hideMs
           ? perModelParts.join(" · ")
           : cliCost > 0 || sessionCost > 0
             ? `CLI ${cliCost > 0 ? `$${cliCost.toFixed(2)}` : "$0"} + 落库 ${sessionCost > 0 ? `$${sessionCost.toFixed(4)}` : "$0"}`
-            : "基于 ~/.claude/projects 与单价表",
-      hint: "Claude Code CLI jsonl 与 usage 合并估算。",
+            : "按已记录用量估算",
+      hint: "云端与本地回合的费用估算。",
     },
     {
       label: "云端 Token",
@@ -133,8 +133,8 @@ function buildUsageKpis(agg: UsageStatsSummary | null, totalMsgs: number, hideMs
     {
       label: "吞吐量",
       value: tp != null && Number.isFinite(tp) ? tp.toFixed(1) : "—",
-      caption: tp != null ? "输出 token / 秒" : "需 usage + 耗时",
-      hint: "completion ÷ 请求耗时。",
+      caption: tp != null ? "输出 token / 秒" : "暂无耗时",
+      hint: "按回合输出量与耗时估算。",
       soft: tp == null,
     },
     {
@@ -147,8 +147,8 @@ function buildUsageKpis(agg: UsageStatsSummary | null, totalMsgs: number, hideMs
     {
       label: "工具调用",
       value: String(a?.workspaceWriteHints ?? 0),
-      caption: "workspace-write 块",
-      hint: "助手回复中的落盘代码块。",
+      caption: "写入次数",
+      hint: "助手回复里的写入标记。",
     },
     {
       label: "错误率",

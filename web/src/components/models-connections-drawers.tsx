@@ -1,5 +1,6 @@
 import { useCallback, type ReactNode } from "react";
 import { Check, RefreshCw, X } from "lucide-react";
+import { CONTENT_LOADING } from "@/lib/ui-copy";
 import { cn } from "@/lib/utils";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -332,11 +333,17 @@ export function LocalModelDrawer({
   return (
     <FormFrame
       title="配置本地模型"
-      subtitle="测试 Ollama 连接后，勾选模型并点击完成添加到列表"
+      subtitle="打开后会探测本机已装模型；勾选未加入项并点完成才写入编目"
       busy={busy}
       onClose={onClose}
       onSave={onFinish}
-      saveLabel={busy === "local" ? "保存中…" : "完成"}
+      saveLabel={
+        busy === "local"
+          ? "保存中…"
+          : localPick.size > 0
+            ? `加入编目 ${localPick.size}`
+            : "完成"
+      }
     >
       <FormField label="Ollama 服务地址">
         <input

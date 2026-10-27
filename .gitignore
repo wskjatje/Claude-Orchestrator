@@ -47,6 +47,9 @@ graphify-out/.tmp_*.py
 # TypeScript incremental build info
 *.tsbuildinfo
 
+# 本地 Playwright 浏览器缓存（勿提交）
+.playwright-browsers/
+
 # 根目录环境文件
 .env
 .env.local

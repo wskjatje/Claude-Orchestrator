@@ -11,15 +11,22 @@ import {
   ListSearch,
   ListStats,
   ListToolbar,
-  PageBanner,
   PageRoot,
   ToggleSwitch,
 } from "@/components/page-layout";
 import { Plus, Save, Play, Trash2, Clock, X } from "lucide-react";
 import { getDesktop } from "@/lib/desktop-api";
 import type { ScheduledTask } from "@/types/desktop";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
-import { PAGE_DESC, SCHEDULED_OFFLINE } from "@/lib/ui-copy";
+import { useDesktopActionGate, useDesktopGate } from "@/hooks/use-desktop-ready";
+import { DesktopGateBanner } from "@/components/desktop-gate-banner";
+import {
+  CONTENT_LOADING,
+  DESKTOP_HYDRATING,
+  PAGE_DESC,
+  SCHEDULED_EMPTY_ACTION,
+  SCHEDULED_EMPTY_OFFLINE,
+  SCHEDULED_OFFLINE,
+} from "@/lib/ui-copy";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/scheduled")({
@@ -65,7 +72,11 @@ function formatLastRun(t: ScheduledTask, short = false): string {
 }
 
 function ScheduledPage() {
-  const hasDesktopApi = useHasDesktop();
+  const gate = useDesktopGate();
+  const tasksApiReady = gate.phase === "ready" && !!getDesktop()?.scheduledTasksGet;
+  const mutateApiReady = gate.phase === "ready" && !!getDesktop()?.scheduledTasksSave;
+  const listGate = useDesktopActionGate(tasksApiReady);
+  const mutateGate = useDesktopActionGate(mutateApiReady);
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [hint, setHint] = useState("");
@@ -76,27 +87,30 @@ function ScheduledPage() {
   const [createDraft, setCreateDraft] = useState<ScheduledTask | null>(null);
 
   const load = useCallback(async () => {
+    if (gate.phase === "hydrating") return;
+    setLoading(true);
     const api = getDesktop();
-    if (!api) {
+    if (gate.phase === "offline" || !api?.scheduledTasksGet) {
       setLoading(false);
       return;
     }
     const r = await api.scheduledTasksGet();
     if (r.ok && Array.isArray(r.tasks)) setTasks(r.tasks);
     setLoading(false);
-  }, []);
+  }, [gate.phase]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
+    if (gate.phase !== "ready") return;
     const api = getDesktop();
     if (!api?.onScheduledTasksChanged) return;
     return api.onScheduledTasksChanged((data) => {
       if (Array.isArray(data?.tasks)) setTasks(data.tasks);
     });
-  }, []);
+  }, [gate.phase]);
 
   const persist = async (next: ScheduledTask[]) => {
     const api = getDesktop();
@@ -198,7 +212,8 @@ function ScheduledPage() {
             <button
               type="button"
               onClick={() => openCreateDrawer()}
-              disabled={!hasDesktopApi || loading}
+              disabled={!mutateGate.canAct || loading}
+              title={!mutateGate.canAct ? mutateGate.blockHint : undefined}
               className="btn-gradient-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold shadow-sm transition hover:opacity-95 disabled:opacity-40"
             >
               <Plus className="h-3.5 w-3.5" /> 添加任务
@@ -206,11 +221,7 @@ function ScheduledPage() {
           }
         />
 
-        {!hasDesktopApi ? (
-          <PageBanner className="border-warning/30 bg-warning/10 text-warning">
-            {SCHEDULED_OFFLINE}
-          </PageBanner>
-        ) : null}
+        <DesktopGateBanner offlineCopy={SCHEDULED_OFFLINE} />
 
         {hint ? (
           <div className="shrink-0 border-b border-primary/20 bg-primary-soft/25 px-4 py-2 text-[12px] text-foreground sm:px-5 lg:px-6">
@@ -233,7 +244,7 @@ function ScheduledPage() {
             </ListToolbar>
             <ListScrollArea>
               {loading ? (
-                <p className="text-[12px] text-muted-foreground">加载中…</p>
+                <p className="text-[12px] text-muted-foreground">{CONTENT_LOADING}</p>
               ) : (
                 <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3">
                   {filtered.map((t) => (
@@ -266,7 +277,13 @@ function ScheduledPage() {
                     </ListCard>
                   ))}
                   {filtered.length === 0 ? (
-                    <ListEmpty>暂无任务，点击「添加任务」创建。</ListEmpty>
+                    <ListEmpty>
+                      {loading
+                        ? DESKTOP_HYDRATING
+                        : mutateGate.canAct
+                          ? SCHEDULED_EMPTY_ACTION
+                          : SCHEDULED_EMPTY_OFFLINE}
+                    </ListEmpty>
                   ) : null}
                 </div>
               )}
@@ -343,7 +360,8 @@ function ScheduledPage() {
                         <button
                           type="button"
                           onClick={() => void runNow(editing.id)}
-                          disabled={!hasDesktopApi}
+                          disabled={!mutateGate.canAct}
+                          title={!mutateGate.canAct ? mutateGate.blockHint : undefined}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] font-medium hover:bg-secondary disabled:opacity-40"
                         >
                           <Play className="h-3.5 w-3.5" /> 立即执行

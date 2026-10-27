@@ -11,7 +11,7 @@
     "web:lint": "npm --prefix web run lint",
     "postinstall": "node scripts/fix-node-pty-perms.mjs && node scripts/fix-vendor-native-modules.mjs",
     "web:dev:full": "CLAUDE_ORCHESTRATOR_SKIP_ELECTRON=1 node desktop/run-dev.mjs",
-    "browser:install": "npx playwright install chromium",
+    "browser:install": "PLAYWRIGHT_BROWSERS_PATH=\"${PLAYWRIGHT_BROWSERS_PATH:-$PWD/.playwright-browsers}\" npx playwright install chromium",
     "desktop:install": "npm --prefix desktop install",
     "desktop:dev": "node desktop/run-dev.mjs",
     "desktop": "npm run desktop:dev",
@@ -31,7 +31,14 @@
     "check:cursor-parity-e2e": "node scripts/check-cursor-parity-e2e.mjs",
     "check:cli-bash-echo": "node scripts/check-cli-bash-echo.mjs",
     "check:turn-write-close": "node scripts/check-turn-write-close.mjs",
-    "check:dev-gates": "node scripts/check-turn-policy.mjs && node scripts/check-workspace-fidelity.mjs && node scripts/check-context-compact.mjs && node scripts/check-model-route.mjs && node scripts/check-shared-parity.mjs && node scripts/check-mcp-cli-gate.mjs && node scripts/check-incomplete-reply.mjs && node scripts/check-workspace-write-yaml.mjs && node scripts/check-workspace-write-no-guess.mjs && node scripts/check-turn-write-close.mjs && node scripts/check-cli-bash-echo.mjs && node scripts/check-cursor-parity-e2e.mjs"
+    "check:web-tsc": "node scripts/check-web-tsc.mjs",
+    "check:ui-smoke": "node scripts/check-ui-smoke.mjs",
+    "check:markdown-enabled": "node scripts/check-markdown-enabled.mjs",
+    "check:eslint-hot": "node scripts/check-eslint-hot.mjs",
+    "check:ui-playwright": "PLAYWRIGHT_BROWSERS_PATH=\"${PLAYWRIGHT_BROWSERS_PATH:-$PWD/.playwright-browsers}\" node scripts/check-ui-playwright.mjs",
+    "check:ui-playwright:ci": "CHECK_UI_PLAYWRIGHT=1 PLAYWRIGHT_BROWSERS_PATH=\"${PLAYWRIGHT_BROWSERS_PATH:-$PWD/.playwright-browsers}\" node scripts/check-ui-playwright.mjs",
+    "check:sticky-prompt": "node scripts/check-sticky-prompt.mjs",
+    "check:dev-gates": "node scripts/check-turn-policy.mjs && node scripts/check-workspace-fidelity.mjs && node scripts/check-context-compact.mjs && node scripts/check-model-route.mjs && node scripts/check-shared-parity.mjs && node scripts/check-mcp-cli-gate.mjs && node scripts/check-incomplete-reply.mjs && node scripts/check-workspace-write-yaml.mjs && node scripts/check-workspace-write-no-guess.mjs && node scripts/check-turn-write-close.mjs && node scripts/check-cli-bash-echo.mjs && node scripts/check-web-tsc.mjs && node scripts/check-markdown-enabled.mjs && node scripts/check-ui-smoke.mjs && node scripts/check-eslint-hot.mjs && node scripts/check-sticky-prompt.mjs && node scripts/check-cursor-parity-e2e.mjs && npm run check:ui-playwright"
   },
   "dependencies": {
     "node-pty": "^1.0.0",

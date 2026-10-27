@@ -11,6 +11,7 @@ import {
   useClaudeSkillList,
 } from "@/hooks/use-claude-skill-list";
 import { dedupeSkillStems } from "@/lib/agent-skill-defaults";
+import { CONTENT_LOADING } from "@/lib/ui-copy";
 import { cn } from "@/lib/utils";
 
 type Props = {

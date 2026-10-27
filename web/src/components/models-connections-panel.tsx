@@ -2,18 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, Cloud, Cpu, Pencil, Plus, RefreshCw, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { useDesktopActionGate, useDesktopReady, useHasDesktop } from "@/hooks/use-desktop-ready";
 import { getDesktop } from "@/lib/desktop-api";
 import {
   AUTO_MODEL_ID,
   chatSettingsPreservePayload,
   isAutoModelSelection,
+  isEmbeddingModelId,
 } from "@/lib/model-catalog";
-import {
-  formatFetchModelsError,
-  normalizeRpcErrorMessage,
-} from "@/lib/bridge-connection-error";
-import { BRIDGE_OFFLINE_TOAST } from "@/lib/ui-copy";
+import { formatFetchModelsError, normalizeRpcErrorMessage } from "@/lib/bridge-connection-error";
+import { BRIDGE_OFFLINE_TOAST, DESKTOP_HYDRATING } from "@/lib/ui-copy";
 import { PricingManagerDrawer } from "./models-connections-pricing-drawer";
 import {
   CloudProviderDrawer,
@@ -32,14 +30,19 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { getCachedModelCapability, rememberModelCapability } from "@/lib/model-capability-cache";
+import { nextLocalContextOverride } from "@/lib/local-context-override";
 
-/** 本地模型能力短标签；点击可写入显式覆盖（tools/vision） */
+/** 本地模型能力短标签；点击可写入显式覆盖（tools/vision/窗） */
 function LocalCapTags({ modelId }: { modelId: string }) {
   const [, bump] = useState(0);
   const caps = getCachedModelCapability(modelId);
   const tools = caps?.tools === true;
   const vision = caps?.vision === true;
   const unknown = !caps || (caps.tools == null && caps.vision == null);
+  const ctxLen =
+    typeof caps?.contextLength === "number" && caps.contextLength >= 1024
+      ? Math.floor(caps.contextLength)
+      : null;
 
   const toggle = async (key: "tools" | "vision") => {
     const api = getDesktop();
@@ -55,6 +58,30 @@ function LocalCapTags({ modelId }: { modelId: string }) {
       modelCapabilityOverrides: prev,
     });
     rememberModelCapability(modelId, cur);
+    bump((n) => n + 1);
+  };
+
+  /** 循环写入 8k→16k→32k→64k→清除覆盖 */
+  const cycleContextOverride = async () => {
+    const api = getDesktop();
+    if (!api) return;
+    const s = await api.getChatSettings();
+    const prev = { ...(s.modelCapabilityOverrides || {}) };
+    const cur = { ...(prev[modelId] || {}) };
+    const curCl = typeof cur.contextLength === "number" ? cur.contextLength : null;
+    const nextCl = nextLocalContextOverride(curCl);
+    if (nextCl == null) delete cur.contextLength;
+    else cur.contextLength = nextCl;
+    if (Object.keys(cur).length) prev[modelId] = cur;
+    else delete prev[modelId];
+    await api.saveChatSettings({
+      ...chatSettingsPreservePayload(s),
+      modelCapabilityOverrides: prev,
+    });
+    rememberModelCapability(modelId, {
+      ...caps,
+      contextLength: nextCl,
+    });
     bump((n) => n + 1);
   };
 
@@ -81,6 +108,21 @@ function LocalCapTags({ modelId }: { modelId: string }) {
         )}
       >
         {vision ? "视觉" : "无视觉"}
+      </button>
+      <button
+        type="button"
+        title={
+          ctxLen
+            ? `上下文约 ${ctxLen} token（点击可覆盖）`
+            : "未探测到上下文窗口，点击设置覆盖（8k→16k→32k→64k→清除）"
+        }
+        onClick={() => void cycleContextOverride()}
+        className={cn(
+          "rounded px-1 py-0.5 text-[10px]",
+          ctxLen ? "bg-success/15 text-success" : "bg-muted text-muted-foreground",
+        )}
+      >
+        {ctxLen ? `窗 ${Math.round(ctxLen / 1024)}k` : "窗未探测"}
       </button>
       {unknown ? <span className="text-[10px] text-muted-foreground">未探测</span> : null}
     </div>
@@ -128,9 +170,17 @@ const rowKeyCloud = (id: string): RowKey => `cloud:${id}`;
 const rowKeyLocal = (model: string): RowKey => `local:${model}`;
 
 export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
+  const desktopReady = useDesktopReady();
   const desktop = useHasDesktop();
   const [providers, setProviders] = useState<CloudProvider[]>([]);
   const [busy, setBusy] = useState<"load" | "save" | "sync" | "local" | "batch" | null>(null);
+  const saveApiReady =
+    desktopReady &&
+    desktop &&
+    !!getDesktop()?.getChatSettings &&
+    !!getDesktop()?.cloudProvidersListProviders;
+  const actionGate = useDesktopActionGate(saveApiReady);
+  const actionsLocked = !actionGate.canAct || busy !== null;
   const [selectedRows, setSelectedRows] = useState<Set<RowKey>>(new Set());
 
   const [drawer, setDrawer] = useState<DrawerMode>("closed");
@@ -172,6 +222,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     message: string;
     discovered: string[];
   }>({ status: "idle", message: "", discovered: [] });
+  /** 本机 live tags 中未入编目的对话模型数（仅提示，不自动写入） */
+  const [pendingLocalNotInCatalog, setPendingLocalNotInCatalog] = useState(0);
 
   const [confirmDelete, setConfirmDelete] = useState<{
     type: "cloud" | "local";
@@ -187,6 +239,31 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     setLocalPick(new Set());
     setProviderCustomOpen(false);
   }, []);
+
+  const refreshPendingLocalNotInCatalog = useCallback(
+    async (base: string, catalog: string[]) => {
+      const api = getDesktop();
+      if (!api?.listOllamaModels) {
+        setPendingLocalNotInCatalog(0);
+        return;
+      }
+      try {
+        const r = await api.listOllamaModels(base.trim() || "http://127.0.0.1:11434");
+        if (!r.ok || !Array.isArray(r.models)) {
+          setPendingLocalNotInCatalog(0);
+          return;
+        }
+        const cat = new Set(catalog);
+        const n = r.models.filter(
+          (m) => m && !isEmbeddingModelId(m) && !cat.has(m),
+        ).length;
+        setPendingLocalNotInCatalog(n);
+      } catch {
+        setPendingLocalNotInCatalog(0);
+      }
+    },
+    [],
+  );
 
   const loadLocalSettings = useCallback(async () => {
     const api = getDesktop();
@@ -211,7 +288,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     }
     setLocalModelCatalog(catalog);
     setLocalTest({ status: "idle", message: "", discovered: [] });
-  }, []);
+    await refreshPendingLocalNotInCatalog(base, catalog);
+  }, [refreshPendingLocalNotInCatalog]);
 
   const refreshProviders = useCallback(async () => {
     const api = getDesktop();
@@ -244,8 +322,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   }, [loadLocalSettings, refreshProviders]);
 
   useEffect(() => {
-    if (desktop) void refreshAll();
-  }, [desktop, refreshAll]);
+    if (desktopReady && desktop) void refreshAll();
+  }, [desktopReady, desktop, refreshAll]);
 
   // 打开云供应商抽屉时从服务端拉取完整的云供应商列表（含编辑模式）
   useEffect(() => {
@@ -369,6 +447,8 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     await loadLocalSettings();
     setLocalPick(new Set());
     setDrawer("local");
+    // 打开抽屉即 live 探测本机 tags（显式用户动作；不静默写入编目）
+    void testLocalConnection();
   };
 
   const refreshCloudModels = async () => {
@@ -726,14 +806,12 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           : {}),
         ...(r.defaultCurrency ? { currency: r.defaultCurrency } : {}),
       }));
-      const currencyHint = r.defaultCurrency && r.defaultCurrency !== "USD" ? `，币种 ${r.defaultCurrency}` : "";
+      const currencyHint =
+        r.defaultCurrency && r.defaultCurrency !== "USD" ? `，币种 ${r.defaultCurrency}` : "";
       toast.success(`已获取 ${r.models.length} 个模型${currencyHint}`);
     } catch (e) {
       setFetchModelsError(
-        formatFetchModelsError(
-          e instanceof Error ? e.message : "获取失败",
-          cloudForm.name.trim(),
-        ),
+        formatFetchModelsError(e instanceof Error ? e.message : "获取失败", cloudForm.name.trim()),
       );
     } finally {
       setFetchingModels(false);
@@ -779,6 +857,40 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           discovered,
         });
         await saveOllamaBase();
+        // 启用/编目 ∩ 本机 tags：剔除已卸载残留，避免聊天再选到未 pull 标签
+        const installed = new Set(discovered);
+        const s = await api.getChatSettings();
+        const prevEnabled = s.chatEnabledLocalModels ?? [];
+        const prevCatalog = s.localModelCatalog ?? [];
+        const nextEnabled = prevEnabled.filter((m) => installed.has(m));
+        const nextCatalog = prevCatalog.filter((m) => installed.has(m));
+        const nextPreferred =
+          s.preferredLocalModel && installed.has(s.preferredLocalModel)
+            ? s.preferredLocalModel
+            : nextEnabled[0] || "";
+        const mid = String(s.model || "").trim();
+        const wasLocalPick =
+          !!mid &&
+          mid !== "auto" &&
+          (prevCatalog.includes(mid) || prevEnabled.includes(mid));
+        const nextModel =
+          wasLocalPick && !installed.has(mid) ? "auto" : mid || "auto";
+        if (
+          nextEnabled.length !== prevEnabled.length ||
+          nextCatalog.length !== prevCatalog.length ||
+          nextPreferred !== (s.preferredLocalModel || "") ||
+          nextModel !== mid
+        ) {
+          await api.saveChatSettings({
+            ...chatSettingsPreservePayload(s),
+            chatEnabledLocalModels: nextEnabled,
+            localModelCatalog: nextCatalog,
+            preferredLocalModel: nextPreferred,
+            model: nextModel,
+          });
+          setChatEnabledLocalModels(nextEnabled);
+          setLocalModelCatalog(nextCatalog);
+        }
       } else {
         setLocalTest({
           status: "fail",
@@ -870,6 +982,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
       });
       setLocalModelCatalog(catalog);
       setChatEnabledLocalModels(nextLocalEnabled);
+      await refreshPendingLocalNotInCatalog(ollamaBase, catalog);
       toast.success(`已删除「${id}」`);
       onSettingsUpdated?.();
     } finally {
@@ -888,23 +1001,77 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         toAdd.length > 0
           ? [...new Set([...(s.localModelCatalog ?? []), ...toAdd])]
           : [...(s.localModelCatalog ?? [])];
+      // 与「加入未编目」对齐：勾选完成 = 编目并启用进选择器
+      const nextEnabled =
+        toAdd.length > 0
+          ? [...new Set([...(s.chatEnabledLocalModels ?? []), ...toAdd])]
+          : [...(s.chatEnabledLocalModels ?? [])];
       await api.saveChatSettings({
         ...chatSettingsPreservePayload(s),
         ollamaBase: ollamaBase.trim(),
         localModelCatalog: catalog,
         ...(toAdd.length > 0
           ? {
+              chatEnabledLocalModels: nextEnabled,
               model: s.model?.trim() || toAdd[0],
               localOllamaModel: s.localOllamaModel?.trim() || toAdd[0],
             }
           : {}),
       });
       setLocalModelCatalog(catalog);
+      if (toAdd.length > 0) setChatEnabledLocalModels(nextEnabled);
+      await refreshPendingLocalNotInCatalog(ollamaBase, catalog);
       if (toAdd.length > 0) {
-        toast.success(`已添加 ${toAdd.length} 个本地模型`);
+        toast.success(`已加入并启用 ${toAdd.length} 个`);
       }
       closeDrawer();
       onSettingsUpdated?.();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** 探测本机 tags，把未入编目的对话模型写入 localModelCatalog（不猜、不静默启用） */
+  const addPendingLocalToCatalog = async () => {
+    const api = getDesktop();
+    if (!api?.listOllamaModels) return;
+    setBusy("local");
+    try {
+      const base = ollamaBase.trim() || "http://127.0.0.1:11434";
+      const r = await api.listOllamaModels(base);
+      if (!r.ok || !Array.isArray(r.models)) {
+        toast.message(normalizeRpcErrorMessage(r.error) || "无法探测本机模型");
+        return;
+      }
+      const s = await api.getChatSettings();
+      const prev = s.localModelCatalog ?? [];
+      const cat = new Set(prev);
+      const toAdd = r.models.filter(
+        (m) => m && !isEmbeddingModelId(m) && !cat.has(m),
+      );
+      if (!toAdd.length) {
+        setPendingLocalNotInCatalog(0);
+        toast.message("没有未加入编目的本机模型");
+        return;
+      }
+      const catalog = [...new Set([...prev, ...toAdd])];
+      // 用户点「加入未编目」= 编目并启用进选择器；不静默改当前 model
+      const nextEnabled = [
+        ...new Set([...(s.chatEnabledLocalModels ?? []), ...toAdd]),
+      ];
+      await api.saveChatSettings({
+        ...chatSettingsPreservePayload(s),
+        ollamaBase: base,
+        localModelCatalog: catalog,
+        chatEnabledLocalModels: nextEnabled,
+      });
+      setLocalModelCatalog(catalog);
+      setChatEnabledLocalModels(nextEnabled);
+      setPendingLocalNotInCatalog(0);
+      toast.success(`已加入并启用 ${toAdd.length} 个`);
+      onSettingsUpdated?.();
+    } catch (e) {
+      toast.message(e instanceof Error ? e.message : "加入编目失败");
     } finally {
       setBusy(null);
     }
@@ -1096,14 +1263,28 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     }
   };
 
-  if (!desktop) return null;
+  if (!desktopReady || actionGate.phase === "hydrating") {
+    return (
+      <p className="text-[12.5px] text-muted-foreground" role="status" aria-live="polite">
+        {actionGate.blockHint || DESKTOP_HYDRATING}
+      </p>
+    );
+  }
+  if (!desktop || actionGate.phase === "offline") {
+    return (
+      <p className="text-[12.5px] text-muted-foreground" role="status">
+        {actionGate.blockHint || BRIDGE_OFFLINE_TOAST}
+      </p>
+    );
+  }
 
   return (
     <div className="w-full space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          disabled={busy !== null}
+          disabled={actionsLocked}
+          title={!actionGate.canAct ? actionGate.blockHint : undefined}
           onClick={openCloudCreate}
           className="btn-gradient-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold shadow-sm disabled:opacity-40"
         >
@@ -1111,15 +1292,48 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         </button>
         <button
           type="button"
-          disabled={busy !== null}
+          disabled={actionsLocked}
+          title={
+            !actionGate.canAct
+              ? actionGate.blockHint
+              : pendingLocalNotInCatalog > 0
+                ? `本机有 ${pendingLocalNotInCatalog} 个已装模型未加入编目`
+                : undefined
+          }
           onClick={() => void openLocalConfig()}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
+          data-testid="models-config-local"
         >
           <Cpu className="h-3.5 w-3.5" /> 配置本地模型
+          {pendingLocalNotInCatalog > 0 ? (
+            <span
+              className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200"
+              data-testid="models-pending-local-count"
+            >
+              未加入 {pendingLocalNotInCatalog}
+            </span>
+          ) : null}
         </button>
+        {pendingLocalNotInCatalog > 0 ? (
+          <button
+            type="button"
+            disabled={actionsLocked || busy !== null}
+            title={
+              !actionGate.canAct
+                ? actionGate.blockHint
+                : `把本机已装、尚未编目的 ${pendingLocalNotInCatalog} 个对话模型写入目录`
+            }
+            onClick={() => void addPendingLocalToCatalog()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[12.5px] font-medium text-amber-900 transition hover:bg-amber-500/15 disabled:opacity-40 dark:text-amber-100"
+            data-testid="models-add-pending-local"
+          >
+            加入未编目
+          </button>
+        ) : null}
         <button
           type="button"
-          disabled={busy !== null}
+          disabled={actionsLocked}
+          title={!actionGate.canAct ? actionGate.blockHint : undefined}
           onClick={() => void refreshAll()}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
         >
@@ -1127,23 +1341,31 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
         </button>
         <button
           type="button"
-          disabled={busy !== null}
+          disabled={actionsLocked}
+          title={!actionGate.canAct ? actionGate.blockHint : undefined}
           onClick={() => void refreshCloudModels()}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
         >
           <Cloud className="h-3.5 w-3.5" /> 刷新云模型
         </button>
+        <details className="inline-flex items-center">
+          <summary className="cursor-pointer list-none rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-muted-foreground transition hover:bg-secondary hover:text-foreground">
+            高级
+          </summary>
+          <button
+            type="button"
+            disabled={actionsLocked}
+            title={!actionGate.canAct ? actionGate.blockHint : undefined}
+            onClick={() => void syncWorkbench()}
+            className="ml-1.5 inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
+          >
+            <Zap className="h-3.5 w-3.5" /> 同步到终端工具
+          </button>
+        </details>
         <button
           type="button"
-          disabled={busy !== null}
-          onClick={() => void syncWorkbench()}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
-        >
-          <Zap className="h-3.5 w-3.5" /> 同步到 Claude CLI
-        </button>
-        <button
-          type="button"
-          disabled={busy !== null}
+          disabled={actionsLocked}
+          title={!actionGate.canAct ? actionGate.blockHint : undefined}
           onClick={() => void openPricingManager()}
           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
         >
@@ -1158,7 +1380,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           </span>
           <button
             type="button"
-            disabled={busy !== null}
+            disabled={actionsLocked}
             onClick={toggleSelectAllRows}
             className="rounded-md border border-border bg-surface px-2.5 py-1 text-[11px] font-medium hover:bg-secondary disabled:opacity-40"
           >
@@ -1166,7 +1388,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           </button>
           <button
             type="button"
-            disabled={busy !== null || selectedRows.size === 0}
+            disabled={actionsLocked || selectedRows.size === 0}
             onClick={() => void batchEnableSelected()}
             className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/15 disabled:opacity-40"
           >
@@ -1174,7 +1396,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           </button>
           <button
             type="button"
-            disabled={busy !== null || selectedRows.size === 0}
+            disabled={actionsLocked || selectedRows.size === 0}
             onClick={() => void batchDisableSelected()}
             className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium hover:bg-secondary disabled:opacity-40"
           >
@@ -1182,7 +1404,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           </button>
           <button
             type="button"
-            disabled={busy !== null || selectedRows.size === 0}
+            disabled={actionsLocked || selectedRows.size === 0}
             onClick={clearRowSelection}
             className="text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
           >
@@ -1199,7 +1421,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                 <input
                   type="checkbox"
                   checked={allRowKeys.length > 0 && selectedRows.size === allRowKeys.length}
-                  disabled={busy !== null || allRowKeys.length === 0}
+                  disabled={actionsLocked || allRowKeys.length === 0}
                   onChange={toggleSelectAllRows}
                   className="h-3.5 w-3.5 rounded border-border"
                   aria-label="全选"
@@ -1221,7 +1443,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                   <input
                     type="checkbox"
                     checked={selectedRows.has(rowKeyCloud(p.id))}
-                    disabled={busy !== null}
+                    disabled={actionsLocked}
                     onChange={() => toggleRowSelection(rowKeyCloud(p.id))}
                     className="h-3.5 w-3.5 rounded border-border"
                     aria-label={`选择 ${p.name}`}
@@ -1261,7 +1483,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                   <div className="inline-flex gap-1">
                     <button
                       type="button"
-                      disabled={busy !== null}
+                      disabled={actionsLocked}
                       onClick={() => openCloudEdit(p)}
                       className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-secondary disabled:opacity-40"
                     >
@@ -1269,7 +1491,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                     </button>
                     <button
                       type="button"
-                      disabled={busy !== null || cloudChatEnabledSet.has(p.id)}
+                      disabled={actionsLocked || cloudChatEnabledSet.has(p.id)}
                       title={cloudChatEnabledSet.has(p.id) ? "请先批量停用" : undefined}
                       onClick={() => void deleteCloudProvider(p)}
                       className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-40"
@@ -1280,13 +1502,13 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                 </td>
               </tr>
             ))}
-            {localModelCatalog.map((model) => (
+            {localModelCatalog.filter((model) => !isEmbeddingModelId(model)).map((model) => (
               <tr key={model} className="border-t border-border/60 bg-secondary/5">
                 <td className="px-2 py-2.5 align-top">
                   <input
                     type="checkbox"
                     checked={selectedRows.has(rowKeyLocal(model))}
-                    disabled={busy !== null}
+                    disabled={actionsLocked}
                     onChange={() => toggleRowSelection(rowKeyLocal(model))}
                     className="h-3.5 w-3.5 rounded border-border"
                     aria-label={`选择 ${model}`}
@@ -1319,7 +1541,7 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
                   <div className="inline-flex gap-1">
                     <button
                       type="button"
-                      disabled={busy !== null || localChatEnabledSet.has(model)}
+                      disabled={actionsLocked || localChatEnabledSet.has(model)}
                       title={localChatEnabledSet.has(model) ? "请先批量停用" : undefined}
                       onClick={() => void removeLocalModel(model)}
                       className="inline-flex items-center gap-1 rounded-md border border-destructive/30 px-2 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-40"

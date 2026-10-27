@@ -38,12 +38,38 @@ assert(classifyTurnIntent('开始执行优化方案') === 'write', 'start execut
 assert(classifyTurnIntent('请按方案改代码并落盘') === 'write', '改代码落盘 → write')
 assert(classifyTurnIntent('执行P2') === 'write', '执行P2 → write')
 assert(classifyTurnIntent('你好') === 'chat', 'hi stays chat')
-assert(isPlanDocumentRequest('给我一个合理优化方案'), 'plan-doc speech')
-assert(isPlanDocumentRequest('根据以上优化给我一个优化方案'), 'plan-doc follow-up')
+assert(!isPlanDocumentRequest('给我一个合理优化方案'), 'oral plan ≠ plan-doc write')
+assert(!isPlanDocumentRequest('根据以上优化给我一个优化方案'), 'oral follow-up ≠ plan-doc')
 assert(!isPlanDocumentRequest('告诉我这个项目是做什么的'), 'product Q not plan-doc')
+assert(isPlanDocumentRequest('写一份优化方案'), 'explicit write plan → plan-doc')
+assert(isPlanDocumentRequest('把方案写到 docs/优化方案.md'), 'path write → plan-doc')
+
+const agentOralPlan = resolveTurnPolicy({
+  displayLine: '给我一个合理优化方案',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  !agentOralPlan.allowWrites &&
+    agentOralPlan.forceDirectChat &&
+    agentOralPlan.contextLevel === 'slim-product',
+  'Agent+口头优化方案 → slim readonly (Cursor Ask 同构)',
+)
+
+const agentAskOptimize = resolveTurnPolicy({
+  displayLine: '告诉我这个项目该怎么优化，给我一个合理优化方案',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  !agentAskOptimize.allowWrites &&
+    agentAskOptimize.forceDirectChat &&
+    agentAskOptimize.contextLevel === 'slim-product',
+  'Agent+告诉我怎么优化+方案 → 不强制写盘、无落盘失败横幅',
+)
 
 const agentPlanDoc = resolveTurnPolicy({
-  displayLine: '给我一个合理优化方案',
+  displayLine: '写一份优化方案',
   interactionMode: 'agent',
   isGeneralTurn: true,
 })
@@ -52,7 +78,7 @@ assert(
     agentPlanDoc.autoApplyWrites &&
     !agentPlanDoc.forceDirectChat &&
     agentPlanDoc.allowTools,
-  'Agent+优化方案 → write plan doc (Cursor parity)',
+  'Agent+写一份优化方案 → write plan doc',
 )
 assert(
   /方案文档/.test(agentPlanDoc.systemConstraint) &&
@@ -62,7 +88,7 @@ assert(
 )
 
 const planModeDoc = resolveTurnPolicy({
-  displayLine: '给我一个完整优化方案',
+  displayLine: '写一份完整优化方案',
   interactionMode: 'plan',
   isGeneralTurn: true,
 })
@@ -70,7 +96,7 @@ assert(
   planModeDoc.allowWrites &&
     !planModeDoc.autoApplyWrites &&
     !planModeDoc.forceDirectChat,
-  'Plan+优化方案 → staged write',
+  'Plan+写一份优化方案 → staged write',
 )
 
 const askPlanDoc = resolveTurnPolicy({
@@ -127,12 +153,47 @@ const agentW = resolveTurnPolicy({
 })
 assert(agentW.allowWrites && agentW.autoApplyWrites && !agentW.forceDirectChat, 'Agent+mutation → write')
 
+const agentWriteYiGe = resolveTurnPolicy({
+  displayLine: '写一个文件 test-mcp.txt 内容 hello',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  agentWriteYiGe.allowWrites && agentWriteYiGe.allowTools && !agentWriteYiGe.forceDirectChat,
+  'Agent+写一个文件+扩展名 → write tools',
+)
+
 const agentHi = resolveTurnPolicy({
   displayLine: '你好',
   interactionMode: 'agent',
   isGeneralTurn: true,
 })
 assert(agentHi.forceDirectChat && !agentHi.allowTools && !agentHi.allowWrites, 'Agent+hi → direct, no tools/writes')
+
+const agentMcpRead = resolveTurnPolicy({
+  displayLine: '请调用 memory 的 read_graph',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  !agentMcpRead.allowWrites &&
+    agentMcpRead.allowTools &&
+    !agentMcpRead.forceDirectChat &&
+    /只读工具/.test(agentMcpRead.systemConstraint),
+  'Agent+调用 memory → tools, no writes',
+)
+const askMcpRead = resolveTurnPolicy({
+  displayLine: '请调用 memory 的 read_graph',
+  interactionMode: 'ask',
+  isGeneralTurn: true,
+})
+assert(askMcpRead.forceDirectChat && !askMcpRead.allowTools, 'Ask+调用 memory → still direct')
+const howToCall = resolveTurnPolicy({
+  displayLine: '怎么调用 memory',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(howToCall.forceDirectChat && !howToCall.allowTools, '怎么调用 → not a tool turn')
 
 const agentChatNamed = resolveTurnPolicy({
   displayLine: '继续说说架构',
@@ -201,11 +262,11 @@ assert(classifyTurnIntent('写一份优化方案') !== 'write' || isPlanDocument
 assert(isPlanDocumentRequest('写一份优化方案'), 'boundary: 写一份优化方案 → plan-doc')
 assert(classifyTurnIntent('写一份优化方案') === 'chat' || classifyTurnIntent('写一份优化方案') === 'readonly', 'boundary: 写方案 alone not mutation write')
 
-const planSuggest = suggestPlanDocumentRelPath('给我一个合理优化方案')
+const planSuggest = suggestPlanDocumentRelPath('写一份优化方案')
 assert(/^docs\/.+\.md$/i.test(planSuggest), 'suggest plan path under docs/*.md')
 assert(!/optimization-plan\.md/i.test(planSuggest), 'suggest path not hardcoded optimization-plan.md')
 const agentPlanSuggested = resolveTurnPolicy({
-  displayLine: '给我一个合理优化方案',
+  displayLine: '写一份优化方案',
   interactionMode: 'agent',
   isGeneralTurn: true,
 })
@@ -213,6 +274,7 @@ assert(
   agentPlanSuggested.systemConstraint.includes(planSuggest),
   'Agent plan constraint embeds suggested path',
 )
+assert(classifyTurnIntent('告诉我这个项目该怎么优化，给我一个合理优化方案') === 'readonly', 'screenshot case → readonly')
 
 if (process.exitCode) {
   console.error('\ncheck-turn-policy: FAILED')

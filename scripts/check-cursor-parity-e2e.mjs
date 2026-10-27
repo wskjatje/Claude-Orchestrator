@@ -15,6 +15,7 @@ const {
 const {
   CLOUD_PROVIDER_REQUIRED_ERROR,
   LOCAL_PROVIDER_REQUIRED_ERROR,
+  LOCAL_MODEL_NOT_INSTALLED_ERROR,
   MODEL_NOT_IN_POOL_ERROR,
   resolveModelForExecution,
 } = await import(path.join(root, 'server/resolve-execution-model.mjs'))
@@ -31,12 +32,22 @@ const askPlan = resolveTurnPolicy({
 })
 ok(!askPlan.allowWrites && askPlan.forceDirectChat, 'Ask+优化方案 → 禁写')
 
-const planDoc = resolveTurnPolicy({
+const planOral = resolveTurnPolicy({
   displayLine: '请给出完整优化方案',
   interactionMode: 'plan',
   isGeneralTurn: true,
 })
-ok(planDoc.allowWrites && !planDoc.autoApplyWrites, 'Plan+方案 → 可暂存写')
+ok(
+  !planOral.allowWrites && planOral.forceDirectChat && planOral.contextLevel === 'slim-product',
+  'Plan+口头方案 → 只聊（对齐 Cursor，不强制写 md）',
+)
+
+const planDoc = resolveTurnPolicy({
+  displayLine: '写一份完整优化方案',
+  interactionMode: 'plan',
+  isGeneralTurn: true,
+})
+ok(planDoc.allowWrites && !planDoc.autoApplyWrites, 'Plan+写一份方案 → 可暂存写')
 ok(
   planDoc.systemConstraint.includes('禁止硬编码固定文件名') ||
     planDoc.systemConstraint.includes('【写盘内容·Cursor】'),
@@ -69,7 +80,12 @@ ok(/待用户 Accept（Plan）/.test(bridgeSrc), 'bridge: Plan 排队文案')
 
 const closeLoopSrc = fs.readFileSync(path.join(root, 'web/src/lib/turn-write-close.ts'), 'utf8')
 ok(!/path:\/content:/.test(closeLoopSrc), 'write-close: 不再暗示 YAML 合法')
-ok(/content\|contents/.test(closeLoopSrc), 'write-close: JSON path+content|contents')
+ok(/本轮需要改文件，但未写入任何内容/.test(closeLoopSrc), 'write-close: 用户可见零写入文案')
+ok(
+  !/error:\s*[\s\S]{0,80}search_replace/.test(closeLoopSrc) &&
+    !/须用 search_replace/.test(closeLoopSrc),
+  'write-close: 错误文案无工具协议词',
+)
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudecode-parity-'))
 const planPath = path.join(tmp, 'docs', 'topic-plan.md')
@@ -108,6 +124,16 @@ ok(
 ok(String(CLOUD_PROVIDER_REQUIRED_ERROR).includes('未启用云供应商'), '云硬错误文案')
 ok(String(LOCAL_PROVIDER_REQUIRED_ERROR).includes('未启用本地模型'), '本地硬错误文案')
 ok(String(MODEL_NOT_IN_POOL_ERROR).includes('不在已启用池内'), '池外硬错误文案')
+ok(
+  String(LOCAL_MODEL_NOT_INSTALLED_ERROR).includes('未安装到本机 Ollama'),
+  '未安装本地模型硬错误文案',
+)
+ok(
+  /resolveInstalledOllamaTag|LOCAL_MODEL_NOT_INSTALLED_ERROR/.test(
+    fs.readFileSync(path.join(root, 'server/cad-bridge.cjs'), 'utf8'),
+  ),
+  '本地编排入口校验 Ollama tags',
+)
 
 const mcpHint = fs.readFileSync(path.join(root, 'web/src/lib/mcp-health-hint.ts'), 'utf8')
 ok(/assertMcpHealthForTurn/.test(mcpHint), 'MCP 硬闸存在')
@@ -256,6 +282,7 @@ ok(/export async function externalLspDocumentSymbols/.test(extLsp), '外部 LSP 
 
 const streamParse = fs.readFileSync(path.join(root, 'server/claude-stream-parse.mjs'), 'utf8')
 ok(/extractToolResultOutput/.test(streamParse) && /toolUseById/.test(streamParse), 'CLI tool_result 捕获 output')
+ok(/extractClaudeStreamUsage/.test(streamParse) && /state\.usage/.test(streamParse), 'CLI stream 捕获 usage 实参')
 
 const streamEv = fs.readFileSync(path.join(root, 'web/src/lib/stream-agent-events.ts'), 'utf8')
 ok(/output\?:\s*string/.test(streamEv), 'StreamAgentEvent 含 output')

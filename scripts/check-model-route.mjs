@@ -8,8 +8,16 @@ import {
   isAutoModelSelection,
   CLOUD_PROVIDER_REQUIRED_ERROR,
   LOCAL_PROVIDER_REQUIRED_ERROR,
+  LOCAL_MODEL_NOT_INSTALLED_ERROR,
   MODEL_NOT_IN_POOL_ERROR,
 } from '../server/resolve-execution-model.mjs'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
+const require = createRequire(import.meta.url)
+const cloudProviders = require('../server/cloud-providers.cjs')
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 function assert(cond, msg) {
   if (!cond) {
@@ -114,6 +122,64 @@ assert(emptyCloudPrefer == null, 'prefer-cloud + empty cloud → null (no silent
 assert(String(CLOUD_PROVIDER_REQUIRED_ERROR).includes('未启用云供应商'), 'error copy single-source')
 assert(String(LOCAL_PROVIDER_REQUIRED_ERROR).includes('未启用本地模型'), 'local error copy')
 assert(String(MODEL_NOT_IN_POOL_ERROR).includes('不在已启用池内'), 'pool error copy')
+assert(
+  String(LOCAL_MODEL_NOT_INSTALLED_ERROR).includes('未安装到本机 Ollama'),
+  'not-installed local error copy',
+)
+{
+  const tags = ['llama3.2:latest', 'qwen2.5:7b']
+  assert(
+    cloudProviders.resolveInstalledOllamaTag('qwen2.5-coder:latest', tags) == null,
+    'uninstalled tag resolves null',
+  )
+  assert(
+    cloudProviders.resolveInstalledOllamaTag('llama3.2', tags) === 'llama3.2:latest',
+    'bare name maps to :latest when installed',
+  )
+  assert(
+    JSON.stringify(
+      cloudProviders.filterLocalModelsToInstalled(
+        ['llama3.2:latest', 'qwen2.5-coder:latest'],
+        tags,
+      ),
+    ) === JSON.stringify(['llama3.2:latest']),
+    'filter drops uninstalled local models',
+  )
+  // :14b 已装时不得把 :latest 当成可调用
+  assert(
+    cloudProviders.resolveInstalledOllamaTag('qwen2.5-coder:latest', [
+      'qwen2.5-coder:14b',
+    ]) == null,
+    'different tag of same base is not installed',
+  )
+  const pruned = cloudProviders.pruneLocalModelsAgainstInstalled(
+    {
+      localModelCatalog: ['llama3.2:latest', 'qwen2.5-coder:latest'],
+      chatEnabledLocalModels: ['llama3.2:latest', 'qwen2.5-coder:latest'],
+      preferredLocalModel: 'qwen2.5-coder:latest',
+      model: 'qwen2.5-coder:latest',
+    },
+    tags,
+  )
+  assert(pruned.changed, 'prune marks settings changed')
+  assert(
+    JSON.stringify(pruned.settings.localModelCatalog) ===
+      JSON.stringify(['llama3.2:latest']),
+    'prune drops uninstalled from catalog',
+  )
+  assert(pruned.settings.model === 'auto', 'prune resets default model to auto')
+  const noTouch = cloudProviders.pruneLocalModelsAgainstInstalled(
+    { localModelCatalog: ['ghost'], chatEnabledLocalModels: ['ghost'], model: 'ghost' },
+    [],
+  )
+  assert(!noTouch.changed, 'empty tags does not wipe settings')
+  assert(
+    /仅认本机 live|tags\.length/.test(
+      fs.readFileSync(path.join(root, 'server/cloud-providers.cjs'), 'utf8'),
+    ),
+    'buildModelPoolsInstalled uses live tags only (empty → empty local pool)',
+  )
+}
 
 const heuristicPin = resolveModelForExecution({
   selectedModel: 'claude-sonnet-4-20250514',

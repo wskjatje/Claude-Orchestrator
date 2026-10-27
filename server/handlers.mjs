@@ -41,6 +41,10 @@ import {
   savePersonalGithubSettings,
 } from "./workbench-git-sync.mjs";
 import {
+  importMcpFromWorkspace,
+  peekWorkspaceMcpJson,
+} from "./workbench-git-import.mjs";
+import {
   aggregateClaudeProjectUsage,
   listRecentClaudeProjectSessions,
 } from "./claude-projects.mjs";
@@ -1328,6 +1332,21 @@ export const handlers = {
     return setMcpServerEnabled(customPath, name, body.enabled !== false);
   },
 
+  /** 探测当前工作区 .mcp.json（有服务器才 present；不写入） */
+  "claudeConfig:peekWorkspaceMcp": async () => {
+    const wd = loadWorkspace();
+    return peekWorkspaceMcpJson(wd);
+  },
+
+  /** 显式把工作区 .mcp.json 合并进本机 MCP 配置 */
+  "claudeConfig:importWorkspaceMcp": async () => {
+    const wd = loadWorkspace();
+    if (!wd) return { ok: false, imported: 0, error: "未选择工作区" };
+    const settings = loadChatSettings();
+    const customPath = settings.mcpConfigAbsolutePath?.trim() || "";
+    return importMcpFromWorkspace(wd, customPath);
+  },
+
   "dialog:chooseReferenceFiles": async (args) => {
     const opts = args?.[0] && typeof args[0] === "object" ? args[0] : {};
     return pickReferenceFilesNative(opts);
@@ -1417,8 +1436,35 @@ export const handlers = {
 
   "cloud-providers:getModelPools": async () => {
     try {
-      const settings = loadChatSettings();
-      const pools = cloudProviders.buildModelPools(settings);
+      let settings = loadChatSettings();
+      // 本地池与本机 Ollama /api/tags 求交：选择器与调用同一范围，禁止未安装标签
+      const pools =
+        typeof cloudProviders.buildModelPoolsInstalled === "function"
+          ? await cloudProviders.buildModelPoolsInstalled(settings)
+          : cloudProviders.buildModelPools(settings);
+      // tags 可达时把设置里的残留未安装标签写回剔除（下次无需再靠测试连接）
+      if (
+        typeof cloudProviders.pruneLocalModelsAgainstInstalled === "function" &&
+        Array.isArray(pools.ollamaTags) &&
+        pools.ollamaTags.length
+      ) {
+        const pruned = cloudProviders.pruneLocalModelsAgainstInstalled(
+          settings,
+          pools.ollamaTags,
+        );
+        let next = pruned.settings;
+        let changed = pruned.changed;
+        const tagsKey = JSON.stringify(pools.ollamaTags);
+        const prevKey = JSON.stringify(settings.lastSuccessfulOllamaTags || []);
+        if (tagsKey !== prevKey) {
+          next = { ...next, lastSuccessfulOllamaTags: [...pools.ollamaTags] };
+          changed = true;
+        }
+        if (changed) {
+          saveChatSettings(next);
+          settings = next;
+        }
+      }
       return { ok: true, ...pools };
     } catch (e) {
       return {

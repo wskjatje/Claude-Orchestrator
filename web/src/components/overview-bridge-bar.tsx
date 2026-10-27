@@ -124,7 +124,7 @@ export function OverviewBridgeBar() {
     }
     setDoctorRunning(true);
     setDoctorOpen(true);
-    setDoctorOutput("正在运行 claude doctor…");
+    setDoctorOutput("正在检查连接…");
     try {
       const r = await api.claudeCodeDoctor();
       setDoctorOutput(r.content?.trim() || r.error?.trim() || "（无输出）");
@@ -155,7 +155,7 @@ export function OverviewBridgeBar() {
     <section className="overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-xs">
       <div className="border-b border-border/60 px-5 py-3">
         <h2 className="text-sm font-semibold tracking-tight text-foreground">本机服务</h2>
-        <p className="mt-0.5 text-xs text-muted-foreground">连接状态与 Claude Code 健康检查</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">连接状态与健康检查</p>
       </div>
       <div className="flex flex-wrap items-center gap-3 px-5 py-3.5">
         <div className="flex items-center gap-2">
@@ -189,7 +189,7 @@ export function OverviewBridgeBar() {
             className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
           >
             <Stethoscope className={cn("h-3.5 w-3.5", doctorRunning && "animate-pulse")} />
-            claude doctor
+            健康检查
           </button>
           <button
             type="button"
@@ -204,7 +204,7 @@ export function OverviewBridgeBar() {
       {doctorOpen && (
         <div className="border-t border-border bg-surface/40 px-5 py-4">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-[12px] font-semibold text-foreground">claude doctor 输出</span>
+            <span className="text-[12px] font-semibold text-foreground">健康检查结果</span>
             <button
               type="button"
               onClick={() => setDoctorOpen(false)}

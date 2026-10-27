@@ -235,7 +235,7 @@ const guideGroups: CardGroup[] = [
     title: "MCP",
     icon: Server,
     items: [
-      { label: "配置位置", desc: "~/.claude 或项目 .mcp.json" },
+      { label: "配置位置", desc: "本机 ~/.claude/mcp.json；工作区有 .mcp.json 时可在 MCP 页导入" },
       { label: "管理能力", desc: "MCP 页添加预设、健康检查与启用" },
       { label: "外部应用", desc: "模板「外部应用」：打开链接/本机路径；未启用不影响编码" },
       { label: "任务链", desc: "可为单步限定可用 MCP 工具集" },

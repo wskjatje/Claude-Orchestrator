@@ -79,6 +79,13 @@ const MAX_TOOL_OUTPUT = 8000
  */
 
 /**
+ * @typedef {object} StreamUsage
+ * @property {number} prompt_tokens
+ * @property {number} completion_tokens
+ * @property {number} total_tokens
+ */
+
+/**
  * @typedef {object} StreamDisplayState
  * @property {string} display
  * @property {string} [thinkingOpen]
@@ -87,6 +94,7 @@ const MAX_TOOL_OUTPUT = 8000
  * @property {StreamAgentEvent[]} events
  * @property {boolean} eventsFlushed
  * @property {Map<string, { name: string, arg: string }>} toolUseById
+ * @property {StreamUsage | null} [usage] 仅当 NDJSON 带实参时写入，禁止字符粗估
  */
 
 /** @returns {StreamDisplayState} */
@@ -99,7 +107,38 @@ export function createStreamDisplayState() {
     events: [],
     eventsFlushed: false,
     toolUseById: new Map(),
+    usage: null,
   }
+}
+
+/**
+ * 从 Claude Code stream-json / transcript 形态抽取 usage（与 claude-projects 字段同源）。
+ * 无有效数字则返回 null，禁止用 0 或估算冒充。
+ * @param {unknown} raw
+ * @returns {StreamUsage | null}
+ */
+export function extractClaudeStreamUsage(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const u = /** @type {Record<string, unknown>} */ (raw)
+  const prompt = Math.floor(
+    Number(u.input_tokens ?? u.prompt_tokens ?? 0),
+  )
+  const completion = Math.floor(
+    Number(u.output_tokens ?? u.completion_tokens ?? 0),
+  )
+  if (!(prompt > 0 || completion > 0)) return null
+  const total = Math.floor(Number(u.total_tokens) || prompt + completion)
+  return {
+    prompt_tokens: Math.max(0, prompt),
+    completion_tokens: Math.max(0, completion),
+    total_tokens: Math.max(0, total),
+  }
+}
+
+/** @param {StreamDisplayState} state @param {unknown} raw */
+function rememberStreamUsage(state, raw) {
+  const next = extractClaudeStreamUsage(raw)
+  if (next) state.usage = next
 }
 
 /**
@@ -296,36 +335,41 @@ export function appendStreamJsonLine(line, state) {
     return state.display.slice(before)
   }
 
-  if (type === 'assistant' && ev.message?.content) {
-    for (const block of ev.message.content) {
-      if (!block || typeof block !== 'object') continue
-      const kind = String(block.type || '')
-      if (kind === 'text' && typeof block.text === 'string') {
-        const text = block.text
-        if (text.startsWith(state.lastTextTail)) {
-          state.display += text.slice(state.lastTextTail.length)
-        } else if (!state.display.includes(text)) {
-          state.display += text
-        }
-        state.lastTextTail = text
-      } else if (kind === 'thinking' && typeof block.thinking === 'string') {
-        if (!state.display.includes(block.thinking)) {
-          state.display += `\n\n<thinking>\n${block.thinking}\n</thinking>\n\n`
-          state.events.push({ type: 'thinking' })
-        }
-      } else if (kind === 'tool_use') {
-        const key = `${block.name}:${JSON.stringify(block.input || {})}`
-        if (!state.seenTools.has(key)) {
-          state.seenTools.add(key)
-          const arg = extractToolArg(block.input)
-          const path = extractToolPath(block.input)
-          const toolUseId = block.id ? String(block.id) : undefined
-          if (toolUseId) {
-            state.toolUseById.set(toolUseId, { name: String(block.name || ''), arg: path || arg })
+  if (type === 'assistant' && ev.message) {
+    if (ev.message.usage) rememberStreamUsage(state, ev.message.usage)
+    else if (ev.usage) rememberStreamUsage(state, ev.usage)
+    const content = ev.message.content
+    if (Array.isArray(content)) {
+      for (const block of content) {
+        if (!block || typeof block !== 'object') continue
+        const kind = String(block.type || '')
+        if (kind === 'text' && typeof block.text === 'string') {
+          const text = block.text
+          if (text.startsWith(state.lastTextTail)) {
+            state.display += text.slice(state.lastTextTail.length)
+          } else if (!state.display.includes(text)) {
+            state.display += text
           }
-          state.display += `\n${formatToolLine(block.name, arg)}…\n`
-          // 工具开始时标 running；ok/fail 等 tool_result（finalize 仍会把遗留 running 收成 ok）
-          pushToolEvent(state, block.name, path || arg, 'running', { path: path || undefined, toolUseId })
+          state.lastTextTail = text
+        } else if (kind === 'thinking' && typeof block.thinking === 'string') {
+          if (!state.display.includes(block.thinking)) {
+            state.display += `\n\n<thinking>\n${block.thinking}\n</thinking>\n\n`
+            state.events.push({ type: 'thinking' })
+          }
+        } else if (kind === 'tool_use') {
+          const key = `${block.name}:${JSON.stringify(block.input || {})}`
+          if (!state.seenTools.has(key)) {
+            state.seenTools.add(key)
+            const arg = extractToolArg(block.input)
+            const path = extractToolPath(block.input)
+            const toolUseId = block.id ? String(block.id) : undefined
+            if (toolUseId) {
+              state.toolUseById.set(toolUseId, { name: String(block.name || ''), arg: path || arg })
+            }
+            state.display += `\n${formatToolLine(block.name, arg)}…\n`
+            // 工具开始时标 running；ok/fail 等 tool_result（finalize 仍会把遗留 running 收成 ok）
+            pushToolEvent(state, block.name, path || arg, 'running', { path: path || undefined, toolUseId })
+          }
         }
       }
     }
@@ -411,8 +455,13 @@ export function appendStreamJsonLine(line, state) {
     return state.display.slice(before)
   }
 
-  if (type === 'result' && typeof ev.result === 'string' && !state.display.trim()) {
-    state.display = ev.result
+  if (type === 'result') {
+    if (ev.usage) rememberStreamUsage(state, ev.usage)
+    else if (ev.message?.usage) rememberStreamUsage(state, ev.message.usage)
+    if (typeof ev.result === 'string' && !state.display.trim()) {
+      state.display = ev.result
+      return state.display.slice(before)
+    }
     return state.display.slice(before)
   }
 

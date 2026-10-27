@@ -29,8 +29,7 @@ import {
   HOST_MAX_TURNS,
   HOST_VERIFY_EXTRA_TURNS,
   DEFAULT_REQUEST_TIMEOUT_MS,
-  PRIOR_KEEP_RECENT,
-  PRIOR_MESSAGE_CHAR_CAP,
+  resolvePriorBudget,
 } from '../shared/context-budget.mjs'
 import { DEFAULT_OLLAMA_BASE } from '../shared/defaults.mjs'
 
@@ -1051,10 +1050,14 @@ export async function runHostAgentLoop(opts) {
   /** @type {any[]} */
   const messages = [
     { role: 'system', content: system },
-    ...slimPriorMessagesForApi(opts.priorMessages || [], {
-      keepRecent: PRIOR_KEEP_RECENT,
-      charCap: PRIOR_MESSAGE_CHAR_CAP,
-    }),
+    ...slimPriorMessagesForApi(
+      opts.priorMessages || [],
+      resolvePriorBudget({
+        forceDirectChat: Boolean(opts.forceDirectChat) || mode === 'ask',
+        allowTools: mode !== 'ask',
+        contextLevel: opts.contextLevel,
+      }),
+    ),
     { role: 'user', content: userContent },
   ]
 
@@ -1096,16 +1099,25 @@ export async function runHostAgentLoop(opts) {
     }
   }
 
+  let forceCompactOnce = Boolean(opts.forceCompact)
   for (let turn = 0; turn < maxTurns; turn++) {
     if (cancelState.cancelled) {
       return failHost('aborted', { aborted: true, content: '（已中止）' })
     }
 
-    const compacted = compactMessagesIfNeeded(messages)
+    const compacted = compactMessagesIfNeeded(messages, {
+      workspaceRoot: root,
+      force: forceCompactOnce,
+      contextLength: Number(opts.contextLength) || undefined,
+      isLocal: backend.kind !== 'cloud',
+    })
     if (compacted.compacted) {
+      const arch = compacted.archivePath ? ` · 归档 ${compacted.archivePath}` : ''
       emit(
-        `\n⋯ 上下文已压缩（${compacted.beforeChars}→${compacted.afterChars} 字符）…\n`,
+        `\n⋯ 上下文已压缩（${compacted.beforeChars}→${compacted.afterChars} 字符` +
+          `${compacted.beforeTokens != null ? ` · ~${compacted.beforeTokens}→${compacted.afterTokens} tok` : ''}）${arch}…\n`,
       )
+      forceCompactOnce = false
     }
 
     const wantRequired =

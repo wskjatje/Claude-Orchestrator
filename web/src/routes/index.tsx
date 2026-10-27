@@ -15,7 +15,7 @@ import { WorkbenchMainLayout } from "@/components/workbench-main-layout";
 import { getDesktop } from "@/lib/desktop-api";
 import {
   AUTO_MODEL_ID,
-  chatModelPoolCombined,
+  chatModelPoolForMode,
   isAutoModelSelection,
   loadChatModelPools,
   loadConfiguredModelPools,
@@ -233,9 +233,11 @@ import {
   formatAssistantFailure,
   fullChatSettingsPayload,
   genSessionId,
+  isChatStreamLive,
   mergeSessionsPreferLongerHistory,
   needsCheckpointConfirm,
   newLocalId,
+  pickLiveChatMessages,
   pickOrchestratorModel,
   priorTurnsToOrchestrationMessages,
   toastIfLocalOrchestrationHints,
@@ -247,6 +249,10 @@ import {
   type OrchMode,
 } from "@/lib/chat-send-helpers";
 import { chooseWorkspaceWithFeedback } from "@/lib/choose-workspace";
+import {
+  hydrateContextHistoryUsage,
+  repairSessionModelHistoryIfNeeded,
+} from "@/lib/session-summarize";
 
 export const Route = createFileRoute("/")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -553,6 +559,11 @@ function ChatPage() {
   const activeByWorkspaceRef = useRef<Record<string, string>>({});
   const pendingHistorySessionRef = useRef<string | null>(null);
   const sessionsHydratedRef = useRef(false);
+  const [sessionsHydrated, setSessionsHydrated] = useState(false);
+  const markSessionsHydrated = useCallback(() => {
+    sessionsHydratedRef.current = true;
+    setSessionsHydrated(true);
+  }, []);
   const [checkpointConfirm, setCheckpointConfirm] = useState<{
     historyIndex: number;
     action: "edit" | "resend";
@@ -580,16 +591,6 @@ function ChatPage() {
     },
     [chatCtx],
   );
-  const switchActiveSession = useCallback(
-    (id: string) => {
-      activeIdRef.current = id;
-      setActiveId(id);
-      // 直接同步上下文，不依赖 useEffect（可能在组件卸载前未执行）
-      chatCtx.syncActiveId(id);
-    },
-    [chatCtx],
-  );
-
   // ---- 同步上下文的流式状态到本地：当上下文确认流已结束时，确保本地状态也清空 ----
   // 解决 ChatPage 跨路由重新挂载时 sendChat 的 finally 块可能尚未清理完成的状态不一致问题。
   useEffect(() => {
@@ -629,6 +630,32 @@ function ChatPage() {
   const workflowBusy = sending || chainRunning;
 
   const [globalModel, setGlobalModel] = useState("");
+  const switchActiveSession = useCallback(
+    (id: string) => {
+      activeIdRef.current = id;
+      setActiveId(id);
+      // 直接同步上下文，不依赖 useEffect（可能在组件卸载前未执行）
+      chatCtx.syncActiveId(id);
+      // 切标签时把 settings.model / globalModel 对齐到该会话，避免 Composer 与设置滞后
+      const sess = sessionsRef.current.find((s) => s.id === id);
+      const mid = String(sess?.modelId || "").trim();
+      if (!mid) return;
+      setGlobalModel(mid);
+      chatCtx.syncGlobalModel(mid);
+      void (async () => {
+        const api = getDesktop();
+        if (!api?.getChatSettings || !api.saveChatSettings) return;
+        try {
+          const s = await api.getChatSettings();
+          if (String(s.model || "").trim() === mid) return;
+          await api.saveChatSettings({ ...fullChatSettingsPayload(s), model: mid });
+        } catch {
+          /* 切会话不因设置写入失败阻断 */
+        }
+      })();
+    },
+    [chatCtx],
+  );
   /** Claude Code CLI `--model` 别名列表（编排层，来自 claudeCodeListModels） */
   const [orchestratorModels, setOrchestratorModels] = useState<string[]>([]);
   /** 本机 Ollama `/api/tags` 模型名（仅展示与写入 MCP 建议，对话不经桌面直连 Ollama） */
@@ -639,6 +666,8 @@ function ChatPage() {
   });
   /** 编排：Claude Code CLI（需登录）或本机 Ollama + MCP（无需 Anthropic） */
   const [orchMode, setOrchMode] = useState<OrchMode>("claude-code");
+  /** 已从设置读入编排模式；未就绪时占用环不渲染（禁默认云窗） */
+  const [orchModeReady, setOrchModeReady] = useState(false);
   /** 默认注入的 ~/.claude/agents 规则文件 */
   const [localAgentBasename, setLocalAgentBasename] = useState("");
 
@@ -712,8 +741,9 @@ function ChatPage() {
         if (last.requestError || last.content === "（生成已停止）") return prev;
         const nextContent = last.content === "__WAITING__" ? chunk : `${last.content}${chunk}`;
         const updated = [...prev.slice(0, -1), { ...last, content: nextContent }];
-        // 写入 per-session 累积池（切换菜单/对话后 GlobalChatPanel 通过此池恢复）
+        // 写入 per-session 累积池 + context.messages（切回聊天页勿用过期 WAITING 覆盖池）
         chatCtx.syncSessionMessages(activeIdRef.current, updated);
+        chatCtx.syncMessages(updated);
         return updated;
       });
     },
@@ -730,6 +760,7 @@ function ChatPage() {
         const next = mergeLiveToolEventIntoAssistantMessages(prev, event);
         if (next === prev) return prev;
         chatCtx.syncSessionMessages(activeIdRef.current, next);
+        chatCtx.syncMessages(next);
         return next;
       });
     },
@@ -1421,11 +1452,27 @@ function ChatPage() {
         setSendingSessions(ctxSending);
       }
 
-      const perSessionMsgs = chatCtx.perSessionMessagesRef.current[ctxAid];
-      if (perSessionMsgs?.length) {
-        setMessages(perSessionMsgs);
-        chatCtx.syncMessages(perSessionMsgs);
-      } else {
+      const streamLive = isChatStreamLive({
+        sessionId: ctxAid,
+        activeStreamRequestId: chatCtx.activeStreamRequestId,
+        activeRequestIds: chatCtx.activeRequestIdsRef.current,
+        sendingSessions: {
+          ...chatCtx.sendingSessions,
+          ...sendingSessionsRef.current,
+        },
+      });
+      if (streamLive) streamInProgressRef.current = true;
+      const liveMsgs = pickLiveChatMessages({
+        sessionId: ctxAid,
+        ctxActiveId: chatCtx.activeId,
+        ctxMessages: chatCtx.messages,
+        perSession: chatCtx.perSessionMessagesRef.current[ctxAid],
+        streamLive,
+      });
+      if (liveMsgs?.length) {
+        setMessages(liveMsgs);
+        chatCtx.syncMessages(liveMsgs);
+      } else if (!streamLive) {
         const active = resolved.sessions.find((s) => s.id === ctxAid) ?? resolved.sessions[0];
         syncMessagesFromSession(active);
       }
@@ -1451,7 +1498,7 @@ function ChatPage() {
         setLocalAgentBasename(cachedAgent);
       }
 
-      sessionsHydratedRef.current = true;
+      markSessionsHydrated();
     })();
   }, [hasDesktopApi, urlNewSession, chatCtx.sessions.length, chatCtx.messages.length]); // eslint-disable-line
 
@@ -1475,28 +1522,23 @@ function ChatPage() {
       try {
         settings = await getCachedSettings(api);
       } catch (e) {
+        // 禁止用默认 orchestrationMode / 空模型表冒充已配置（禁兜底）
         bridgeOk = false;
         const msg = e instanceof Error ? e.message : String(e);
-        toast.error(`${MSG_BRIDGE_OFFLINE} 模型列表使用默认项。`, {
+        toast.error(MSG_BRIDGE_OFFLINE, {
           description: msg.slice(0, 120),
           duration: 8000,
         });
-        settings = {
-          ollamaBase: "http://127.0.0.1:11434",
-          model: AUTO_MODEL_ID,
-          localOllamaModel: "",
-          claudeCliPath: "",
-          orchestrationMode: "claude-code",
-          localAgentBasename: "",
-          defaultConfirmWritePath: "",
-          mcpConfigAbsolutePath: "",
-          devMcpOrchDebug: false,
-          localModelCatalog: [],
-        };
+        setOrchModeReady(false);
+        setOrchestratorModels([]);
+        setLocalOllamaTags([]);
+        markSessionsHydrated();
+        return;
       }
       const mode: OrchMode =
         settings.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code";
       setOrchMode(mode);
+      setOrchModeReady(true);
       setLocalAgentBasename(
         agentBasenameForWorkspace(settings, workspacePathRef.current),
       );
@@ -1516,22 +1558,10 @@ function ChatPage() {
       setOrchestratorModels(claudePool);
       setLocalOllamaTags(localPool);
 
-      const sessionPool = chatModelPoolCombined({
-        cloudModels: claudePool,
-        localModels: localPool,
-      });
-      const migratedGlobal = pickOrchestratorModel(settings.model, sessionPool, mode);
-      setGlobalModel(migratedGlobal);
-      if (bridgeOk && migratedGlobal !== (settings.model || "")) {
-        try {
-          await api.saveChatSettings({
-            ...fullChatSettingsPayload(settings),
-            model: migratedGlobal,
-          });
-        } catch {
-          /* ignore */
-        }
-      }
+      const pools = { cloudModels: claudePool, localModels: localPool };
+      const modePool = chatModelPoolForMode(pools, mode);
+      /** 先按 settings 解析；会话加载后再与活跃会话统一 */
+      let migratedGlobal = pickOrchestratorModel(settings.model, modePool, mode);
 
       let list: ChatSession[] = [];
       let aid = "s0";
@@ -1703,10 +1733,44 @@ function ChatPage() {
           if (s.modelId !== AUTO_MODEL_ID) sessionsNeedSave = true;
           return { ...s, modelId: AUTO_MODEL_ID };
         }
-        const nextId = pickOrchestratorModel(s.modelId, sessionPool, mode);
+        const nextId = pickOrchestratorModel(s.modelId, modePool, mode);
         if (nextId !== s.modelId) sessionsNeedSave = true;
         return { ...s, modelId: nextId };
       });
+      // 活跃会话与 settings.model / globalModel 统一为同一 modePool 结果（避免 Composer 与设置各显示一个本地模型）
+      {
+        const activeSess = list.find((s) => s.id === aid);
+        const unified = isAutoModelSelection(migratedGlobal)
+          ? AUTO_MODEL_ID
+          : pickOrchestratorModel(activeSess?.modelId || migratedGlobal, modePool, mode);
+        migratedGlobal = unified;
+        if (activeSess && activeSess.modelId !== unified) {
+          list = list.map((s) => (s.id === aid ? { ...s, modelId: unified } : s));
+          sessionsNeedSave = true;
+        }
+      }
+      setGlobalModel(migratedGlobal);
+      // 损坏的 modelHistory：仅在能定位完整 /summarize 通知时确定性重建（禁瞎猜）
+      list = list.map((s) => {
+        const fixed = repairSessionModelHistoryIfNeeded(s);
+        if (!fixed.repaired) return s;
+        sessionsNeedSave = true;
+        return {
+          ...s,
+          modelHistory: fixed.modelHistory as ChatSession["modelHistory"],
+          modelHistoryCoreLen: fixed.modelHistoryCoreLen,
+        };
+      });
+      if (bridgeOk && migratedGlobal !== (settings.model || "")) {
+        try {
+          await api.saveChatSettings({
+            ...fullChatSettingsPayload(settings),
+            model: migratedGlobal,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
       if (bridgeOk && sessionsNeedSave) {
         try {
           await api.saveChatSessions({
@@ -1745,22 +1809,26 @@ function ChatPage() {
       });
       const explicitId = getChatSessionsCache()?.explicitEmptySessionId;
       if (explicitId) chatCtx.syncExplicitEmptySessionId(explicitId);
-      // 优先使用 context 消息（GlobalChatPanel 持续累积的流内容 / sendChat 写入的最终回复）
-      // 只有 context 没有数据时才回退到磁盘。绝不是用磁盘数据覆盖 context！
-      if (aid && chatCtx.activeId === aid && chatCtx.messages.length > 0) {
-        setMessages(chatCtx.messages);
-        if (chatCtx.activeStreamRequestId) {
-          setActiveStreamRequestId(chatCtx.activeStreamRequestId);
-          activeStreamRequestIdRef.current = chatCtx.activeStreamRequestId;
-          sendingSessionsRef.current[aid] = true;
-          setSendingSessions((prev) => ({ ...prev, [aid]: true }));
-          streamInProgressRef.current = true;
-        }
-      } else if (chatCtx.perSessionMessagesRef.current[aid]?.length > 0) {
-        // 从 per-session 累积池恢复（切换了对话页签后回到正在流的会话）
-        const restored = chatCtx.perSessionMessagesRef.current[aid];
-        setMessages(restored);
-        chatCtx.syncMessages(restored);
+      // 优先 perSession / 进行中流；流活着时禁止用磁盘盖掉 WAITING/半成品气泡
+      const streamLive = isChatStreamLive({
+        sessionId: aid,
+        activeStreamRequestId: chatCtx.activeStreamRequestId,
+        activeRequestIds: chatCtx.activeRequestIdsRef.current,
+        sendingSessions: {
+          ...chatCtx.sendingSessions,
+          ...sendingSessionsRef.current,
+        },
+      });
+      const liveMsgs = pickLiveChatMessages({
+        sessionId: aid,
+        ctxActiveId: chatCtx.activeId,
+        ctxMessages: chatCtx.messages,
+        perSession: chatCtx.perSessionMessagesRef.current[aid],
+        streamLive,
+      });
+      if (liveMsgs?.length) {
+        setMessages(liveMsgs);
+        chatCtx.syncMessages(liveMsgs);
         chatCtx.syncActiveId(aid);
         if (chatCtx.activeStreamRequestId) {
           setActiveStreamRequestId(chatCtx.activeStreamRequestId);
@@ -1768,7 +1836,17 @@ function ChatPage() {
           sendingSessionsRef.current[aid] = true;
           setSendingSessions((prev) => ({ ...prev, [aid]: true }));
           streamInProgressRef.current = true;
+        } else if (streamLive) {
+          streamInProgressRef.current = true;
         }
+      } else if (streamLive) {
+        if (chatCtx.activeStreamRequestId) {
+          setActiveStreamRequestId(chatCtx.activeStreamRequestId);
+          activeStreamRequestIdRef.current = chatCtx.activeStreamRequestId;
+          sendingSessionsRef.current[aid] = true;
+          setSendingSessions((prev) => ({ ...prev, [aid]: true }));
+        }
+        streamInProgressRef.current = true;
       } else {
         syncMessagesFromSession(active);
         if (active) {
@@ -1778,9 +1856,9 @@ function ChatPage() {
         // 仅首次加载用磁盘数据初始化 context
         chatCtx.syncSessions(list);
       }
-      sessionsHydratedRef.current = true;
+      markSessionsHydrated();
     })();
-  }, [hasDesktopApi]);
+  }, [hasDesktopApi, markSessionsHydrated]);
 
   /** 离开聊天页时写入内存缓存并落盘，避免切换侧栏后丢失会话与草稿 */
   useEffect(() => {
@@ -1823,14 +1901,25 @@ function ChatPage() {
     const api = getDesktop();
     if (!api) return;
     const sync = () => {
-      void api
-        .getChatSettings()
-        .then((s) =>
-          setOrchMode(s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code"),
-        );
+      void api.getChatSettings().then((s) => {
+        setOrchMode(s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code");
+        setOrchModeReady(true);
+      });
       void loadChatModelPools(api).then((pools) => {
         setOrchestratorModels(pools.cloudModels);
         setLocalOllamaTags(pools.localModels);
+        // 本机 Ollama tags 变更后：会话手选若不在已安装∩启用池内，迁回 Auto（禁止继续打未安装标签）
+        const combined = new Set([...pools.cloudModels, ...pools.localModels]);
+        setSessions((prev) => {
+          let changed = false;
+          const next = prev.map((s) => {
+            const mid = String(s.modelId || "").trim();
+            if (!mid || isAutoModelSelection(mid) || combined.has(mid)) return s;
+            changed = true;
+            return { ...s, modelId: AUTO_MODEL_ID };
+          });
+          return changed ? next : prev;
+        });
       });
       void loadConfiguredModelPools(api).then((pools) => {
         configuredPoolsRef.current = pools;
@@ -1895,13 +1984,35 @@ function ChatPage() {
     }
   }, [chatCtx.activeStreamRequestId]);
 
-  /** 持续从 context 同步最新累积消息（GlobalChatPanel 写入的 delta / sendChat 完成的最终回复） */
+  /** 持续从 context / perSession 同步最新累积消息（跨页续流优先池） */
   useEffect(() => {
     if (!sessionsHydratedRef.current) return;
-    if (chatCtx.activeId === activeIdRef.current && chatCtx.messages.length > 0) {
-      setMessages(chatCtx.messages);
-    }
-  }, [chatCtx.messages, chatCtx.activeId]);
+    const aid = activeIdRef.current;
+    if (chatCtx.activeId !== aid) return;
+    const streamLive = isChatStreamLive({
+      sessionId: aid,
+      activeStreamRequestId: chatCtx.activeStreamRequestId,
+      activeRequestIds: chatCtx.activeRequestIdsRef.current,
+      sendingSessions: {
+        ...chatCtx.sendingSessions,
+        ...sendingSessionsRef.current,
+      },
+    });
+    const live = pickLiveChatMessages({
+      sessionId: aid,
+      ctxActiveId: chatCtx.activeId,
+      ctxMessages: chatCtx.messages,
+      perSession: chatCtx.perSessionMessagesRef.current[aid],
+      streamLive,
+    });
+    if (live?.length) setMessages(live);
+  }, [
+    chatCtx.messages,
+    chatCtx.activeId,
+    chatCtx.activeStreamRequestId,
+    chatCtx.sendingSessions,
+    chatCtx.perSessionMessages,
+  ]);
 
   const visibleSessions = useMemo(
     () => filterSessionsForWorkspaceTabs(sessions, workspacePath),
@@ -2078,10 +2189,28 @@ function ChatPage() {
     if (cached.activeByWorkspace) {
       activeByWorkspaceRef.current = { ...cached.activeByWorkspace };
     }
-    const sess = list.find((s) => s.id === cached.activeId);
-    if (sess?.history?.length) {
-      const ml = sess.modelId?.trim() || globalModel || "模型";
-      setMessages(diskToDisplay(sess.history, ml));
+    const aid = cached.activeId;
+    const streamLive = isChatStreamLive({
+      sessionId: aid,
+      activeStreamRequestId: chatCtx.activeStreamRequestId,
+      activeRequestIds: chatCtx.activeRequestIdsRef.current,
+      sendingSessions: chatCtx.sendingSessions,
+    });
+    const liveMsgs = pickLiveChatMessages({
+      sessionId: aid,
+      ctxActiveId: chatCtx.activeId,
+      ctxMessages: chatCtx.messages,
+      perSession: chatCtx.perSessionMessagesRef.current[aid],
+      streamLive,
+    });
+    if (liveMsgs?.length) {
+      setMessages(liveMsgs);
+    } else if (!streamLive) {
+      const sess = list.find((s) => s.id === aid);
+      if (sess?.history?.length) {
+        const ml = sess.modelId?.trim() || globalModel || "模型";
+        setMessages(diskToDisplay(sess.history, ml));
+      }
     }
     // 优先从 context 恢复已打开的标签页（跨路由切换保留），否则回退到仅打开活跃会话
     const ctxTabIds = chatCtx.openTabIds;
@@ -2166,14 +2295,30 @@ function ChatPage() {
         closingSessionTargetRef.current = null;
         return;
       }
-      // 如果 context 有该活动会话的更新数据（流进行中、或已有 assistant 回复），跳过磁盘覆盖
-      const ctxHasBetter =
-        activeIdRef.current &&
-        chatCtx.activeId === activeIdRef.current &&
-        chatCtx.messages.length > 0 &&
-        (chatCtx.activeStreamRequestId !== null ||
-          chatCtx.messages.some((m) => m.role === "assistant" && m.content !== "__WAITING__"));
-      if (ctxHasBetter) {
+      // 流进行中或 perSession/context 已有更新气泡时，禁止磁盘覆盖
+      const viewIdForSkip = activeIdRef.current;
+      const streamLive = isChatStreamLive({
+        sessionId: viewIdForSkip,
+        activeStreamRequestId: chatCtx.activeStreamRequestId,
+        activeRequestIds: chatCtx.activeRequestIdsRef.current,
+        sendingSessions: {
+          ...chatCtx.sendingSessions,
+          ...sendingSessionsRef.current,
+        },
+      });
+      if (streamLive || streamInProgressRef.current) return;
+      const liveMsgs = pickLiveChatMessages({
+        sessionId: viewIdForSkip,
+        ctxActiveId: chatCtx.activeId,
+        ctxMessages: chatCtx.messages,
+        perSession: chatCtx.perSessionMessagesRef.current[viewIdForSkip],
+        streamLive: false,
+      });
+      if (
+        liveMsgs?.some(
+          (m) => m.role === "assistant" && m.content && m.content !== "__WAITING__",
+        )
+      ) {
         return;
       }
       let merged: ChatSession[] = [];
@@ -2438,15 +2583,31 @@ function ChatPage() {
     setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     switchActiveSession(id);
     loadComposerDraft(id);
-    syncMessagesFromSession(s);
-    // 优先使用 per-session 累积消息（跨会话切换后正在流的回复仍可见）
-    const perSession = chatCtx.perSessionMessagesRef.current[id];
-    if (perSession?.length) {
-      setMessages(perSession);
-      chatCtx.syncMessages(perSession);
-    } else if (s) {
-      const ml = s.modelId?.trim() || globalModel || "模型";
-      chatCtx.syncMessages(diskToDisplay(s.history, ml));
+    const streamLive = isChatStreamLive({
+      sessionId: id,
+      activeStreamRequestId: chatCtx.activeStreamRequestId,
+      activeRequestIds: chatCtx.activeRequestIdsRef.current,
+      sendingSessions: {
+        ...chatCtx.sendingSessions,
+        ...sendingSessionsRef.current,
+      },
+    });
+    const live = pickLiveChatMessages({
+      sessionId: id,
+      ctxActiveId: id,
+      ctxMessages: chatCtx.messages,
+      perSession: chatCtx.perSessionMessagesRef.current[id],
+      streamLive,
+    });
+    if (live?.length) {
+      setMessages(live);
+      chatCtx.syncMessages(live);
+    } else if (!streamLive) {
+      syncMessagesFromSession(s);
+      if (s) {
+        const ml = s.modelId?.trim() || globalModel || "模型";
+        chatCtx.syncMessages(diskToDisplay(s.history, ml));
+      }
     }
     if (api) await persist(sessionsRef.current, id);
     setChatSessionsCache({
@@ -2569,15 +2730,31 @@ function ChatPage() {
       setOpenTabIds((prev) => (prev.includes(sessionId) ? prev : [...prev, sessionId]));
       switchActiveSession(sessionId);
       loadComposerDraft(sessionId);
-      syncMessagesFromSession(sess);
-      // 优先使用 per-session 累积消息（跨会话切换后正在流的回复仍可见）
-      const perSession2 = chatCtx.perSessionMessagesRef.current[sessionId];
-      if (perSession2?.length) {
-        setMessages(perSession2);
-        chatCtx.syncMessages(perSession2);
-      } else if (sess) {
-        const ml2 = sess.modelId?.trim() || globalModel || "模型";
-        chatCtx.syncMessages(diskToDisplay(sess.history, ml2));
+      const streamLive2 = isChatStreamLive({
+        sessionId,
+        activeStreamRequestId: chatCtx.activeStreamRequestId,
+        activeRequestIds: chatCtx.activeRequestIdsRef.current,
+        sendingSessions: {
+          ...chatCtx.sendingSessions,
+          ...sendingSessionsRef.current,
+        },
+      });
+      const live2 = pickLiveChatMessages({
+        sessionId,
+        ctxActiveId: sessionId,
+        ctxMessages: chatCtx.messages,
+        perSession: chatCtx.perSessionMessagesRef.current[sessionId],
+        streamLive: streamLive2,
+      });
+      if (live2?.length) {
+        setMessages(live2);
+        chatCtx.syncMessages(live2);
+      } else if (!streamLive2) {
+        syncMessagesFromSession(sess);
+        if (sess) {
+          const ml2 = sess.modelId?.trim() || globalModel || "模型";
+          chatCtx.syncMessages(diskToDisplay(sess.history, ml2));
+        }
       }
       if (api) await persist(sessionsRef.current, sessionId);
       // 直接同步上下文
@@ -2614,10 +2791,10 @@ function ChatPage() {
         title: "新对话",
         modelId: pickOrchestratorModel(
           settings.model,
-          chatModelPoolCombined({
-            cloudModels: orchestratorModels,
-            localModels: localOllamaTags,
-          }),
+          chatModelPoolForMode(
+            { cloudModels: orchestratorModels, localModels: localOllamaTags },
+            mode,
+          ),
           mode,
         ),
         history: [],
@@ -3240,10 +3417,10 @@ function ChatPage() {
         setLocalAgentBasename(agentBasenameForWorkspace(settings, nextWs));
         const modelId = pickOrchestratorModel(
           settings.model,
-          chatModelPoolCombined({
-            cloudModels: orchestratorModels,
-            localModels: localOllamaTags,
-          }),
+          chatModelPoolForMode(
+            { cloudModels: orchestratorModels, localModels: localOllamaTags },
+            mode,
+          ),
           mode,
         );
         const resolved = resolveWorkspaceChatSessions(
@@ -3603,6 +3780,7 @@ function ChatPage() {
       onRemoveDomElement: inlineOnRemoveDomElement,
       onPickFiles: inlineOnPickFiles,
       orchMode,
+      orchModeReady,
       localAgentBasename,
       onAgentChange: inlineOnAgentChange,
       cloudModels: orchestratorModels,
@@ -3627,6 +3805,7 @@ function ChatPage() {
     workflowBusy,
     hasDesktopApi,
     orchMode,
+    orchModeReady,
     localAgentBasename,
     workspacePath,
     handleWorkspaceChipClick,
@@ -3718,6 +3897,7 @@ function ChatPage() {
                   showJumpLatest={showJumpLatest}
                   onJumpToLatest={jumpToLatest}
                   hasDesktopApi={hasDesktopApi}
+                  sessionsRestoring={hasDesktopApi && !sessionsHydrated}
                   onWriteToWorkspace={handleBubbleWriteToWorkspace}
                   onGenerateChain={handleBubbleGenerateChain}
                   onEditUserMessage={beginEditUserMessage}
@@ -3759,6 +3939,7 @@ function ChatPage() {
                   }
                   onPickFiles={(opts) => void pickLocalFiles(opts)}
                   orchMode={orchMode}
+                  orchModeReady={orchModeReady}
                   localAgentBasename={localAgentBasename}
                   onAgentChange={(b) => void handleAgentChange(b)}
                   cloudModels={orchestratorModels}
@@ -3769,6 +3950,16 @@ function ChatPage() {
                   selectedSkillStems={selectedSkillStems}
                   onSelectedSkillStemsChange={setSelectedSkillStems}
                   workspacePath={workspacePath}
+                  sessionHistory={
+                    activeSession
+                      ? hydrateContextHistoryUsage(
+                          activeSession.modelHistory?.length
+                            ? activeSession.modelHistory
+                            : activeSession.history,
+                          activeSession.history,
+                        )
+                      : null
+                  }
                   onWorkspaceChipClick={handleWorkspaceChipClick}
                   onParallelClick={() => {
                     setParallelDialogPreset(undefined);

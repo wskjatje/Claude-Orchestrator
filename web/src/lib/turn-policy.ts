@@ -25,6 +25,7 @@ export {
   suggestPlanDocumentRelPath,
   isReadOnlyUserIntent,
   classifyTurnIntent,
+  isExplicitToolInvocation,
   resolveTurnPolicy,
   effectiveWriteMode,
   cliPermissionModeFromWriteMode,

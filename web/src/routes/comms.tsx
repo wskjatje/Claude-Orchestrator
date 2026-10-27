@@ -19,11 +19,15 @@ import {
 import { InfoHint } from "@/components/info-hint";
 import { cn } from "@/lib/utils";
 import { getDesktop } from "@/lib/desktop-api";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { useDesktopActionGate, useDesktopGate } from "@/hooks/use-desktop-ready";
+import { DesktopGateBanner } from "@/components/desktop-gate-banner";
 import { toast } from "sonner";
 import {
   BRIDGE_OFFLINE_BANNER,
   BRIDGE_OFFLINE_TOAST,
+  DESKTOP_HYDRATING,
+  EMPTY_STATE_OFFLINE,
+  MCP_EMPTY_ACTION_HINT,
   MCP_EMPTY_BANNER,
   MCP_INFO_HINT,
   MSG_API_NOT_READY,
@@ -92,9 +96,11 @@ function templateToForm(t: McpTemplate, bundledLines?: Record<string, string>): 
   };
 }
 
-function buildUpsertPayload(form: McpForm): Parameters<
-  NonNullable<ReturnType<typeof getDesktop>["upsertClaudeMcpServer"]>
->[0] | { error: string } {
+type UpsertClaudeMcpPayload = Parameters<
+  NonNullable<ReturnType<typeof getDesktop>>["upsertClaudeMcpServer"]
+>[0];
+
+function buildUpsertPayload(form: McpForm): UpsertClaudeMcpPayload | { error: string } {
   const name = form.name.trim();
   if (!name) return { error: "请填写名称" };
   const hasEnv = form.env && Object.keys(form.env).length > 0;
@@ -104,18 +110,27 @@ function buildUpsertPayload(form: McpForm): Parameters<
     }
     const parsed = parseStdioCommand(form.commandLine);
     if (!parsed) return { error: "请填写启动命令" };
-    const payload: Record<string, unknown> = { name, transport: "stdio", command: parsed.command, args: parsed.args };
-    if (hasEnv) payload.env = form.env;
-    return payload as Parameters<NonNullable<ReturnType<typeof getDesktop>["upsertClaudeMcpServer"]>>[0];
+    const payload: UpsertClaudeMcpPayload = {
+      name,
+      transport: "stdio",
+      command: parsed.command,
+      args: parsed.args,
+      ...(hasEnv ? { env: form.env } : {}),
+    };
+    return payload;
   }
   const url = form.url.trim();
   if (!url) return { error: "请填写 URL" };
   if (hasAngleBracketPlaceholder(url)) {
     return { error: "请将 URL 中的 <…> 占位符替换为真实连接串" };
   }
-  const payload: Record<string, unknown> = { name, transport: form.transport, url };
-  if (hasEnv) payload.env = form.env;
-  return payload as Parameters<NonNullable<ReturnType<typeof getDesktop>["upsertClaudeMcpServer"]>>[0];
+  const payload: UpsertClaudeMcpPayload = {
+    name,
+    transport: form.transport,
+    url,
+    ...(hasEnv ? { env: form.env } : {}),
+  };
+  return payload;
 }
 
 function mcpSaveErrorMessage(error: string | null | undefined): string {
@@ -214,7 +229,11 @@ function rowToForm(row: McpRow): McpForm {
 }
 
 function McpPage() {
-  const hasDesktopApi = useHasDesktop();
+  const gate = useDesktopGate();
+  const mcpApiReady = gate.phase === "ready" && !!getDesktop()?.readClaudeConfigJson;
+  const createApiReady = gate.phase === "ready" && !!getDesktop()?.upsertClaudeMcpServer;
+  const mcpGate = useDesktopActionGate(mcpApiReady);
+  const createGate = useDesktopActionGate(createApiReady);
   const [rows, setRows] = useState<McpRow[]>([]);
   const [configPath, setConfigPath] = useState<string | null>(null);
   const [localErr, setLocalErr] = useState<string | null>(null);
@@ -229,9 +248,38 @@ function McpPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [bundledLines, setBundledLines] = useState<Record<string, string>>({});
   const [refreshingAll, setRefreshingAll] = useState(false);
+  const [workspaceMcp, setWorkspaceMcp] = useState<{
+    present: boolean;
+    count: number;
+    path: string | null;
+  }>({ present: false, count: 0, path: null });
+  const [importingWorkspace, setImportingWorkspace] = useState(false);
   const initialLoaded = useRef(false);
 
+  const refreshWorkspaceMcpPeek = useCallback(async () => {
+    const api = getDesktop();
+    if (!api?.peekWorkspaceMcp) {
+      setWorkspaceMcp({ present: false, count: 0, path: null });
+      return;
+    }
+    try {
+      const peek = await api.peekWorkspaceMcp();
+      if (!peek.ok) {
+        setWorkspaceMcp({ present: false, count: 0, path: peek.path ?? null });
+        return;
+      }
+      setWorkspaceMcp({
+        present: peek.present === true,
+        count: typeof peek.count === "number" ? peek.count : 0,
+        path: peek.path ?? null,
+      });
+    } catch {
+      setWorkspaceMcp({ present: false, count: 0, path: null });
+    }
+  }, []);
+
   const load = useCallback(async () => {
+    if (gate.phase !== "ready") return;
     setLoading(true);
     const api = getDesktop();
     if (!api?.readClaudeConfigJson) {
@@ -269,8 +317,33 @@ function McpPage() {
       }
       setRows(nextRows);
     }
+    await refreshWorkspaceMcpPeek();
     setLoading(false);
-  }, [hasDesktopApi]);
+  }, [gate.phase, refreshWorkspaceMcpPeek]);
+
+  const importFromWorkspace = useCallback(async () => {
+    const api = getDesktop();
+    if (!api?.importWorkspaceMcp) {
+      toast.message(MSG_API_OUTDATED);
+      return;
+    }
+    setImportingWorkspace(true);
+    try {
+      const r = await api.importWorkspaceMcp();
+      if (!r.ok) {
+        toast.message(r.error || "导入失败");
+        return;
+      }
+      if (!(r.imported && r.imported > 0)) {
+        toast.message(r.reason || "工作区没有可导入的 MCP");
+        return;
+      }
+      toast.success(`已从工作区导入 ${r.imported} 个 MCP`);
+      await load();
+    } finally {
+      setImportingWorkspace(false);
+    }
+  }, [load]);
 
   const closeDrawer = () => {
     setDrawerMode("closed");
@@ -296,6 +369,7 @@ function McpPage() {
   };
 
   useEffect(() => {
+    if (gate.phase !== "ready") return;
     void (async () => {
       await load();
       if (!initialLoaded.current) {
@@ -304,8 +378,8 @@ function McpPage() {
         await runHealthCheckAll();
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在桥接 hydration 完成后拉一次配置
+  }, [gate.phase]);
 
   const enabledCount = useMemo(() => rows.filter((r) => r.enabled).length, [rows]);
   const onlineCount = useMemo(() => rows.filter((r) => r.enabled && r.status === "ok").length, [rows]);
@@ -374,7 +448,7 @@ function McpPage() {
   }, [load]);
 
   const persistMcp = useCallback(
-    async (payload: Parameters<NonNullable<ReturnType<typeof getDesktop>["upsertClaudeMcpServer"]>>[0]) => {
+    async (payload: UpsertClaudeMcpPayload) => {
       const api = getDesktop();
       if (!api?.upsertClaudeMcpServer) {
         toast.error(MSG_API_NOT_READY);
@@ -522,7 +596,8 @@ function McpPage() {
             <>
               <button
                 type="button"
-                disabled={!hasDesktopApi || loading || refreshingAll}
+                disabled={!mcpGate.canAct || loading || refreshingAll}
+                title={!mcpGate.canAct ? mcpGate.blockHint : undefined}
                 onClick={() => { void load(); void runHealthCheckAll(); }}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
               >
@@ -530,23 +605,38 @@ function McpPage() {
               </button>
               <button
                 type="button"
-                disabled={!hasDesktopApi}
+                disabled={!createGate.canAct}
+                title={!createGate.canAct ? createGate.blockHint : undefined}
                 onClick={openCreate}
                 className="btn-gradient-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold shadow-sm disabled:opacity-40"
               >
                 <Plus className="h-3.5 w-3.5" /> 添加
               </button>
+              {workspaceMcp.present ? (
+                <button
+                  type="button"
+                  disabled={!createGate.canAct || importingWorkspace}
+                  title={
+                    !createGate.canAct
+                      ? createGate.blockHint
+                      : workspaceMcp.path
+                        ? `导入 ${workspaceMcp.path}（${workspaceMcp.count} 个）`
+                        : undefined
+                  }
+                  onClick={() => void importFromWorkspace()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
+                  data-testid="mcp-import-workspace"
+                >
+                  {importingWorkspace ? "导入中…" : `从工作区导入${workspaceMcp.count ? ` ${workspaceMcp.count}` : ""}`}
+                </button>
+              ) : null}
               {MCP_INFO_HINT ? <InfoHint side="left">{MCP_INFO_HINT}</InfoHint> : null}
             </>
           }
         />
 
-        {!hasDesktopApi && (
-          <PageBanner className="border-warning/30 bg-warning/10 text-warning">
-            {BRIDGE_OFFLINE_BANNER}
-          </PageBanner>
-        )}
-        {hasDesktopApi && !localErr && rows.length === 0 && !loading ? (
+        <DesktopGateBanner offlineCopy={BRIDGE_OFFLINE_BANNER} />
+        {gate.hasDesktop && !localErr && rows.length === 0 && !loading ? (
           <PageBanner>{MCP_EMPTY_BANNER}</PageBanner>
         ) : null}
         {localErr ? (
@@ -581,20 +671,46 @@ function McpPage() {
             <div className="rounded-xl border border-dashed border-border py-16 text-center">
               <Server className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
               <p className="text-[13px] font-medium text-foreground">
-                {rows.length === 0 ? "还没有 MCP 服务器" : "没有匹配结果"}
+                {gate.phase === "hydrating"
+                  ? DESKTOP_HYDRATING
+                  : rows.length === 0
+                    ? createGate.canAct
+                      ? "还没有 MCP 服务器"
+                      : EMPTY_STATE_OFFLINE
+                    : "没有匹配结果"}
               </p>
-              <p className="mt-1 text-[12px] text-muted-foreground">
-                {rows.length === 0 ? "点击添加或使用常用模板" : "试试调整搜索关键词"}
-              </p>
-              {rows.length === 0 ? (
-                <button
-                  type="button"
-                  disabled={!hasDesktopApi}
-                  onClick={openCreate}
-                  className="btn-gradient-primary mt-4 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-40"
-                >
-                  <Plus className="h-3.5 w-3.5" /> 添加 MCP
-                </button>
+              {!(gate.phase === "offline" && rows.length === 0) ? (
+                <p className="mt-1 text-[12px] text-muted-foreground">
+                  {rows.length === 0
+                    ? createGate.canAct
+                      ? MCP_EMPTY_ACTION_HINT
+                      : ""
+                    : "试试调整搜索关键词"}
+                </p>
+              ) : null}
+              {rows.length === 0 && createGate.canAct ? (
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={openCreate}
+                    className="btn-gradient-primary inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-40"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> 添加 MCP
+                  </button>
+                  {workspaceMcp.present ? (
+                    <button
+                      type="button"
+                      disabled={importingWorkspace}
+                      onClick={() => void importFromWorkspace()}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-4 py-2 text-[12.5px] font-medium transition hover:bg-secondary disabled:opacity-40"
+                      data-testid="mcp-import-workspace-empty"
+                    >
+                      {importingWorkspace
+                        ? "导入中…"
+                        : `从工作区导入 ${workspaceMcp.count}`}
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ) : (
@@ -671,7 +787,8 @@ function McpPage() {
             saving={saving}
             checking={checking}
             toggling={toggling}
-            hasDesktopApi={hasDesktopApi}
+            canMutate={createGate.canAct}
+            mutateBlockHint={createGate.blockHint}
             onClose={closeDrawer}
             onFormChange={setForm}
             onSave={() => void saveServer()}
@@ -715,7 +832,8 @@ function McpDrawer({
   saving,
   checking,
   toggling,
-  hasDesktopApi,
+  canMutate,
+  mutateBlockHint,
   onClose,
   onFormChange,
   onSave,
@@ -735,7 +853,8 @@ function McpDrawer({
   saving: boolean;
   checking: string | null;
   toggling: string | null;
-  hasDesktopApi: boolean;
+  canMutate: boolean;
+  mutateBlockHint: string;
   bundledLines: Record<string, string>;
   onClose: () => void;
   onFormChange: (next: McpForm) => void;
@@ -784,7 +903,7 @@ function McpDrawer({
                   templates={MCP_TEMPLATES}
                   existingNames={rows.map((r) => r.name)}
                   bundledLines={bundledLines}
-                  disabled={!hasDesktopApi || saving}
+                  disabled={!canMutate || saving}
                   onFill={onApplyTemplate}
                   onAdd={onAddTemplate}
                 />
@@ -885,7 +1004,8 @@ function McpDrawer({
             <>
               <button
                 type="button"
-                disabled={!hasDesktopApi || saving}
+                disabled={!canMutate || saving}
+                title={!canMutate ? mutateBlockHint : undefined}
                 onClick={onSave}
                 className="btn-gradient-primary inline-flex flex-1 items-center justify-center rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-40"
               >

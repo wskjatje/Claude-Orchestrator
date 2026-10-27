@@ -10,6 +10,7 @@ import {
   FolderOpen,
   GitBranch,
   LayoutDashboard,
+  LayoutGrid,
   Link2,
   ListTree,
   Menu,
@@ -26,6 +27,14 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { AppLogo } from "@/components/app-logo";
 import { SidebarFooter } from "@/components/sidebar-footer";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { APP_NAME, SETTINGS_ADVANCED_LINKS, SETTINGS_EXPERIMENTAL_LINKS } from "@/lib/ui-copy";
 import { useBridge } from "@/hooks/use-bridge";
 import { useDesktopReady } from "@/hooks/use-desktop-ready";
@@ -83,16 +92,18 @@ const groups: NavGroup[] = [
     items: opsNavItems(SETTINGS_ADVANCED_LINKS),
   },
   {
-    label: "实验",
-    items: opsNavItems(SETTINGS_EXPERIMENTAL_LINKS),
-  },
-  {
     label: "",
     items: [
       { to: "/settings", label: "应用设置", icon: Settings },
       { to: "/help", label: "帮助", icon: BookOpen },
     ],
   },
+];
+
+const EXPERIMENTAL_NAV = opsNavItems(SETTINGS_EXPERIMENTAL_LINKS);
+const WORKBENCH_OPS_NAV = [
+  ...opsNavItems(SETTINGS_ADVANCED_LINKS),
+  ...EXPERIMENTAL_NAV,
 ];
 
 /** Cursor 活动栏：资源 / 搜索 / SCM / 大纲（不再用聊天气泡冒充工作台入口） */
@@ -129,6 +140,8 @@ export function AppShell({
   const mounted = useDesktopReady();
   const { chainStatusBadge, chainRunning, syncExecutionState } = useOrchestrationExecution();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [opsMenuOpen, setOpsMenuOpen] = useState(false);
+  const [experimentalOpen, setExperimentalOpen] = useState(false);
   const workbench = variant === "workbench";
   const fillHeight = variant === "workbench" || variant === "fill";
   const sideTab = useSyncExternalStore(
@@ -273,6 +286,71 @@ export function AppShell({
                   })}
                 </ul>
                 <ul className="mt-auto space-y-0.5 border-t border-sidebar-border/60 pt-2">
+                  <li>
+                    <DropdownMenu open={opsMenuOpen} onOpenChange={setOpsMenuOpen}>
+                      <Tooltip open={opsMenuOpen ? false : undefined}>
+                        <TooltipTrigger asChild>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className={cn(
+                                "app-nav-link app-nav-link--rail",
+                                WORKBENCH_OPS_NAV.some((n) => isActive(n.to)) &&
+                                  "app-nav-link--active",
+                              )}
+                              aria-label="编排与运维"
+                            >
+                              <LayoutGrid className="app-nav-link__icon" aria-hidden />
+                              <span className="sr-only">编排与运维</span>
+                            </button>
+                          </DropdownMenuTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" sideOffset={8}>
+                          编排与运维
+                        </TooltipContent>
+                      </Tooltip>
+                      <DropdownMenuContent side="right" align="end" sideOffset={8} className="min-w-44">
+                        <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">
+                          编排与运维
+                        </DropdownMenuLabel>
+                        {opsNavItems(SETTINGS_ADVANCED_LINKS).map((item) => {
+                          const Icon = item.icon;
+                          return (
+                            <DropdownMenuItem key={item.to} asChild>
+                              <Link
+                                to={item.to}
+                                {...(item.search ? { search: item.search } : {})}
+                                onClick={() => setMobileNavOpen(false)}
+                                className="flex cursor-pointer items-center gap-2"
+                              >
+                                <Icon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                                {item.label}
+                              </Link>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">
+                          实验
+                        </DropdownMenuLabel>
+                        {EXPERIMENTAL_NAV.map((item) => {
+                          const Icon = item.icon;
+                          return (
+                            <DropdownMenuItem key={item.to} asChild>
+                              <Link
+                                to={item.to}
+                                onClick={() => setMobileNavOpen(false)}
+                                className="flex cursor-pointer items-center gap-2"
+                              >
+                                <Icon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                                {item.label}
+                              </Link>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </li>
                   {WORKBENCH_FOOTER_NAV.map((item) => {
                     const active = isActive(item.to);
                     const Icon = item.icon;
@@ -336,6 +414,48 @@ export function AppShell({
                   </ul>
                 </div>
               ))}
+              {EXPERIMENTAL_NAV.length > 0 ? (
+                <div className="mb-3">
+                  <button
+                    type="button"
+                    className="flex w-full cursor-pointer list-none items-center px-2 pb-1.5 pt-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/40"
+                    aria-expanded={experimentalOpen}
+                    onClick={() => setExperimentalOpen((v) => !v)}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      实验
+                      {!experimentalOpen ? (
+                        <span className="font-normal normal-case tracking-normal text-sidebar-foreground/30">
+                          · 展开
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                  {experimentalOpen ? (
+                    <ul className="mt-1 space-y-1">
+                      {EXPERIMENTAL_NAV.map((item) => {
+                        const active = isActive(item.to);
+                        const Icon = item.icon;
+                        return (
+                          <li key={item.to}>
+                            <Link
+                              to={item.to}
+                              onClick={() => setMobileNavOpen(false)}
+                              className={cn(
+                                "app-nav-link text-muted-foreground",
+                                active && "app-nav-link--active",
+                              )}
+                            >
+                              <Icon className="app-nav-link__icon" aria-hidden />
+                              <span>{item.label}</span>
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
             </nav>
           )}
 

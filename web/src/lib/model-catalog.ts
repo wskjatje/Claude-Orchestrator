@@ -9,6 +9,85 @@ export type ModelCatalogPools = {
 
 export const AUTO_MODEL_ID = "auto";
 
+/** 嵌入 / 非对话模型，不进聊天选择与设置里的对话模型表。 */
+export function isEmbeddingModelId(id: string): boolean {
+  return /embed|embedding/i.test(String(id || ""));
+}
+
+function chatCapableIds(ids: string[]): string[] {
+  return ids.map((m) => String(m || "").trim()).filter((m) => m && !isEmbeddingModelId(m));
+}
+
+/**
+ * 与 server/cloud-providers.cjs resolveInstalledOllamaTag 对齐：
+ * 仅精确标签或 bare↔`:latest`；禁止把未 pull 的 `:latest` 当成任意同名基座。
+ */
+export function resolveInstalledOllamaTag(
+  modelId: string,
+  ollamaTags: string[],
+): string | null {
+  const m = String(modelId || "").trim();
+  if (!m) return null;
+  const tags = (ollamaTags || []).map((t) => String(t || "").trim()).filter(Boolean);
+  if (!tags.length) return null;
+  if (tags.includes(m)) return m;
+  const colon = m.indexOf(":");
+  if (colon === -1) {
+    if (tags.includes(`${m}:latest`)) return `${m}:latest`;
+    const sameBase = tags.filter((t) => t === m || t.startsWith(`${m}:`));
+    if (sameBase.length === 1) return sameBase[0]!;
+    return null;
+  }
+  const base = m.slice(0, colon);
+  const tag = m.slice(colon + 1);
+  if (tag === "latest" && tags.includes(base)) return base;
+  return null;
+}
+
+/** 设置/RPC 本地池 ∩ 本机 tags；输出规范名 */
+export function filterLocalModelsToInstalled(
+  models: string[],
+  ollamaTags: string[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of models || []) {
+    const canon = resolveInstalledOllamaTag(raw, ollamaTags);
+    if (!canon || seen.has(canon)) continue;
+    seen.add(canon);
+    out.push(canon);
+  }
+  return out;
+}
+
+async function fetchLiveOllamaTags(
+  api: NonNullable<ReturnType<typeof getDesktop>>,
+): Promise<string[] | null> {
+  if (typeof api.listOllamaModels !== "function") return null;
+  try {
+    const settings = await api.getChatSettings();
+    const base = settings.ollamaBase?.trim() || "http://127.0.0.1:11434";
+    const r = await api.listOllamaModels(base);
+    if (!r.ok || !Array.isArray(r.models)) return null;
+    return r.models.map((m) => String(m || "").trim()).filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+async function intersectLocalWithLiveOllama(
+  api: NonNullable<ReturnType<typeof getDesktop>>,
+  pools: ModelCatalogPools,
+): Promise<ModelCatalogPools> {
+  const tags = await fetchLiveOllamaTags(api);
+  // 探测失败时不清空池（避免 Ollama 短暂不可达导致选择器空白）；调用侧仍有 cad-bridge 硬闸
+  if (tags == null) return pools;
+  return {
+    cloudModels: pools.cloudModels,
+    localModels: chatCapableIds(filterLocalModelsToInstalled(pools.localModels, tags)),
+  };
+}
+
 type OrchMode = "claude-code" | "local-mcp";
 
 export type ResolvedExecutionModel = {
@@ -192,6 +271,10 @@ export const LOCAL_PROVIDER_REQUIRED_ERROR =
 export const MODEL_NOT_IN_POOL_ERROR =
   "所选模型不在已启用池内：请在「设置 → 模型与连接」启用该模型后再选；不会按名称启发式推断通道。";
 
+/** 与 server/resolve-execution-model.mjs 同源：未出现在本机 Ollama /api/tags */
+export const LOCAL_MODEL_NOT_INSTALLED_ERROR =
+  "所选本地模型未安装到本机 Ollama：请先 ollama pull，或在「设置 → 模型与连接」改选已安装模型；不会调用未安装模型。";
+
 /** 聊天区已启用模型的合并列表（云 + 本地） */
 export function chatModelPoolCombined(pools: ModelCatalogPools): string[] {
   return [...pools.cloudModels, ...pools.localModels];
@@ -264,13 +347,14 @@ export function formatChatModelOverviewDisplay(input: {
 export async function loadConfiguredModelPools(
   api: NonNullable<ReturnType<typeof getDesktop>>,
 ): Promise<ModelCatalogPools> {
+  let pools: ModelCatalogPools | null = null;
   if (typeof api.cloudProvidersGetModelPools === "function") {
     try {
       const r = await api.cloudProvidersGetModelPools();
       if (r.ok && r.configured) {
-        return {
-          cloudModels: r.configured.cloudModels ?? [],
-          localModels: r.configured.localModels ?? [],
+        pools = {
+          cloudModels: chatCapableIds(r.configured.cloudModels ?? []),
+          localModels: chatCapableIds(r.configured.localModels ?? []),
         };
       }
     } catch {
@@ -278,41 +362,47 @@ export async function loadConfiguredModelPools(
     }
   }
 
-  const settings = await api.getChatSettings();
-  const cloudSet = new Set<string>();
-  let providerIds = new Set(settings.cloudProviderCatalog ?? []);
+  if (!pools) {
+    const settings = await api.getChatSettings();
+    const cloudSet = new Set<string>();
+    let providerIds = new Set(settings.cloudProviderCatalog ?? []);
 
-  if (typeof api.cloudProvidersListProviders === "function") {
-    try {
-      const r = await api.cloudProvidersListProviders();
-      if (r.ok) {
-        const allProviders = r.providers ?? [];
-        const resolved = resolveCloudProviderCatalog(settings.cloudProviderCatalog, allProviders);
-        providerIds = new Set(resolved);
-        for (const p of allProviders) {
-          if (!providerIds.has(p.id)) continue;
-          for (const m of p.models ?? []) {
-            const id = String(m || "").trim();
-            if (id) cloudSet.add(id);
+    if (typeof api.cloudProvidersListProviders === "function") {
+      try {
+        const r = await api.cloudProvidersListProviders();
+        if (r.ok) {
+          const allProviders = r.providers ?? [];
+          const resolved = resolveCloudProviderCatalog(settings.cloudProviderCatalog, allProviders);
+          providerIds = new Set(resolved);
+          for (const p of allProviders) {
+            if (!providerIds.has(p.id)) continue;
+            for (const m of p.models ?? []) {
+              const id = String(m || "").trim();
+              if (id) cloudSet.add(id);
+            }
           }
         }
+      } catch {
+        /* Bridge 离线时仅用 catalog */
       }
-    } catch {
-      /* Bridge 离线时仅用 catalog */
     }
+
+    const vendorModelSet = new Set(cloudSet);
+    for (const m of settings.cloudModelCatalog ?? []) {
+      const id = String(m || "").trim();
+      if (id && vendorModelSet.has(id)) cloudSet.add(id);
+    }
+
+    const localModels = chatCapableIds([
+      ...new Set(
+        (settings.localModelCatalog ?? []).map((m) => String(m || "").trim()).filter(Boolean),
+      ),
+    ]);
+
+    pools = { cloudModels: chatCapableIds([...cloudSet]), localModels };
   }
 
-  const vendorModelSet = new Set(cloudSet);
-  for (const m of settings.cloudModelCatalog ?? []) {
-    const id = String(m || "").trim();
-    if (id && vendorModelSet.has(id)) cloudSet.add(id);
-  }
-
-  const localModels = [
-    ...new Set((settings.localModelCatalog ?? []).map((m) => String(m || "").trim()).filter(Boolean)),
-  ];
-
-  return { cloudModels: [...cloudSet], localModels };
+  return intersectLocalWithLiveOllama(api, pools);
 }
 
 async function refreshCapabilitySnapshot(
@@ -330,18 +420,18 @@ async function refreshCapabilitySnapshot(
   }
 }
 
-/** 聊天区可选模型：仅 chatEnabled* ∩ catalog */
+/** 聊天区可选模型：chatEnabled* ∩ catalog ∩ 本机 Ollama tags */
 export async function loadChatModelPools(
   api: NonNullable<ReturnType<typeof getDesktop>>,
 ): Promise<ModelCatalogPools> {
+  let pools: ModelCatalogPools | null = null;
   if (typeof api.cloudProvidersGetModelPools === "function") {
     try {
       const r = await api.cloudProvidersGetModelPools();
       if (r.ok && r.chat) {
-        void refreshCapabilitySnapshot(api);
-        return {
-          cloudModels: r.chat.cloudModels ?? [],
-          localModels: r.chat.localModels ?? [],
+        pools = {
+          cloudModels: chatCapableIds(r.chat.cloudModels ?? []),
+          localModels: chatCapableIds(r.chat.localModels ?? []),
         };
       }
     } catch {
@@ -349,36 +439,39 @@ export async function loadChatModelPools(
     }
   }
 
-  const settings = await api.getChatSettings();
-  const enabledCloudProviders = new Set(settings.chatEnabledCloudProviders ?? []);
-  const providerCatalog = new Set(settings.cloudProviderCatalog ?? []);
-  const enabledLocal = normalizeStringList(settings.chatEnabledLocalModels);
-  const cloudSet = new Set<string>();
+  if (!pools) {
+    const settings = await api.getChatSettings();
+    const enabledCloudProviders = new Set(settings.chatEnabledCloudProviders ?? []);
+    const providerCatalog = new Set(settings.cloudProviderCatalog ?? []);
+    const enabledLocal = normalizeStringList(settings.chatEnabledLocalModels);
+    const cloudSet = new Set<string>();
 
-  if (typeof api.cloudProvidersListProviders === "function") {
-    try {
-      const r = await api.cloudProvidersListProviders();
-      if (r.ok) {
-        for (const p of r.providers ?? []) {
-          if (!enabledCloudProviders.has(p.id) || !providerCatalog.has(p.id)) continue;
-          for (const m of p.models ?? []) {
-            const id = String(m || "").trim();
-            if (id) cloudSet.add(id);
+    if (typeof api.cloudProvidersListProviders === "function") {
+      try {
+        const r = await api.cloudProvidersListProviders();
+        if (r.ok) {
+          for (const p of r.providers ?? []) {
+            if (!enabledCloudProviders.has(p.id) || !providerCatalog.has(p.id)) continue;
+            for (const m of p.models ?? []) {
+              const id = String(m || "").trim();
+              if (id) cloudSet.add(id);
+            }
           }
         }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
     }
+
+    const configuredLocal = new Set(
+      (settings.localModelCatalog ?? []).map((m) => String(m || "").trim()).filter(Boolean),
+    );
+    const localModels = chatCapableIds(enabledLocal.filter((m) => configuredLocal.has(m)));
+    pools = { cloudModels: chatCapableIds([...cloudSet]), localModels };
   }
 
-  const configuredLocal = new Set(
-    (settings.localModelCatalog ?? []).map((m) => String(m || "").trim()).filter(Boolean),
-  );
-  const localModels = enabledLocal.filter((m) => configuredLocal.has(m));
-
   void refreshCapabilitySnapshot(api);
-  return { cloudModels: [...cloudSet], localModels };
+  return intersectLocalWithLiveOllama(api, pools);
 }
 
 function normalizeStringList(raw: string[] | undefined): string[] {

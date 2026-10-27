@@ -71,15 +71,9 @@ export function isBridgeLoopbackConnectionError(message) {
   return false;
 }
 
-export function formatBridgeConnectionError(detail) {
-  const port = getWorkbenchHttpPort();
-  const base = `无法连接本机桥接服务（127.0.0.1:${port}）。请确认 Claude Orchestrator 已完整启动`;
-  const devHint =
-    process.env.NODE_ENV !== "production"
-      ? "；开发模式可运行 npm run web:dev:full 或 npm run desktop"
-      : "；若仍失败请退出后重新打开应用";
-  const tail = detail ? `（${String(detail).slice(0, 200)}）` : "";
-  return `${base}${devHint}${tail}`;
+export function formatBridgeConnectionError(_detail) {
+  // 用户可见短句；端口 / CLI / 原始 detail 只走服务端日志，不进 UI。
+  return "无法连接本机服务。请确认应用已启动后重试。";
 }
 
 /** 统一归一化 RPC / 代理层错误（所有供应商共用，不区分 DeepSeek/Gemini 等） */

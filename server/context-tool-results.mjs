@@ -109,7 +109,7 @@ export function clearStaleToolResults(messages, opts = {}) {
 }
 
 /**
- * 估算 messages 总字符（粗略 token 代理）
+ * 估算 messages 总字符（粗略 token 代理；与 shared/compact-summary 同算法）
  * @param {any[]} messages
  */
 export function estimateMessagesChars(messages) {
@@ -125,4 +125,9 @@ export function estimateMessagesChars(messages) {
     }
   }
   return n
+}
+
+/** @param {any[]} messages */
+export function estimateMessagesTokens(messages) {
+  return Math.ceil(estimateMessagesChars(messages) / 4)
 }

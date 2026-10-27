@@ -28,6 +28,7 @@ import {
   subscribeWorkbenchInteractionMode,
   type WorkbenchInteractionMode,
 } from "@/lib/workbench-interaction-mode";
+import { CONTENT_LOADING } from "@/lib/ui-copy";
 import { cn } from "@/lib/utils";
 
 const AUTO_AGENT_VALUE = "";
@@ -102,28 +103,30 @@ export function ComposerSessionChip({
       }
       setAgents(
         dedupeAgentRowsByStem(
-          r.items.map((row) => {
-            const displayName =
-              row.displayName?.trim() ||
-              resolveAgentDisplayName({
-                stem: row.stem,
+          r.items
+            .filter((row) => row.enabled !== false)
+            .map((row) => {
+              const displayName =
+                row.displayName?.trim() ||
+                resolveAgentDisplayName({
+                  stem: row.stem,
+                  basename: row.basename,
+                  name: row.name,
+                  nameZh: row.nameZh,
+                  heading: row.heading,
+                  description: row.description,
+                });
+              return {
                 basename: row.basename,
+                stem: row.stem,
+                description: row.description ?? "",
+                displayName,
                 name: row.name,
                 nameZh: row.nameZh,
                 heading: row.heading,
-                description: row.description,
-              });
-            return {
-              basename: row.basename,
-              stem: row.stem,
-              description: row.description ?? "",
-              displayName,
-              name: row.name,
-              nameZh: row.nameZh,
-              heading: row.heading,
-              source: row.source,
-            };
-          }),
+                source: row.source,
+              };
+            }),
         ),
       );
       setAgentsLoading(false);
@@ -193,6 +196,12 @@ export function ComposerSessionChip({
   const pickAgent = (basename: string) => {
     onAgentChange(basename);
     setAgentQuery("");
+    setOpen(false);
+  };
+
+  const pickMode = (m: WorkbenchInteractionMode) => {
+    setWorkbenchInteractionMode(m);
+    setOpen(false);
   };
 
   const toggleSkill = (stem: string) => {
@@ -217,9 +226,12 @@ export function ComposerSessionChip({
   return (
     <DropdownMenu
       open={open}
-      modal={false}
+      modal
       onOpenChange={(next) => {
-        if (disabled) return;
+        if (disabled) {
+          setOpen(false);
+          return;
+        }
         setOpen(next);
         if (!next) {
           setAgentQuery("");
@@ -270,7 +282,7 @@ export function ComposerSessionChip({
                   "composer-chrome-chip min-w-0 flex-1 justify-center",
                   mode === m && "composer-chrome-chip--active",
                 )}
-                onClick={() => setWorkbenchInteractionMode(m)}
+                onClick={() => pickMode(m)}
               >
                 {interactionModeLabel(m)}
               </button>
@@ -278,7 +290,10 @@ export function ComposerSessionChip({
           </div>
         </div>
 
-        <div className="border-b border-border/80 px-2 py-2" onPointerDown={(e) => e.stopPropagation()}>
+        <div
+          className="border-b border-border/80 px-2 py-2"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <p className="mb-1.5 px-0.5 text-[11px] font-medium text-muted-foreground">角色</p>
           <div className="relative mb-1.5">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -333,7 +348,10 @@ export function ComposerSessionChip({
                       ) : null}
                     </div>
                     {active ? (
-                      <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" strokeWidth={2.25} />
+                      <Check
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary"
+                        strokeWidth={2.25}
+                      />
                     ) : null}
                   </button>
                 );
@@ -341,15 +359,27 @@ export function ComposerSessionChip({
             ) : agents.length ? (
               <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">无匹配</p>
             ) : agentsLoading ? (
-              <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">加载中…</p>
+              <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">{CONTENT_LOADING}</p>
             ) : (
-              <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">未扫描到角色</p>
+              <div className="px-2 py-3 text-center text-[12px] text-muted-foreground">
+                <p>未扫描到角色</p>
+                <Link
+                  to="/agents"
+                  className="mt-1.5 inline-block text-primary hover:underline"
+                  onClick={() => setOpen(false)}
+                >
+                  去创建
+                </Link>
+              </div>
             )}
           </div>
         </div>
 
         {skillUi ? (
-          <div className="border-b border-border/80 px-2 py-2" onPointerDown={(e) => e.stopPropagation()}>
+          <div
+            className="border-b border-border/80 px-2 py-2"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
             <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
               <p className="text-[11px] font-medium text-muted-foreground">本轮 Skill</p>
               {selectedSkills.length ? (
@@ -394,17 +424,29 @@ export function ComposerSessionChip({
                         ) : null}
                       </div>
                       {active ? (
-                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" strokeWidth={2.25} />
+                        <Check
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary"
+                          strokeWidth={2.25}
+                        />
                       ) : null}
                     </button>
                   );
                 })
               ) : skillsLoading ? (
-                <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">加载中…</p>
+                <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">{CONTENT_LOADING}</p>
               ) : skills.length ? (
                 <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">无匹配</p>
               ) : (
-                <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">暂无 Skill</p>
+                <div className="px-2 py-3 text-center text-[12px] text-muted-foreground">
+                  <p>暂无 Skill</p>
+                  <Link
+                    to="/skills"
+                    className="mt-1.5 inline-block text-primary hover:underline"
+                    onClick={() => setOpen(false)}
+                  >
+                    去管理
+                  </Link>
+                </div>
               )}
             </div>
           </div>

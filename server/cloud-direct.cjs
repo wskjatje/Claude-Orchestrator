@@ -191,6 +191,8 @@ function httpPostJsonStream(url, bodyJson, headers = {}, timeoutMs = 120_000, re
         let buf = ''
         let content = ''
         let reasoning = ''
+        /** @type {{ prompt_tokens: number, completion_tokens: number, total_tokens: number } | null} */
+        let usage = null
         let status = res.statusCode || 0
         res.setEncoding('utf8')
         res.on('data', (chunk) => {
@@ -204,6 +206,9 @@ function httpPostJsonStream(url, bodyJson, headers = {}, timeoutMs = 120_000, re
             if (!payload || payload === '[DONE]') continue
             try {
               const j = JSON.parse(payload)
+              const chunkUsage =
+                extractOpenAiCompatibleUsage(j) || extractGeminiUsage(j)
+              if (chunkUsage) usage = chunkUsage
               const openai = cloudProviders.openAiVisibleText(j?.choices?.[0])
               let delta = openai.content
               if (!delta && openai.reasoning) reasoning += openai.reasoning
@@ -230,7 +235,7 @@ function httpPostJsonStream(url, bodyJson, headers = {}, timeoutMs = 120_000, re
             return
           }
           const visible = cloudProviders.finalizeOpenAiVisible(content, reasoning)
-          resolve({ status, content: visible.content || content })
+          resolve({ status, content: visible.content || content, usage })
         })
       })
       req.on('error', (e) => {
@@ -258,6 +263,41 @@ async function loadDirectChatPolicy() {
 }
 
 /**
+ * @param {unknown} data
+ * @returns {{ prompt_tokens: number, completion_tokens: number, total_tokens: number } | null}
+ */
+function extractOpenAiCompatibleUsage(data) {
+  const u = data && typeof data === 'object' ? data.usage : null
+  if (!u || typeof u !== 'object') return null
+  const prompt = Math.floor(Number(u.prompt_tokens ?? u.input_tokens ?? 0))
+  const completion = Math.floor(Number(u.completion_tokens ?? u.output_tokens ?? 0))
+  if (!(prompt > 0 || completion > 0)) return null
+  const total = Math.floor(Number(u.total_tokens) || prompt + completion)
+  return {
+    prompt_tokens: Math.max(0, prompt),
+    completion_tokens: Math.max(0, completion),
+    total_tokens: Math.max(0, total),
+  }
+}
+
+/**
+ * @param {unknown} data Gemini generateContent 响应
+ */
+function extractGeminiUsage(data) {
+  const meta = data && typeof data === 'object' ? data.usageMetadata : null
+  if (!meta || typeof meta !== 'object') return null
+  const prompt = Math.floor(Number(meta.promptTokenCount ?? 0))
+  const completion = Math.floor(Number(meta.candidatesTokenCount ?? meta.outputTokenCount ?? 0))
+  if (!(prompt > 0 || completion > 0)) return null
+  const total = Math.floor(Number(meta.totalTokenCount) || prompt + completion)
+  return {
+    prompt_tokens: Math.max(0, prompt),
+    completion_tokens: Math.max(0, completion),
+    total_tokens: Math.max(0, total),
+  }
+}
+
+/**
  * @param {string} content
  * @param {null | {
  *   url: string,
@@ -269,8 +309,9 @@ async function loadDirectChatPolicy() {
  *   extras?: object,
  *   onDelta?: ((chunk: string) => void) | null,
  * }} [continueCtx] 半截时再打一轮（仅 OpenAI 兼容）
+ * @param {{ prompt_tokens: number, completion_tokens: number, total_tokens: number } | null} [usage]
  */
-async function finishDirectOk(content, continueCtx = null) {
+async function finishDirectOk(content, continueCtx = null, usage = null) {
   let out = await sanitizeCloudDirectContent(content)
   if (continueCtx?.url && continueCtx.apiKey && continueCtx.apiModel && continueCtx.prompt) {
     try {
@@ -298,6 +339,20 @@ async function finishDirectOk(content, continueCtx = null) {
           continueCtx.requestId || '',
         )
         if (status === 200) {
+          const contUsage = extractOpenAiCompatibleUsage(data)
+          if (contUsage) {
+            if (!usage) usage = contUsage
+            else {
+              usage = {
+                prompt_tokens: Math.max(usage.prompt_tokens, contUsage.prompt_tokens),
+                completion_tokens: usage.completion_tokens + contUsage.completion_tokens,
+                total_tokens:
+                  Math.max(usage.prompt_tokens, contUsage.prompt_tokens) +
+                  usage.completion_tokens +
+                  contUsage.completion_tokens,
+              }
+            }
+          }
           const openai = cloudProviders.openAiVisibleText(data?.choices?.[0])
           const visible = cloudProviders.finalizeOpenAiVisible(
             openai.content || data?.content?.[0]?.text || data?.response || '',
@@ -329,6 +384,7 @@ async function finishDirectOk(content, continueCtx = null) {
     ok: true,
     content: out,
     aborted: false,
+    ...(usage && typeof usage === 'object' ? { usage } : {}),
   }
 }
 
@@ -414,7 +470,7 @@ async function directPrompt(payload) {
             onDelta,
             { injectStreamFlag: false },
           )
-          return finishDirectOk(streamed.content || '')
+          return finishDirectOk(streamed.content || '', null, streamed.usage || null)
         } catch (e) {
           const msg = e?.message || String(e)
           if (msg === '请求超时') return { ok: false, error: '请求超时', content: '', aborted: true }
@@ -442,7 +498,7 @@ async function directPrompt(payload) {
       }
 
       const content = extractGeminiContent(data)
-      return finishDirectOk(content || '')
+      return finishDirectOk(content || '', null, extractGeminiUsage(data))
     }
 
     // ---------- OpenAI 兼容 API ----------
@@ -471,6 +527,8 @@ async function directPrompt(payload) {
           {
             model: apiModel,
             messages: [{ role: 'user', content: prompt }],
+            // OpenAI 兼容流：末包带 usage（不支持的供应商会忽略）
+            stream_options: { include_usage: true },
             ...openaiExtras,
           },
           { Authorization: `Bearer ${apiKey}` },
@@ -481,7 +539,7 @@ async function directPrompt(payload) {
         if (!String(streamed.content || '').trim()) {
           return { ok: false, error: '云模型未返回可显示正文。', content: '', aborted: false }
         }
-        return finishDirectOk(streamed.content, continueCtx)
+        return finishDirectOk(streamed.content, continueCtx, streamed.usage || null)
       } catch (e) {
         const msg = e?.message || String(e)
         if (msg === '请求超时') return { ok: false, error: '请求超时', content: '', aborted: true }
@@ -520,7 +578,7 @@ async function directPrompt(payload) {
     if (!visible.ok) {
       return { ok: false, error: visible.error, content: '', aborted: false }
     }
-    return finishDirectOk(visible.content, continueCtx)
+    return finishDirectOk(visible.content, continueCtx, extractOpenAiCompatibleUsage(data))
   } catch (e) {
     const msg = e?.message || String(e)
     // 超时

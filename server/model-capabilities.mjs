@@ -9,7 +9,7 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 
-/** @typedef {{ tools?: boolean, vision?: boolean }} ModelCaps */
+/** @typedef {{ tools?: boolean, vision?: boolean, contextLength?: number|null }} ModelCaps */
 /** @typedef {{ name: string, digest?: string, size?: number, contextLength?: number|null, capabilities: ModelCaps, source: 'ollama'|'cloud'|'override'|'unknown' }} ModelCapabilityRecord */
 
 /** @type {Map<string, ModelCapabilityRecord>} */
@@ -45,6 +45,7 @@ export function parseOllamaCapabilitiesField(raw) {
 }
 
 /**
+ * 从 Ollama /api/show 解析上下文窗口（多路兜底，禁止按模型名猜）。
  * @param {Record<string, unknown>} show
  * @returns {number|null}
  */
@@ -52,13 +53,31 @@ function contextLengthFromShow(show) {
   const info = show?.model_info
   if (info && typeof info === 'object') {
     for (const [k, v] of Object.entries(info)) {
-      if (/context_length$/i.test(k) && typeof v === 'number' && v > 0) return v
+      if (/context_length$/i.test(k) && typeof v === 'number' && v > 0) return Math.floor(v)
     }
   }
-  const params = String(show?.parameters || '')
-  const m = params.match(/num_ctx\s+(\d+)/i)
-  if (m) return Number(m[1]) || null
+  // parameters 可能是字符串（"num_ctx 8192"）或对象
+  const paramsRaw = show?.parameters
+  if (typeof paramsRaw === 'string') {
+    const m = paramsRaw.match(/num_ctx\s+(\d+)/i)
+    if (m) return Number(m[1]) || null
+  } else if (paramsRaw && typeof paramsRaw === 'object' && !Array.isArray(paramsRaw)) {
+    const n = Number(/** @type {Record<string, unknown>} */ (paramsRaw).num_ctx)
+    if (Number.isFinite(n) && n >= 1024) return Math.floor(n)
+  }
+  // Modelfile：PARAMETER num_ctx 8192
+  const modelfile = String(show?.modelfile || '')
+  if (modelfile) {
+    const m2 = modelfile.match(/PARAMETER\s+num_ctx\s+(\d+)/i)
+    if (m2) return Number(m2[1]) || null
+  }
   return null
+}
+
+/** @param {number|null|undefined} n */
+function saneContextLength(n) {
+  const v = Number(n)
+  return Number.isFinite(v) && v >= 1024 ? Math.floor(v) : null
 }
 
 /**
@@ -196,7 +215,25 @@ function overrideCaps(overrides, modelId) {
   const out = {}
   if (typeof raw.tools === 'boolean') out.tools = raw.tools
   if (typeof raw.vision === 'boolean') out.vision = raw.vision
+  const cl = Number(raw.contextLength)
+  if (Number.isFinite(cl) && cl >= 1024) out.contextLength = Math.floor(cl)
   return out
+}
+
+/**
+ * @param {string} providerName
+ * @returns {number|null}
+ */
+function providerDefaultContextLength(providerName) {
+  try {
+    const cp = require('./cloud-providers.cjs')
+    if (typeof cp.getKnownProviderContextLength === 'function') {
+      return cp.getKnownProviderContextLength(providerName)
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
 }
 
 /**
@@ -231,18 +268,46 @@ export async function resolveModelCapabilities(opts) {
         }
       }
     }
+    // 缓存有记录但缺窗口时再 show 一次（modelfile / num_ctx 兜底）
+    if (base && !saneContextLength(base.contextLength)) {
+      const root = String(opts.ollamaBase || opts.settings?.ollamaBase || 'http://127.0.0.1:11434')
+      try {
+        const shown = await fetchOllamaModelShow(root, modelId)
+        if (saneContextLength(shown.contextLength)) {
+          base = { ...base, ...shown, digest: base.digest || shown.digest }
+          ollamaCache.set(modelId, base)
+        }
+      } catch {
+        /* 保持原记录 */
+      }
+    }
+    const fromOverride = saneContextLength(overrides.contextLength)
+    const contextLength = fromOverride ?? saneContextLength(base.contextLength)
     return {
       ...base,
       name: modelId,
       capabilities: { ...base.capabilities, ...overrides },
+      contextLength,
       source: Object.keys(overrides).length ? 'override' : base.source,
     }
   }
   const providerCaps = capabilitiesForCloudProvider(opts.providerName || '')
+  const caps = { ...providerCaps, ...overrides }
+  const fromOverride =
+    typeof overrides.contextLength === 'number' && overrides.contextLength >= 1024
+      ? overrides.contextLength
+      : null
+  const fromProvider = providerDefaultContextLength(opts.providerName || '')
+  // 空供应商名（Claude Code 别名等）按 Anthropic 默认窗，避免占用条长期「估算窗口」
+  const fromAnthropicFallback =
+    !opts.providerName || !String(opts.providerName).trim()
+      ? providerDefaultContextLength('Anthropic')
+      : null
+  const contextLength = fromOverride ?? fromProvider ?? fromAnthropicFallback ?? null
   return {
     name: modelId,
-    capabilities: { ...providerCaps, ...overrides },
-    contextLength: null,
+    capabilities: caps,
+    contextLength,
     source: Object.keys(overrides).length ? 'override' : 'cloud',
   }
 }

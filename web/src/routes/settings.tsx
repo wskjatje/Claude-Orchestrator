@@ -18,10 +18,12 @@ import { ModelsConnectionsPanel } from "@/components/models-connections-panel";
 import { UserPreferencesPanel } from "@/components/user-preferences-panel";
 import { DeployDialog } from "@/components/deploy-dialog";
 import { PageRoot, SettingsLayout, SettingsNavItem } from "@/components/page-layout";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { DesktopGateBanner } from "@/components/desktop-gate-banner";
+import { useDesktopGate } from "@/hooks/use-desktop-ready";
 import { getDesktop } from "@/lib/desktop-api";
 import { cn } from "@/lib/utils";
 import {
+  BRIDGE_OFFLINE_BANNER,
   GIT_PUSH_HINT,
   GIT_PUSH_HINT_DETAIL,
   GIT_DEPLOY_HINT,
@@ -119,7 +121,9 @@ function SettingsOverview({
 }
 
 function SettingsPage() {
-  const desktop = useHasDesktop();
+  const gate = useDesktopGate();
+  const desktopReady = gate.desktopReady;
+  const desktop = gate.hasDesktop;
   const search = Route.useSearch();
   const settingsTab: "basic" | "advanced" =
     search.tab === "advanced" ? "advanced" : "basic";
@@ -136,21 +140,24 @@ function SettingsPage() {
   >("claude-code");
 
   const refreshWorkspace = useCallback(async () => {
+    if (!desktopReady) return;
     const api = getDesktop();
     if (!api) return;
     const p = await api.getWorkspace();
     setWorkspacePath(p && p.trim() ? p.trim() : "（尚未选择）");
-  }, []);
+  }, [desktopReady]);
 
   const refreshSettingsSummary = useCallback(async () => {
+    if (!desktopReady) return;
     const api = getDesktop();
     if (!api) return;
     const s = await api.getChatSettings();
     setModelSelect(s.model || "");
     setOrchestrationModeSelect(s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code");
-  }, []);
+  }, [desktopReady]);
 
   useEffect(() => {
+    if (!desktopReady) return;
     void (async () => {
       await refreshWorkspace();
       const api = getDesktop();
@@ -159,7 +166,7 @@ function SettingsPage() {
       setOrchestrationModeSelect(s.orchestrationMode === "local-mcp" ? "local-mcp" : "claude-code");
       setModelSelect(s.model || "");
     })();
-  }, [refreshWorkspace]);
+  }, [desktopReady, refreshWorkspace]);
 
   useEffect(() => {
     if (!desktop) return;
@@ -167,10 +174,11 @@ function SettingsPage() {
   }, [desktop, refreshWorkspace]);
 
   useEffect(() => {
+    if (!desktopReady) return;
     const api = getDesktop();
     if (!api?.onWorkspaceChanged) return;
     return api.onWorkspaceChanged(() => void refreshWorkspace());
-  }, [refreshWorkspace]);
+  }, [desktopReady, refreshWorkspace]);
 
   return (
     <AppShell>
@@ -181,6 +189,7 @@ function SettingsPage() {
             settingsTab === "basic" ? PAGE_DESC.settings.basic : PAGE_DESC.settings.advanced
           }
         />
+        <DesktopGateBanner offlineCopy={BRIDGE_OFFLINE_BANNER} />
         <SettingsLayout
           nav={
             <>
@@ -206,7 +215,7 @@ function SettingsPage() {
                 orchestrationMode={orchestrationModeSelect}
                 modelLabel={modelSelect || "—"}
               />
-              <UserPreferencesPanel disabled={!desktop} />
+              <UserPreferencesPanel disabled={gate.phase !== "ready"} />
               <ModelsConnectionsPanel onSettingsUpdated={() => void refreshSettingsSummary()} />
             </div>
           ) : null}

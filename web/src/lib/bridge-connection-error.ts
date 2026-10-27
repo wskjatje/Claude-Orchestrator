@@ -1,4 +1,29 @@
-import { RPC_CONNECTION_ERROR } from "@/lib/ui-copy";
+import {
+  RPC_CONNECTION_ERROR,
+  RPC_REQUEST_CANCELLED,
+  RPC_REQUEST_INTERRUPTED,
+} from "@/lib/ui-copy";
+
+/** 用户取消 / 页面卸载导致的 fetch 中断（勿映射为桥接离线） */
+export function isRpcUserAbortError(error: unknown): boolean {
+  if (error == null) return false;
+  if (typeof error === "object" && "name" in error) {
+    const name = String((error as { name?: unknown }).name || "");
+    if (name === "AbortError" || name === "TimeoutError") return true;
+  }
+  const msg = error instanceof Error ? error.message : String(error);
+  return /abort|aborted|请求已取消|The operation was aborted|signal is aborted|BodyStreamBuffer was aborted|AbortError/i.test(
+    msg,
+  );
+}
+
+export function formatRpcAbortError(): string {
+  return RPC_REQUEST_CANCELLED;
+}
+
+export function formatRpcInterruptedError(): string {
+  return RPC_REQUEST_INTERRUPTED;
+}
 
 /** 与 server/bridge-constants.mjs 同源：Vite 在 vite.config 注入 VITE_WORKBENCH_* */
 export function getWorkbenchHttpPort(): number {
@@ -41,21 +66,18 @@ export function isBridgeConnectionError(message: string): boolean {
   return false;
 }
 
-export function formatBridgeConnectionError(detail?: string): string {
-  const port = getWorkbenchHttpPort();
-  const devHint =
-    typeof import.meta.env.DEV !== "undefined" && import.meta.env.DEV
-      ? "；开发模式请运行 npm run web:dev:full 或 npm run desktop"
-      : "；请退出后重新打开应用";
-  return `${RPC_CONNECTION_ERROR(
-    detail || `127.0.0.1:${port}`,
-  )}${devHint}`;
+export function formatBridgeConnectionError(_detail?: string): string {
+  return RPC_CONNECTION_ERROR();
 }
 
 /** 所有 RPC 通道共用的错误归一化（供应商无关） */
 export function normalizeRpcErrorMessage(message?: string | null): string {
   const msg = String(message || "").trim();
   if (!msg) return "";
+  if (isRpcUserAbortError(msg) || msg === RPC_REQUEST_CANCELLED) {
+    return formatRpcAbortError();
+  }
+  if (msg === RPC_REQUEST_INTERRUPTED) return msg;
   if (isBridgeConnectionError(msg)) return formatBridgeConnectionError(msg);
   return msg;
 }

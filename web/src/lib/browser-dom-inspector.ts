@@ -50,12 +50,14 @@ export function getSelectorPath(el: Element, root: Element = el.ownerDocument.do
       segments.unshift(`${tag}#${CSS.escape(node.id)}`);
       break;
     }
-    const parent = node.parentElement;
+    const parent: Element | null = node.parentElement;
     if (!parent) {
       segments.unshift(tag);
       break;
     }
-    const siblings = Array.from(parent.children).filter((c) => c.tagName === node!.tagName);
+    const siblings = Array.from(parent.children).filter(
+      (c): c is Element => c instanceof Element && c.tagName === node!.tagName,
+    );
     const idx = siblings.indexOf(node) + 1;
     const cls =
       typeof node.className === "string" && node.className.trim()

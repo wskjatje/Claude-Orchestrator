@@ -117,7 +117,8 @@ function OverviewPage() {
     );
 
     // 解析模型单价：tokenPricing(用户自定义) > DEFAULT_MODEL_PRICING(内置) > 通用回退
-    const mergedPricing = {
+    type PricingRow = { inputPer1M: number; outputPer1M: number; currency?: string };
+    const mergedPricing: Record<string, PricingRow> = {
       ...(defaultPricing || {}),
       ...(settings?.tokenPricing || {}),
     };
@@ -129,25 +130,13 @@ function OverviewPage() {
       GBP: "£",
     };
     const currencySymbol = (c?: string) => CURRENCY_SYMBOLS[c || ""] || c || "$";
-    const lookupPricing = (
-      m: string,
-    ): { inputPer1M: number; outputPer1M: number; currency?: string } | null => {
+    const lookupPricing = (m: string): PricingRow | null => {
       if (!m) return null;
       const exact = mergedPricing[m];
-      if (exact)
-        return {
-          inputPer1M: exact.inputPer1M,
-          outputPer1M: exact.outputPer1M,
-          currency: exact.currency,
-        };
+      if (exact) return exact;
       const lower = m.toLowerCase();
       for (const [key, val] of Object.entries(mergedPricing)) {
-        if (key.toLowerCase() === lower)
-          return {
-            inputPer1M: val.inputPer1M,
-            outputPer1M: val.outputPer1M,
-            currency: val.currency,
-          };
+        if (key.toLowerCase() === lower) return val;
       }
       return null;
     };
@@ -259,7 +248,7 @@ function OverviewPage() {
       costBreakdown.length > 0 ? costBreakdown.join(" · ") : null,
     ]
       .filter(Boolean)
-      .join(" · ") || "CLI + 会话 usage 估算";
+      .join(" · ") || "今日用量估算";
 
   const todayKpis = useMemo(
     () =>

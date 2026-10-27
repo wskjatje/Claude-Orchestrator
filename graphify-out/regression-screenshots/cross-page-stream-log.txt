@@ -1,0 +1,3 @@
+SKIP send: send button disabled (model/key/gate)
+STATIC_ONLY: validating subscription switch in source (see report)
+pageErrors: none

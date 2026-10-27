@@ -34,22 +34,25 @@ export function ChatModelSelector({
 }: Props) {
   const selectedModel = modelValue || modelFallback || "";
   const resolvedValue = isAutoModelSelection(selectedModel) ? AUTO_MODEL_ID : selectedModel;
-  const autoAvailable = cloudModels.length > 0 || localModels.length > 0;
+  // 本窗列表只列本地；云通道仍可看到本地（选中后会切到 local-mcp）
+  const listCloud = orchMode === "local-mcp" ? [] : cloudModels;
+  const listLocal = localModels;
+  const autoAvailable = listCloud.length > 0 || listLocal.length > 0;
 
   const leadingOptions = useMemo(
     () =>
       autoAvailable
-        ? [buildAutoLeadingOption(cloudModels, localModels, isAutoModelSelection)]
+        ? [buildAutoLeadingOption(listCloud, listLocal, isAutoModelSelection)]
         : [],
-    [autoAvailable, cloudModels, localModels],
+    [autoAvailable, listCloud, listLocal],
   );
 
   return (
     <ChatEnabledModelPicker
       variant="composer"
       side="top"
-      cloudModels={cloudModels}
-      localModels={localModels}
+      cloudModels={listCloud}
+      localModels={listLocal}
       value={resolvedValue}
       disabled={disabled}
       leadingOptions={leadingOptions}
@@ -58,7 +61,10 @@ export function ChatModelSelector({
           onModelPick({ mode: orchMode, model: AUTO_MODEL_ID });
           return;
         }
-        const mode = inferOrchModeForChatModel(next, { cloudModels, localModels });
+        const mode = inferOrchModeForChatModel(next, {
+          cloudModels,
+          localModels,
+        });
         onModelPick({ mode, model: next });
       }}
     />

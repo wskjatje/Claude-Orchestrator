@@ -1088,7 +1088,10 @@ export type DesktopApi = {
     /** Auto 优先本地模型（须在启用池内；空=池首） */
     preferredLocalModel?: string;
     /** 模型能力显式覆盖 { [modelId]: { tools?, vision? } } */
-    modelCapabilityOverrides?: Record<string, { tools?: boolean; vision?: boolean }>;
+    modelCapabilityOverrides?: Record<
+      string,
+      { tools?: boolean; vision?: boolean; contextLength?: number | null }
+    >;
     /** 个人 fork：push 与个人 pull 共用（origin） */
     personalGithubRepo?: string;
     /** Git 提交身份：push / 个人 pull 共用 */
@@ -1168,7 +1171,10 @@ export type DesktopApi = {
     chatEnabledLocalModels?: string[];
     preferredCloudModel?: string;
     preferredLocalModel?: string;
-    modelCapabilityOverrides?: Record<string, { tools?: boolean; vision?: boolean }>;
+    modelCapabilityOverrides?: Record<
+      string,
+      { tools?: boolean; vision?: boolean; contextLength?: number | null }
+    >;
     personalGithubRepo?: string;
     gitUserName?: string;
     gitUserEmail?: string;
@@ -1345,17 +1351,19 @@ export type DesktopApi = {
     ok: boolean;
     record?: {
       name: string;
-      capabilities?: { tools?: boolean; vision?: boolean };
+      capabilities?: { tools?: boolean; vision?: boolean; contextLength?: number | null };
+      contextLength?: number | null;
       source?: string;
     };
     models?: Array<{
       name: string;
-      capabilities?: { tools?: boolean; vision?: boolean };
+      capabilities?: { tools?: boolean; vision?: boolean; contextLength?: number | null };
+      contextLength?: number | null;
       source?: string;
     }>;
     names?: string[];
     error?: string;
-    overrides?: Record<string, { tools?: boolean; vision?: boolean }>;
+    overrides?: Record<string, { tools?: boolean; vision?: boolean; contextLength?: number | null }>;
   }>;
   /** 单轮 headless：当前工作区下执行 `claude -p`，加载 ~/.claude MCP/Skills */
   claudeCodePrompt: (payload: {
@@ -1439,6 +1447,11 @@ export type DesktopApi = {
     /** Plan 模式：暂存待 Accept 的路径 */
     deferredWritePaths?: string[];
     writeMode?: "ask" | "plan" | "agent";
+    /**
+     * 工具环实测轨迹：offered=实际发给模型的 function.name；
+     * called=本回合已执行的 tool_calls 数。called===0 时 UI 展示「未调用工具」。
+     */
+    toolsTrace?: { offered: string[]; called: number };
   }>;
   localOrchestrationAbort: (requestId: string) => Promise<{ ok: boolean }>;
   /** 直接调用云供应商 API（绕过 Claude CLI，适用于未安装 Claude Code 的用户） */
@@ -1531,8 +1544,8 @@ export type DesktopApi = {
   getUsageSummary?: (opts?: { startMs?: number; endMs?: number }) => Promise<{
     ok: boolean;
     summary?: UsageStatsSummary;
-    daily?: UsageStatsSummary & { date: string }[];
-    hourly?: UsageStatsSummary & { hourStartMs: number; label: string }[];
+    daily?: Array<UsageStatsSummary & { date: string }>;
+    hourly?: Array<UsageStatsSummary & { hourStartMs: number; label: string }>;
     lastBuiltAt?: number | null;
     error?: string;
   }>;
@@ -1601,6 +1614,9 @@ export type DesktopApi = {
     dirtySummary?: string;
     upstreamUrl?: string;
     personalUrl?: string;
+    personalBranch?: string;
+    personalDirty?: boolean;
+    personalDirtySummary?: string;
     originUrl?: string;
     gitUserName?: string;
     gitUserEmail?: string;
@@ -1741,6 +1757,7 @@ export type DesktopApi = {
     description?: string;
     category?: SavedChainSummary["category"];
     templateId?: string | null;
+    enabled?: boolean;
     state: OrchestrationState & { steps: NonNullable<OrchestrationState["steps"]> };
   }) => Promise<{ ok: boolean; chain?: SavedChainDetail | null; error?: string | null }>;
   orchestrationUpdateChain?: (payload: {
@@ -1968,6 +1985,8 @@ export type DesktopApi = {
       category?: "项目" | "通用" | "实验";
       /** frontmatter `skills:` 关联的 Skill 文件 stem */
       skills?: string[];
+      /** frontmatter：缺省 true；`disabled: true` / `enabled: false` → false */
+      enabled?: boolean;
     }[];
     error?: string | null;
   }>;
@@ -1988,6 +2007,11 @@ export type DesktopApi = {
     content: string;
     createOnly?: boolean;
   }) => Promise<{ ok: boolean; basename?: string; path?: string; error?: string }>;
+  /** 写入 Agent frontmatter `disabled`（启用则去掉字段） */
+  setClaudeAgentMarkdownEnabled?: (body: {
+    basename: string;
+    enabled: boolean;
+  }) => Promise<{ ok: boolean; basename?: string; path?: string; enabled?: boolean; error?: string }>;
   /** 用系统默认应用打开 ~/.claude/agents 下的 .md */
   openClaudeAgentMarkdownFile: (basename: string) => Promise<{ ok: boolean; error?: string }>;
   /** 扫描 ~/.claude/skills 与工作区 .claude/skills 下平铺 .md */
@@ -2003,9 +2027,14 @@ export type DesktopApi = {
       nameZh?: string;
       heading?: string;
       category?: "项目" | "通用" | "实验";
+      enabled?: boolean;
     }[];
     error?: string | null;
   }>;
+  setClaudeSkillMarkdownEnabled?: (body: {
+    basename: string;
+    enabled: boolean;
+  }) => Promise<{ ok: boolean; basename?: string; path?: string; enabled?: boolean; error?: string }>;
   /** 读取 ~/.claude/mcp.json 或 settings.json（标准 JSON） */
   readClaudeConfigJson: (name: "mcp.json" | "settings.json") => Promise<{
     ok: boolean;
@@ -2031,6 +2060,7 @@ export type DesktopApi = {
     command?: string;
     args?: string[];
     url?: string;
+    env?: Record<string, string>;
   }) => Promise<{ ok: boolean; path?: string; name?: string; error?: string | null }>;
   removeClaudeMcpServer: (
     name: string,
@@ -2043,6 +2073,23 @@ export type DesktopApi = {
     path?: string;
     name?: string;
     enabled?: boolean;
+    error?: string | null;
+  }>;
+  /** 探测当前工作区 .mcp.json 是否含服务器（不写入） */
+  peekWorkspaceMcp?: () => Promise<{
+    ok: boolean;
+    present?: boolean;
+    count?: number;
+    names?: string[];
+    path?: string | null;
+    error?: string | null;
+  }>;
+  /** 显式导入工作区 .mcp.json → 本机 MCP 配置 */
+  importWorkspaceMcp?: () => Promise<{
+    ok: boolean;
+    imported?: number;
+    path?: string | null;
+    reason?: string;
     error?: string | null;
   }>;
   getOpenclawGatewayToken: () => Promise<{

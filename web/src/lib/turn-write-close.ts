@@ -47,8 +47,7 @@ export function assertAgentWriteCloseLoop(input: WriteCloseLoopInput): WriteClos
     if (hasWorkspaceWriteFence(raw)) {
       return {
         ok: false,
-        error:
-          "本轮出现 workspace-write 围栏但无法解析为有效 JSON（须显式 path 与 content|contents；禁止 YAML）。未写入任何文件。",
+        error: "本轮未能写入文件（写盘格式无效）。请重试，或明确指出要改的文件路径。",
         parsed: 0,
         written: written.length,
         failed: failed.length,
@@ -57,8 +56,7 @@ export function assertAgentWriteCloseLoop(input: WriteCloseLoopInput): WriteClos
     if (replySoundsLikeClaimedDiskWrite(raw)) {
       return {
         ok: false,
-        error:
-          "助手声称已写盘/已完成文件，但未解析到任何 workspace-write 载荷。未写入任何文件（禁止当作成功）。",
+        error: "本轮声称已改文件，但实际未写入。请重试或改用更明确的改文件指令。",
         parsed: 0,
         written: written.length,
         failed: failed.length,
@@ -67,8 +65,7 @@ export function assertAgentWriteCloseLoop(input: WriteCloseLoopInput): WriteClos
     if (requireWrite && written.length === 0) {
       return {
         ok: false,
-        error:
-          "本轮为变更/落盘意图，但未写入任何文件。须用 search_replace / write_file 或 ```workspace-write``` 实际改盘后再结束。",
+        error: "本轮需要改文件，但未写入任何内容。请重试或说明要改哪些文件。",
         parsed: 0,
         written: 0,
         failed: failed.length,
@@ -105,8 +102,7 @@ export function assertAgentWriteCloseLoop(input: WriteCloseLoopInput): WriteClos
   if (requireWrite && written.length === 0) {
     return {
       ok: false,
-      error:
-        "本轮为变更/落盘意图，但未写入任何文件。须用 search_replace / write_file 或 ```workspace-write``` 实际改盘后再结束。",
+      error: "本轮需要改文件，但未写入任何内容。请重试或说明要改哪些文件。",
       parsed,
       written: 0,
       failed: failed.length,
@@ -114,4 +110,43 @@ export function assertAgentWriteCloseLoop(input: WriteCloseLoopInput): WriteClos
   }
 
   return { ok: true, parsed, written: written.length, failed: 0 };
+}
+
+/**
+ * 历史气泡里的工具协议 / 连接堆栈横幅不原样展示。
+ * 新文案不含这些词时仍原样显示。
+ */
+export function softenStoredRequestError(detail: string | undefined): {
+  text: string | null;
+  suppressErrorChrome: boolean;
+} {
+  const t = String(detail || "").trim();
+  if (!t) return { text: null, suppressErrorChrome: false };
+  if (/search_replace|write_file|workspace-write|落盘意图|未写入任何文件/.test(t)) {
+    return { text: null, suppressErrorChrome: true };
+  }
+  if (
+    /无法连接本机服务|本机桥接服务|本机 Bridge|Failed to fetch|web:dev:full|npm run desktop|npm run web:dev/i.test(
+      t,
+    )
+  ) {
+    return {
+      text: "无法连接本机服务。请确认应用已启动后重试。",
+      suppressErrorChrome: false,
+    };
+  }
+  return { text: t, suppressErrorChrome: false };
+}
+
+/** 历史助手正文里的连接失败句收成可重试短句。 */
+export function softenStoredAssistantFailure(content: string): string {
+  const t = String(content || "");
+  if (
+    !/无法连接本机服务|本机桥接服务|本机 Bridge|Failed to fetch|请求异常：.*Failed to fetch|web:dev:full/i.test(
+      t,
+    )
+  ) {
+    return t;
+  }
+  return "无法连接本机服务。请确认应用已启动后重试。";
 }

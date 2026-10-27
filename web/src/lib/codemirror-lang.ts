@@ -38,7 +38,7 @@ function markdownFenceLanguage(info: string): Language | null {
     case "bash":
     case "sh":
     case "shell":
-      return StreamLanguage.define(shell).language;
+      return StreamLanguage.define(shell);
     case "yaml":
     case "yml":
       return yaml().language;
@@ -47,9 +47,9 @@ function markdownFenceLanguage(info: string): Language | null {
     case "css":
       return css().language;
     case "sql":
-      return StreamLanguage.define(standardSQL).language;
+      return StreamLanguage.define(standardSQL);
     case "toml":
-      return StreamLanguage.define(toml).language;
+      return StreamLanguage.define(toml);
     default:
       return null;
   }

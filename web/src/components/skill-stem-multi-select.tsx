@@ -207,7 +207,7 @@ export function SkillStemMultiSelect({
             <p className="px-3 py-3 text-center text-[12px] text-muted-foreground">没有找到匹配的 Skill</p>
           ) : (
             <p className="px-3 py-3 text-center text-[12px] text-muted-foreground">
-              暂无 Skill，可在 ~/.claude/skills 或工作区 .claude/skills 添加 .md 文件
+              暂无技能。
             </p>
           )}
         </div>

@@ -294,6 +294,7 @@ export function collapseAcceptedWorkspaceWriteForHistory(
   let out = fullText;
   for (let i = blocks.length - 1; i >= 0; i--) {
     const { outerStart, outerEnd, json } = blocks[i]!;
+    if (!json) continue;
     let items: unknown[] = [];
     try {
       const parsed = JSON.parse(json) as unknown;

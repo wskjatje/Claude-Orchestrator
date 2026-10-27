@@ -25,17 +25,27 @@ export function useBridge() {
     // web:dev 与打包 Electron 均探测同源 /api/health（不再把 Electron 恒标 online）
     if (isWebBridge() || hasDesktop()) {
       let cancelled = false;
+      /** 连续失败次数；短暂抖动不立刻刷「无法连接」横幅 */
+      let failStreak = 0;
+      const OFFLINE_GRACE_POLLS = 2;
       const poll = async () => {
         const ok = await pingWebBridgeHealth();
         if (cancelled) return;
-        setStatus(ok ? "online" : "offline");
-        setVersion(
-          ok
-            ? hasDesktop() && !isWebBridge()
+        if (ok) {
+          failStreak = 0;
+          setStatus("online");
+          setVersion(
+            hasDesktop() && !isWebBridge()
               ? BRIDGE_ELECTRON_VERSION
-              : BRIDGE_CONNECTED_VERSION
-            : BRIDGE_OFFLINE_VERSION,
-        );
+              : BRIDGE_CONNECTED_VERSION,
+          );
+          return;
+        }
+        failStreak += 1;
+        if (failStreak >= OFFLINE_GRACE_POLLS) {
+          setStatus("offline");
+          setVersion(BRIDGE_OFFLINE_VERSION);
+        }
       };
       void poll();
       const id = window.setInterval(poll, 4000);

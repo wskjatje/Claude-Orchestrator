@@ -130,7 +130,7 @@ export function assignLegacySessionsToWorkspace<T extends WorkspaceScopedSession
 }
 
 type SessionWithHistory = WorkspaceScopedSession & {
-  history: unknown[];
+  history: { ts?: number }[];
   title?: string;
   modelId?: string;
 };

@@ -10,15 +10,16 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getDesktop } from "@/lib/desktop-api";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { useDesktopReady, useHasDesktop } from "@/hooks/use-desktop-ready";
 import { useWorkbenchWorkspace } from "@/contexts/workbench-workspace-context";
-import { WORKBENCH_SIDEPANEL_OFFLINE } from "@/lib/ui-copy";
+import { DESKTOP_HYDRATING, WORKBENCH_SIDEPANEL_OFFLINE } from "@/lib/ui-copy";
 import { SetiFileIcon } from "@/lib/seti/seti-file-icon";
 
 type Hit = { relPath: string; line: number; text: string };
 
 /** 左侧栏「搜索」：工作区 ripgrep + 替换，Search */
 export function WorkbenchSearchPanel() {
+  const desktopReady = useDesktopReady();
   const hasDesktop = useHasDesktop();
   const ws = useWorkbenchWorkspace();
   const [query, setQuery] = useState("");
@@ -137,6 +138,11 @@ export function WorkbenchSearchPanel() {
     ws,
   ]);
 
+  if (!desktopReady) {
+    return (
+      <p className="p-3 text-[13px] leading-relaxed text-muted-foreground">{DESKTOP_HYDRATING}</p>
+    );
+  }
   if (!hasDesktop) {
     return (
       <p className="p-3 text-[13px] leading-relaxed text-muted-foreground">

@@ -2,21 +2,24 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
 import {
-  Bot, Search, Plus, FolderOpen, Power, Hash,
+  Bot, Search, Plus, FolderOpen, Hash,
   Brain, Wrench, Sparkles as SparkIcon, Play, X, RefreshCw, Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { InfoHint } from "@/components/info-hint";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { useDesktopActionGate, useDesktopGate } from "@/hooks/use-desktop-ready";
 import { getDesktop, hasDesktop } from "@/lib/desktop-api";
 import {
-  AGENTS_DEMO_HINT,
   AGENTS_DISK_SYNC_HINT,
   AGENTS_EDITOR_HINT,
-  LOCAL_ONLY_HINT,
+  AGENTS_EMPTY_DISK,
+  BRIDGE_OFFLINE_BANNER,
+  DESKTOP_HYDRATING,
+  EMPTY_STATE_OFFLINE,
   MSG_API_NOT_READY,
   PAGE_DESC,
 } from "@/lib/ui-copy";
+import { DesktopGateBanner } from "@/components/desktop-gate-banner";
 import { agentStemFromBasename } from "@/lib/agent-basename";
 import { resolveAgentDisplayName } from "@/lib/agent-display-name";
 import { AgentModelPicker } from "@/components/chat-enabled-model-picker";
@@ -45,7 +48,7 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/agents")({
-  head: () => ({ meta: [{ title: "智能体 · Claude Orchestrator" }] }),
+  head: () => ({ meta: [{ title: "角色 · Claude Orchestrator" }] }),
   component: AgentsPage,
 });
 
@@ -58,6 +61,7 @@ type Agent = {
   name: string;
   description: string;
   model: string;
+  /** frontmatter；缺省 true */
   enabled: boolean;
   tools: string[];
   category: "项目" | "通用" | "实验";
@@ -74,16 +78,6 @@ function routingStemForInvoke(a: Agent): string {
   return a.id;
 }
 
-const SEED: Agent[] = [
-  { id: "pm",     name: "项目经理",       description: "拆解需求、制定里程碑、追踪进度并产出每日闪报。", model: "claude-sonnet-4", enabled: true,  tools: ["read", "edit", "bash"], category: "项目", diskSource: "root" },
-  { id: "fe",     name: "前端工程师",     description: "React/TanStack 路由、Tailwind、动效与可访问性。",  model: "claude-sonnet-4", enabled: true,  tools: ["read", "edit", "web"],  category: "项目", diskSource: "root" },
-  { id: "be",     name: "后端工程师",     description: "Edge function、Supabase RLS、SQL 迁移。",          model: "claude-sonnet-4", enabled: true,  tools: ["read", "edit", "bash"], category: "项目", diskSource: "root" },
-  { id: "qa",     name: "QA / 自测",      description: "运行 vitest、回归冒烟、抓 console / network。",    model: "claude-haiku-4",  enabled: false, tools: ["bash", "read"],         category: "项目", diskSource: "root" },
-  { id: "doc",    name: "文档撰写",       description: "把 diff 翻译成 README / CHANGELOG / 中文用户手册。", model: "claude-haiku-4",  enabled: true,  tools: ["read", "edit"],         category: "通用", diskSource: "root" },
-  { id: "review", name: "代码评审",       description: "逐 hunk 评审 PR，关注边界、安全与性能。",           model: "claude-sonnet-4", enabled: false, tools: ["read"],                 category: "通用", diskSource: "root" },
-  { id: "playw",  name: "Playwright 试飞", description: "可视回归 + 端到端流程录制。",                       model: "claude-sonnet-4", enabled: false, tools: ["bash", "web"],          category: "实验", diskSource: "root" },
-];
-
 function diskEntryToAgent(row: {
   basename: string;
   source: "root" | "sanshengliubu";
@@ -94,6 +88,7 @@ function diskEntryToAgent(row: {
   nameZh?: string;
   heading?: string;
   category?: "项目" | "通用" | "实验";
+  enabled?: boolean;
 }): Agent {
   const fallback: Agent["category"] = row.source === "sanshengliubu" ? "实验" : "通用";
   const cat =
@@ -119,21 +114,25 @@ function diskEntryToAgent(row: {
       row.description.trim() ||
       "（可在 frontmatter 中加 description，或直接在正文中写好首段说明）",
     model: "—",
-    enabled: true,
+    enabled: row.enabled !== false,
     tools: [],
     category: cat,
   };
 }
 
 function AgentsPage() {
-  const desktop = useHasDesktop();
-  const [items, setItems] = useState<Agent[]>(SEED);
+  const gate = useDesktopGate();
+  const listApiReady = gate.phase === "ready" && !!getDesktop()?.listClaudeAgentMarkdown;
+  const createApiReady = gate.phase === "ready" && !!getDesktop()?.saveClaudeAgentMarkdown;
+  const listGate = useDesktopActionGate(listApiReady);
+  const createGate = useDesktopActionGate(createApiReady);
+  const [items, setItems] = useState<Agent[]>([]);
   const [listFromDisk, setListFromDisk] = useState(false);
   const [listErr, setListErr] = useState<string | null>(null);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<"全部" | Agent["category"]>("全部");
-  const [activeId, setActiveId] = useState<string>(SEED[0]!.id);
+  const [activeId, setActiveId] = useState<string>("");
   const [editor, setEditor] = useState<{
     mode: "create" | "edit";
     stem: string;
@@ -171,15 +170,16 @@ function AgentsPage() {
     if (filtered.length === 0 || !activeId) return null;
     return filtered.find((a) => a.id === activeId) ?? null;
   }, [filtered, activeId]);
-  const toggle = (id: string) =>
-    setItems(arr => arr.map(a => a.id === id ? { ...a, enabled: !a.enabled } : a));
-
   const reloadAgentList = useCallback(async () => {
+    if (gate.phase !== "ready") return;
     const api = getDesktop();
     if (!api || !hasDesktop()) {
+      // 真离线：空列表 + 门控条，禁止 SEED/示例占位
       setListFromDisk(false);
-      setItems(SEED);
+      setItems([]);
+      setActiveId("");
       setListErr(null);
+      setListLoading(false);
       return;
     }
     setListLoading(true);
@@ -189,6 +189,8 @@ function AgentsPage() {
     if (!r.ok || !r.items) {
       setListErr(r.error ?? "无法枚举 Agent 目录");
       setListFromDisk(false);
+      setItems([]);
+      setActiveId("");
       return;
     }
     setListFromDisk(true);
@@ -199,10 +201,10 @@ function AgentsPage() {
       if (prev && ids.has(prev)) return prev;
       return next[0]?.id ?? "";
     });
-  }, []);
+  }, [gate.phase]);
 
   const openCreateEditor = useCallback(() => {
-    if (!desktop) return;
+    if (!createGate.canAct) return;
     const api = getDesktop();
     if (!api?.saveClaudeAgentMarkdown) {
       window.alert(`无法新建：${MSG_API_NOT_READY}`);
@@ -220,7 +222,7 @@ function AgentsPage() {
       error: null,
       hint: null,
     });
-  }, [desktop]);
+  }, [createGate.canAct]);
 
   const loadEditorForAgent = useCallback(async (agent: Agent) => {
     const api = getDesktop();
@@ -459,7 +461,7 @@ function AgentsPage() {
 
   useEffect(() => {
     const api = getDesktop();
-    if (!api || !desktop || !listFromDisk || listLoading || autoSyncRanRef.current) return;
+    if (!api || !gate.hasDesktop || !listFromDisk || listLoading || autoSyncRanRef.current) return;
     autoSyncRanRef.current = true;
     const rows = items
       .filter((a) => a.markdownFile)
@@ -474,11 +476,11 @@ function AgentsPage() {
     }).then(() => {
       void reloadSkillList();
     });
-  }, [desktop, listFromDisk, listLoading, items, reloadSkillList]);
+  }, [gate.hasDesktop, listFromDisk, listLoading, items, reloadSkillList]);
 
   useEffect(() => {
     const api = getDesktop();
-    if (!api || !desktop) return;
+    if (!api || !gate.hasDesktop) return;
     const syncPools = () => {
       void loadChatModelPools(api).then(setModelPools);
     };
@@ -489,7 +491,7 @@ function AgentsPage() {
       window.removeEventListener("focus", syncPools);
       offSettings?.();
     };
-  }, [desktop]);
+  }, [gate.hasDesktop]);
 
   const closeEditorDrawer = useCallback(() => {
     setEditor(null);
@@ -508,27 +510,51 @@ function AgentsPage() {
     );
   };
 
-  const editorDrawerOpen = desktop && (editor !== null || editorLoading);
+  const editorDrawerOpen = gate.hasDesktop && (editor !== null || editorLoading);
+
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const toggleAgentEnabled = useCallback(
+    async (agent: Agent, next: boolean) => {
+      const api = getDesktop();
+      const basename = agentMarkdownBasename(agent);
+      if (!api?.setClaudeAgentMarkdownEnabled || !basename) {
+        window.alert(MSG_API_NOT_READY);
+        return;
+      }
+      setTogglingId(agent.id);
+      try {
+        const r = await api.setClaudeAgentMarkdownEnabled({ basename, enabled: next });
+        if (!r.ok) {
+          window.alert(r.error ?? "无法保存启用状态");
+          return;
+        }
+        setItems((prev) => prev.map((a) => (a.id === agent.id ? { ...a, enabled: next } : a)));
+      } finally {
+        setTogglingId(null);
+      }
+    },
+    [],
+  );
 
   const counts = {
     总计: items.length,
-    启用: items.filter(a => a.enabled).length,
-    项目: items.filter(a => a.category === "项目").length,
+    启用: items.filter((a) => a.enabled).length,
+    项目: items.filter((a) => a.category === "项目").length,
     列表显示: filtered.length,
   };
 
   return (
     <AppShell>
       <PageHeader
-        title="智能体"
+        title="角色"
         description={PAGE_DESC.agents}
         actions={
           <div className="flex max-w-full flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => void syncAllAgentsSkillsAndTools()}
-              disabled={skillsSyncing || !desktop || listLoading}
-              title="按 Agent 列表全量同步 Skill 与 tools"
+              disabled={skillsSyncing || !listGate.canAct || listLoading}
+              title={!listGate.canAct ? listGate.blockHint : "按 Agent 列表全量同步 Skill 与 tools"}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <SparkIcon className={cn("h-3.5 w-3.5", skillsSyncing && "animate-pulse")} /> 同步 Skill 与工具
@@ -536,8 +562,8 @@ function AgentsPage() {
             <button
               type="button"
               onClick={() => void reloadAgentList()}
-              disabled={listLoading || !desktop}
-              title={!desktop ? LOCAL_ONLY_HINT : undefined}
+              disabled={listLoading || !listGate.canAct}
+              title={!listGate.canAct ? listGate.blockHint : undefined}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", listLoading && "animate-spin")} /> 从本机刷新
@@ -545,8 +571,8 @@ function AgentsPage() {
             <button
               type="button"
               onClick={() => void openAgentsFolder()}
-              disabled={!desktop}
-              title={!desktop ? LOCAL_ONLY_HINT : "打开 ~/.claude/agents"}
+              disabled={!gate.hasDesktop}
+              title={!gate.hasDesktop ? listGate.blockHint : "打开 ~/.claude/agents"}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
             >
               <FolderOpen className="h-3.5 w-3.5" /> 在 Finder 打开
@@ -554,8 +580,8 @@ function AgentsPage() {
             <button
               type="button"
               onClick={() => openCreateEditor()}
-              disabled={!desktop}
-              title={!desktop ? LOCAL_ONLY_HINT : undefined}
+              disabled={!createGate.canAct}
+              title={!createGate.canAct ? createGate.blockHint : undefined}
               className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold text-primary-foreground shadow-sm transition hover:opacity-95 disabled:opacity-50"
               style={{ backgroundImage: "var(--gradient-primary)" }}
             >
@@ -566,18 +592,15 @@ function AgentsPage() {
         }
       />
 
-      {desktop && (
+      <DesktopGateBanner offlineCopy={BRIDGE_OFFLINE_BANNER} />
+      {gate.hasDesktop && (listFromDisk || listErr) ? (
         <div className="border-b border-border bg-surface-elevated/80 px-4 py-2.5 sm:px-6 lg:px-7">
           <p className="text-[12px] leading-relaxed text-muted-foreground">
-            {listFromDisk ? (
-              <>{AGENTS_DISK_SYNC_HINT}</>
-            ) : (
-              <>{AGENTS_DEMO_HINT}</>
-            )}
+            {listFromDisk ? <>{AGENTS_DISK_SYNC_HINT}</> : null}
             {listErr ? <span className="mt-1 block text-destructive">{listErr}</span> : null}
           </p>
         </div>
-      )}
+      ) : null}
 
       <div className="flex h-[calc(100%-65px)] min-h-0 flex-col">
         {/* 列表 */}
@@ -628,12 +651,15 @@ function AgentsPage() {
                     className={cn(
                       "group flex items-start gap-3 rounded-xl border bg-surface-elevated p-3.5 text-left shadow-xs transition",
                       isActive ? "border-primary/50 ring-2 ring-primary/15" : "border-border hover:border-primary/30",
+                      !a.enabled && "opacity-70",
                     )}
                   >
-                    <div className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-                      a.enabled ? "bg-primary-soft text-primary" : "bg-secondary text-muted-foreground",
-                    )}>
+                    <div
+                      className={cn(
+                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                        a.enabled ? "bg-primary-soft text-primary" : "bg-secondary text-muted-foreground",
+                      )}
+                    >
                       <Bot className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -660,20 +686,38 @@ function AgentsPage() {
                     <span
                       role="switch"
                       aria-checked={a.enabled}
-                      onClick={(e) => { e.stopPropagation(); toggle(a.id); }}
+                      aria-busy={togglingId === a.id}
+                      title={a.enabled ? "停用（写入 frontmatter）" : "启用（写入 frontmatter）"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (togglingId || !listGate.canAct) return;
+                        void toggleAgentEnabled(a, !a.enabled);
+                      }}
                       className={cn(
-                        "mt-1 inline-flex h-4 w-7 cursor-pointer items-center rounded-full transition",
+                        "mt-1 inline-flex h-4 w-7 shrink-0 items-center rounded-full transition",
+                        listGate.canAct && !togglingId ? "cursor-pointer" : "cursor-not-allowed opacity-50",
                         a.enabled ? "bg-success" : "bg-muted",
                       )}
                     >
-                      <span className={cn("inline-block h-3 w-3 transform rounded-full bg-white shadow transition", a.enabled ? "translate-x-3.5" : "translate-x-0.5")} />
+                      <span
+                        className={cn(
+                          "inline-block h-3 w-3 transform rounded-full bg-white shadow transition",
+                          a.enabled ? "translate-x-3.5" : "translate-x-0.5",
+                        )}
+                      />
                     </span>
                   </button>
                 );
               })}
               {filtered.length === 0 && (
                 <div className="col-span-full rounded-xl border border-dashed border-border py-12 text-center text-[12.5px] text-muted-foreground">
-                  无匹配的智能体
+                  {gate.phase === "hydrating" || listLoading
+                    ? DESKTOP_HYDRATING
+                    : gate.phase === "offline"
+                      ? EMPTY_STATE_OFFLINE
+                      : listFromDisk && !q.trim() && cat === "全部"
+                        ? AGENTS_EMPTY_DISK
+                        : "无匹配的智能体"}
                 </div>
               )}
             </div>
@@ -697,7 +741,6 @@ function AgentsPage() {
           onOptimize={() => void runEditorSelfLearning()}
           onSyncSkillsTools={() => void syncEditorSkillsAndTools()}
           skillsSyncing={skillsSyncing}
-          onToggleActive={active ? () => toggle(active.id) : undefined}
           onTryRun={active ? () => openTryAgentDrawer() : undefined}
         />
       ) : null}
@@ -754,7 +797,7 @@ function AgentsPage() {
                 disabled={
                   !tryRun.prompt.trim() ||
                   tryRun.running ||
-                  !desktop ||
+                  !gate.hasDesktop ||
                   !active.markdownFile
                 }
                 onClick={() => {
@@ -890,7 +933,6 @@ function AgentEditorDrawer({
   onOptimize,
   onSyncSkillsTools,
   skillsSyncing = false,
-  onToggleActive,
   onTryRun,
 }: {
   editor: AgentEditorState | null;
@@ -905,7 +947,6 @@ function AgentEditorDrawer({
   onOptimize: () => void;
   onSyncSkillsTools?: () => void;
   skillsSyncing?: boolean;
-  onToggleActive?: () => void;
   onTryRun?: () => void;
 }) {
   const modelValue = editor ? resolveAgentModelSelectValue(editor.meta.model) : "inherit";
@@ -923,14 +964,7 @@ function AgentEditorDrawer({
       <div className="flex h-full max-h-screen w-full max-w-2xl flex-col border-l border-border bg-surface-elevated shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div
-              className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-                isCreate || active?.enabled !== false
-                  ? "bg-primary-soft text-primary"
-                  : "bg-secondary text-muted-foreground",
-              )}
-            >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary">
               {isCreate ? <Plus className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
             </div>
             <div className="min-w-0">
@@ -1087,7 +1121,7 @@ function AgentEditorDrawer({
               </div>
             )}
 
-            {!isCreate && (onOptimize || onTryRun || onToggleActive || onSyncSkillsTools) ? (
+            {!isCreate && (onOptimize || onTryRun || onSyncSkillsTools) ? (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {onSyncSkillsTools ? (
                   <button
@@ -1121,15 +1155,6 @@ function AgentEditorDrawer({
                     className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-foreground transition hover:bg-secondary disabled:opacity-50"
                   >
                     <Play className="h-3 w-3" /> 试跑
-                  </button>
-                ) : null}
-                {active && onToggleActive ? (
-                  <button
-                    type="button"
-                    onClick={onToggleActive}
-                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-foreground transition hover:bg-secondary"
-                  >
-                    <Power className="h-3 w-3" /> {active.enabled ? "停用" : "启用"}
                   </button>
                 ) : null}
               </div>

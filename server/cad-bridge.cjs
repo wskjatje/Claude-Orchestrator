@@ -23,6 +23,7 @@ const {
   isAutoModelSelection,
   loadChatModelPools,
   resolveExecutionModel,
+  LOCAL_MODEL_NOT_INSTALLED_ERROR,
 } = require('./resolve-execution-model.mjs')
 const {
   resolveTurnPolicy,
@@ -56,7 +57,32 @@ function sanitizeReadonlyOrchContent(text) {
 }
 const { expandChainStepInstructionWithWorkspaceReads } = require('./chain-step-read-inject.cjs')
 const { buildCrossAgentContextMarkdown } = require(path.join(CAD, 'memory-cross-agent.js'))
-const { runLocalMcpOrchestration } = require(path.join(CAD, 'local-mcp-orchestrator.js'))
+const { runLocalMcpOrchestration: runLocalMcpOrchestrationRaw } = require(
+  path.join(CAD, 'local-mcp-orchestrator.js'),
+)
+
+/** 所有本地编排入口：未出现在本机 Ollama tags 的模型一律硬失败 */
+async function runLocalMcpOrchestration(opts) {
+  const base = opts?.ollamaBase
+  const tags =
+    typeof cloudProviders.fetchOllamaModelTags === 'function'
+      ? await cloudProviders.fetchOllamaModelTags(base)
+      : []
+  const wanted = typeof opts?.orchestratorModel === 'string' ? opts.orchestratorModel.trim() : ''
+  const canon =
+    typeof cloudProviders.resolveInstalledOllamaTag === 'function'
+      ? cloudProviders.resolveInstalledOllamaTag(wanted, tags)
+      : null
+  if (!canon) {
+    return {
+      ok: false,
+      content: '',
+      error: LOCAL_MODEL_NOT_INSTALLED_ERROR,
+      aborted: false,
+    }
+  }
+  return runLocalMcpOrchestrationRaw({ ...opts, orchestratorModel: canon })
+}
 const {
   parseDelegationEnvelope,
   normalizeDelegationSteps,
@@ -456,6 +482,13 @@ async function orchestrationChainLoop() {
         if (chainRunState.stopRequested) break
 
         const agentStem = agentStemFromName(agentName)
+        {
+          const md = support.readClaudeAgentMarkdownContent(`${agentStem}.md`)
+          if (md && !support.parseMarkdownEnabled(md)) {
+            chainRunState.lastError = `智能体「${agentStem}」已停用`
+            break
+          }
+        }
         appendMemoryEventRow({
           type: 'agent_exec',
           agent: agentStem,
@@ -1317,8 +1350,11 @@ async function runLocalOrch(payload) {
       ? payload.autoApplyWrites && turnPolicy.autoApplyWrites && allowWrites
       : turnPolicy.autoApplyWrites && allowWrites
   const readOnlyTurn = Boolean(payload?.readOnlyTurn) || !allowWrites
+  // 禁写 ≠ 禁工具：明确调用 MCP 时 allowTools 为真，不得因只读改成直聊
   const forceDirectChat =
-    Boolean(payload?.forceDirectChat) || readOnlyTurn || turnPolicy.forceDirectChat
+    Boolean(payload?.forceDirectChat) ||
+    turnPolicy.forceDirectChat ||
+    (readOnlyTurn && !turnPolicy.allowTools)
   const systemConstraint =
     (typeof payload?.systemConstraint === 'string' && payload.systemConstraint.trim()) ||
     turnPolicy.systemConstraint ||
@@ -1359,6 +1395,15 @@ async function runLocalOrch(payload) {
   const agentMarkdown = generalOrchStem
     ? ''
     : support.readClaudeAgentMarkdownContent(agentBasenameForRead)
+  if (!generalOrchStem && agentMarkdown && !support.parseMarkdownEnabled(agentMarkdown)) {
+    return {
+      ok: false,
+      content: '',
+      error: '该智能体已停用（frontmatter disabled）',
+      aborted: false,
+      toolWrittenPaths: [],
+    }
+  }
   const allowedMcpServers = Array.isArray(payload?.allowedMcpServers)
     ? payload.allowedMcpServers.map((x) => String(x ?? '').trim()).filter(Boolean)
     : undefined
@@ -1463,8 +1508,26 @@ async function runLocalOrch(payload) {
       filePatches: writeMode === 'agent' ? [...toolPatches] : [],
       deferredWritePaths: writeMode === 'ask' ? [] : toolPending.map((x) => x.path),
       writeMode,
-      // 供前端硬闸：只读回合一律按直聊展示
-      ...(writeMode === 'ask' ? { forceDirectChat: true, readOnlyTurn: true } : {}),
+      ...(r.usage && typeof r.usage === 'object' ? { usage: r.usage } : {}),
+      ...(r.toolsTrace &&
+      typeof r.toolsTrace === 'object' &&
+      Array.isArray(r.toolsTrace.offered)
+        ? {
+            toolsTrace: {
+              offered: r.toolsTrace.offered.map((x) => String(x)).filter(Boolean),
+              called: Math.max(0, Number(r.toolsTrace.called) || 0),
+            },
+          }
+        : {}),
+      // 只读且未进工具环才标直聊；只读工具回合不得改写成直聊
+      ...(writeMode === 'ask'
+        ? {
+            readOnlyTurn: true,
+            ...(turnPolicy.forceDirectChat || !turnPolicy.allowTools
+              ? { forceDirectChat: true }
+              : {}),
+          }
+        : {}),
     }
   } finally {
     if (requestId) activeLocalOrchestrationRequests.delete(requestId)
@@ -2320,6 +2383,20 @@ category: 通用
         }
       }
       return support.writeClaudeAgentMarkdownContent(basename, content)
+    },
+
+    'claudeAgents:setMarkdownEnabled': async (args) => {
+      const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+      const basename = typeof body.basename === 'string' ? body.basename.trim() : ''
+      if (!basename) return { ok: false, error: 'basename 不能为空' }
+      return support.setClaudeAgentMarkdownEnabled(basename, body.enabled !== false)
+    },
+
+    'claudeSkills:setMarkdownEnabled': async (args) => {
+      const body = args?.[0] && typeof args[0] === 'object' ? args[0] : {}
+      const basename = typeof body.basename === 'string' ? body.basename.trim() : ''
+      if (!basename) return { ok: false, error: 'basename 不能为空' }
+      return support.setClaudeSkillMarkdownEnabled(basename, body.enabled !== false, loadWorkspace())
     },
 
     'memory:getCrossAgentContextText': async (args) => {

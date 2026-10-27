@@ -14,3 +14,8 @@
 - 无图或 `.needs_update`：先构建/更新，再当结构依据；禁止把过期图当真相。
 - 改代码后：`graphify update .`（AST-only）。
 - `/graphify` 显式调用时按 `.agents/skills/graphify/SKILL.md`。
+
+## Playwright（Cursor Agent）
+
+- 本机跑 `check:ui-playwright` / `browser:install`：**必须出沙箱**（`required_permissions: ["all"]`），详见 `.cursor/rules/playwright-sandbox.mdc`。
+- CI 真浏览器 job 使用 Playwright 官方镜像，避免 Ubuntu `install-deps` 冷启动过慢。

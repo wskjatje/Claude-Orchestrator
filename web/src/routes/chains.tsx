@@ -19,7 +19,8 @@ import { InfoHint } from "@/components/info-hint";
 import { RequiredMark } from "@/components/required-mark";
 import { cn } from "@/lib/utils";
 import { getDesktop } from "@/lib/desktop-api";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { useDesktopActionGate, useDesktopGate } from "@/hooks/use-desktop-ready";
+import { DesktopGateBanner } from "@/components/desktop-gate-banner";
 import { useOrchestrationExecution } from "@/hooks/use-orchestration-execution";
 import type { SavedChainDetail, SavedChainSummary } from "@/types/desktop";
 import { chainCardStatus, chainCategoryLabel, type ChainCardStatusTone } from "@/lib/chain-card-status";
@@ -34,7 +35,16 @@ import {
 } from "@/lib/chain-templates";
 import { syncOfficialGenericChains } from "@/lib/sync-official-chains";
 import { toast } from "sonner";
-import { BRIDGE_OFFLINE_BANNER, BRIDGE_OFFLINE_TOAST, CHAINS_INFO_HINT, MSG_API_NOT_READY, PAGE_DESC } from "@/lib/ui-copy";
+import {
+  BRIDGE_OFFLINE_BANNER,
+  BRIDGE_OFFLINE_TOAST,
+  CHAINS_EMPTY_ACTION_HINT,
+  CHAINS_INFO_HINT,
+  DESKTOP_HYDRATING,
+  EMPTY_STATE_OFFLINE,
+  MSG_API_NOT_READY,
+  PAGE_DESC,
+} from "@/lib/ui-copy";
 import { AgentStemCombobox } from "@/components/agent-stem-combobox";
 import { McpNameMultiSelect } from "@/components/mcp-name-multi-select";
 import { useClaudeAgentList, agentDisplayNameForStem, type ClaudeAgentRow } from "@/hooks/use-claude-agent-list";
@@ -172,7 +182,11 @@ function sortSavedChainsForDisplay(
 
 function ChainsPage() {
   const { q: urlQ } = Route.useSearch();
-  const hasDesktopApi = useHasDesktop();
+  const gate = useDesktopGate();
+  const listApiReady = gate.phase === "ready" && !!getDesktop()?.orchestrationListChains;
+  const createApiReady = gate.phase === "ready" && !!getDesktop()?.orchestrationCreateChain;
+  const listGate = useDesktopActionGate(listApiReady);
+  const createGate = useDesktopActionGate(createApiReady);
   const { agents: agentList } = useClaudeAgentList();
   const { skills: skillList } = useClaudeSkillList();
   const { mcps: mcpList } = useClaudeMcpList();
@@ -239,17 +253,17 @@ function ChainsPage() {
   }, [agentList]);
 
   useEffect(() => {
-    if (!hasDesktopApi) return;
+    if (!listApiReady) return;
     void syncOfficialGenericChains().then(() => reloadList());
     void syncExecutionState();
-  }, [hasDesktopApi, reloadList, syncExecutionState]);
+  }, [listApiReady, reloadList, syncExecutionState]);
 
   useEffect(() => {
     if (urlQ.trim()) setQ(urlQ.trim());
   }, [urlQ]);
 
   useEffect(() => {
-    if (!hasDesktopApi) return;
+    if (!listApiReady) return;
     const api = getDesktop();
     const off = api?.onOrchestrationChainStatus?.(() => {
       void reloadList();
@@ -257,7 +271,7 @@ function ChainsPage() {
       if (detailId) void loadDetail(detailId);
     });
     return () => off?.();
-  }, [hasDesktopApi, reloadList, syncExecutionState, detailId, loadDetail]);
+  }, [listApiReady, reloadList, syncExecutionState, detailId, loadDetail]);
 
   useEffect(() => {
     if (!detailId) {
@@ -559,7 +573,8 @@ function ChainsPage() {
             <button
               type="button"
               onClick={openAddModal}
-              disabled={!hasDesktopApi}
+              disabled={!createGate.canAct}
+              title={!createGate.canAct ? createGate.blockHint : undefined}
               className="btn-gradient-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold disabled:opacity-40"
             >
               <Plus className="h-3.5 w-3.5" /> 添加任务链
@@ -567,7 +582,8 @@ function ChainsPage() {
             <button
               type="button"
               onClick={() => void reloadList()}
-              disabled={listLoading || !hasDesktopApi}
+              disabled={listLoading || !listGate.canAct}
+              title={!listGate.canAct ? listGate.blockHint : undefined}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12.5px] font-medium hover:bg-secondary disabled:opacity-50"
             >
               <RefreshCw className={cn("h-3.5 w-3.5", listLoading && "animate-spin")} /> 刷新
@@ -577,11 +593,7 @@ function ChainsPage() {
         }
       />
 
-      {!hasDesktopApi && (
-        <div className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-[12px] text-warning">
-          {BRIDGE_OFFLINE_BANNER}
-        </div>
-      )}
+      <DesktopGateBanner offlineCopy={BRIDGE_OFFLINE_BANNER} />
 
       <div className="px-4 py-5 sm:px-6 lg:px-7">
         <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -626,16 +638,25 @@ function ChainsPage() {
         {unifiedList.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border py-16 text-center">
             <Workflow className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
-            <p className="text-[13px] font-medium text-foreground">无匹配的任务链</p>
-            <p className="mt-1 text-[12px] text-muted-foreground">调整筛选条件，或添加自定义任务链</p>
-            <button
-              type="button"
-              onClick={openAddModal}
-              disabled={!hasDesktopApi}
-              className="btn-gradient-primary mt-4 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-40"
-            >
-              <Plus className="h-3.5 w-3.5" /> 添加任务链
-            </button>
+            <p className="text-[13px] font-medium text-foreground">
+              {gate.phase === "hydrating" || listLoading
+                ? DESKTOP_HYDRATING
+                : gate.phase === "offline"
+                  ? EMPTY_STATE_OFFLINE
+                  : "无匹配的任务链"}
+            </p>
+            {gate.phase === "ready" ? (
+              <p className="mt-1 text-[12px] text-muted-foreground">{CHAINS_EMPTY_ACTION_HINT}</p>
+            ) : null}
+            {createGate.canAct ? (
+              <button
+                type="button"
+                onClick={openAddModal}
+                className="btn-gradient-primary mt-4 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-semibold disabled:opacity-40"
+              >
+                <Plus className="h-3.5 w-3.5" /> 添加任务链
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
@@ -678,10 +699,17 @@ function ChainsPage() {
               const isActive = activeChainId === c.id;
               const isRunningHere = isActive && chainRunning;
               return (
-                <button
+                <div
                   key={entry.key}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setDetailId(c.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDetailId(c.id);
+                    }
+                  }}
                   className={cn(
                     "chain-card group",
                     !c.enabled && "chain-card--disabled",
@@ -711,8 +739,9 @@ function ChainsPage() {
                         {c.description || `${c.stepCount} 步 · ${st.progress}`}
                       </p>
                     </div>
-                    <span
-                      role="button"
+                    <button
+                      type="button"
+                      aria-label={c.enabled ? "停用" : "启用"}
                       onClick={(e) => void toggleEnabled(c, e)}
                       className={cn(
                         "cursor-pointer rounded-md p-1.5 transition",
@@ -723,13 +752,13 @@ function ChainsPage() {
                       title={c.enabled ? "停用" : "启用"}
                     >
                       <Power className="h-3.5 w-3.5" />
-                    </span>
+                    </button>
                   </div>
                   <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5 text-[11px]">
                     <span className="text-muted-foreground">{st.progress}</span>
                     <span className={chainStatusLabelClass(st.tone)}>{st.label}</span>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -764,7 +793,7 @@ function ChainsPage() {
           steps={presetDetailSteps}
           stepsDirty={presetStepsDirty}
           creating={presetCreating}
-          disabled={!hasDesktopApi}
+          disabled={!createGate.canAct}
           onCreateNameChange={setPresetCreateName}
           onVarsChange={(v) => {
             setPresetDetailVars(v);

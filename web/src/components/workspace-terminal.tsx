@@ -13,9 +13,10 @@ import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import { cn } from "@/lib/utils";
 import { getDesktop } from "@/lib/desktop-api";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { useDesktopReady, useHasDesktop } from "@/hooks/use-desktop-ready";
 import { useTheme } from "@/hooks/use-theme";
 import { buildXtermTheme } from "@/lib/terminal-theme";
+import { DESKTOP_HYDRATING, TERMINAL_OFFLINE } from "@/lib/ui-copy";
 import {
   WORKBENCH_MONO_FONT,
   WORKBENCH_TERMINAL_LINE_HEIGHT,
@@ -33,7 +34,6 @@ import {
   inferTerminalSourceLabel,
 } from "@/lib/terminal-selection-meta";
 import { TerminalAddToChatButton } from "@/components/terminal-add-to-chat-button";
-import { TERMINAL_OFFLINE } from "@/lib/ui-copy";
 import { looksLikeTerminalFailure } from "@/lib/agent-fix-request";
 
 const MIN_TERMINAL_COLS = 24;
@@ -220,6 +220,7 @@ export const WorkspaceTerminal = forwardRef<
 ) {
   const shellPathRef = useRef(shell);
   shellPathRef.current = shell;
+  const desktopReady = useDesktopReady();
   const hasDesktop = useHasDesktop();
   const composerBridge = useWorkbenchComposerBridgeOptional();
   const { resolved: themeResolved } = useTheme();
@@ -494,7 +495,7 @@ export const WorkspaceTerminal = forwardRef<
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- remount when tab activates
-  }, [active, keepAlive, hasDesktop, shell]);
+  }, [active, keepAlive, desktopReady, hasDesktop, shell]);
 
   useEffect(() => {
     if (!active || !visible || !termRef.current) return;
@@ -639,6 +640,13 @@ export const WorkspaceTerminal = forwardRef<
     return () => window.removeEventListener("keydown", onKey);
   }, [active, composerBridge, addSelectionToChat]);
 
+  if (!desktopReady) {
+    return (
+      <div className="p-4 text-[12px] text-muted-foreground" role="status" aria-live="polite">
+        {DESKTOP_HYDRATING}
+      </div>
+    );
+  }
   if (!hasDesktop) {
     return (
       <div className="p-4 text-[12px] text-muted-foreground">

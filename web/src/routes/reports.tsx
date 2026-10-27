@@ -1,7 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell, PageHeader } from "@/components/app-shell";
-import { PageBanner } from "@/components/page-layout";
 import {
   Bot,
   RefreshCw,
@@ -18,8 +17,17 @@ import {
 import { cn } from "@/lib/utils";
 import { InfoHint } from "@/components/info-hint";
 import { getDesktop } from "@/lib/desktop-api";
-import { BRIDGE_OFFLINE_BANNER, PAGE_DESC, REPORTS_API_OFFLINE, REPORTS_INFO_HINT } from "@/lib/ui-copy";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import {
+  BRIDGE_OFFLINE_BANNER,
+  CONTENT_LOADING,
+  DESKTOP_HYDRATING,
+  EMPTY_STATE_OFFLINE,
+  PAGE_DESC,
+  REPORTS_API_OFFLINE,
+  REPORTS_INFO_HINT,
+} from "@/lib/ui-copy";
+import { useDesktopActionGate, useDesktopGate } from "@/hooks/use-desktop-ready";
+import { DesktopGateBanner } from "@/components/desktop-gate-banner";
 import { resolveAgentDisplayName } from "@/lib/agent-display-name";
 import {
   mergeAgentRowsWithRegistry,
@@ -111,7 +119,14 @@ function diskItemsToRows(
 }
 
 function AgentDailyReportsPage() {
-  const hasDesktopApi = useHasDesktop();
+  const gate = useDesktopGate();
+  const listApiReady = gate.phase === "ready" && !!getDesktop()?.listClaudeAgentMarkdown;
+  const reportApiReady =
+    gate.phase === "ready" &&
+    !!getDesktop()?.agentDailyReportsGet &&
+    !!getDesktop()?.agentDailyReportsSave;
+  const listGate = useDesktopActionGate(listApiReady);
+  const reportGate = useDesktopActionGate(reportApiReady);
   const [viewTab, setViewTab] = useState<ViewTab>("agent");
   const [date, setDate] = useState(todayIso);
   const [rows, setRows] = useState<AgentRow[]>([]);
@@ -212,38 +227,38 @@ function AgentDailyReportsPage() {
   }, []);
 
   useEffect(() => {
-    if (!hasDesktopApi) return;
+    if (!listApiReady) return;
     void reloadAgentIndex();
-  }, [hasDesktopApi, reloadAgentIndex]);
+  }, [listApiReady, reloadAgentIndex]);
 
   useEffect(() => {
-    if (!hasDesktopApi) return;
+    if (!listApiReady) return;
     void loadAgentRegistry(date);
-  }, [hasDesktopApi, date, loadAgentRegistry]);
+  }, [listApiReady, date, loadAgentRegistry]);
 
   useEffect(() => {
-    if (!hasDesktopApi) return;
+    if (!listApiReady) return;
     const api = getDesktop();
     if (!api?.onAgentExecChanged) return;
     return api.onAgentExecChanged((detail) => {
       const d = detail && typeof detail === "object" && "date" in detail ? String(detail.date) : date;
       if (d === date) void loadAgentRegistry(date);
     });
-  }, [hasDesktopApi, date, loadAgentRegistry]);
+  }, [listApiReady, date, loadAgentRegistry]);
 
   useEffect(() => {
-    if (viewTab !== "agent" || !hasDesktopApi || !activeStem || !drawerOpen) return;
+    if (viewTab !== "agent" || !reportApiReady || !activeStem || !drawerOpen) return;
     void loadAgentReport(activeStem, date);
-  }, [activeStem, date, viewTab, loadAgentReport, hasDesktopApi, drawerOpen]);
+  }, [activeStem, date, viewTab, loadAgentReport, reportApiReady, drawerOpen]);
 
   useEffect(() => {
     if (viewTab !== "agent") setDrawerOpen(false);
   }, [viewTab]);
 
   useEffect(() => {
-    if (viewTab !== "project" || !hasDesktopApi) return;
+    if (viewTab !== "project" || !reportApiReady) return;
     void loadProjectReport(date);
-  }, [date, viewTab, loadProjectReport, hasDesktopApi]);
+  }, [date, viewTab, loadProjectReport, reportApiReady]);
 
   const listRows = useMemo(
     () => mergeAgentRowsWithRegistry(rows, registry),
@@ -432,7 +447,8 @@ function AgentDailyReportsPage() {
               </div>
               <button
                 type="button"
-                disabled={listLoading || !hasDesktopApi}
+                disabled={listLoading || !listGate.canAct}
+                title={!listGate.canAct ? listGate.blockHint : undefined}
                 onClick={() => {
                   void reloadAgentIndex();
                   void loadAgentRegistry(date);
@@ -447,11 +463,7 @@ function AgentDailyReportsPage() {
           }
         />
 
-        {!hasDesktopApi && (
-          <PageBanner className="border-warning/30 bg-warning/10 text-warning">
-            {BRIDGE_OFFLINE_BANNER}
-          </PageBanner>
-        )}
+        <DesktopGateBanner offlineCopy={BRIDGE_OFFLINE_BANNER} />
         {(hint || listErr || loadErr) && (
           <div className="shrink-0 border-b border-border bg-primary-soft/25 px-4 py-2 text-[12px] sm:px-6">
             {listErr && <span className="text-destructive">{listErr} </span>}
@@ -507,8 +519,21 @@ function AgentDailyReportsPage() {
               {filtered.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border py-16 text-center">
                   <Bot className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
-                  <p className="text-[13px] font-medium text-foreground">无匹配的智能体</p>
-                  <p className="mt-1 text-[12px] text-muted-foreground">调整搜索或筛选条件</p>
+                  {gate.phase === "hydrating" || listLoading ? (
+                    <p className="text-[13px] font-medium text-foreground">{DESKTOP_HYDRATING}</p>
+                  ) : gate.phase === "offline" ? (
+                    <p className="text-[13px] font-medium text-foreground">{EMPTY_STATE_OFFLINE}</p>
+                  ) : listRows.length === 0 && !q.trim() && statusFilter === "全部" ? (
+                    <>
+                      <p className="text-[13px] font-medium text-foreground">本机暂无智能体</p>
+                      <p className="mt-1 text-[12px] text-muted-foreground">从 Agent 目录同步后显示</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[13px] font-medium text-foreground">无匹配的智能体</p>
+                      <p className="mt-1 text-[12px] text-muted-foreground">调整搜索或筛选条件</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
@@ -625,7 +650,8 @@ function AgentDailyReportsPage() {
             editing={editing}
             isDirty={isDirty}
             busy={busy}
-            hasDesktopApi={hasDesktopApi}
+            canMutate={reportGate.canAct}
+            mutateBlockHint={reportGate.blockHint}
             onClose={closeDrawer}
             onDraftChange={setDraft}
             onSave={() => void saveAgent()}
@@ -648,7 +674,8 @@ function AgentReportDrawer({
   editing,
   isDirty,
   busy,
-  hasDesktopApi,
+  canMutate,
+  mutateBlockHint,
   onClose,
   onDraftChange,
   onSave,
@@ -665,7 +692,8 @@ function AgentReportDrawer({
   editing: string;
   isDirty: boolean;
   busy: string | null;
-  hasDesktopApi: boolean;
+  canMutate: boolean;
+  mutateBlockHint: string;
   onClose: () => void;
   onDraftChange: (value: string) => void;
   onSave: () => void;
@@ -712,7 +740,8 @@ function AgentReportDrawer({
               </Link>
               <button
                 type="button"
-                disabled={!hasDesktopApi || Boolean(busy)}
+                disabled={!canMutate || Boolean(busy)}
+                title={!canMutate ? mutateBlockHint : undefined}
                 onClick={onBuildFromEvents}
                 className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary disabled:opacity-40"
               >
@@ -720,7 +749,8 @@ function AgentReportDrawer({
               </button>
               <button
                 type="button"
-                disabled={!hasDesktopApi || Boolean(busy)}
+                disabled={!canMutate || Boolean(busy)}
+                title={!canMutate ? mutateBlockHint : undefined}
                 onClick={onGenerate}
                 className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-secondary disabled:opacity-40"
               >
@@ -771,7 +801,7 @@ function AgentReportDrawer({
             "min-h-0 flex-1 resize-none border-0 bg-code-bg/30 px-5 py-4 font-mono text-[12px] leading-relaxed outline-none",
             !isDirty && "text-foreground/90",
           )}
-          placeholder={loading ? "加载中…" : "（暂无内容）"}
+          placeholder={loading ? CONTENT_LOADING : "（暂无内容）"}
         />
       </div>
     </div>

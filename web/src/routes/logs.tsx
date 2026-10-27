@@ -6,7 +6,8 @@ import { RefreshCw, Trash2, ChevronDown, Bot } from "lucide-react";
 import { ClaudeHooksPanel } from "@/components/claude-hooks-panel";
 import { getDesktop } from "@/lib/desktop-api";
 import { BRIDGE_OFFLINE_BANNER, PAGE_DESC } from "@/lib/ui-copy";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { useDesktopReady, useHasDesktop } from "@/hooks/use-desktop-ready";
+import { DesktopGateBanner } from "@/components/desktop-gate-banner";
 import { cn } from "@/lib/utils";
 
 type LogTab = "workbench" | "claude" | "trace";
@@ -53,6 +54,7 @@ function colorize(line: string) {
 }
 
 function LogsPage() {
+  const desktopReady = useDesktopReady();
   const hasDesktopApi = useHasDesktop();
   const { tab, stem: searchStem } = Route.useSearch();
   const [claudeSource, setClaudeSource] = useState<ClaudeSource>("claudeEvents");
@@ -66,6 +68,7 @@ function LogsPage() {
   }, [searchStem]);
 
   const refresh = useCallback(async () => {
+    if (!desktopReady) return;
     const api = getDesktop();
     if (!api) {
       setHint(BRIDGE_OFFLINE_BANNER);
@@ -105,13 +108,15 @@ function LogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, claudeSource, traceStem]);
+  }, [desktopReady, tab, claudeSource, traceStem]);
 
   useEffect(() => {
+    if (!desktopReady) return;
     void refresh();
-  }, [refresh]);
+  }, [desktopReady, refresh]);
 
   const clearAppLog = async () => {
+    if (!desktopReady) return;
     const api = getDesktop();
     if (!api || tab !== "workbench") return;
     await api.logsClear();
@@ -122,7 +127,7 @@ function LogsPage() {
 
   const tabLabel =
     tab === "workbench"
-      ? "工作台 app.log"
+      ? "工作台日志"
       : tab === "claude"
         ? CLAUDE_SOURCES.find((x) => x.value === claudeSource)?.label
         : `追踪 · ${traceStem || "?"}`;
@@ -133,11 +138,10 @@ function LogsPage() {
         <PageHeader title="日志" description={PAGE_DESC.logs} />
 
         <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 lg:px-7">
-          {!hasDesktopApi && (
-            <p className="mb-3 shrink-0 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-              {BRIDGE_OFFLINE_BANNER}
-            </p>
-          )}
+          <DesktopGateBanner
+            offlineCopy={BRIDGE_OFFLINE_BANNER}
+            className="mb-3 shrink-0 rounded-lg border-b-0 px-3 py-2 sm:px-3"
+          />
 
           {hint && (
             <p className="mb-3 shrink-0 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-[12px] text-muted-foreground">
@@ -157,7 +161,7 @@ function LogsPage() {
                 <Link
                   key={id}
                   to="/logs"
-                  search={{ tab: id, stem: id === "trace" ? traceStem : undefined }}
+                  search={{ tab: id, stem: id === "trace" ? traceStem : "" }}
                   className={cn(
                     "rounded-md px-2.5 py-1 text-[12px] font-medium transition",
                     tab === id ? "bg-primary-soft text-primary" : "text-muted-foreground hover:text-foreground",
@@ -212,7 +216,7 @@ function LogsPage() {
                 disabled={!hasDesktopApi || loading}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] text-muted-foreground hover:text-destructive disabled:opacity-40"
               >
-                <Trash2 className="h-3 w-3" /> 清空 app.log
+                <Trash2 className="h-3 w-3" /> 清空工作台日志
               </button>
             )}
           </div>
@@ -221,9 +225,6 @@ function LogsPage() {
             <details className="mb-3 shrink-0 rounded-xl border border-border bg-surface-elevated/60">
               <summary className="cursor-pointer px-4 py-2 text-[12px] font-medium text-foreground">
                 Claude Hooks（只读）
-                <span className="ml-2 font-normal text-muted-foreground">
-                  配置在 ~/.claude/settings.json，Orchestrator 无需单独配置
-                </span>
               </summary>
               <div className="border-t border-border px-4 py-3">
                 <ClaudeHooksPanel compact />
@@ -233,8 +234,8 @@ function LogsPage() {
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-surface-elevated shadow-xs">
             <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-secondary/30 px-4 py-2.5">
-              <span className="ml-1 font-mono text-[11px] text-muted-foreground">
-                {tabLabel} · tail · 最新在上
+              <span className="ml-1 text-[11px] text-muted-foreground">
+                {tabLabel} · 最新在上
               </span>
             </div>
             <pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words bg-secondary/20 px-4 py-3 font-mono text-[11.5px] leading-relaxed scrollbar-thin">

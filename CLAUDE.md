@@ -13,3 +13,8 @@
 - 有 `graphify-out/graph.json` 时：编码问题先 `graphify query`，再读文件。
 - 无图或 `.needs_update`：先构建/更新；禁止把过期图当真相。
 - 改代码后：`graphify update .`（AST-only）。
+
+## Playwright（Cursor Agent）
+
+- 本机跑 `check:ui-playwright` / `browser:install`：须出沙箱（见 `.cursor/rules/playwright-sandbox.mdc`）。
+- CI `ui-playwright` 使用 Playwright 官方镜像。

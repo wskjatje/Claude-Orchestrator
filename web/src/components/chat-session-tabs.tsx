@@ -9,10 +9,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { ChatHistoryListItem } from "@/lib/chat-history-groups";
+import {
+  resolveSessionDisplayTitle,
+  resolveSessionTitleTooltip,
+  type ChatHistoryListItem,
+} from "@/lib/chat-history-groups";
+import { useDesktopGate } from "@/hooks/use-desktop-ready";
+import { DESKTOP_HYDRATING } from "@/lib/ui-copy";
 import { cn } from "@/lib/utils";
 
-type Session = { id: string; title: string; modelId?: string | null };
+type Session = {
+  id: string;
+  title: string;
+  modelId?: string | null;
+  history?: { role: string; content?: string }[];
+};
 
 type Props = {
   sessions: Session[];
@@ -48,9 +59,27 @@ export function ChatSessionTabs({
   onHistoryOpen,
   onCollapsePanel,
 }: Props) {
+  const { phase: bridgePhase } = useDesktopGate();
+  const chromeConnecting = bridgePhase === "hydrating";
+  const chromeBlocked = bridgePhase === "offline" || (bridgePhase === "ready" && !hasDesktopApi);
+  const pendingNewRef = useRef(false);
+  const pendingHistoryRef = useRef(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyScope, setHistoryScope] = useState<"project" | "all">("project");
+
+  useEffect(() => {
+    if (bridgePhase !== "ready" || !hasDesktopApi) return;
+    if (pendingNewRef.current) {
+      pendingNewRef.current = false;
+      onNewSession();
+    }
+    if (pendingHistoryRef.current) {
+      pendingHistoryRef.current = false;
+      setHistoryOpen(true);
+      onHistoryOpen?.();
+    }
+  }, [bridgePhase, hasDesktopApi, onNewSession, onHistoryOpen]);
 
   useEffect(() => {
     const el = tabsRef.current?.querySelector<HTMLElement>(`[data-session-id="${activeId}"]`);
@@ -86,6 +115,8 @@ export function ChatSessionTabs({
         {sessions.map((s) => {
           const active = s.id === activeId;
           const sending = Boolean(sendingSessions[s.id]) && activeStreamRequestId !== null;
+          const tabTitle = resolveSessionDisplayTitle(s.title, s.history);
+          const tabTooltip = resolveSessionTitleTooltip(s.title, s.history);
           return (
             <div
               key={s.id}
@@ -101,7 +132,7 @@ export function ChatSessionTabs({
                 active && sending && "chat-session-tab--sending",
               )}
               onClick={() => onSessionChange(s.id)}
-              title={s.title}
+              title={tabTooltip}
             >
               {sending ? (
                 <span className="thinking-dots shrink-0" aria-hidden>
@@ -116,7 +147,7 @@ export function ChatSessionTabs({
                   sending && "chat-tab-title--sending",
                 )}
               >
-                {s.title}
+                {tabTitle}
               </span>
               {sending && active && <span className="chat-tab-progress" aria-hidden />}
               {sessions.length > 1 ? (
@@ -124,7 +155,7 @@ export function ChatSessionTabs({
                   type="button"
                   className="ml-auto inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm text-muted-foreground opacity-0 transition hover:bg-secondary hover:text-foreground group-hover:opacity-100"
                   title="关闭会话"
-                  aria-label={`关闭 ${s.title}`}
+                  aria-label={`关闭 ${tabTitle}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onCloseSession(s.id);
@@ -143,18 +174,34 @@ export function ChatSessionTabs({
       <div className="flex shrink-0 items-center gap-0.5 border-l border-border/70 px-1">
         <button
           type="button"
-          onClick={onNewSession}
-          disabled={!hasDesktopApi}
-          className="workbench-icon-btn workbench-icon-btn--sm disabled:opacity-40"
-          title="新对话"
+          onClick={() => {
+            if (chromeBlocked) return;
+            if (chromeConnecting || !hasDesktopApi) {
+              pendingNewRef.current = true;
+              return;
+            }
+            onNewSession();
+          }}
+          disabled={chromeBlocked}
+          className={cn(
+            "workbench-icon-btn workbench-icon-btn--sm disabled:opacity-40",
+            chromeConnecting && "animate-pulse",
+          )}
+          title={chromeConnecting ? DESKTOP_HYDRATING : "新对话"}
           aria-label="新对话"
+          aria-busy={chromeConnecting || undefined}
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
 
         <Popover
+          modal
           open={historyOpen}
           onOpenChange={(open) => {
+            if (open && (chromeConnecting || !hasDesktopApi) && !chromeBlocked) {
+              pendingHistoryRef.current = true;
+              return;
+            }
             setHistoryOpen(open);
             if (open) {
               setHistoryScope("project");
@@ -165,14 +212,16 @@ export function ChatSessionTabs({
           <PopoverTrigger asChild>
             <button
               type="button"
-              disabled={!hasDesktopApi}
+              disabled={chromeBlocked}
               className={cn(
                 "workbench-icon-btn workbench-icon-btn--sm",
                 historyOpen && "workbench-icon-btn--active",
-                !hasDesktopApi && "opacity-40",
+                chromeBlocked && "opacity-40",
+                chromeConnecting && "animate-pulse",
               )}
-              title="对话历史"
+              title={chromeConnecting ? DESKTOP_HYDRATING : "对话历史"}
               aria-label="对话历史"
+              aria-busy={chromeConnecting || undefined}
             >
               <Clock className="h-3.5 w-3.5" />
             </button>
@@ -181,8 +230,12 @@ export function ChatSessionTabs({
             align="end"
             side="bottom"
             sideOffset={6}
-            className="w-auto border-border/80 p-0 shadow-lg"
+            collisionPadding={12}
+            /* 须高于 .chat-pane-composer(z-10) / sticky(z-12)，否则长列表盖住输入区时点不到 */
+            className="z-[200] w-auto border-border/80 p-0 shadow-lg"
+            data-testid="chat-history-popover"
             onOpenAutoFocus={(e) => e.preventDefault()}
+            onCloseAutoFocus={(e) => e.preventDefault()}
           >
             <ChatHistoryDropdown
               scope={historyScope}

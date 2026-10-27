@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   X,
+  FileCode,
   FolderTree,
   GitBranch,
   GitCompare,
@@ -19,6 +20,8 @@ import { BinaryFileViewer } from "@/components/binary-file-viewer";
 import { ExplorerTreeIcon } from "@/lib/explorer-file-icon";
 import type { WorkspacePanelTreeNode } from "@/types/desktop";
 import {
+  CONTENT_LOADING,
+  DESKTOP_HYDRATING,
   GIT_DIFF_OFFLINE,
   GIT_STATUS_OFFLINE,
   PREVIEW_BUTTON,
@@ -292,6 +295,7 @@ function FilesView({
   error: string | null;
   loading: boolean;
 }) {
+  const desktopReady = useDesktopReady();
   const hasDesktopApi = useHasDesktop();
   const [selectedRelPath, setSelectedRelPath] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
@@ -357,6 +361,11 @@ function FilesView({
     }
   }, [selectedRelPath]);
 
+  if (!desktopReady) {
+    return (
+      <div className="p-4 text-[12px] leading-relaxed text-muted-foreground">{DESKTOP_HYDRATING}</div>
+    );
+  }
   if (!hasDesktopApi) {
     return (
       <div className="p-4 text-[12px] leading-relaxed text-muted-foreground">
@@ -377,7 +386,7 @@ function FilesView({
           </div>
         </div>
         {loading && !tree.length ? (
-          <p className="px-2 text-[12px] text-muted-foreground">加载中…</p>
+          <p className="px-2 text-[12px] text-muted-foreground">{CONTENT_LOADING}</p>
         ) : null}
         {!loading && !tree.length && !error ? (
           <p className="px-2 text-[12px] text-muted-foreground">该目录下没有可展示的文件（或均为被忽略的依赖目录）。</p>
@@ -584,8 +593,12 @@ function TreeRow({
 }
 
 function ShellView({ text, error, loading }: { text: string; error: string | null; loading: boolean }) {
+  const desktopReady = useDesktopReady();
   const hasDesktopApi = useHasDesktop();
 
+  if (!desktopReady) {
+    return <div className="p-4 text-[12px] text-muted-foreground">{DESKTOP_HYDRATING}</div>;
+  }
   if (!hasDesktopApi) {
     return (
       <div className="p-4 text-[12px] text-muted-foreground">
@@ -597,7 +610,7 @@ function ShellView({ text, error, loading }: { text: string; error: string | nul
     <div className="flex h-full min-h-[200px] flex-col">
       <div className="flex-1 space-y-2 overflow-y-auto p-3 font-mono text-[11.5px] leading-relaxed">
         {error ? <p className="text-destructive">{error}</p> : null}
-        {loading && !text ? <p className="text-muted-foreground">加载中…</p> : null}
+        {loading && !text ? <p className="text-muted-foreground">{CONTENT_LOADING}</p> : null}
         <pre className="whitespace-pre-wrap break-words text-foreground/90">{text || "（暂无数据，点击刷新）"}</pre>
       </div>
       <div className="border-t border-border px-3 py-2 text-[11px] leading-snug text-muted-foreground">
@@ -620,8 +633,12 @@ function DiffView({
   loading: boolean;
   onRefresh: () => void;
 }) {
+  const desktopReady = useDesktopReady();
   const hasDesktopApi = useHasDesktop();
 
+  if (!desktopReady) {
+    return <div className="p-4 text-[12px] text-muted-foreground">{DESKTOP_HYDRATING}</div>;
+  }
   if (!hasDesktopApi) {
     return (
       <div className="p-4 text-[12px] text-muted-foreground">
@@ -636,7 +653,7 @@ function DiffView({
           {statusLine ? (
             <span className="font-mono text-[11px] text-muted-foreground">{statusLine}</span>
           ) : loading ? (
-            "加载中…"
+            CONTENT_LOADING
           ) : (
             "未提交改动"
           )}

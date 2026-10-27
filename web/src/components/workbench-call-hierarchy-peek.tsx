@@ -13,6 +13,7 @@ import { fetchTsCallHierarchy, type TsCallHierarchyItem } from "@/lib/workspace-
 import { setPendingLineGoto } from "@/lib/codemirror-pending-goto";
 import { useWorkbenchWorkspaceOptional } from "@/contexts/workbench-workspace-context";
 import { toast } from "sonner";
+import { CONTENT_LOADING } from "@/lib/ui-copy";
 import { cn } from "@/lib/utils";
 
 function Row({

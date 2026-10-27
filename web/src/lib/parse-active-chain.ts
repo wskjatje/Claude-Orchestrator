@@ -314,7 +314,7 @@ function parseWbsMarkdownTable(text: string): ActiveChainState | null {
       : undefined;
     steps.push({
       taskId,
-      agentName: agentName,
+      agentName: agent,
       instruction,
       ...(dependsOn && dependsOn.length ? { depends_on: dependsOn } : {}),
     });
@@ -433,12 +433,12 @@ function parseAgentDelegationMarkdown(text: string): ActiveChainState | null {
 /** 跑链前 UI 预览：依表顺序，无动态分支 */
 /** 供 UI 只读展示（不写入 JSON，不触发运行时改链） */
 export function buildChainBoardRows(
-  steps: ChainStep[],
+  steps: { agentName: string; taskId?: string }[],
   currentIndex: number,
 ): { taskId: string; agentName: string; done: boolean; current: boolean }[] {
   return steps.map((s, i) => ({
     taskId: (s.taskId || `步骤${i + 1}`).trim(),
-    agentName: s.agentName.trim(),
+    agentName: String(s.agentName || "").trim(),
     done: i < currentIndex,
     current: i === currentIndex,
   }));

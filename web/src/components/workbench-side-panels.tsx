@@ -20,7 +20,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { getDesktop } from "@/lib/desktop-api";
-import { useHasDesktop } from "@/hooks/use-desktop-ready";
+import { useDesktopReady, useHasDesktop } from "@/hooks/use-desktop-ready";
 import { useWorkbenchWorkspace } from "@/contexts/workbench-workspace-context";
 import { WorkbenchCenterEditor } from "@/components/workbench-center-editor";
 import { WorkbenchSearchPanel } from "@/components/workbench-search-panel";
@@ -35,7 +35,12 @@ import {
 import { gitBranchFromStatusLine } from "@/lib/explorer-git-decor";
 import { explorerGitStatusClass, gitStatusTone } from "@/lib/explorer-tree-theme";
 import { runScmDiffCodeReview } from "@/lib/scm-run-code-review";
-import { MSG_API_NOT_READY, WORKBENCH_SIDEPANEL_OFFLINE } from "@/lib/ui-copy";
+import {
+  CONTENT_LOADING,
+  DESKTOP_HYDRATING,
+  MSG_API_NOT_READY,
+  WORKBENCH_SIDEPANEL_OFFLINE,
+} from "@/lib/ui-copy";
 import {
   getPendingWritesState,
   subscribePendingWrites,
@@ -88,6 +93,7 @@ export function WorkbenchLeftSidebar() {
 }
 
 function FileTreePanel() {
+  const desktopReady = useDesktopReady();
   const hasDesktop = useHasDesktop();
   const ws = useWorkbenchWorkspace();
   const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
@@ -121,6 +127,11 @@ function FileTreePanel() {
     });
   };
 
+  if (!desktopReady) {
+    return (
+      <p className="p-3 text-[11px] leading-relaxed text-muted-foreground">{DESKTOP_HYDRATING}</p>
+    );
+  }
   if (!hasDesktop) {
     return (
       <p className="p-3 text-[11px] leading-relaxed text-muted-foreground">
@@ -156,7 +167,7 @@ function FileTreePanel() {
 
       {ws.filesErr ? <p className="px-3 py-2 text-[11px] text-destructive">{ws.filesErr}</p> : null}
       {ws.loadingFiles && !ws.tree.length ? (
-        <p className="px-3 py-2 text-[11px] text-muted-foreground">加载中…</p>
+        <p className="px-3 py-2 text-[11px] text-muted-foreground">{CONTENT_LOADING}</p>
       ) : null}
 
       <ExplorerSection
@@ -500,7 +511,7 @@ function GitPanel() {
         >
           {ws.gitLogErr ? <p className="sc-empty-hint text-destructive">{ws.gitLogErr}</p> : null}
           {ws.loadingGitLog && !ws.gitCommits.length ? (
-            <p className="sc-empty-hint">加载中…</p>
+            <p className="sc-empty-hint">{CONTENT_LOADING}</p>
           ) : null}
           {!ws.loadingGitLog && !ws.gitCommits.length && !ws.gitLogErr ? (
             <p className="sc-empty-hint">（暂无提交）</p>

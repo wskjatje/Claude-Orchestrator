@@ -97,30 +97,33 @@ export function ClaudeHooksPanel({ compact = false }: { compact?: boolean }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className={cn("text-muted-foreground", compact ? "text-[11.5px]" : "text-[12px]")}>
-          {compact ? (
-            <>
-              读取{" "}
-              <code className="rounded bg-code-bg px-1 font-mono text-[10.5px]">~/.claude/settings.json</code>{" "}
-              中的 hooks。
-            </>
-          ) : (
-            <>
-              用户级配置：
-              <code className="mx-1 rounded bg-code-bg px-1 font-mono text-[11px]">~/.claude/settings.json</code>
-              顶层 <code className="rounded bg-code-bg px-1 font-mono text-[11px]">hooks</code>。编辑请在 Claude Code
-              配置侧完成，此处仅只读查看。
-            </>
-          )}{" "}
-          <a
-            href="https://code.claude.com/docs/en/hooks"
-            className="text-primary underline-offset-2 hover:underline"
-            target="_blank"
-            rel="noreferrer"
-          >
-            官方文档
-          </a>
-        </p>
+        <div className={cn("min-w-0 text-muted-foreground", compact ? "text-[11.5px]" : "text-[12px]")}>
+          <p>
+            {compact ? "只读查看本机 Hooks。" : "只读查看本机 Hooks；请在 Claude Code 侧编辑。"}{" "}
+            <a
+              href="https://code.claude.com/docs/en/hooks"
+              className="text-primary underline-offset-2 hover:underline"
+              target="_blank"
+              rel="noreferrer"
+            >
+              官方文档
+            </a>
+          </p>
+          <details className="mt-1.5">
+            <summary className="cursor-pointer text-[11px] text-muted-foreground">
+              高级 · 配置位置
+            </summary>
+            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+              ~/.claude/settings.json
+              {!compact ? (
+                <>
+                  {" "}
+                  · 顶层 <code className="rounded bg-code-bg px-1">hooks</code>
+                </>
+              ) : null}
+            </p>
+          </details>
+        </div>
         <button
           type="button"
           disabled={!hasDesktopApi || hooksLoading}
@@ -135,7 +138,7 @@ export function ClaudeHooksPanel({ compact = false }: { compact?: boolean }) {
         <PageBanner className="border-destructive/30 bg-destructive/10 text-destructive">{settingsHooksErr}</PageBanner>
       )}
       {settingsMissing && !settingsHooksErr && (
-        <PageBanner>尚未创建 settings.json，或其中没有 hooks 字段。</PageBanner>
+        <PageBanner>尚未配置 Hooks，或配置文件中没有 hooks 字段。</PageBanner>
       )}
 
       {hookSummaries.length > 0 && (

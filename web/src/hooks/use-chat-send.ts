@@ -84,7 +84,15 @@ import { type ParallelDispatchConfig } from "@/components/parallel-dispatch-dial
 import { maybeToastMissingWorkspaceWrite } from "@/lib/maybe-toast-workspace-write";
 import { restoreUserMsgToComposer } from "@/lib/restore-user-composer";
 import { isBulkWriteProjectMessage } from "@/lib/confirm-write";
-import { BROWSER_MODE_CHAT_MESSAGE } from "@/lib/ui-copy";
+import {
+  BROWSER_MODE_CHAT_MESSAGE,
+  RPC_REQUEST_CANCELLED,
+  RPC_REQUEST_INTERRUPTED,
+} from "@/lib/ui-copy";
+import {
+  isRpcUserAbortError,
+  normalizeRpcErrorMessage,
+} from "@/lib/bridge-connection-error";
 import {
   isProjectPreviewMessage,
   isStopPreviewMessage,
@@ -116,13 +124,30 @@ import {
   resolveModelForExecution,
   CLOUD_PROVIDER_REQUIRED_ERROR,
   LOCAL_PROVIDER_REQUIRED_ERROR,
+  LOCAL_MODEL_NOT_INSTALLED_ERROR,
   MODEL_NOT_IN_POOL_ERROR,
 } from "@/lib/model-catalog";
 import {
+  getCachedContextLength,
   getCachedModelCapability,
   rememberModelCapability,
 } from "@/lib/model-capability-cache";
-import { slimPriorMessagesForApi } from "@/lib/slim-prior-messages";
+import { resolvePriorBudget, slimPriorMessagesForApi } from "@/lib/slim-prior-messages";
+import {
+  isSummarizeSlashCommand,
+  nextModelHistoryPatch,
+  resolveModelPriorBase,
+  summarizeSessionHistory,
+} from "@/lib/session-summarize";
+import {
+  CHAT_CLI_CONTEXT_HINT,
+  CHAT_SUMMARIZE_CLI_SESSION_RESET,
+  CHAT_SUMMARIZE_TOO_SHORT,
+} from "@/lib/ui-copy";
+import { estimateContextUsage } from "@/lib/context-usage";
+import { buildContextParts } from "@/lib/context-parts";
+import { loadProjectRulesSnippet } from "@/lib/project-rules";
+import { resolveTurnUsage } from "@/lib/turn-usage";
 import {
   clearLiveExecChannel,
   setLiveExecChannel,
@@ -588,6 +613,60 @@ export function useChatSend(args: UseChatSendArgs) {
       return;
     }
 
+    // 对齐 Cursor /summarize：界面保留全文；modelHistory 换成摘要+近尾
+    if (
+      text &&
+      activePendingImages.length === 0 &&
+      !hasTerminal &&
+      !hasFiles &&
+      isSummarizeSlashCommand(text)
+    ) {
+      setInput("");
+      const settingsSum = await getCachedSettings(api);
+      const modelLabel = sess.modelId?.trim() || settingsSum.model || "模型";
+      const packed = summarizeSessionHistory(sess.history);
+      if (!packed) {
+        await appendLocalChatExchange(activeId, text.trim(), CHAT_SUMMARIZE_TOO_SHORT);
+        return;
+      }
+      const hadCliSession = Boolean(sess.claudeSessionId);
+      let notice = packed.notice;
+      if (hadCliSession) {
+        notice = `${notice}\n${CHAT_SUMMARIZE_CLI_SESSION_RESET}`;
+      }
+      const ts = Date.now();
+      const displayHist: DiskMsg[] = [
+        ...sess.history,
+        { role: "user", content: text.trim(), ts },
+        { role: "assistant", content: notice, name: "系统", ts },
+      ];
+      const modelHist: DiskMsg[] = packed.modelHistory.map((m) => ({
+        role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
+        content: String(m.content || ""),
+        ts: typeof m.ts === "number" ? m.ts : ts,
+        ...(m.name ? { name: String(m.name) } : {}),
+      }));
+      const nextSessions = sessionsRef.current.map((s) =>
+        s.id === sendSessionId
+          ? {
+              ...s,
+              history: displayHist,
+              modelHistory: modelHist,
+              modelHistoryCoreLen: modelHist.length,
+              ...(hadCliSession ? { claudeSessionId: null } : {}),
+            }
+          : s,
+      );
+      setSessions(nextSessions);
+      sessionsRef.current = nextSessions;
+      setMessages(diskToDisplay(displayHist, modelLabel));
+      chatCtx.syncSessions(nextSessions);
+      await persist(nextSessions, sendSessionId);
+      clearExplicitEmptyChatSessionIf(sendSessionId);
+      chatCtx.syncExplicitEmptySessionId(null);
+      return;
+    }
+
     if (
       text &&
       activePendingImages.length === 0 &&
@@ -731,8 +810,12 @@ export function useChatSend(args: UseChatSendArgs) {
           localOllamaTags?.includes(selectedPin));
       let errMsg =
         "请先在「设置 → 模型配置」通过「添加云模型」或「配置本地模型」添加至少一个模型。";
-      if (selectedPin && !inAnyPool) errMsg = MODEL_NOT_IN_POOL_ERROR;
-      else if (routeHint === "prefer-cloud" && cloudEmpty) errMsg = CLOUD_PROVIDER_REQUIRED_ERROR;
+      if (selectedPin && !inAnyPool) {
+        // 本地模式或非 Claude 系标签：优先提示「未安装到 Ollama」，避免误导成笼统池外
+        const likelyLocal =
+          orchMode === "local-mcp" || !/^(sonnet|opus|haiku|claude)/i.test(selectedPin);
+        errMsg = likelyLocal ? LOCAL_MODEL_NOT_INSTALLED_ERROR : MODEL_NOT_IN_POOL_ERROR;
+      } else if (routeHint === "prefer-cloud" && cloudEmpty) errMsg = CLOUD_PROVIDER_REQUIRED_ERROR;
       else if (routeHint === "prefer-local" && localEmpty) errMsg = LOCAL_PROVIDER_REQUIRED_ERROR;
       setMessages((m) => [
         ...m,
@@ -771,8 +854,11 @@ export function useChatSend(args: UseChatSendArgs) {
             pool: mode === "local-mcp" ? "local" : "cloud",
             needsTools: true,
           });
-          if (gate?.record?.capabilities) {
-            rememberModelCapability(modelId, gate.record.capabilities);
+          if (gate?.record) {
+            rememberModelCapability(modelId, {
+              ...(gate.record.capabilities || {}),
+              contextLength: gate.record.contextLength ?? undefined,
+            });
           }
           if (!gate?.ok) {
             toast.error(gate?.error || "模型未通过 tools 能力检测", {
@@ -797,9 +883,18 @@ export function useChatSend(args: UseChatSendArgs) {
         : editingFromInline
           ? editHistoryIndexRef.current
           : null;
-    const historyBefore = editCutoff != null ? sess.history.slice(0, editCutoff) : sess.history;
+    // 界面 history 始终保留全文；prior 在有 modelHistory 时用压缩基线
+    const displayHistoryBefore =
+      editCutoff != null ? sess.history.slice(0, editCutoff) : sess.history;
+    const clearModelHistory = editCutoff != null;
+    const priorBase = resolveModelPriorBase(sess, editCutoff);
+    const priorBudget = resolvePriorBudget({
+      forceDirectChat: turnPolicy.forceDirectChat,
+      allowTools: turnPolicy.allowTools,
+      contextLevel: turnPolicy.contextLevel,
+    });
     const priorForApi: PriorTurn[] = slimPriorMessagesForApi(
-      historyBefore
+      priorBase
         .filter((m) => {
           // Auto 模式：过滤掉携带 Agent 标签的旧助手回复（避免跨模式污染）
           if (isAgentMode) return true;
@@ -808,7 +903,10 @@ export function useChatSend(args: UseChatSendArgs) {
         .map((m) => {
           if (m.role === "user") {
             const t: PriorTurn = { role: "user", content: m.content };
-            if (m.attachments?.length) t.attachments = m.attachments;
+            // Ask/直聊不带历史附图，避免视觉/base64 把输入 token 打爆
+            if (m.attachments?.length && !turnPolicy.forceDirectChat) {
+              t.attachments = m.attachments;
+            }
             return t;
           }
           return { role: "assistant" as const, content: m.content };
@@ -818,6 +916,7 @@ export function useChatSend(args: UseChatSendArgs) {
           if (route.stem !== "__general__" || m.role === "user") return true;
           return !/```workspace-write\b[\s\S]*?```/i.test(m.content);
         }),
+      priorBudget,
     );
 
     let visionEnrichedNote: string | undefined;
@@ -1020,7 +1119,7 @@ export function useChatSend(args: UseChatSendArgs) {
 
     // 续跑：注入上轮 Agent 写盘/验证元数据（逻辑上下文，非占位）
     if (getWorkbenchInteractionMode() === "agent") {
-      const turnAppendix = formatAgentTurnMetaAppendix(lastAgentTurnMeta(historyBefore));
+      const turnAppendix = formatAgentTurnMetaAppendix(lastAgentTurnMeta(displayHistoryBefore));
       if (turnAppendix) {
         localUserLineFinal = `${localUserLineFinal}\n\n${turnAppendix}`;
         cloudUserLineFinal = `${cloudUserLineFinal}\n\n${turnAppendix}`;
@@ -1090,7 +1189,7 @@ export function useChatSend(args: UseChatSendArgs) {
       ...(terminalSnippetsToSave.length ? { terminalSnippets: terminalSnippetsToSave } : {}),
     };
     let title = sess.title;
-    if (historyBefore.length === 0) {
+    if (displayHistoryBefore.length === 0) {
       const t = displayLine || "图片";
       title = t.length > 28 ? `${t.slice(0, 28)}…` : t;
       // 立即更新 React 会话状态，让页签立刻显示新标题
@@ -1133,14 +1232,29 @@ export function useChatSend(args: UseChatSendArgs) {
           });
       }
     }
-    let hist: DiskMsg[] = [...historyBefore, userMsg];
+    let hist: DiskMsg[] = [...displayHistoryBefore, userMsg];
+    const displayBeforeLen = displayHistoryBefore.length;
     const wsKey = workspaceSessionKey(workspacePathRef.current) || null;
     await patchSession(sendSessionId, (s) =>
-      stampSessionWorkspaceIfMissing({ ...s, title, history: hist }, workspacePathRef.current),
+      stampSessionWorkspaceIfMissing(
+        {
+          ...s,
+          title,
+          history: hist,
+          ...nextModelHistoryPatch(
+            s.modelHistory,
+            s.modelHistoryCoreLen,
+            displayBeforeLen,
+            hist,
+            { clear: clearModelHistory },
+          ),
+        },
+        workspacePathRef.current,
+      ),
     );
     clearExplicitEmptyChatSessionIf(sendSessionId);
     chatCtx.syncExplicitEmptySessionId(null);
-    if (historyBefore.length === 0) {
+    if (displayHistoryBefore.length === 0) {
       await pruneWorkspaceSessions(sendSessionId);
     }
     if (!editingFromInline) {
@@ -1160,7 +1274,12 @@ export function useChatSend(args: UseChatSendArgs) {
           content: "__WAITING__",
           // 流式阶段也标只读，避免 delta 正文被解析成 Edit 卡 / 「本地MCP」
           ...(readOnlyTurn
-            ? { suppressFileEdits: true, localChannel: "direct" as const }
+            ? {
+                suppressFileEdits: true,
+                ...(turnPolicy.forceDirectChat || !turnPolicy.allowTools
+                  ? { localChannel: "direct" as const }
+                  : { localChannel: "orch" as const }),
+              }
             : {}),
         },
       ];
@@ -1191,6 +1310,7 @@ export function useChatSend(args: UseChatSendArgs) {
         deferredWritePaths?: string[];
         writeMode?: "ask" | "plan" | "agent";
         writtenPaths?: string[];
+        toolsTrace?: { offered: string[]; called: number };
       } = { ok: false, content: "", error: "未执行" };
       /** Host / 本地工具直写路径（无 workspace-write 围栏亦可闭环） */
       let hostWrittenPaths: string[] = [];
@@ -1312,6 +1432,18 @@ export function useChatSend(args: UseChatSendArgs) {
       } else {
         const workspaceDir = await api.getWorkspace();
         const claudeSessionResume = Boolean(sess?.claudeSessionId);
+        if (claudeSessionResume) {
+          const cliUsage = estimateContextUsage(
+            sess.modelHistory?.length ? sess.modelHistory : sess.history,
+            {
+              contextLength: getCachedContextLength(modelId),
+              isLocal: false,
+            },
+          );
+          if (cliUsage.suggestSummarize) {
+            toast.message(CHAT_CLI_CONTEXT_HINT, { id: "cli-context-hint", duration: 5_000 });
+          }
+        }
         let savedImagePaths: string[] | undefined;
         let inlineAttachments = attachmentsToSave;
         if (!claudeSessionResume) {
@@ -1598,7 +1730,7 @@ export function useChatSend(args: UseChatSendArgs) {
 
       const resolveAuditChannel = (): string => {
         if (mode === "local-mcp") {
-          if (turnPolicy.forceDirectChat || !turnPolicy.allowWrites) return "direct";
+          if (turnPolicy.forceDirectChat || !turnPolicy.allowTools) return "direct";
           return agentExecBackend || "orch";
         }
         return agentExecBackend || "cloud";
@@ -1654,9 +1786,9 @@ export function useChatSend(args: UseChatSendArgs) {
             // 失败也如实标通道，避免写盘 tools 失败却显示「本地直聊」
             ...(mode === "local-mcp"
               ? {
-                  localChannel: (turnPolicy.forceDirectChat || !turnPolicy.allowWrites
+                  localChannel: (turnPolicy.forceDirectChat || !turnPolicy.allowTools
                     ? "direct"
-                    : "orch") as const,
+                    : "orch") as "direct" | "orch",
                 }
               : {}),
             ...(!turnPolicy.allowWrites ? { suppressFileEdits: true as const } : {}),
@@ -1670,10 +1802,16 @@ export function useChatSend(args: UseChatSendArgs) {
           maybeToastMissingWorkspaceWrite(reply);
         }
         // 回合策略：Ask/只读意图禁止自动落盘，并剥掉全部写盘载荷（避免 UI 刷文件卡）
-        let auto: { nextContent: string; written: string[]; failed: string[] } = {
+        let auto: {
+          nextContent: string;
+          written: string[];
+          failed: string[];
+          patches?: import("@/lib/agent-file-patch").AgentFilePatch[];
+        } = {
           nextContent: reply,
           written: [],
           failed: [],
+          patches: [],
         };
         let replyBeforeWrite = reply;
         if (!turnPolicy.allowWrites) {
@@ -1772,7 +1910,9 @@ export function useChatSend(args: UseChatSendArgs) {
           displayContent = sanitizeReadonlyAssistantContent(displayContent);
         }
 
-        const requireAppliedWrite = Boolean(turnPolicy.autoApplyWrites);
+        // 仅真实变更意图才强制「至少写 1 个文件」；咨询/方案口述对齐 Cursor，零写入不算失败
+        const requireAppliedWrite =
+          Boolean(turnPolicy.autoApplyWrites) && turnPolicy.intent === "write";
         let closeLoop = assertAgentWriteCloseLoop({
           allowWrites: turnPolicy.allowWrites,
           autoApplyWrites: turnPolicy.autoApplyWrites,
@@ -1785,8 +1925,8 @@ export function useChatSend(args: UseChatSendArgs) {
         if (
           !closeLoop.ok &&
           mode === "local-mcp" &&
-          turnPolicy.autoApplyWrites &&
-          /无法解析为有效 path\+content|未写入任何文件/.test(closeLoop.error) &&
+          requireAppliedWrite &&
+          /未能写入文件|未写入任何|声称已改文件/.test(closeLoop.error) &&
           typeof api.localOrchestrationPrompt === "function"
         ) {
           try {
@@ -1848,7 +1988,7 @@ export function useChatSend(args: UseChatSendArgs) {
           writeParsed,
           writeApplied: writtenForTurn.length,
           writeFailed: auto.failed.length,
-          ok: closeLoop.ok && res.ok !== false,
+          ok: closeLoop.ok && Boolean(res.ok),
           error: closeLoop.ok ? undefined : closeLoop.error,
         });
 
@@ -1874,6 +2014,13 @@ export function useChatSend(args: UseChatSendArgs) {
           await patchSession(sendSessionId, (s) => ({
             ...s,
             history: hist,
+            ...nextModelHistoryPatch(
+              s.modelHistory,
+              s.modelHistoryCoreLen,
+              displayBeforeLen,
+              hist,
+              { clear: clearModelHistory },
+            ),
             modelId,
           }));
           if (sendSessionId === activeIdRef.current) {
@@ -1960,17 +2107,43 @@ export function useChatSend(args: UseChatSendArgs) {
           }
         }
         const mcpUsed =
-          turnPolicy.allowWrites &&
-          (eventsHaveMcpTool(streamEvents, hostToolTrace) || /mcp__/i.test(reply || ""));
-        // 只读回合：不写 agentTurn（避免 UI 把路径合成 Edit 卡 / 「本地MCP」徽章）
+          eventsHaveMcpTool(streamEvents, hostToolTrace) || /mcp__/i.test(reply || "");
+        // 只读问答不写 agentTurn；只读但进了工具环时保留后端与 MCP 轨迹（写盘路径另由 suppressFileEdits 丢掉）
         const attachAgentTurn =
-          turnPolicy.allowWrites &&
-          (agentExecBackend || writtenForTurn.length || streamEvents.length || mcpUsed);
+          (turnPolicy.allowWrites &&
+            (agentExecBackend || writtenForTurn.length || streamEvents.length || mcpUsed)) ||
+          (!turnPolicy.allowWrites &&
+            turnPolicy.allowTools &&
+            (Boolean(agentExecBackend) || streamEvents.length > 0 || mcpUsed));
         const localChannel: DiskMsg["localChannel"] =
           mode === "local-mcp" && res?.ok
-            ? turnPolicy.forceDirectChat || !turnPolicy.allowWrites
+            ? turnPolicy.forceDirectChat || !turnPolicy.allowTools
               ? "direct"
               : "orch"
+            : undefined;
+        const turnUsage = resolveTurnUsage(res?.usage, hist, displayContent);
+        // 规则分桶：复用缓存的注入片段实测字数（无注入则不写）
+        let rulesSnippetForParts = "";
+        try {
+          rulesSnippetForParts = (await loadProjectRulesSnippet(api)) || "";
+        } catch {
+          rulesSnippetForParts = "";
+        }
+        const contextParts = buildContextParts({
+          rulesSnippet: rulesSnippetForParts,
+          streamEvents,
+          toolTrace: hostToolTrace,
+        });
+        const toolsTraceRaw =
+          res &&
+          typeof res === "object" &&
+          res.toolsTrace &&
+          typeof res.toolsTrace === "object" &&
+          Array.isArray(res.toolsTrace.offered)
+            ? {
+                offered: res.toolsTrace.offered.map(String).filter(Boolean),
+                called: Math.max(0, Number(res.toolsTrace.called) || 0),
+              }
             : undefined;
         const am: DiskMsg = {
           role: "assistant",
@@ -1979,9 +2152,11 @@ export function useChatSend(args: UseChatSendArgs) {
           latencyMs: Math.max(0, Date.now() - sendStarted),
           billingSource: mode === "local-mcp" ? "local" : "cloud",
           modelId,
-          ...(res.usage ? { usage: res.usage } : {}),
+          usage: turnUsage,
+          ...(contextParts ? { contextParts } : {}),
           ...(!turnPolicy.allowWrites ? { suppressFileEdits: true } : {}),
           ...(localChannel ? { localChannel } : {}),
+          ...(toolsTraceRaw ? { toolsTrace: toolsTraceRaw } : {}),
           ...(attachAgentTurn
             ? {
                 agentTurn: {
@@ -2035,6 +2210,13 @@ export function useChatSend(args: UseChatSendArgs) {
       await patchSession(sendSessionId, (s) => ({
         ...s,
         history: hist,
+        ...nextModelHistoryPatch(
+          s.modelHistory,
+          s.modelHistoryCoreLen,
+          displayBeforeLen,
+          hist,
+          { clear: clearModelHistory },
+        ),
         modelId,
         ...(res.claudeSessionId ? { claudeSessionId: res.claudeSessionId } : {}),
       }));
@@ -2046,27 +2228,49 @@ export function useChatSend(args: UseChatSendArgs) {
       chatCtx.syncMessages(finalMsgs);
       chatCtx.syncSessionMessages(sendSessionId, finalMsgs);
     } catch (e) {
-      const errLine = e instanceof Error ? e.message : String(e);
+      const raw = e instanceof Error ? e.message : String(e);
+      const normalized = normalizeRpcErrorMessage(raw) || raw;
+      const userCancel =
+        isRpcUserAbortError(e) ||
+        normalized === RPC_REQUEST_CANCELLED ||
+        normalized === "生成已停止";
+      const interrupted = normalized === RPC_REQUEST_INTERRUPTED;
+      // 仅用户取消可静默收束；中断/桥离线/其它错误一律硬展示（禁 Failed to fetch 兜底软化）
+      const quietStop = userCancel;
+      const display = quietStop
+        ? formatAssistantFailure({ aborted: true, error: normalized })
+        : formatAssistantFailure({ error: normalized });
       hist = [
         ...hist,
         {
           role: "assistant",
-          content: `请求异常：${errLine}`,
+          content: display,
           ts: Date.now(),
-          requestError: true,
+          requestError: !quietStop,
           billingSource: mode === "local-mcp" ? "local" : "cloud",
           modelId,
           ...turnAgent,
         },
       ];
-      await patchSession(sendSessionId, (s) => ({ ...s, history: hist, modelId }));
+      await patchSession(sendSessionId, (s) => ({
+        ...s,
+        history: hist,
+        ...nextModelHistoryPatch(
+          s.modelHistory,
+          s.modelHistoryCoreLen,
+          displayBeforeLen,
+          hist,
+          { clear: clearModelHistory },
+        ),
+        modelId,
+      }));
       if (sendSessionId === activeIdRef.current) {
         setMessages(diskToDisplay(hist, modelId));
       }
       const errorMsgs = diskToDisplay(hist, modelId);
       chatCtx.syncMessages(errorMsgs);
       chatCtx.syncSessionMessages(sendSessionId, errorMsgs);
-      toast.error(errLine);
+      if (!quietStop) toast.error(normalized);
     } finally {
       clearLiveExecChannel();
       await appendAgentExecEvent({

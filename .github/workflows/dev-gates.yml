@@ -1,0 +1,81 @@
+# 本仓库代码闸门 + 真浏览器 UI 烟雾（Playwright 官方镜像，免每次 apt 系统库安装）
+name: Dev gates
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-gates-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: .playwright-browsers
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json', 'package.json') }}
+
+      - name: Install Chromium (workspace cache dir)
+        run: npm run browser:install
+
+      - name: Run check:dev-gates
+        # 含 check:ui-playwright：无 Vite 时 soft-skip（exit 0）
+        run: npm run check:dev-gates
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+
+  # Cursor / Playwright 官方建议：Linux CI 用带浏览器与系统库的镜像，避免冷启动再装系统库
+  ui-playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+      # Chromium 在 Docker 内需要更大 /dev/shm，避免启动 SIGSEGV / 卡死
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: npm ci
+
+      - name: Start bridge + Vite (no Electron)
+        run: |
+          CLAUDE_ORCHESTRATOR_SKIP_ELECTRON=1 npm run web:dev:full > /tmp/web-dev-full.log 2>&1 &
+          echo $! > /tmp/web-dev-full.pid
+          for i in $(seq 1 90); do
+            if node -e "fetch('http://127.0.0.1:5188/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              echo "UI ready after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "==== web-dev-full log (tail) ===="
+          tail -n 80 /tmp/web-dev-full.log || true
+          exit 1
+
+      - name: Playwright CI (hard fail if UI down)
+        # 使用镜像内置 Chromium（/ms-playwright），勿指空的仓库 .playwright-browsers
+        run: CHECK_UI_PLAYWRIGHT=1 node scripts/check-ui-playwright.mjs
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+          UI_SMOKE_BASE: http://127.0.0.1:5188
+          CHECK_UI_PLAYWRIGHT: "1"

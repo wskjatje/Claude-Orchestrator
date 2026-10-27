@@ -1014,9 +1014,14 @@ export async function runClaudeCodePrint({
     const buildCliWriteExtras = () => {
       const filePatches = finalizeCliFilePatches(workspaceRoot, cliPatchMap)
       const writtenPaths = filePatches.map((p) => p.path)
+      const usage =
+        streamState?.usage && typeof streamState.usage === 'object'
+          ? streamState.usage
+          : null
       return {
         ...(writtenPaths.length ? { writtenPaths, toolWrittenPaths: writtenPaths } : {}),
         ...(filePatches.length ? { filePatches } : {}),
+        ...(usage ? { usage } : {}),
       }
     }
 

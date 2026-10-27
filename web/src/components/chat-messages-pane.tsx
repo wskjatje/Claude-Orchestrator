@@ -1,4 +1,4 @@
-import { memo, type RefObject } from "react";
+import { memo, useEffect, useState, type RefObject } from "react";
 import { ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MessageBubble, type ChatBubbleMessage } from "@/components/chat-message-bubble";
@@ -6,6 +6,7 @@ import { ChatStickyUserHeader } from "@/components/chat-sticky-user-header";
 import type { ChatComposerShellProps } from "@/components/chat-composer-shell";
 import { useStickyUserPrompt } from "@/hooks/use-sticky-user-prompt";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { CHAT_SESSIONS_RESTORING, CHAT_SHOW_EARLIER_TURNS, CHAT_VISIBLE_TURN_CAP } from "@/lib/ui-copy";
 
 export type ChatMessagesPaneProps = {
   messages: ChatBubbleMessage[];
@@ -17,6 +18,8 @@ export type ChatMessagesPaneProps = {
   showJumpLatest: boolean;
   onJumpToLatest: () => void;
   hasDesktopApi: boolean;
+  /** 会话尚未从磁盘/上下文恢复完且消息为空时展示骨架 */
+  sessionsRestoring?: boolean;
   onWriteToWorkspace?: (content: string) => void;
   onGenerateChain?: (content: string) => void;
   onEditUserMessage?: (historyIndex: number) => void;
@@ -32,6 +35,7 @@ function chatMessagesPanePropsEqual(prev: ChatMessagesPaneProps, next: ChatMessa
     prev.inlineComposer === next.inlineComposer &&
     prev.showJumpLatest === next.showJumpLatest &&
     prev.hasDesktopApi === next.hasDesktopApi &&
+    prev.sessionsRestoring === next.sessionsRestoring &&
     prev.scrollAreaRef === next.scrollAreaRef &&
     prev.messagesEndRef === next.messagesEndRef &&
     prev.onJumpToLatest === next.onJumpToLatest &&
@@ -53,6 +57,7 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
   showJumpLatest,
   onJumpToLatest,
   hasDesktopApi,
+  sessionsRestoring = false,
   onWriteToWorkspace,
   onGenerateChain,
   onEditUserMessage,
@@ -64,6 +69,22 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
 
   const { leadingOrphans, turns, stickyUser, showStickyHeader, setTurnRef, setUserRef } =
     useStickyUserPrompt(scrollAreaRef, messages, { forceSticky: isEditingSticky });
+
+  const [showAllTurns, setShowAllTurns] = useState(false);
+  /** 仅换会话时收起；流式追加消息不得重置 */
+  const sessionKey =
+    messages.find((m) => m.role === "user")?.historyIndex ??
+    (messages[0] ? `${messages[0].role}:${String(messages[0].content).slice(0, 48)}` : "empty");
+  useEffect(() => {
+    setShowAllTurns(false);
+  }, [sessionKey]);
+
+  const hiddenTurnCount =
+    !showAllTurns && turns.length > CHAT_VISIBLE_TURN_CAP
+      ? turns.length - CHAT_VISIBLE_TURN_CAP
+      : 0;
+  const visibleTurns = hiddenTurnCount > 0 ? turns.slice(hiddenTurnCount) : turns;
+  const visibleTurnOffset = hiddenTurnCount;
 
   const headerMessage = isEditingSticky ? editingUserMessage : stickyUser;
 
@@ -83,8 +104,22 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
     return undefined;
   };
 
+  const stickyHistoryIndex = headerMessage?.historyIndex;
+  const stickyMatches = (m: ChatBubbleMessage) => {
+    if (!showStickyHeader && !isEditingSticky) return false;
+    if (stickyHistoryIndex != null && m.historyIndex != null) {
+      return stickyHistoryIndex === m.historyIndex;
+    }
+    return Boolean(headerMessage && headerMessage === m);
+  };
+
   const renderUser = (m: ChatBubbleMessage, turnIndex: number) => (
-    <div key={`user:${m.historyIndex ?? turnIndex}`} ref={setUserRef(turnIndex)} className="chat-turn-user">
+    <div
+      key={`user:${m.historyIndex ?? turnIndex}`}
+      ref={setUserRef(turnIndex)}
+      className={cn("chat-turn-user", stickyMatches(m) && "chat-turn-user--sticky-hidden")}
+      aria-hidden={stickyMatches(m) || undefined}
+    >
       <MessageBubble
         m={m}
         hasDesktopApi={hasDesktopApi}
@@ -113,14 +148,7 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
   );
 
   return (
-    <div
-      className={cn(
-        "chat-pane-messages",
-        (showStickyHeader && headerMessage) || isEditingSticky
-          ? "chat-pane-messages--sticky-user"
-          : null,
-      )}
-    >
+    <div className="chat-pane-messages">
       {(showStickyHeader || isEditingSticky) && headerMessage ? (
         <ChatStickyUserHeader
           message={headerMessage}
@@ -133,24 +161,55 @@ export const ChatMessagesPane = memo(function ChatMessagesPane({
       ) : null}
       <div
         ref={scrollAreaRef}
+        data-testid="chat-messages-scroll"
         className="chat-pane-messages-scroll overscroll-contain scrollbar-thin"
       >
-          <div className="chat-messages-inner">
-            <ErrorBoundary>
-              <div className="chat-messages-list">
-                {leadingOrphans.map((i) => renderAssistant(i))}
-                {turns.map((turn, turnIndex) => (
+        <div className="chat-messages-inner">
+          <ErrorBoundary>
+            <div className="chat-messages-list">
+              {sessionsRestoring && messages.length === 0 ? (
+                <div
+                  className="flex flex-col gap-3 px-1 py-4"
+                  role="status"
+                  aria-live="polite"
+                  aria-busy="true"
+                >
+                  <p className="text-[12px] text-muted-foreground">{CHAT_SESSIONS_RESTORING}</p>
+                  <div className="space-y-2.5" aria-hidden>
+                    <div className="ml-auto h-9 w-[55%] max-w-sm animate-pulse rounded-2xl bg-secondary/80" />
+                    <div className="h-16 w-[75%] max-w-md animate-pulse rounded-2xl bg-muted/60" />
+                    <div className="ml-auto h-9 w-[40%] max-w-xs animate-pulse rounded-2xl bg-secondary/80" />
+                    <div className="h-12 w-[65%] max-w-sm animate-pulse rounded-2xl bg-muted/60" />
+                  </div>
+                </div>
+              ) : null}
+              {hiddenTurnCount > 0 ? (
+                <div className="flex justify-center py-2">
+                  <button
+                    type="button"
+                    className="rounded-md px-3 py-1.5 text-[12px] text-muted-foreground transition hover:bg-secondary/70 hover:text-foreground"
+                    onClick={() => setShowAllTurns(true)}
+                  >
+                    {CHAT_SHOW_EARLIER_TURNS(hiddenTurnCount)}
+                  </button>
+                </div>
+              ) : null}
+              {hiddenTurnCount === 0 ? leadingOrphans.map((i) => renderAssistant(i)) : null}
+              {visibleTurns.map((turn, i) => {
+                const turnIndex = visibleTurnOffset + i;
+                return (
                   <div
                     key={`turn:${turn.userIndex}`}
                     ref={setTurnRef(turnIndex)}
                     className="chat-turn-section"
                   >
                     {renderUser(turn.user, turnIndex)}
-                    {turn.replyIndices.map((i) => renderAssistant(i))}
+                    {turn.replyIndices.map((idx) => renderAssistant(idx))}
                   </div>
-                ))}
-              </div>
-            </ErrorBoundary>
+                );
+              })}
+            </div>
+          </ErrorBoundary>
           <div ref={messagesEndRef} className="chat-messages-anchor" aria-hidden />
         </div>
       </div>

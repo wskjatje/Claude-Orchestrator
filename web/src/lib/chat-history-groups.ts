@@ -34,13 +34,58 @@ function firstUserPreview(history: SessionSource["history"]): string {
   return line.length > 120 ? `${line.slice(0, 120)}…` : line;
 }
 
+const GENERIC_SESSION_TITLES = new Set(["新对话", "Claude 会话", ""]);
+
+/**
+ * 页签 / 历史主标题：优先首条用户提问（与内容对齐）。
+ * AI 改写标题不抢主位置，见 resolveSessionAiTitle。
+ */
+export function resolveSessionDisplayTitle(
+  title: string | null | undefined,
+  history: SessionSource["history"] | null | undefined,
+): string {
+  const preview = firstUserPreview(history || []);
+  if (preview) {
+    return preview.length > 28 ? `${preview.slice(0, 28)}…` : preview;
+  }
+  const stored = String(title ?? "").trim();
+  if (stored && !GENERIC_SESSION_TITLES.has(stored)) return stored;
+  return stored || "新对话";
+}
+
+/** AI / 存储标题（非占位且与主标题不同时，作 tooltip / 副行） */
+export function resolveSessionAiTitle(
+  title: string | null | undefined,
+  history: SessionSource["history"] | null | undefined,
+): string | null {
+  const stored = String(title ?? "").trim();
+  if (!stored || GENERIC_SESSION_TITLES.has(stored)) return null;
+  const display = resolveSessionDisplayTitle(title, history);
+  if (stored === display) return null;
+  // 主标题是截断的首条时，完整 AI 标题仍可展示
+  if (display.endsWith("…") && stored.startsWith(display.slice(0, -1))) return null;
+  return stored;
+}
+
+export function resolveSessionTitleTooltip(
+  title: string | null | undefined,
+  history: SessionSource["history"] | null | undefined,
+): string {
+  const display = resolveSessionDisplayTitle(title, history);
+  const ai = resolveSessionAiTitle(title, history);
+  return ai ? `${display}\nAI 标题：${ai}` : display;
+}
+
 export function toChatHistoryListItem(sess: SessionSource): ChatHistoryListItem {
+  const display = resolveSessionDisplayTitle(sess.title, sess.history);
+  const ai = resolveSessionAiTitle(sess.title, sess.history);
   return {
     id: sess.id,
-    title: sess.title?.trim() || "新对话",
+    title: display,
     workspacePath: sess.workspacePath ?? null,
     activityMs: sessionActivityMs(sess),
-    preview: firstUserPreview(sess.history),
+    /** 副行：AI 标题（与主标题不同时） */
+    preview: ai || "",
   };
 }
 

@@ -44,6 +44,8 @@ export function useChatScroll({
     setJumpLatestVisible(!atBottom && messages.length > 0);
   }, [messages.length, setJumpLatestVisible]);
 
+  const pinRafRef = useRef(0);
+
   const pinScrollToBottom = useCallback(() => {
     const el = scrollAreaRef.current;
     if (!el) return;
@@ -56,8 +58,13 @@ export function useChatScroll({
     el.scrollTop = top;
   }, []);
 
+  /** 流式高频更新合并到下一帧，减轻「跟底」与布局争用导致的抖动 */
   const syncScrollToBottom = useCallback(() => {
-    pinScrollToBottom();
+    if (pinRafRef.current) return;
+    pinRafRef.current = requestAnimationFrame(() => {
+      pinRafRef.current = 0;
+      pinScrollToBottom();
+    });
   }, [pinScrollToBottom]);
 
   // 观测输入框区域高度变化 → 更新底部间距
@@ -88,7 +95,13 @@ export function useChatScroll({
     const onScroll = () => updateScrollPinnedState();
     el.addEventListener("scroll", onScroll, { passive: true });
     updateScrollPinnedState();
-    return () => el.removeEventListener("scroll", onScroll);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (pinRafRef.current) {
+        cancelAnimationFrame(pinRafRef.current);
+        pinRafRef.current = 0;
+      }
+    };
   }, [updateScrollPinnedState]);
 
   // 输入框高度变化 → 未滚走则自动跟进

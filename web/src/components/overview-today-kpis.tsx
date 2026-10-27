@@ -1,4 +1,4 @@
-import { Activity, MessageSquare, Sparkles, Clock, BarChart3 } from "lucide-react";
+import { Activity, Sparkles, Clock, BarChart3 } from "lucide-react";
 import { TODAY_KPIS_DESC } from "@/lib/ui-copy";
 import { OverviewKpiCard, OverviewSection, OverviewStatLine } from "@/components/overview-ui";
 
@@ -35,27 +35,6 @@ export function OverviewTodayKpis({ kpis }: OverviewTodayKpisProps) {
       />
     </OverviewSection>
   );
-}
-
-export function offlineTodayKpis(): TodayKpiItem[] {
-  return [
-    { label: "今日费用", value: "$0.00", caption: "未连接本机", icon: Activity, tint: "text-info" },
-    {
-      label: "活跃会话",
-      value: "—",
-      caption: "连接后同步",
-      icon: MessageSquare,
-      tint: "text-primary",
-    },
-    {
-      label: "技能就绪",
-      value: "—",
-      caption: "本机 Skill 目录",
-      icon: Sparkles,
-      tint: "text-warning",
-    },
-    { label: "定时任务", value: "—", caption: "连接后查看", icon: Clock, tint: "text-success" },
-  ];
 }
 
 export const todayKpiIcons = {

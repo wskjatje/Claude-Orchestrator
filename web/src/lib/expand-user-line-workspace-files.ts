@@ -238,7 +238,8 @@ export async function buildSlimProjectBrief(desktop: DesktopApi): Promise<string
   }
 
   const pushFile = async (rel: string, cap: number) => {
-    if (!read || seen.has(rel) || parts.length >= 5) return;
+    // 本地上下文约 8k：摘录只留工作区名 + 至多 2 份短文档
+    if (!read || seen.has(rel) || parts.length >= 3) return;
     try {
       const r = await read(rel);
       if (r?.ok && typeof r.text === "string" && r.text.trim()) {
@@ -252,24 +253,23 @@ export async function buildSlimProjectBrief(desktop: DesktopApi): Promise<string
 
   if (typeof read === "function") {
     for (const rel of SLIM_BRIEF_PRODUCT_FILES) {
-      const cap =
-        rel.endsWith(".py") || rel.endsWith(".txt") || rel.endsWith(".toml") ? 2_200 : 3_500;
+      const cap = 800;
       await pushFile(rel, cap);
-      if (parts.length >= 5) break;
+      if (parts.length >= 3) break;
     }
   }
 
   // 动态补一份高分产品文档（若固定列表未命中）
-  if (parts.length < 5 && typeof desktop.listWorkspaceMarkdownFiles === "function") {
+  if (parts.length < 3 && typeof desktop.listWorkspaceMarkdownFiles === "function") {
     try {
       const ls = await desktop.listWorkspaceMarkdownFiles();
       const ranked = (ls?.ok && Array.isArray(ls.files) ? ls.files : [])
         .map((f) => ({ rel: f.relPath, score: scoreProductDocPath(f.relPath) }))
         .filter((x) => x.score > 0 && !seen.has(x.rel))
         .sort((a, b) => b.score - a.score);
-      for (const hit of ranked.slice(0, 2)) {
-        await pushFile(hit.rel, 3_500);
-        if (parts.length >= 5) break;
+      for (const hit of ranked.slice(0, 1)) {
+        await pushFile(hit.rel, 800);
+        if (parts.length >= 3) break;
       }
     } catch {
       /* ignore */
@@ -283,8 +283,7 @@ export async function buildSlimProjectBrief(desktop: DesktopApi): Promise<string
         const lines = flattenProductTreeNames(tree.tree as PanelTreeNode[]);
         if (lines.length) {
           parts.push(
-            `【工作区目录（节选·产品结构）】\n${lines.slice(0, 32).join("\n")}\n` +
-              `（标注为 chain-steps/agents/wbs 的路径多为开发过程材料，不是产品定义）`,
+            `【工作区目录（节选）】\n${lines.slice(0, 12).join("\n")}`,
           );
         }
       }
@@ -295,7 +294,7 @@ export async function buildSlimProjectBrief(desktop: DesktopApi): Promise<string
     try {
       const snap = await desktop.workspaceGetExecutionSnapshot();
       if (snap?.ok && typeof snap.text === "string" && snap.text.trim()) {
-        parts.push(`【工作区快照】\n${snap.text.trim().slice(0, 2_500)}`);
+        parts.push(`【工作区快照】\n${snap.text.trim().slice(0, 800)}`);
       }
     } catch {
       /* ignore */
@@ -305,15 +304,13 @@ export async function buildSlimProjectBrief(desktop: DesktopApi): Promise<string
   // 仅有工作区路径、无任何文件摘录时也返回路径行，避免模型瞎猜项目
   if (!parts.length) return "";
   const onlyPath = parts.length === 1 && parts[0]!.startsWith("【当前工作区】");
+  const body = parts.join("\n\n").slice(0, 2400);
   return (
     "\n\n---\n【项目摘录·仅供回答问题】\n" +
-    parts.join("\n\n") +
+    body +
     (onlyPath
       ? "\n\n【回答约束】仅知工作区路径，请据路径名谨慎推断；勿虚构文件内容。"
-      : "\n\n【回答约束】用与用户相同的语言直接回答所问（是什么/怎么优化/架构等）。" +
-        "证据优先级：依赖清单与应用入口/路由/页面 > 项目状态或概要文档 > 目录结构；" +
-        "WBS、Agent 指派、chain-steps、任务链文档只说明「如何被开发管理」，不得据此把产品本身概括为多智能体编排平台或自动化工作流运行时。" +
-        "禁止声称用户未提供任何资料；禁止复述本段标题或自称待命。")
+      : "\n\n【回答约束】用与用户相同的语言直接回答。以依赖与入口为准，勿把过程文档当成产品本身。")
   );
 }
 

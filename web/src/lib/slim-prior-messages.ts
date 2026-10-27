@@ -3,10 +3,14 @@
 import {
   PRIOR_MESSAGE_CHAR_CAP as SHARED_CHAR_CAP,
   PRIOR_KEEP_RECENT as SHARED_KEEP,
+  PRIOR_KEEP_RECENT_DIRECT,
+  PRIOR_MESSAGE_CHAR_CAP_DIRECT,
+  resolvePriorBudget,
 } from "../../../shared/context-budget.mjs";
 
 export const PRIOR_MESSAGE_CHAR_CAP = SHARED_CHAR_CAP;
 export const PRIOR_KEEP_RECENT = SHARED_KEEP;
+export { PRIOR_KEEP_RECENT_DIRECT, PRIOR_MESSAGE_CHAR_CAP_DIRECT, resolvePriorBudget };
 
 export type SlimPriorTurn = {
   role: "user" | "assistant";

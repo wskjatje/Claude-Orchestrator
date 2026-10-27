@@ -24,6 +24,9 @@ import {
 import { ChatModelSelector, type ModelPick } from "@/components/chat-model-selector";
 import { ComposerSessionChip } from "@/components/composer-session-chip";
 import { ComposerOrchHint } from "@/components/composer-orch-hint";
+import { ComposerContextUsageRing } from "@/components/composer-context-usage-ring";
+import { ComposerContextUsageBreakdown } from "@/components/composer-context-usage-breakdown";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CodeIndexChip, GraphifyChip } from "@/components/chat/composer-chips";
 import {
   getLiveExecChannelState,
@@ -34,7 +37,23 @@ import {
   subscribeWorkbenchInteractionMode,
 } from "@/lib/workbench-interaction-mode";
 import { isPlanDocumentRequest } from "@/lib/turn-policy";
-import { COMPOSER_ASK_PLAN_HINT } from "@/lib/ui-copy";
+import {
+  CHAT_CONTEXT_USAGE_TITLE,
+  COMPOSER_ASK_PLAN_HINT,
+  COMPOSER_SEND_CONNECTING,
+} from "@/lib/ui-copy";
+import { estimateContextUsage } from "@/lib/context-usage";
+import { CONTEXT_USAGE_CHIP_MIN_PERCENT } from "../../../shared/context-budget.mjs";
+import {
+  getCachedContextLength,
+  getCachedModelCapability,
+  getModelCapabilityCacheEpoch,
+  rememberModelCapability,
+  subscribeModelCapabilityCache,
+} from "@/lib/model-capability-cache";
+import { nextLocalContextOverride } from "@/lib/local-context-override";
+import { chatSettingsPreservePayload, isAutoModelSelection } from "@/lib/model-catalog";
+import { useDesktopGate } from "@/hooks/use-desktop-ready";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -100,6 +119,11 @@ export type ChatComposerShellProps = {
   onRemoveDomElement: (id: string) => void;
   onPickFiles: (opts?: { onlyImages?: boolean }) => void;
   orchMode: "claude-code" | "local-mcp";
+  /**
+   * 设置里的编排模式已读入。未就绪时不渲染占用环，避免默认 claude-code 误标「云窗」。
+   * 禁止用默认云窗顶替未水合状态。
+   */
+  orchModeReady?: boolean;
   localAgentBasename: string;
   onAgentChange: (basename: string) => void;
   cloudModels: string[];
@@ -122,6 +146,22 @@ export type ChatComposerShellProps = {
   onWorkspaceChipClick?: () => void;
   /** 打开本机多 Agent 并行派发 */
   onParallelClick?: () => void;
+  /** 当前会话 history（用于粗略上下文占用条） */
+  sessionHistory?: Array<{
+    role?: string;
+    content?: string;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+      estimated?: boolean;
+    };
+    contextParts?: {
+      rulesEstTokens?: number;
+      mcpEstTokens?: number;
+      mcpCallCount?: number;
+    } | null;
+  }> | null;
 };
 
 /** Composer 主体（底栏与顶部内联编辑共用） */
@@ -148,6 +188,7 @@ export function ChatComposerShell({
   onRemoveDomElement,
   onPickFiles,
   orchMode,
+  orchModeReady = false,
   localAgentBasename,
   onAgentChange,
   cloudModels,
@@ -164,7 +205,10 @@ export function ChatComposerShell({
   workspacePath = null,
   onWorkspaceChipClick,
   onParallelClick,
+  sessionHistory = null,
 }: ChatComposerShellProps) {
+  const { phase: bridgePhase } = useDesktopGate();
+  const pendingSendRef = useRef(false);
   const inline = variant === "inline";
   const [dragOver, setDragOver] = useState(false);
   const workspaceBasename = useMemo(() => {
@@ -173,6 +217,109 @@ export function ChatComposerShell({
     const parts = p.split(/[/\\]/).filter(Boolean);
     return parts[parts.length - 1] || p;
   }, [workspacePath]);
+  const contextSuggestRef = useRef(false);
+  const capsEpoch = useSyncExternalStore(
+    subscribeModelCapabilityCache,
+    getModelCapabilityCacheEpoch,
+    getModelCapabilityCacheEpoch,
+  );
+  const contextUsage = useMemo(() => {
+    // 编排就绪即可画环（空会话也显示窗种/上限；禁止等首轮才露「云窗/本窗」）
+    if (!orchModeReady || !Array.isArray(sessionHistory)) return null;
+    const mid = String(modelValue || modelFallback || "").trim();
+    const snap = estimateContextUsage(sessionHistory, {
+      contextLength: getCachedContextLength(mid),
+      isLocal: orchMode === "local-mcp",
+      prevSuggest: contextSuggestRef.current,
+    });
+    contextSuggestRef.current = snap.suggestSummarize;
+    return snap;
+  }, [sessionHistory, modelValue, modelFallback, orchMode, orchModeReady, capsEpoch]);
+  // Cursor：占比就地变；环可轻闪。仅 windowKind 真变才写「已切换通道窗口」（勿把本窗覆盖档位误报成切通道）。
+  // 关闪 timer 独立 effect：避免 windowTokens 连跳时 cleanup 清掉关闪导致文案永久卡住。
+  const prevWindowKindRef = useRef<"local" | "cloud" | null>(null);
+  const prevWindowTokensRef = useRef<number | null>(null);
+  const windowUsageBootstrappedRef = useRef(false);
+  const windowUsageMountAtRef = useRef(0);
+  const [channelKindFlash, setChannelKindFlash] = useState(false);
+  const [usageRingFlash, setUsageRingFlash] = useState(false);
+  // 编排模式未就绪时清基准；就绪后首帧再记，禁止把默认云窗记成「真通道」
+  useEffect(() => {
+    if (!orchModeReady) {
+      windowUsageBootstrappedRef.current = false;
+      windowUsageMountAtRef.current = 0;
+      prevWindowKindRef.current = null;
+      prevWindowTokensRef.current = null;
+      setChannelKindFlash(false);
+      setUsageRingFlash(false);
+    }
+  }, [orchModeReady]);
+  useEffect(() => {
+    if (!orchModeReady) return;
+    const kind = contextUsage?.windowKind ?? null;
+    const tokens = contextUsage?.windowTokens ?? null;
+    if (!kind && tokens == null) return;
+    if (!windowUsageMountAtRef.current) windowUsageMountAtRef.current = Date.now();
+    // 首帧 + 水合静默窗：只记基准，不闪（窗档跳变会误报）
+    const inHydrateQuiet =
+      !windowUsageBootstrappedRef.current ||
+      Date.now() - windowUsageMountAtRef.current < 2000;
+    if (inHydrateQuiet) {
+      windowUsageBootstrappedRef.current = true;
+      if (kind) prevWindowKindRef.current = kind;
+      if (tokens != null) prevWindowTokensRef.current = tokens;
+      return;
+    }
+    const prevKind = prevWindowKindRef.current;
+    const prevTokens = prevWindowTokensRef.current;
+    if (kind) prevWindowKindRef.current = kind;
+    if (tokens != null) prevWindowTokensRef.current = tokens;
+    const kindChanged = Boolean(prevKind && kind && prevKind !== kind);
+    const tokensChanged = Boolean(
+      prevTokens != null && tokens != null && prevTokens !== tokens,
+    );
+    if (kindChanged) setChannelKindFlash(true);
+    if (kindChanged || tokensChanged) setUsageRingFlash(true);
+  }, [orchModeReady, contextUsage?.windowKind, contextUsage?.windowTokens]);
+  useEffect(() => {
+    if (!channelKindFlash) return;
+    const t = window.setTimeout(() => setChannelKindFlash(false), 1800);
+    return () => window.clearTimeout(t);
+  }, [channelKindFlash]);
+  useEffect(() => {
+    if (!usageRingFlash) return;
+    const t = window.setTimeout(() => setUsageRingFlash(false), 1800);
+    return () => window.clearTimeout(t);
+  }, [usageRingFlash]);
+  const cycleLocalWindowOverride = useCallback(async () => {
+    if (orchMode !== "local-mcp" || !hasDesktopApi || workflowBusy) return;
+    const mid = String(modelValue || modelFallback || "").trim();
+    if (!mid || isAutoModelSelection(mid)) return;
+    const api = getDesktop();
+    if (!api?.getChatSettings || !api.saveChatSettings) return;
+    try {
+      const s = await api.getChatSettings();
+      const prev = { ...(s.modelCapabilityOverrides || {}) };
+      const cur = { ...(prev[mid] || {}) };
+      const curCl = typeof cur.contextLength === "number" ? cur.contextLength : null;
+      const nextCl = nextLocalContextOverride(curCl);
+      if (nextCl == null) delete cur.contextLength;
+      else cur.contextLength = nextCl;
+      if (Object.keys(cur).length) prev[mid] = cur;
+      else delete prev[mid];
+      await api.saveChatSettings({
+        ...chatSettingsPreservePayload(s),
+        modelCapabilityOverrides: prev,
+      });
+      // 芯片经 capsEpoch 重算 %；无 toast（对齐 Cursor 就地反馈）
+      rememberModelCapability(mid, {
+        ...(getCachedModelCapability(mid) || {}),
+        contextLength: nextCl,
+      });
+    } catch {
+      /* 覆盖失败不打断发送 */
+    }
+  }, [orchMode, hasDesktopApi, workflowBusy, modelValue, modelFallback]);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const { health: graphHealth, buildGraph, openGraphHtml } = useGraphifyHealth();
   const [codeIndex, setCodeIndex] = useState<{
@@ -210,6 +357,29 @@ export function ChatComposerShell({
     getLiveExecChannelState,
     getLiveExecChannelState,
   );
+
+  /** hydrating 时可点发送：排队，桥就绪后自动发出；offline 仍禁用 */
+  const sendBlockedOffline = bridgePhase === "offline" || (bridgePhase === "ready" && !hasDesktopApi);
+  const sendConnecting = bridgePhase === "hydrating";
+  const sendEnabled = canSend && !sendBlockedOffline;
+
+  const trySend = useCallback(() => {
+    if (!canSend || workflowBusy) return;
+    if (sendBlockedOffline) return;
+    if (!hasDesktopApi || bridgePhase === "hydrating") {
+      pendingSendRef.current = true;
+      return;
+    }
+    pendingSendRef.current = false;
+    onSend();
+  }, [canSend, workflowBusy, sendBlockedOffline, hasDesktopApi, bridgePhase, onSend]);
+
+  useEffect(() => {
+    if (!pendingSendRef.current) return;
+    if (bridgePhase !== "ready" || !hasDesktopApi || !canSend || workflowBusy) return;
+    pendingSendRef.current = false;
+    onSend();
+  }, [bridgePhase, hasDesktopApi, canSend, workflowBusy, onSend]);
 
   const refreshMentionPaths = () => {
     if (!hasDesktopApi) return;
@@ -390,7 +560,7 @@ export function ChatComposerShell({
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (!workflowBusy && canSend) onSend();
+      if (!workflowBusy && canSend) trySend();
     }
   };
 
@@ -776,7 +946,66 @@ export function ChatComposerShell({
           </DropdownMenu>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
+          {contextUsage ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  data-testid="composer-context-usage-chip"
+                  className={cn(
+                    "composer-context-usage-btn gap-1",
+                    usageRingFlash && "composer-context-usage-btn--flash",
+                  )}
+                  title={`${CHAT_CONTEXT_USAGE_TITLE(
+                    contextUsage.percent,
+                    contextUsage.suggestSummarize,
+                    contextUsage.source,
+                    contextUsage.windowKind,
+                    contextUsage.windowSource,
+                    channelKindFlash,
+                    CONTEXT_USAGE_CHIP_MIN_PERCENT,
+                  )} · 窗 ${Math.round(contextUsage.windowTokens / 1024)}k`}
+                  aria-label={CHAT_CONTEXT_USAGE_TITLE(
+                    contextUsage.percent,
+                    contextUsage.suggestSummarize,
+                    contextUsage.source,
+                    contextUsage.windowKind,
+                    contextUsage.windowSource,
+                    channelKindFlash,
+                    CONTEXT_USAGE_CHIP_MIN_PERCENT,
+                  )}
+                >
+                  <ComposerContextUsageRing
+                    percent={contextUsage.percent}
+                    warn={contextUsage.suggestSummarize}
+                    flash={usageRingFlash}
+                    aria-hidden
+                  />
+                  {contextUsage.suggestSummarize || contextUsage.percent >= 50 ? (
+                    <span className="composer-context-usage-pct tabular-nums">
+                      {contextUsage.percent < CONTEXT_USAGE_CHIP_MIN_PERCENT
+                        ? `<${CONTEXT_USAGE_CHIP_MIN_PERCENT}`
+                        : contextUsage.percent}
+                      %
+                    </span>
+                  ) : null}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="end" className="w-[17.5rem] p-3">
+                <ComposerContextUsageBreakdown
+                  usage={contextUsage}
+                  canStepLocalWindow={
+                    orchMode === "local-mcp" &&
+                    hasDesktopApi &&
+                    !workflowBusy &&
+                    !isAutoModelSelection(modelValue || modelFallback)
+                  }
+                  onStepLocalWindow={() => void cycleLocalWindowOverride()}
+                />
+              </PopoverContent>
+            </Popover>
+          ) : null}
           <button
             type="button"
             title="添加文件"
@@ -800,11 +1029,16 @@ export function ChatComposerShell({
           ) : (
             <button
               type="button"
-              onClick={onSend}
-              disabled={!canSend || !hasDesktopApi}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-35"
-              title="发送 (Enter)"
+              data-testid="composer-send"
+              onClick={trySend}
+              disabled={!sendEnabled}
+              className={cn(
+                "inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-35",
+                sendConnecting && canSend && "animate-pulse",
+              )}
+              title={sendConnecting ? COMPOSER_SEND_CONNECTING : "发送 (Enter)"}
               aria-label="发送"
+              aria-busy={sendConnecting && canSend ? true : undefined}
             >
               <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.25} />
             </button>

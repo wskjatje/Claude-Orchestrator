@@ -1,0 +1,32 @@
+---
+description: Playwright / 真浏览器必须出 Agent 沙箱（对齐 Cursor 约定）
+alwaysApply: true
+---
+
+# Playwright 与 Cursor Agent 沙箱
+
+Cursor Agent 默认终端沙箱会导致 Chromium / headless-shell **SIGSEGV**，或把 `PLAYWRIGHT_BROWSERS_PATH` 指到空的 `/tmp/cursor-sandbox-cache/...`。
+
+## 强制
+
+跑以下任一命令时，Shell **必须** `required_permissions: ["all"]`（出沙箱）：
+
+- `npm run check:ui-playwright`
+- `npm run check:ui-playwright:ci`
+- `npm run browser:install`
+- `npx playwright …` / `node scripts/check-ui-playwright.mjs`
+
+禁止在默认沙箱里「再试一次」同命令期望自愈。
+
+## 浏览器路径
+
+- 本机优先仓库 `.playwright-browsers`（`PLAYWRIGHT_BROWSERS_PATH=$PWD/.playwright-browsers`），或 macOS `~/Library/Caches/ms-playwright`
+- 缺二进制时先 `npm run browser:install`（同样要 `all`）
+
+## 看 UI 的替代
+
+若只需点选/截图验收、不必跑本仓 Playwright 脚本：优先 **cursor-ide-browser** MCP（Cursor 自带浏览器通道），勿在沙箱内再起一套 Chromium。
+
+## CI
+
+GitHub Actions 的 `ui-playwright` job 使用 `mcr.microsoft.com/playwright` 官方镜像（系统库预装），不在 runner 上每次 `install-deps`。

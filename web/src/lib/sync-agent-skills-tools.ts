@@ -99,7 +99,9 @@ async function syncAgentSkillsLocalFallback(
   const bundle = resolveAgentSkillBundleFromMeta(stem, parsed);
 
   const listed = await api.listClaudeSkillMarkdown();
-  const existing = new Set((listed.items ?? []).map((i) => i.stem));
+  const existing = new Set(
+    (listed.items ?? []).map((i: { stem: string }) => i.stem),
+  );
   const createdSkills: string[] = [];
   const skippedSkills: string[] = [];
 

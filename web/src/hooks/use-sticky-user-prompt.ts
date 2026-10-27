@@ -1,31 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { ChatBubbleMessage } from "@/components/chat-message-bubble";
 import { groupChatTurns } from "@/lib/chat-turns";
+import {
+  findActiveTurnIndex,
+  isUserBubbleScrolledAway,
+  STICKY_HIDE_GAP,
+  STICKY_SHOW_GAP,
+} from "../../../shared/sticky-prompt.mjs";
 
-const SCROLL_ANCHOR_OFFSET = 16;
-
-function findActiveTurnIndex(root: HTMLElement, turnElements: (HTMLElement | null)[]): number {
-  if (!turnElements.length) return -1;
-
-  const anchorY = root.getBoundingClientRect().top + SCROLL_ANCHOR_OFFSET;
-  const first = turnElements[0];
-  if (first && anchorY < first.getBoundingClientRect().top - 8) return -1;
-
-  let active = 0;
-  for (let i = 0; i < turnElements.length; i++) {
-    const el = turnElements[i];
-    if (!el) continue;
-    if (el.getBoundingClientRect().top <= anchorY) active = i;
-  }
-  return active;
-}
-
-/** 用户提问气泡已滚出可视区顶部 → 顶部固定栏承接展示 */
-function isUserBubbleScrolledAway(root: HTMLElement, userEl: HTMLElement | null): boolean {
-  if (!userEl) return false;
-  const rootTop = root.getBoundingClientRect().top + SCROLL_ANCHOR_OFFSET;
-  return userEl.getBoundingClientRect().bottom < rootTop + 2;
-}
+export {
+  findActiveTurnIndex,
+  isUserBubbleScrolledAway,
+  STICKY_HIDE_GAP,
+  STICKY_SHOW_GAP,
+};
 
 /** 列表内按时间展示完整轮次；仅当提问滚出视口时顶部固定栏显示该轮提问 */
 export function useStickyUserPrompt(
@@ -35,6 +23,8 @@ export function useStickyUserPrompt(
 ) {
   const turnRefs = useRef<(HTMLDivElement | null)[]>([]);
   const userRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const stickyVisibleRef = useRef(false);
+  const rafRef = useRef(0);
   const [activeTurnIndex, setActiveTurnIndex] = useState(-1);
   const [showStickyHeader, setShowStickyHeader] = useState(false);
 
@@ -62,6 +52,7 @@ export function useStickyUserPrompt(
   const syncStickyState = useCallback(() => {
     const root = scrollAreaRef.current;
     if (!root || turns.length === 0) {
+      stickyVisibleRef.current = false;
       setActiveTurnIndex(-1);
       setShowStickyHeader(false);
       return;
@@ -71,6 +62,7 @@ export function useStickyUserPrompt(
     setActiveTurnIndex((prev) => (prev === nextActive ? prev : nextActive));
 
     if (opts?.forceSticky) {
+      stickyVisibleRef.current = true;
       setShowStickyHeader(true);
       return;
     }
@@ -79,9 +71,18 @@ export function useStickyUserPrompt(
       nextActive >= 0 && nextActive < userRefs.current.length
         ? userRefs.current[nextActive]
         : null;
-    const away = isUserBubbleScrolledAway(root, userEl);
+    const away = isUserBubbleScrolledAway(root, userEl, stickyVisibleRef.current);
+    stickyVisibleRef.current = away;
     setShowStickyHeader((prev) => (prev === away ? prev : away));
   }, [scrollAreaRef, turns.length, opts?.forceSticky]);
+
+  const scheduleSync = useCallback(() => {
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      syncStickyState();
+    });
+  }, [syncStickyState]);
 
   useLayoutEffect(() => {
     syncStickyState();
@@ -92,21 +93,25 @@ export function useStickyUserPrompt(
     if (!root) return;
 
     syncStickyState();
-    root.addEventListener("scroll", syncStickyState, { passive: true });
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(syncStickyState) : null;
+    root.addEventListener("scroll", scheduleSync, { passive: true });
+    // 同时观察滚动容器与内容区：内容流式增高时 root 尺寸不变，只观察 root 会漏同步
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(scheduleSync) : null;
     ro?.observe(root);
-    for (const el of turnRefs.current) {
-      if (el) ro?.observe(el);
-    }
-    for (const el of userRefs.current) {
-      if (el) ro?.observe(el);
-    }
+    const inner =
+      root.querySelector(".chat-messages-list") ||
+      root.querySelector(".chat-messages-inner") ||
+      root.firstElementChild;
+    if (inner && inner !== root) ro?.observe(inner);
 
     return () => {
-      root.removeEventListener("scroll", syncStickyState);
+      root.removeEventListener("scroll", scheduleSync);
       ro?.disconnect();
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
     };
-  }, [scrollAreaRef, syncStickyState, turns.length]);
+  }, [scrollAreaRef, syncStickyState, scheduleSync, turns.length]);
 
   const stickyUser =
     showStickyHeader && activeTurnIndex >= 0 && activeTurnIndex < turns.length

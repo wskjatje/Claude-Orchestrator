@@ -51,6 +51,14 @@ export function stripAgentTurnForReadonlyDisplay(
   agentTurn: AgentTurnMeta | undefined,
 ): AgentTurnMeta | undefined {
   if (!agentTurn) return undefined;
-  // 只读：保留摘要以外的痕迹一律丢掉，避免 Edit/本地MCP
-  return undefined;
+  // 只读：丢掉写盘路径，避免 Edit 卡。已发生的 MCP 调用保留（无调用则不留徽章）
+  if (!agentTurn.mcpUsed && !(agentTurn.streamEvents && agentTurn.streamEvents.length)) {
+    return undefined;
+  }
+  return {
+    backend: agentTurn.backend,
+    ...(agentTurn.mcpUsed ? { mcpUsed: true } : {}),
+    ...(agentTurn.streamEvents?.length ? { streamEvents: agentTurn.streamEvents } : {}),
+    ...(agentTurn.summary ? { summary: agentTurn.summary } : {}),
+  };
 }

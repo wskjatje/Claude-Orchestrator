@@ -92,6 +92,10 @@ export const LOCAL_PROVIDER_REQUIRED_ERROR =
 export const MODEL_NOT_IN_POOL_ERROR =
   '所选模型不在已启用池内：请在「设置 → 模型与连接」启用该模型后再选；不会按名称启发式推断通道。'
 
+/** 本地模型未出现在本机 Ollama /api/tags（禁止调用未 pull 的标签） */
+export const LOCAL_MODEL_NOT_INSTALLED_ERROR =
+  '所选本地模型未安装到本机 Ollama：请先 ollama pull，或在「设置 → 模型与连接」改选已安装模型；不会调用未安装模型。'
+
 /**
  * 优先级：用户手选 > Agent frontmatter > Auto(routeHint)
  */
@@ -135,6 +139,14 @@ export function resolveModelForExecution(input) {
 }
 
 export async function loadConfiguredModelPools(settings) {
+  // 本地侧只保留本机 Ollama 已安装标签（与聊天池同一硬闸）
+  if (typeof cloudProviders.buildModelPoolsInstalled === 'function') {
+    const pools = await cloudProviders.buildModelPoolsInstalled(settings)
+    return {
+      cloudModels: pools.configured.cloudModels,
+      localModels: pools.configured.localModels,
+    }
+  }
   const pools = cloudProviders.buildModelPools(settings)
   return {
     cloudModels: pools.configured.cloudModels,
@@ -143,6 +155,10 @@ export async function loadConfiguredModelPools(settings) {
 }
 
 export async function loadChatModelPools(settings) {
+  if (typeof cloudProviders.buildModelPoolsInstalled === 'function') {
+    const pools = await cloudProviders.buildModelPoolsInstalled(settings)
+    return pools.chat
+  }
   const pools = cloudProviders.buildModelPools(settings)
   return pools.chat
 }
@@ -205,7 +221,15 @@ export async function resolveExecutionModel({
       const inCloud =
         fullPools.cloudModels?.includes(sessionSel) || chatPools.cloudModels?.includes(sessionSel)
       if (!inLocal && !inCloud) {
-        return { ok: false, error: MODEL_NOT_IN_POOL_ERROR }
+        // 设置里曾启用/编目过本地，但本机 Ollama tags 无此标签 → 未安装（非笼统池外）
+        const raw = cloudProviders.buildModelPools(settings)
+        const wasLocalConfigured =
+          (raw.configured?.localModels || []).includes(sessionSel) ||
+          (raw.chat?.localModels || []).includes(sessionSel)
+        return {
+          ok: false,
+          error: wasLocalConfigured ? LOCAL_MODEL_NOT_INSTALLED_ERROR : MODEL_NOT_IN_POOL_ERROR,
+        }
       }
     }
     return {
