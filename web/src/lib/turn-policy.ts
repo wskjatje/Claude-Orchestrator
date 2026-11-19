@@ -13,6 +13,7 @@ export type TurnPolicy = {
   allowTools: boolean;
   forceDirectChat: boolean;
   autoApplyWrites: boolean;
+  requireAppliedWrite: boolean;
   contextLevel: "none" | "slim-product" | "agent-full";
   systemConstraint: string;
 };

@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 2,
+  "startedAt": "2026-11-11T00:55:23.559Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 4,
+      "durationMs": 26118,
+      "toolCallCount": 6,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "write_file",
+        "run_tests",
+        "Search",
+        "Read",
+        "Edit",
+        "Write",
+        "Bash"
+      ],
+      "editFailureCount": 2,
+      "writtenPaths": [
+        "src/greeting.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ 'bonjour, Ada'\n- 'hello, Ada'\n\n    at file:///private/var/folders/zl/br6npc"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        26118
+      ],
+      "turns": [
+        4
+      ],
+      "editFailures": 2,
+      "successRate": 0,
+      "avgDurationMs": 26118,
+      "avgTurns": 4
+    }
+  ],
+  "finishedAt": "2026-11-11T00:55:49.768Z"
+}

@@ -8,7 +8,8 @@ export type ParsedSkillMarkdown = {
 const CATEGORIES = ["项目", "通用", "工程", "集成", "分析", "媒体"] as const;
 
 function extractFrontmatterField(fm: string, field: string): string {
-  const re = new RegExp(`^${field}:\\s*(.+)$`, "m");
+  // 行内空白用 [ \\t]*（勿用 \\s*，会吞换行）；(.*) 允许 `name: ` 空值
+  const re = new RegExp(`^${field}:[ \\t]*(.*)$`, "m");
   const m = fm.match(re);
   if (!m) return "";
   return m[1].trim().replace(/^["']|["']$/g, "").slice(0, 500);

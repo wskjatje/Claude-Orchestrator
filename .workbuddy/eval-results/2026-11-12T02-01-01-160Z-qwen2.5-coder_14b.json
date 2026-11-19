@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-12T02:01:01.160Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · src/greeting.js\n⋯ Read · src/greeting.js\n⋯ Edit · src/greeting.js\n⋯ Search · tests/greeting.test.js\n⋯ Read · tests/greeting.test.js\n⋯ Edit · tests/greeting.test.js\n⋯ Bash · auto\n⋯ Edit · test.js\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 24,
+      "durationMs": 54344,
+      "toolCallCount": 15,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "run_tests",
+        "Search",
+        "Read",
+        "Edit",
+        "Bash"
+      ],
+      "editFailureCount": 10,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/greeting.js",
+        "test.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · src/greeting.js\n⋯ Edit · src/greeting.js\n⋯ Edit · test.js\n⋯ Bash · auto\n\n（已调用工具：code_search）",
+      "error": null,
+      "turns": 5,
+      "durationMs": 15315,
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "search_replace",
+        "run_tests",
+        "Search",
+        "Edit",
+        "Bash"
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/greeting.js",
+        "test.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · src/greeting.js\n⋯ Edit · src/greeting.js\n⋯ Edit · test.js\n⋯ Bash · auto\n\n所有更改已保存并测试通过。",
+      "error": null,
+      "turns": 3,
+      "durationMs": 15605,
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "search_replace",
+        "run_tests",
+        "Search",
+        "Edit",
+        "Bash"
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/greeting.js",
+        "test.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 3,
+      "passed": 3,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        54344,
+        15315,
+        15605
+      ],
+      "turns": [
+        24,
+        5,
+        3
+      ],
+      "editFailures": 10,
+      "successRate": 1,
+      "avgDurationMs": 28421,
+      "avgTurns": 10.67
+    }
+  ],
+  "finishedAt": "2026-11-12T02:02:26.604Z"
+}

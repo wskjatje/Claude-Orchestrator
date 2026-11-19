@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 4,
+  "startedAt": "2026-11-11T23:52:27.220Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "local-mcp"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "local-mcp",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "根据当前工作区结构，`src/greeting.js` 文件存在。请同步更新对应的测试文件 `test.js`，并运行项目测试以确保更改生效。",
+      "error": null,
+      "turns": 3,
+      "durationMs": 24143,
+      "toolCallCount": 2,
+      "toolNames": [
+        "read_file",
+        "list_dir"
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": true,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ],
+      "workspace": "/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e02-br44fN/workspace"
+    }
+  ],
+  "summary": [
+    {
+      "backend": "local-mcp",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        24143
+      ],
+      "turns": [
+        3
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 24143,
+      "avgTurns": 3
+    }
+  ],
+  "finishedAt": "2026-11-11T23:52:51.462Z"
+}

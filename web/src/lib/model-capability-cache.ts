@@ -131,6 +131,30 @@ export function getCachedModelCapability(modelId: string): ModelCaps | null {
   return cache.get(id) || null;
 }
 
+/**
+ * 在候选池中挑一个实时能力缓存声明可走 tools 的模型。
+ * 保留用户的模型池顺序；只依赖实时能力记录，不按模型名或家族猜测。
+ */
+export function recommendToolsCapableModel(
+  candidates: string[] | null | undefined,
+  excludeModelId?: string,
+): string | null {
+  ensureHydrated();
+  const exclude = String(excludeModelId || "").trim();
+  const uniq = [
+    ...new Set(
+      (Array.isArray(candidates) ? candidates : [])
+        .map((x) => String(x || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  for (const id of uniq) {
+    if (id === exclude) continue;
+    if (getCachedModelCapability(id)?.tools === true) return id;
+  }
+  return null;
+}
+
 /** @returns 已知 contextLength，否则 null */
 export function getCachedContextLength(modelId: string): number | null {
   const caps = getCachedModelCapability(modelId);

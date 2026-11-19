@@ -2,13 +2,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { loadWorkspace } from './store.mjs'
 
-/** 根级规则；不含 AGENTS/CLAUDE（由 CLI 侧自行读取，避免双重注入） */
+/** 根级规则；前端按执行通道决定是否注入 AGENTS/CLAUDE，避免 CLI 双重注入。 */
 const ROOT_CANDIDATES = [
   '.claudecode/user-preferences.mdc',
   '.claudecode/RULES.md',
   '.claudecode/rules.md',
   'RULES.md',
   '.cursorrules',
+  'AGENTS.md',
+  'CLAUDE.md',
 ]
 
 const RULE_EXTS = new Set(['.mdc', '.md'])
@@ -129,12 +131,12 @@ export function ensureProjectRulesWatcher() {
   // 禁止对整个工作区 recursive watch（大仓库会 EMFILE 并拖垮 Bridge）
   const cursorDir = path.join(root, '.cursor')
   const cursorRules = path.join(root, '.cursor', 'rules')
-  const claudecodeDir = path.join(root, '.claudecode')
   /** @type {string[]} */
   const targets = []
   if (fs.existsSync(cursorRules)) targets.push(cursorRules)
   else if (fs.existsSync(cursorDir)) targets.push(cursorDir)
-  if (fs.existsSync(claudecodeDir)) targets.push(claudecodeDir)
+  // 不监听整个 .claudecode：它是运行状态目录（索引/日志/SQLite），且在 macOS 上
+  // 即便非递归也可能触发 EMFILE。现有规则文件逐个监听；新增规则由下方轮询发现。
   for (const rel of ROOT_CANDIDATES) {
     const abs = path.join(root, rel)
     if (fs.existsSync(abs)) targets.push(abs)
@@ -144,7 +146,8 @@ export function ensureProjectRulesWatcher() {
   for (const t of [...new Set(targets)]) {
     try {
       const st = fs.statSync(t)
-      const recursive = st.isDirectory() && (t === cursorRules || t === claudecodeDir)
+      // 规则递归只属于 .cursor/rules；其它根规则文件均逐个监听。
+      const recursive = st.isDirectory() && t === cursorRules
       const w = fs.watch(t, recursive ? { recursive: true } : {}, () => {
         emitRulesChanged()
         if (t === cursorDir) {
@@ -159,7 +162,11 @@ export function ensureProjectRulesWatcher() {
       })
       w.on('error', (err) => {
         // EMFILE 等不可恢复错误：关掉该 watcher，保留 Bridge；轮询仍会补绑
-        console.warn('[project-rules] watch error:', err?.code || err?.message || err)
+        console.warn(
+          '[project-rules] watch error:',
+          path.relative(root, t) || '.',
+          err?.code || err?.message || err,
+        )
         try {
           w.close()
         } catch {

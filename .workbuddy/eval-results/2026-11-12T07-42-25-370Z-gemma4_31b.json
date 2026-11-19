@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-12T07:42:25.370Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "gemma4:31b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "gemma4:31b",
+    "digest": "92808281a855666acf35743d49004bb30c810152cd004baf78f31b4578920e49",
+    "details": {
+      "parent_model": "",
+      "format": "safetensors",
+      "family": "",
+      "families": null,
+      "parameter_size": "",
+      "quantization_level": "",
+      "runner": "mlx"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 1,
+      "model": "gemma4:31b",
+      "status": "failed",
+      "ok": false,
+      "error": "评测子进程未返回有效 JSON",
+      "durationMs": 300032,
+      "turns": 0,
+      "toolCallCount": 0,
+      "toolNames": [],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": []
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        300032
+      ],
+      "turns": [
+        0
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 300032,
+      "avgTurns": 0
+    }
+  ],
+  "finishedAt": "2026-11-12T07:47:25.464Z"
+}

@@ -1,0 +1,1557 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 2,
+  "startedAt": "2026-11-11T01:19:37.809Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "示例项目默认使用 SQLite 作为存储。健康检查路径是 GET /healthz。\nHost · Read",
+      "error": null,
+      "turns": 2,
+      "durationMs": 6272,
+      "toolCallCount": 1,
+      "toolNames": [
+        "read_file",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "1 个初始文件"
+        }
+      ]
+    },
+    {
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "示例项目默认使用 SQLite 作为存储，健康检查路径是 GET /healthz。\nHost · Search → Read",
+      "error": null,
+      "turns": 3,
+      "durationMs": 3774,
+      "toolCallCount": 2,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "Search",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "1 个初始文件"
+        }
+      ]
+    },
+    {
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "示例项目默认使用 SQLite 存储，健康检查路径是 GET /healthz。\nHost · Read",
+      "error": null,
+      "turns": 2,
+      "durationMs": 2239,
+      "toolCallCount": 1,
+      "toolNames": [
+        "read_file",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "1 个初始文件"
+        }
+      ]
+    },
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · src/greeting.js\n⋯ Edit · src/greeting.js\n⋯ Diagnostics · lint\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 7,
+      "durationMs": 16866,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "search_replace",
+        "get_diagnostics",
+        "Search",
+        "Edit",
+        "Diagnostics"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [
+        "src/greeting.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ 'bonjour, Ada'\n- 'hello, Ada'\n\n    at file:///private/var/folders/zl/br6npc"
+        }
+      ]
+    },
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · src/greeting.js\n⋯ Edit · src/greeting.js\n⋯ Edit · test.js\n⋯ Bash · auto\n\n所有修改已完成，并且项目测试通过。",
+      "error": null,
+      "turns": 3,
+      "durationMs": 16192,
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "search_replace",
+        "run_tests",
+        "Search",
+        "Edit",
+        "Bash"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [
+        "src/greeting.js",
+        "test.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · src/greeting.js\n⋯ Edit · src/greeting.js\n⋯ Edit · test.js\n⋯ Bash · auto\n\n（已调用工具：code_search、read_file）",
+      "error": null,
+      "turns": 5,
+      "durationMs": 17367,
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "search_replace",
+        "run_tests",
+        "Search",
+        "Edit",
+        "Bash"
+      ],
+      "editFailureCount": 2,
+      "writtenPaths": [
+        "test.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ 'hello, Ada'\n- 'bonjour, Ada'\n\n    at file:///private/var/folders/zl/br6npc"
+        }
+      ]
+    },
+    {
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · LegacyQueue\n⋯ Read · <result-from-code_search>\n⋯ Edit · src/worker.js\n⋯ Edit · src/queue.js\n⋯ Edit · src/index.js\n⋯ Bash · auto\n\n请提供具体的测试命令，以便我运行项目测试。",
+      "error": null,
+      "turns": 3,
+      "durationMs": 17023,
+      "toolCallCount": 6,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "run_tests",
+        "Search",
+        "Read",
+        "Edit",
+        "Bash"
+      ],
+      "editFailureCount": 2,
+      "writtenPaths": [
+        "src/queue.js",
+        "src/index.js"
+      ],
+      "assertions": [
+        {
+          "type": "workspaceContains",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · LegacyQueue\n⋯ Read · src/worker.js\n⋯ Edit · src/worker.js\n⋯ Read · src/queue.js\n⋯ Edit · src/queue.js\n⋯ Read · src/index.js\n⋯ Edit · src/index.js\n⋯ Bash · auto\n⋯ Bash · pytest\n\n（已调用工具：run_command）",
+      "error": null,
+      "turns": 7,
+      "durationMs": 21624,
+      "toolCallCount": 9,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "run_tests",
+        "run_command",
+        "Search",
+        "Read",
+        "Edit",
+        "Bash"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [
+        "src/worker.js",
+        "src/queue.js",
+        "src/index.js"
+      ],
+      "assertions": [
+        {
+          "type": "workspaceContains",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · LegacyQueue\n⋯ Edit · src/worker.js\n⋯ Edit · src/queue.js\n⋯ Edit · src/index.js\n\n（已调用工具：code_search）",
+      "error": null,
+      "turns": 6,
+      "durationMs": 17430,
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "search_replace",
+        "Search",
+        "Edit"
+      ],
+      "editFailureCount": 2,
+      "writtenPaths": [
+        "src/queue.js",
+        "src/index.js"
+      ],
+      "assertions": [
+        {
+          "type": "workspaceContains",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E04",
+      "title": "为边界行为补测试",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · clamp.js\n⋯ Search · clamp.js tests\n⋯ Write · src/clamp.test.js\n⋯ Edit · src/clamp.test.js\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 7,
+      "durationMs": 19451,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "write_file",
+        "Search",
+        "Write"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [
+        "src/clamp.test.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileExistsGlob",
+          "ok": true,
+          "detail": "*.test.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "exit=1"
+        }
+      ]
+    },
+    {
+      "taskId": "E04",
+      "title": "为边界行为补测试",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · clamp.js\n⋯ Read · src/clamp.js\n⋯ Edit · src/clamp.js\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 7,
+      "durationMs": 11637,
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "Search",
+        "Read",
+        "Edit"
+      ],
+      "editFailureCount": 2,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileExistsGlob",
+          "ok": false,
+          "detail": "*.test.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E04",
+      "title": "为边界行为补测试",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · clamp.js\n⋯ Read · src/clamp.js\n\n（已调用工具：code_search）",
+      "error": null,
+      "turns": 5,
+      "durationMs": 30061,
+      "toolCallCount": 2,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "Search",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileExistsGlob",
+          "ok": false,
+          "detail": "*.test.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E05",
+      "title": "根据失败测试修复缺陷",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Bash · node test.js\n⋯ Search · src/add.js\n⋯ Read · src/add.js\n⋯ Search · add function in src/add.js\n⋯ Edit · src/add.js\n⋯ Write · src/add.js\n⋯ Bash · auto\n\n（已调用工具：code_search、read_file、search_replace、write_file、run_tests）",
+      "error": null,
+      "turns": 5,
+      "durationMs": 22136,
+      "toolCallCount": 8,
+      "toolNames": [
+        "run_command",
+        "code_search",
+        "read_file",
+        "search_replace",
+        "write_file",
+        "run_tests",
+        "Bash",
+        "Search",
+        "Read",
+        "Edit",
+        "Write"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [
+        "src/add.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "src/add.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E05",
+      "title": "根据失败测试修复缺陷",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Bash · node test.js\n⋯ Read · src/add.js\n\n\"name\": \"run_tests\"",
+      "error": null,
+      "turns": 6,
+      "durationMs": 10755,
+      "toolCallCount": 2,
+      "toolNames": [
+        "run_command",
+        "read_file",
+        "Bash",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/add.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n-1 !== 5\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eva"
+        }
+      ]
+    },
+    {
+      "taskId": "E05",
+      "title": "根据失败测试修复缺陷",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama 连接失败（http://127.0.0.1:11434 / qwen2.5-coder:14b）：The operation was aborted due to timeout。请启动 Ollama 或改用支持 tools 的云端模型。（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 3,
+      "durationMs": 266796,
+      "toolCallCount": 2,
+      "toolNames": [
+        "run_command",
+        "code_search",
+        "Bash",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/add.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n-1 !== 5\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eva"
+        }
+      ]
+    },
+    {
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · src/legacy/format.js\n⋯ Read · src/pages/home.js\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 5,
+      "durationMs": 17498,
+      "toolCallCount": 2,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "Search",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileExists",
+          "ok": false,
+          "detail": "src/shared/format.js"
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceContains",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · src/legacy/format.js\n⋯ Bash · git mv src/legacy/format.js src/shared/format.js\n⋯ Edit · src/pages/home.js\n\n抱歉，我无法继续执行该请求。",
+      "error": null,
+      "turns": 5,
+      "durationMs": 13752,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "run_command",
+        "search_replace",
+        "Search",
+        "Bash",
+        "Edit"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [
+        "src/pages/home.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileExists",
+          "ok": false,
+          "detail": "src/shared/format.js"
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceContains",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · src/legacy/format.js\n⋯ Read · src/pages/home.js\n⋯ Read · src/jobs/daily.js\n\n（已调用工具：read_file、read_file）",
+      "error": null,
+      "turns": 5,
+      "durationMs": 15609,
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "Search",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileExists",
+          "ok": false,
+          "detail": "src/shared/format.js"
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceContains",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "skipped",
+      "reason": "该任务需要网络；须显式传 --allow-network 才会在临时工作区运行",
+      "turns": 0,
+      "durationMs": 0,
+      "toolCallCount": 0,
+      "editFailureCount": 0,
+      "assertions": []
+    },
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "skipped",
+      "reason": "该任务需要网络；须显式传 --allow-network 才会在临时工作区运行",
+      "turns": 0,
+      "durationMs": 0,
+      "toolCallCount": 0,
+      "editFailureCount": 0,
+      "assertions": []
+    },
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "skipped",
+      "reason": "该任务需要网络；须显式传 --allow-network 才会在临时工作区运行",
+      "turns": 0,
+      "durationMs": 0,
+      "toolCallCount": 0,
+      "editFailureCount": 0,
+      "assertions": []
+    },
+    {
+      "taskId": "E08",
+      "title": "运行项目构建并报告结果",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · package.json\n⋯ Bash · npm run build\n\n（已调用工具：code_search）",
+      "error": null,
+      "turns": 5,
+      "durationMs": 4846,
+      "toolCallCount": 2,
+      "toolNames": [
+        "code_search",
+        "run_command",
+        "Search",
+        "Bash"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "dist/app.txt"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E08",
+      "title": "运行项目构建并报告结果",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Bash · npm run build\n⋯ Search · package.json\n⋯ Read · package.json\n\n（已调用工具：search_replace）\n\n（已调用工具：write_file）\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 6,
+      "durationMs": 11227,
+      "toolCallCount": 3,
+      "toolNames": [
+        "run_command",
+        "code_search",
+        "read_file",
+        "Bash",
+        "Search",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "dist/app.txt"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E08",
+      "title": "运行项目构建并报告结果",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · package.json\n⋯ Read · package.json\n⋯ Bash · npm run build\n⋯ Bash · git\n\n好的，我将按照要求执行工具调用。\n\n（已调用工具：code_search、read_file、search_replace/write_file、run_tests）",
+      "error": null,
+      "turns": 5,
+      "durationMs": 12207,
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "run_command",
+        "git_status",
+        "Search",
+        "Read",
+        "Bash"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "dist/app.txt"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E09",
+      "title": "大文件局部修改",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · data/large.txt\n⋯ Read · data/large.txt\n⋯ Edit · data/large.txt\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 7,
+      "durationMs": 14815,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "Search",
+        "Read",
+        "Edit"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [
+        "data/large.txt"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "fileNotContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "lineCount",
+          "ok": true,
+          "detail": "data/large.txt"
+        }
+      ]
+    },
+    {
+      "taskId": "E09",
+      "title": "大文件局部修改",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · data/large.txt\n⋯ Read · data/large.txt\n⋯ Edit · data/large.txt\n⋯ Bash · auto\n⋯ Diagnostics · lint\n⋯ Search · TARGET=\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 6,
+      "durationMs": 27281,
+      "toolCallCount": 7,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "run_tests",
+        "get_diagnostics",
+        "Search",
+        "Read",
+        "Edit",
+        "Bash",
+        "Diagnostics"
+      ],
+      "editFailureCount": 2,
+      "writtenPaths": [
+        "data/large.txt"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "fileNotContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "lineCount",
+          "ok": true,
+          "detail": "data/large.txt"
+        }
+      ]
+    },
+    {
+      "taskId": "E09",
+      "title": "大文件局部修改",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · data/large.txt\n⋯ Read · data/large.txt\n⋯ Edit · data/large.txt\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 7,
+      "durationMs": 14575,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "Search",
+        "Read",
+        "Edit"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [
+        "data/large.txt"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "fileNotContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "lineCount",
+          "ok": true,
+          "detail": "data/large.txt"
+        }
+      ]
+    },
+    {
+      "taskId": "E10",
+      "title": "跨目录检索唯一线索",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "无法找到包含唯一标记 ORCHID-742 的文件路径和对应的服务名。建议先构建图谱以启用更有效的搜索。\nHost · Search",
+      "error": null,
+      "turns": 7,
+      "durationMs": 11346,
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "80 个初始文件"
+        }
+      ]
+    },
+    {
+      "taskId": "E10",
+      "title": "跨目录检索唯一线索",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "（已调用工具：code_search）\nHost · Search",
+      "error": null,
+      "turns": 7,
+      "durationMs": 8989,
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "80 个初始文件"
+        }
+      ]
+    },
+    {
+      "taskId": "E10",
+      "title": "跨目录检索唯一线索",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "请先构建图谱。\nHost · Search",
+      "error": null,
+      "turns": 3,
+      "durationMs": 4793,
+      "toolCallCount": 2,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "80 个初始文件"
+        }
+      ]
+    },
+    {
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Bash · node test.js\n⋯ Search · src/parse.js\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 5,
+      "durationMs": 7673,
+      "toolCallCount": 2,
+      "toolNames": [
+        "run_command",
+        "code_search",
+        "Bash",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/parse.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eva"
+        },
+        {
+          "type": "fileUnchanged",
+          "ok": true,
+          "detail": "test.js"
+        }
+      ]
+    },
+    {
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Bash · node test.js\n⋯ Diagnostics · lint\n⋯ Edit · src/parse.js\n⋯ Search · test.js\n⋯ Read · test.js\n⋯ Bash · auto\n⋯ Search · parse.js\n⋯ Read · src/parse.js\n\n（已调用工具：search_replace、run_tests）",
+      "error": null,
+      "turns": 8,
+      "durationMs": 16760,
+      "toolCallCount": 9,
+      "toolNames": [
+        "run_command",
+        "get_diagnostics",
+        "search_replace",
+        "code_search",
+        "read_file",
+        "run_tests",
+        "Bash",
+        "Diagnostics",
+        "Edit",
+        "Search",
+        "Read"
+      ],
+      "editFailureCount": 4,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/parse.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eva"
+        },
+        {
+          "type": "fileUnchanged",
+          "ok": true,
+          "detail": "test.js"
+        }
+      ]
+    },
+    {
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Bash · node test.js\n⋯ Read · src/parse.js\n\n{\n  \"name\": \"search_replace\",\n  \"arguments\": {\n    \"path\": \"src/parse.js\",\n    \"old_string\": \"return Number.parseInt(value, 10) || 0\",\n    \"new_string\": \"return Number.parseInt(value, 10) || 12\"\n  }\n}\n\n（已调用工具：search_replace）",
+      "error": null,
+      "turns": 6,
+      "durationMs": 16110,
+      "toolCallCount": 2,
+      "toolNames": [
+        "run_command",
+        "read_file",
+        "Bash",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/parse.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eva"
+        },
+        {
+          "type": "fileUnchanged",
+          "ok": true,
+          "detail": "test.js"
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "skipped",
+      "reason": "任务不适用于 host",
+      "turns": 0,
+      "durationMs": 0,
+      "toolCallCount": 0,
+      "editFailureCount": 0,
+      "assertions": []
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "skipped",
+      "reason": "任务不适用于 host",
+      "turns": 0,
+      "durationMs": 0,
+      "toolCallCount": 0,
+      "editFailureCount": 0,
+      "assertions": []
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "skipped",
+      "reason": "任务不适用于 host",
+      "turns": 0,
+      "durationMs": 0,
+      "toolCallCount": 0,
+      "editFailureCount": 0,
+      "assertions": []
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "attempted": 3,
+      "passed": 3,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        6272,
+        3774,
+        2239
+      ],
+      "turns": [
+        2,
+        3,
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 1,
+      "avgDurationMs": 4095,
+      "avgTurns": 2.33
+    },
+    {
+      "backend": "host",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 3,
+      "passed": 1,
+      "failed": 2,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        16866,
+        16192,
+        17367
+      ],
+      "turns": [
+        7,
+        3,
+        5
+      ],
+      "editFailures": 2,
+      "successRate": 0.3333333333333333,
+      "avgDurationMs": 16808,
+      "avgTurns": 5
+    },
+    {
+      "backend": "host",
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "attempted": 3,
+      "passed": 1,
+      "failed": 2,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        17023,
+        21624,
+        17430
+      ],
+      "turns": [
+        3,
+        7,
+        6
+      ],
+      "editFailures": 4,
+      "successRate": 0.3333333333333333,
+      "avgDurationMs": 18692,
+      "avgTurns": 5.33
+    },
+    {
+      "backend": "host",
+      "taskId": "E04",
+      "title": "为边界行为补测试",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        19451,
+        11637,
+        30061
+      ],
+      "turns": [
+        7,
+        7,
+        5
+      ],
+      "editFailures": 2,
+      "successRate": 0,
+      "avgDurationMs": 20383,
+      "avgTurns": 6.33
+    },
+    {
+      "backend": "host",
+      "taskId": "E05",
+      "title": "根据失败测试修复缺陷",
+      "attempted": 3,
+      "passed": 1,
+      "failed": 2,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        22136,
+        10755,
+        266796
+      ],
+      "turns": [
+        5,
+        6,
+        3
+      ],
+      "editFailures": 0,
+      "successRate": 0.3333333333333333,
+      "avgDurationMs": 99896,
+      "avgTurns": 4.67
+    },
+    {
+      "backend": "host",
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        17498,
+        13752,
+        15609
+      ],
+      "turns": [
+        5,
+        5,
+        5
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 15620,
+      "avgTurns": 5
+    },
+    {
+      "backend": "host",
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "attempted": 0,
+      "passed": 0,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 3,
+      "durationsMs": [],
+      "turns": [],
+      "editFailures": 0,
+      "successRate": null,
+      "avgDurationMs": null,
+      "avgTurns": null
+    },
+    {
+      "backend": "host",
+      "taskId": "E08",
+      "title": "运行项目构建并报告结果",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        4846,
+        11227,
+        12207
+      ],
+      "turns": [
+        5,
+        6,
+        5
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 9427,
+      "avgTurns": 5.33
+    },
+    {
+      "backend": "host",
+      "taskId": "E09",
+      "title": "大文件局部修改",
+      "attempted": 3,
+      "passed": 3,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        14815,
+        27281,
+        14575
+      ],
+      "turns": [
+        7,
+        6,
+        7
+      ],
+      "editFailures": 2,
+      "successRate": 1,
+      "avgDurationMs": 18890,
+      "avgTurns": 6.67
+    },
+    {
+      "backend": "host",
+      "taskId": "E10",
+      "title": "跨目录检索唯一线索",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        11346,
+        8989,
+        4793
+      ],
+      "turns": [
+        7,
+        7,
+        3
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 8376,
+      "avgTurns": 5.67
+    },
+    {
+      "backend": "host",
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        7673,
+        16760,
+        16110
+      ],
+      "turns": [
+        5,
+        8,
+        6
+      ],
+      "editFailures": 4,
+      "successRate": 0,
+      "avgDurationMs": 13514,
+      "avgTurns": 6.33
+    },
+    {
+      "backend": "host",
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "attempted": 0,
+      "passed": 0,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 3,
+      "durationsMs": [],
+      "turns": [],
+      "editFailures": 0,
+      "successRate": null,
+      "avgDurationMs": null,
+      "avgTurns": null
+    }
+  ],
+  "finishedAt": "2026-11-11T01:30:55.626Z"
+}

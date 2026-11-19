@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 1,
+  "startedAt": "2026-11-11T00:38:17.995Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "gemma4:31b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "gemma4:31b",
+    "digest": "92808281a855666acf35743d49004bb30c810152cd004baf78f31b4578920e49",
+    "details": {
+      "parent_model": "",
+      "format": "safetensors",
+      "family": "",
+      "families": null,
+      "parameter_size": "",
+      "quantization_level": "",
+      "runner": "mlx"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "backend": "host",
+      "repeat": 1,
+      "model": "gemma4:31b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（gemma4:31b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:gemma4:31b）",
+      "turns": 2,
+      "durationMs": 25958,
+      "toolCallCount": 1,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "1 个初始文件"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        25958
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 25958,
+      "avgTurns": 2
+    }
+  ],
+  "finishedAt": "2026-11-11T00:38:44.012Z"
+}

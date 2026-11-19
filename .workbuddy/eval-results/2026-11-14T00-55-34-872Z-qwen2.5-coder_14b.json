@@ -1,0 +1,366 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-14T00:55:34.872Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · LegacyQueue\n⋯ Read · src/worker.js\n⋯ Edit · src/worker.js\n⋯ Read · auto-related-context\n⋯ Edit · 2 edits\n⋯ Diagnostics · auto-static-fallback\n⋯ Bash · auto\n⋯ Edit · src/index.js\n⋯ Edit · src/queue.js\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 8,
+      "durationMs": 23177,
+      "toolCallCount": 8,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "multi_edit",
+        "get_diagnostics",
+        "run_tests",
+        "Search",
+        "Read",
+        "Edit",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "LegacyQueue",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-related-context",
+          "path": "./src/index.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-related-context",
+          "path": "./src/queue.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "2 edits",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "get_diagnostics",
+          "detail": "auto-static-fallback",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "未探测到项目测试命令；已完成本事务变更文件的静态诊断，未发现问题。"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/worker.js",
+        "src/index.js",
+        "src/queue.js"
+      ],
+      "assertions": [
+        {
+          "type": "workspaceContains",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · LegacyQueue\n⋯ Read · src/worker.js\n⋯ Edit · src/worker.js\n⋯ Read · auto-related-context\n⋯ Edit · 2 edits\n⋯ Diagnostics · auto-static-fallback\n⋯ Bash · auto\n⋯ Edit · src/index.js\n⋯ Edit · src/queue.js\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 8,
+      "durationMs": 23129,
+      "toolCallCount": 8,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "multi_edit",
+        "get_diagnostics",
+        "run_tests",
+        "Search",
+        "Read",
+        "Edit",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "LegacyQueue",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-related-context",
+          "path": "./src/index.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-related-context",
+          "path": "./src/queue.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "2 edits",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "get_diagnostics",
+          "detail": "auto-static-fallback",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "未探测到项目测试命令；已完成本事务变更文件的静态诊断，未发现问题。"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/worker.js",
+        "src/index.js",
+        "src/queue.js"
+      ],
+      "assertions": [
+        {
+          "type": "workspaceContains",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · LegacyQueue\n⋯ Read · src/worker.js\n⋯ Edit · src/worker.js\n⋯ Read · auto-related-context\n⋯ Edit · 2 edits\n⋯ Diagnostics · auto-static-fallback\n⋯ Bash · auto\n⋯ Edit · src/index.js\n⋯ Edit · src/queue.js\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 8,
+      "durationMs": 24154,
+      "toolCallCount": 8,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "multi_edit",
+        "get_diagnostics",
+        "run_tests",
+        "Search",
+        "Read",
+        "Edit",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "LegacyQueue",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-related-context",
+          "path": "./src/index.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-related-context",
+          "path": "./src/queue.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "2 edits",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "get_diagnostics",
+          "detail": "auto-static-fallback",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "未探测到项目测试命令；已完成本事务变更文件的静态诊断，未发现问题。"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/worker.js",
+        "src/index.js",
+        "src/queue.js"
+      ],
+      "assertions": [
+        {
+          "type": "workspaceContains",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "attempted": 3,
+      "passed": 3,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        23177,
+        23129,
+        24154
+      ],
+      "turns": [
+        8,
+        8,
+        8
+      ],
+      "editFailures": 0,
+      "successRate": 1,
+      "avgDurationMs": 23487,
+      "avgTurns": 8
+    }
+  ],
+  "finishedAt": "2026-11-14T00:56:45.392Z"
+}

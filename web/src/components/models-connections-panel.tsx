@@ -224,6 +224,9 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
   }>({ status: "idle", message: "", discovered: [] });
   /** 本机 live tags 中未入编目的对话模型数（仅提示，不自动写入） */
   const [pendingLocalNotInCatalog, setPendingLocalNotInCatalog] = useState(0);
+  const [modelRouteLock, setModelRouteLock] = useState<"auto" | "local" | "cloud">("auto");
+  const [agentTurnTokenLimit, setAgentTurnTokenLimit] = useState("0");
+  const [agentTurnCostLimitUsd, setAgentTurnCostLimitUsd] = useState("0");
 
   const [confirmDelete, setConfirmDelete] = useState<{
     type: "cloud" | "local";
@@ -274,6 +277,9 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     setCurrentModelId(s.model?.trim() || "");
     setChatEnabledCloudProviders([...(s.chatEnabledCloudProviders ?? [])]);
     setChatEnabledLocalModels([...(s.chatEnabledLocalModels ?? [])]);
+    setModelRouteLock(s.modelRouteLock === "local" || s.modelRouteLock === "cloud" ? s.modelRouteLock : "auto");
+    setAgentTurnTokenLimit(String(Math.max(0, Number(s.agentTurnTokenLimit) || 0)));
+    setAgentTurnCostLimitUsd(String(Math.max(0, Number(s.agentTurnCostLimitUsd) || 0)));
     let catalog = [...(s.localModelCatalog ?? [])];
     if (!catalog.length && s.model?.trim()) {
       const probe = await api.listOllamaModels(base);
@@ -320,6 +326,27 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
     await refreshProviders();
     await loadLocalSettings();
   }, [loadLocalSettings, refreshProviders]);
+
+  const saveAgentGuardrails = async () => {
+    const api = getDesktop();
+    if (!api) return;
+    setBusy("save");
+    try {
+      const s = await api.getChatSettings();
+      await api.saveChatSettings({
+        ...chatSettingsPreservePayload(s),
+        modelRouteLock,
+        agentTurnTokenLimit: Math.max(0, Math.floor(Number(agentTurnTokenLimit) || 0)),
+        agentTurnCostLimitUsd: Math.max(0, Number(agentTurnCostLimitUsd) || 0),
+      });
+      toast.success("Agent 路由与预算护栏已保存");
+      onSettingsUpdated?.();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存护栏失败");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   useEffect(() => {
     if (desktopReady && desktop) void refreshAll();
@@ -1372,6 +1399,53 @@ export function ModelsConnectionsPanel({ onSettingsUpdated }: Props) {
           <span className="text-[13px]">$</span> 模型单价
         </button>
       </div>
+
+      <section className="grid gap-3 rounded-xl border border-border bg-muted/10 p-3 sm:grid-cols-[1.2fr_1fr_1fr_auto] sm:items-end" data-testid="agent-model-guardrails">
+        <label className="grid gap-1 text-[11px] text-muted-foreground">
+          Auto 通道路由
+          <select
+            value={modelRouteLock}
+            onChange={(event) => setModelRouteLock(event.target.value as "auto" | "local" | "cloud")}
+            className="h-8 rounded-md border border-border bg-surface px-2 text-[12px] text-foreground"
+          >
+            <option value="auto">按任务自动选择</option>
+            <option value="local">只用本地模型</option>
+            <option value="cloud">只用云模型</option>
+          </select>
+        </label>
+        <label className="grid gap-1 text-[11px] text-muted-foreground">
+          单回合 token 上限
+          <input
+            type="number"
+            min="0"
+            step="1000"
+            value={agentTurnTokenLimit}
+            onChange={(event) => setAgentTurnTokenLimit(event.target.value)}
+            className="h-8 rounded-md border border-border bg-surface px-2 text-[12px] text-foreground"
+            placeholder="0 = 不限制"
+          />
+        </label>
+        <label className="grid gap-1 text-[11px] text-muted-foreground">
+          单回合费用上限（USD）
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={agentTurnCostLimitUsd}
+            onChange={(event) => setAgentTurnCostLimitUsd(event.target.value)}
+            className="h-8 rounded-md border border-border bg-surface px-2 text-[12px] text-foreground"
+            placeholder="0 = 不限制"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={actionsLocked}
+          onClick={() => void saveAgentGuardrails()}
+          className="h-8 rounded-md border border-primary/30 bg-primary/10 px-3 text-[11px] font-semibold text-primary hover:bg-primary/15 disabled:opacity-40"
+        >
+          保存护栏
+        </button>
+      </section>
 
       {allRowKeys.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border/80 bg-muted/15 px-3 py-2">

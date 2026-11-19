@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-14T06:03:54.591Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5:32b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5:32b",
+    "digest": "9f13ba1299afea09d9a956fc6a85becc99115a6d596fae201a5487a03bdc4368",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "32.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5:32b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "模型「qwen2.5:32b」在能力注册表中未声明工具调用支持；Host 工具环已停止本轮，请改用支持 tools 的模型或更新能力覆盖。",
+      "turns": 0,
+      "durationMs": 217,
+      "usage": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0
+      },
+      "toolCallCount": 0,
+      "toolNames": [],
+      "toolTrace": [],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "1 个初始文件"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        217
+      ],
+      "turns": [
+        0
+      ],
+      "promptTokens": [
+        0
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 217,
+      "avgTurns": 0,
+      "avgPromptTokens": 0
+    }
+  ],
+  "finishedAt": "2026-11-14T06:03:54.851Z"
+}

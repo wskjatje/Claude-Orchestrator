@@ -679,14 +679,14 @@ function ChainsPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="truncate text-[12.5px] font-semibold text-foreground">{t.name}</span>
                           <span className="ui-tag ui-tag--neutral">{CHAIN_TEMPLATE_CATEGORY_LABEL[t.category]}</span>
-                          <span className="ui-tag ui-tag--info">官方</span>
+                          <span className="ui-tag ui-tag--info">内置</span>
                         </div>
                         <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">{t.description}</p>
                       </div>
                     </div>
                     <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5 text-[11px]">
                       <span className="text-muted-foreground">{t.steps.length} 步</span>
-                      <span className={chainStatusLabelClass("info")}>● 官方 · 点击配置</span>
+                      <span className={chainStatusLabelClass("info")}>● 内置 · 点击配置</span>
                     </div>
                   </button>
                 );
@@ -731,7 +731,7 @@ function ChainsPage() {
                         <span className="truncate text-[12.5px] font-semibold text-foreground">{c.name}</span>
                         <span className="ui-tag ui-tag--neutral">{chainCategoryLabel(c.category)}</span>
                         <span className={cn("ui-tag", isOfficial ? "ui-tag--info" : "ui-tag--success")}>
-                          {isOfficial ? "官方" : "我的"}
+                          {isOfficial ? "内置" : "我的"}
                         </span>
                         {isActive ? <span className="ui-tag ui-tag--warning">当前链</span> : null}
                       </div>
@@ -897,7 +897,7 @@ function PresetChainDrawer({
             <div className="min-w-0">
               <div className="truncate text-[13px] font-semibold">{template.name}</div>
               <div className="text-[11px] text-muted-foreground">
-                {CHAIN_TEMPLATE_CATEGORY_LABEL[template.category]} · 官方
+                {CHAIN_TEMPLATE_CATEGORY_LABEL[template.category]} · 内置
               </div>
             </div>
           </div>

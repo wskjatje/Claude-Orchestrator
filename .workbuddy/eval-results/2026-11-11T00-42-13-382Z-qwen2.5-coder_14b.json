@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 1,
+  "startedAt": "2026-11-11T00:42:13.382Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "无法找到 README.md 文件的相关信息。请确保文件存在并包含所需信息。\nHost · Search",
+      "error": null,
+      "turns": 2,
+      "durationMs": 7678,
+      "toolCallCount": 1,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "1 个初始文件"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        7678
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 7678,
+      "avgTurns": 2
+    }
+  ],
+  "finishedAt": "2026-11-11T00:42:21.121Z"
+}

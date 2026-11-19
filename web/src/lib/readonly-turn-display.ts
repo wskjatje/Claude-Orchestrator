@@ -60,5 +60,6 @@ export function stripAgentTurnForReadonlyDisplay(
     ...(agentTurn.mcpUsed ? { mcpUsed: true } : {}),
     ...(agentTurn.streamEvents?.length ? { streamEvents: agentTurn.streamEvents } : {}),
     ...(agentTurn.summary ? { summary: agentTurn.summary } : {}),
+    ...(agentTurn.todos?.length ? { todos: agentTurn.todos } : {}),
   };
 }

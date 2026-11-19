@@ -5,7 +5,6 @@ import {
   Save,
   Download,
   Upload,
-  RefreshCw,
   GitBranch,
   Settings,
   X,
@@ -242,19 +241,14 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
   const [personalGithubRepo, setPersonalGithubRepo] = useState("");
   const [gitUserName, setGitUserName] = useState("");
   const [gitUserEmail, setGitUserEmail] = useState("");
-  const [upstreamGithubRepo, setUpstreamGithubRepo] = useState(
-    "https://github.com/anthropics/claude-code.git",
-  );
   const [pushReason, setPushReason] = useState("");
   const [workspacePath, setWorkspacePath] = useState("");
   const [gitBusy, setGitBusy] = useState<
-    | "pull"
     | "pullPersonal"
     | "deployPersonal"
     | "push"
     | "commitBranch"
     | "save"
-    | "checkUpstream"
     | null
   >(null);
   const [gitStatus, setGitStatus] = useState<Awaited<
@@ -279,9 +273,6 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
       setPersonalGithubRepo(s.personalGithubRepo?.trim() ?? "");
       setGitUserName(s.gitUserName?.trim() ?? "");
       setGitUserEmail(s.gitUserEmail?.trim() ?? "");
-      setUpstreamGithubRepo(
-        s.upstreamGithubRepo?.trim() || "https://github.com/anthropics/claude-code.git",
-      );
       if (api.workbenchGitStatus) {
         const st = await api.workbenchGitStatus();
         setGitStatus(st);
@@ -309,7 +300,6 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
     personalGithubRepo: personalGithubRepo.trim(),
     gitUserName: gitUserName.trim(),
     gitUserEmail: gitUserEmail.trim(),
-    upstreamGithubRepo: upstreamGithubRepo.trim(),
   });
 
   const saveGithubSettings = async () => {
@@ -322,46 +312,6 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
       if (personalGithubRepo.trim() && gitUserName.trim() && gitUserEmail.trim()) {
         setConfigDrawerOpen(false);
       }
-      await refreshGitStatus();
-    } finally {
-      setGitBusy(null);
-    }
-  };
-
-  const checkUpstreamUpdates = async () => {
-    const api = getDesktop();
-    if (!api?.workbenchGitCheckUpstream) return;
-    setGitBusy("checkUpstream");
-    try {
-      const r = await api.workbenchGitCheckUpstream({
-        upstreamGithubRepo: upstreamGithubRepo.trim() || undefined,
-      });
-      if (!r.ok) {
-        gitToast(briefGitError(r.error, "检测失败"), "error");
-        return;
-      }
-      gitToast(
-        r.hasUpdates ? "官方可能有更新，可同步。" : "已与官方最新一致。",
-        r.hasUpdates ? "warning" : "success",
-      );
-    } finally {
-      setGitBusy(null);
-    }
-  };
-
-  const pullFromGithub = async () => {
-    const api = getDesktop();
-    if (!api?.workbenchGitPullUpstream) return;
-    setGitBusy("pull");
-    try {
-      const r = await api.workbenchGitPullUpstream({
-        upstreamGithubRepo: upstreamGithubRepo.trim() || undefined,
-      });
-      if (!r.ok) {
-        gitToast(briefGitError(r.error, "同步失败"), "error");
-        return;
-      }
-      gitToast("同步成功。");
       await refreshGitStatus();
     } finally {
       setGitBusy(null);
@@ -561,35 +511,6 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
           </div>
         </Section>
 
-        {/* ── 官方 Claude Code ── */}
-        <Section title="官方同步">
-          <p className="mb-3 text-[12px] leading-relaxed text-muted-foreground">
-            从 Anthropic 官方仓库同步 Agent、Skill、任务链与 MCP 预设等编排资产。
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={!desktop || gitBusy !== null}
-              onClick={() => void checkUpstreamUpdates()}
-              className="btn-row"
-            >
-              <RefreshCw
-                className={cn("h-3.5 w-3.5", gitBusy === "checkUpstream" && "animate-spin")}
-              />
-              {gitBusy === "checkUpstream" ? "检测中…" : "检测更新"}
-            </button>
-            <button
-              type="button"
-              disabled={!desktop || gitBusy !== null}
-              onClick={() => void pullFromGithub()}
-              className="btn-gradient-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-40"
-            >
-              <Download className={cn("h-3.5 w-3.5", gitBusy === "pull" && "animate-pulse")} />
-              {gitBusy === "pull" ? "同步中…" : "同步官方"}
-            </button>
-          </div>
-        </Section>
-
         {/* ── 个人仓库 ── */}
         <Section title="个人仓库">
           {workspacePath ? (
@@ -694,13 +615,11 @@ function SettingsAdvancedTab({ desktop }: { desktop: boolean }) {
           gitUserName={gitUserName}
           gitUserEmail={gitUserEmail}
           personalGithubRepo={personalGithubRepo}
-          upstreamGithubRepo={upstreamGithubRepo}
           gitStatus={gitStatus}
           onClose={() => setConfigDrawerOpen(false)}
           onGitUserNameChange={setGitUserName}
           onGitUserEmailChange={setGitUserEmail}
           onPersonalGithubRepoChange={setPersonalGithubRepo}
-          onUpstreamGithubRepoChange={setUpstreamGithubRepo}
           onSave={() => void saveGithubSettings()}
         />
       ) : null}
@@ -720,13 +639,11 @@ function GitHubConfigDrawer({
   gitUserName,
   gitUserEmail,
   personalGithubRepo,
-  upstreamGithubRepo,
   gitStatus,
   onClose,
   onGitUserNameChange,
   onGitUserEmailChange,
   onPersonalGithubRepoChange,
-  onUpstreamGithubRepoChange,
   onSave,
 }: {
   desktop: boolean;
@@ -734,7 +651,6 @@ function GitHubConfigDrawer({
   gitUserName: string;
   gitUserEmail: string;
   personalGithubRepo: string;
-  upstreamGithubRepo: string;
   gitStatus: Awaited<
     ReturnType<NonNullable<ReturnType<typeof getDesktop>>["workbenchGitStatus"]>
   > | null;
@@ -742,7 +658,6 @@ function GitHubConfigDrawer({
   onGitUserNameChange: (v: string) => void;
   onGitUserEmailChange: (v: string) => void;
   onPersonalGithubRepoChange: (v: string) => void;
-  onUpstreamGithubRepoChange: (v: string) => void;
   onSave: () => void;
 }) {
   useEffect(() => {
@@ -809,19 +724,6 @@ function GitHubConfigDrawer({
               onChange={(e) => onPersonalGithubRepoChange(e.target.value)}
               disabled={!desktop}
               placeholder="https://github.com/你的用户名/repo.git"
-              spellCheck={false}
-              className="h-9 w-full rounded-lg border border-border bg-surface px-3 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[11.5px] font-medium text-foreground/80">
-              上游仓库 URL（官方同步源）
-            </span>
-            <input
-              value={upstreamGithubRepo}
-              onChange={(e) => onUpstreamGithubRepoChange(e.target.value)}
-              disabled={!desktop}
-              placeholder="https://github.com/anthropics/claude-code.git"
               spellCheck={false}
               className="h-9 w-full rounded-lg border border-border bg-surface px-3 font-mono text-[12px] outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-40"
             />

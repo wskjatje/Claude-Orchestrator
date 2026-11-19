@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 2,
+  "startedAt": "2026-11-11T01:36:02.033Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "local-mcp"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "抱歉，我无法直接调用工具或访问本地文件系统。如果你需要列出本机已安装的模型，建议你使用命令行工具或参考相关软件的文档。",
+      "error": null,
+      "turns": 1,
+      "durationMs": 3714,
+      "toolCallCount": 0,
+      "toolNames": [],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "manualReview",
+          "ok": false,
+          "detail": "将答复中的标签与本机 /api/tags 对照"
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "抱歉，我无法直接调用工具或访问本地文件。请手动运行 `ollama_list_models` 工具并提供结果，我将帮助你从中识别准确的模型标签。",
+      "error": null,
+      "turns": 1,
+      "durationMs": 1955,
+      "toolCallCount": 0,
+      "toolNames": [],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "manualReview",
+          "ok": false,
+          "detail": "将答复中的标签与本机 /api/tags 对照"
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "抱歉，我无法调用外部工具或访问本地文件系统，因此无法列出本机已安装的模型。如果你需要帮助，请提供模型列表或具体问题。",
+      "error": null,
+      "turns": 1,
+      "durationMs": 1633,
+      "toolCallCount": 0,
+      "toolNames": [],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "manualReview",
+          "ok": false,
+          "detail": "将答复中的标签与本机 /api/tags 对照"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "local-mcp",
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        3714,
+        1955,
+        1633
+      ],
+      "turns": [
+        1,
+        1,
+        1
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 2434,
+      "avgTurns": 1
+    }
+  ],
+  "finishedAt": "2026-11-11T01:36:09.397Z"
+}

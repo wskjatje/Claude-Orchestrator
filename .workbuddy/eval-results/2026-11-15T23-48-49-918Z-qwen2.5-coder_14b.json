@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-15T23:48:49.918Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · src/legacy/format.js\n⋯ Move · src/legacy/format.js → src/shared/format.js\n⋯ Read · auto-obligation-context\n⋯ Edit · 2 edits\n⋯ Bash · auto\n⋯ Search · import { formatDate } from '../legacy/format.js'\n⋯ Edit · src/legacy/format.js\n⋯ Edit · src/shared/format.js\n⋯ Edit · src/pages/home.js\n⋯ Edit · src/jobs/daily.js\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 9,
+      "durationMs": 20207,
+      "usage": {
+        "prompt_tokens": 16155,
+        "completion_tokens": 231,
+        "total_tokens": 16386
+      },
+      "toolCallCount": 9,
+      "toolNames": [
+        "code_search",
+        "move_file",
+        "read_file",
+        "multi_edit",
+        "run_tests",
+        "Search",
+        "Move",
+        "Edit",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "src/legacy/format.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[],\"semantic\":[{\"relPath\":\"src/pages/home.js\",\"line\":1,\"endLine\":2,\"text\":\"import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\",\"snippet\":\"import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\\n\",\"score\":9.5886},{\"relPath\":\"src/jobs/daily.js\",\"line\":1,\"endLine\":2,\"text\":\"import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\",\"snippet\":\"import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\\n\",\"score\":9.419}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "move_file",
+          "detail": "src/legacy/format.js → src/shared/format.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/legacy/format.js",
+          "ok": false,
+          "failedArguments": "{\"path\":\"src/legacy/format.js\"}",
+          "exitCode": 1,
+          "output": "not found"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/pages/home.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/jobs/daily.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "2 edits",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "未探测到项目测试命令；已完成变更文件静态诊断，未发现问题。"
+        },
+        {
+          "tool": "code_search",
+          "detail": "import { formatDate } from '../legacy/format.js'",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[],\"semantic\":[{\"relPath\":\"src/pages/home.js\",\"line\":1,\"endLine\":2,\"text\":\"import { formatDate } from '../shared/format.js'; export const shown = formatDate('2020-01-02');\",\"snippet\":\"import { formatDate } from '../shared/format.js'; export const shown = formatDate('2020-01-02');\\n\",\"score\":11.8302},{\"relPath\":\"src/jobs/daily.js\",\"line\":1,\"endLine\":2,\"text\":\"import { formatDate } from '../shared/format.js'; export const shown = formatDate('2020-01-02');\",\"snippet\":\"import { formatDate } from '../shared/format.js'; export const shown = formatDate('2020-01-02');\\n\",\"score\":11.5345},{\"relPath\":\"src/shared/format.js\",\"line\":1,\"endLine\":2,\"text\":\"export function formatDate(date) { return new Date(date).toISOString().slice(0, 10) }\",\"snippet\":\"export function formatDate(date) { return new Date(date).toISOString().slice(0, 10) }\\n\",\"score\":9.3522}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "未探测到项目测试命令；已完成变更文件静态诊断，未发现问题。"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/legacy/format.js",
+        "src/shared/format.js",
+        "src/pages/home.js",
+        "src/jobs/daily.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileExists",
+          "ok": true,
+          "detail": "src/shared/format.js"
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceContains",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "attempted": 1,
+      "passed": 1,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        20207
+      ],
+      "turns": [
+        9
+      ],
+      "promptTokens": [
+        16155
+      ],
+      "editFailures": 0,
+      "successRate": 1,
+      "avgDurationMs": 20207,
+      "avgTurns": 9,
+      "avgPromptTokens": 16155
+    }
+  ],
+  "finishedAt": "2026-11-15T23:49:10.176Z"
+}

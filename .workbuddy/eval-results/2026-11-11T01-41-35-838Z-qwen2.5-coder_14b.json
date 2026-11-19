@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 3,
+  "startedAt": "2026-11-11T01:41:35.838Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "local-mcp"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "Thought: 我需要调用 ollama_list_models 工具来列出本机已安装的模型，然后从中提取一个准确的模型标签。\n\nAction:\n```json\n{\n  \"name\": \"ollama-local__ollama_list_models\",\n  \"arguments\": {}\n}\n```",
+      "error": null,
+      "turns": 3,
+      "durationMs": 16327,
+      "toolCallCount": 0,
+      "toolNames": [],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "manualReview",
+          "ok": false,
+          "detail": "将答复中的标签与本机 /api/tags 对照"
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "Thought: 首先，我将调用 `ollama_list_models` 工具来列出本机已安装的模型，然后从工具结果中提取一个准确的模型标签。\n\nAction:\n```json\n{\n  \"name\": \"ollama-local__ollama_list_models\",\n  \"arguments\": {}\n}\n```",
+      "error": null,
+      "turns": 3,
+      "durationMs": 14836,
+      "toolCallCount": 0,
+      "toolNames": [],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "manualReview",
+          "ok": false,
+          "detail": "将答复中的标签与本机 /api/tags 对照"
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "Thought: 首先，我将调用 `ollama_list_models` 工具来列出本机已安装的模型，然后从结果中提取一个准确的模型标签。\n\nAction:\n```json\n{\n  \"name\": \"ollama-local__ollama_list_models\",\n  \"arguments\": {}\n}\n```",
+      "error": null,
+      "turns": 3,
+      "durationMs": 14655,
+      "toolCallCount": 0,
+      "toolNames": [],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "manualReview",
+          "ok": false,
+          "detail": "将答复中的标签与本机 /api/tags 对照"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "local-mcp",
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        16327,
+        14836,
+        14655
+      ],
+      "turns": [
+        3,
+        3,
+        3
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 15273,
+      "avgTurns": 3
+    }
+  ],
+  "finishedAt": "2026-11-11T01:42:21.723Z"
+}

@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-14T05:53:13.733Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · scripts/status.js\n⋯ Edit · scripts/status.js\n\n\"name\": \"write_file\", \"arguments\":  \"path\": \"scripts/status.js\", \"content\": \"import picocolors from 'picocolors'\\n\\nconsole.log(picocolors.green('ready'))\"  \n\n（已调用工具：write_file）",
+      "error": null,
+      "turns": 6,
+      "durationMs": 23081,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "search_replace",
+        "Search",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "search_replace",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": false,
+          "failedArguments": "{\"path\":\"scripts/status.js\",\"search\":\"console.log('Status: ' + status);\",\"replace\":\"console.log(picocolors.green('Status: ') + status);\",\"old_string\":\"console.log('Status: ' + status);\",\"new_string\":\"console.log(picocolors.green('Status: ') + status);\"}",
+          "exitCode": 1,
+          "output": "old_string not found; nearest lines around 2:\nconsole.log('ready')\n"
+        }
+      ],
+      "editFailureCount": 2,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "package.json"
+        },
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "scripts/status.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        23081
+      ],
+      "turns": [
+        6
+      ],
+      "editFailures": 2,
+      "successRate": 0,
+      "avgDurationMs": 23081,
+      "avgTurns": 6
+    }
+  ],
+  "finishedAt": "2026-11-14T05:53:36.902Z"
+}

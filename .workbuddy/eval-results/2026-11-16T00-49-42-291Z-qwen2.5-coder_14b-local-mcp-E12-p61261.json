@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-16T00:49:42.291Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "local-mcp"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "已确认本机已安装的模型中包含 qwen2.5-coder:14b。",
+      "error": null,
+      "turns": 2,
+      "durationMs": 41322,
+      "usage": {
+        "prompt_tokens": 1253,
+        "completion_tokens": 45,
+        "total_tokens": 1298
+      },
+      "toolCallCount": 1,
+      "toolNames": [
+        "ollama-local__ollama_list_models"
+      ],
+      "toolTrace": [],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": true,
+          "detail": "ollama-local__ollama_list_models, ollama-local__ollama_list_models"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "本机已安装的模型中包含 qwen2.5-coder:14b。",
+      "error": null,
+      "turns": 2,
+      "durationMs": 39619,
+      "usage": {
+        "prompt_tokens": 1252,
+        "completion_tokens": 43,
+        "total_tokens": 1295
+      },
+      "toolCallCount": 1,
+      "toolNames": [
+        "ollama-local__ollama_list_models"
+      ],
+      "toolTrace": [],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": true,
+          "detail": "ollama-local__ollama_list_models, ollama-local__ollama_list_models"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "已确认本机已安装模型中包含 qwen2.5-coder:14b。",
+      "error": null,
+      "turns": 2,
+      "durationMs": 45979,
+      "usage": {
+        "prompt_tokens": 1252,
+        "completion_tokens": 92,
+        "total_tokens": 1344
+      },
+      "toolCallCount": 1,
+      "toolNames": [
+        "ollama-local__ollama_list_models"
+      ],
+      "toolTrace": [],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": true,
+          "detail": "ollama-local__ollama_list_models, ollama-local__ollama_list_models"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "local-mcp",
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "attempted": 3,
+      "passed": 3,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        41322,
+        39619,
+        45979
+      ],
+      "turns": [
+        2,
+        2,
+        2
+      ],
+      "promptTokens": [
+        1253,
+        1252,
+        1252
+      ],
+      "editFailures": 0,
+      "successRate": 1,
+      "avgDurationMs": 42307,
+      "avgTurns": 2,
+      "avgPromptTokens": 1252
+    }
+  ],
+  "finishedAt": "2026-11-16T00:51:49.271Z"
+}

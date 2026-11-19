@@ -20,7 +20,7 @@ const src = fs.readFileSync(orchPath, 'utf8')
 
 const start = src.indexOf('function looksLikeIncompleteAssistantReply')
 const mergeStart = src.indexOf('function mergeContinuedAssistantReply')
-const mergeEnd = src.indexOf('\nfunction flattenToolMessagesForOllamaFallback')
+const mergeEnd = src.indexOf('\nfunction parseOllamaAssistantMessageForTools')
 if (start < 0 || mergeStart < 0 || mergeEnd < 0 || mergeStart <= start) {
   console.error('check-incomplete-reply: cannot locate incomplete/merge helpers')
   process.exit(1)

@@ -42,9 +42,9 @@ export const ENABLE_TOGGLE_BUSY = "正在保存启用状态…";
 /** 用户偏好加载失败时的默认可行动文案 */
 export const USER_PREFS_LOAD_FAILED = "无法加载用户偏好，请重试";
 
-export const AGENTS_DISK_SYNC_HINT = "已与 Claude Code Agent 目录同步。";
+export const AGENTS_DISK_SYNC_HINT = "已与本机 Agent 目录同步（~/.claude/agents）。";
 
-export const SKILLS_DISK_SYNC_HINT = "已与 Claude Code Skill 目录同步。";
+export const SKILLS_DISK_SYNC_HINT = "已与本机 Skill 目录同步（~/.claude/skills）。";
 
 /** 页头副文案：默认空（禁冗余描述）；设置 basic 保留最短上下文 */
 export const PAGE_DESC = {

@@ -1,93 +1,58 @@
 'use strict'
 
 const fs = require('node:fs')
-const os = require('node:os')
 const path = require('node:path')
 const { appendWorkspaceArtifactLog } = require('./vendor/cad/memory-cross-agent')
+const {
+  resolveSafeWorkspacePath,
+  applyTextEdit,
+} = require('./edit-engine.cjs')
 const {
   defaultArtifactPathForAgent,
   buildAgentArtifactPathHint,
 } = require('./agent-artifact-paths.cjs')
 
-function expandUserPath(p) {
-  let s = String(p || '').trim()
-  if (!s) return ''
-  if (s === '~' || s.startsWith('~/') || s.startsWith('~\\')) {
-    s = path.join(os.homedir(), s.slice(1))
-  }
-  return s
-}
-
-/**
- * 将 workspace-write 的 path 解析为工作区内的绝对路径。
- * 拒绝 ..；绝对路径须落在工作区内。
- * 使用 fs.realpathSync 解析符号链接防止逃逸。
- * 本地模型常把 `/Users/.../TO1/foo` 写成 `Users/.../TO1/foo`，会在项目下误建 Users/ 目录——此处归一化为相对路径。
- * @param {string} workspaceDir
- * @param {string} relPath
- * @returns {string | null}
- */
-function resolveSafeWorkspacePath(workspaceDir, relPath) {
-  let p = expandUserPath(relPath)
-  if (!p || p.includes('..')) return null
-
-  let root
-  try { root = path.resolve(fs.realpathSync(workspaceDir)) }
-  catch { return null }
-  const rootPrefix = root.endsWith(path.sep) ? root : root + path.sep
-
-  if (path.isAbsolute(p)) {
-    const abs = path.resolve(p)
-    if (abs === root || abs.startsWith(rootPrefix)) return abs
-    return null
-  }
-
-  p = p.replace(/^[/\\]+/, '').trim()
-  if (!p) return null
-
-  // 误把绝对路径当相对路径：Users/barry/.../TO1/README.md
-  const rootAsRel = root.replace(/^[/\\]+/, '')
-  if (p === rootAsRel) return root
-  if (p.startsWith(`${rootAsRel}/`) || p.startsWith(`${rootAsRel}\\`)) {
-    const suffix = p.slice(rootAsRel.length).replace(/^[/\\]+/, '')
-    if (!suffix || suffix.includes('..')) return suffix ? null : root
-    const abs = path.resolve(root, suffix)
-    if (abs === root || abs.startsWith(rootPrefix)) return abs
-    return null
-  }
-
-  // 路径中含工作区目录名重复：.../TO1/docs/foo → docs/foo
-  const base = path.basename(root)
-  if (base) {
-    const marker = `${base}/`
-    const idx = p.indexOf(marker)
-    if (idx >= 0) {
-      const suffix = p.slice(idx + marker.length)
-      if (suffix && !suffix.includes('..')) {
-        const abs = path.resolve(root, suffix)
-        if (abs === root || abs.startsWith(rootPrefix)) return abs
-      }
-    }
-  }
-
-  const abs = path.resolve(root, p)
-  if (abs === root || abs.startsWith(rootPrefix)) return abs
-  return null
-}
-
 /** 持久化到会话的 before/after 上限（过大则省略，Undo 靠本会话内存 checkpoint） */
 const PATCH_CHAR_CAP = 120_000
+const ROLLBACK_SNAPSHOT_CHAR_CAP = 8_000_000
 
-function capPatchText(s) {
-  const t = String(s ?? '')
-  if (t.length <= PATCH_CHAR_CAP) return t
-  return undefined
+function workspaceWritePatchPreview(before, after) {
+  const left = String(before ?? '')
+  const right = String(after ?? '')
+  if (left.length <= PATCH_CHAR_CAP && right.length <= PATCH_CHAR_CAP) {
+    return { before: left, after: right, beforeTruncated: false, afterTruncated: false }
+  }
+  let prefix = 0
+  const commonLimit = Math.min(left.length, right.length)
+  while (prefix < commonLimit && left.charCodeAt(prefix) === right.charCodeAt(prefix)) prefix += 1
+  let suffix = 0
+  while (
+    suffix < left.length - prefix &&
+    suffix < right.length - prefix &&
+    left.charCodeAt(left.length - suffix - 1) === right.charCodeAt(right.length - suffix - 1)
+  ) suffix += 1
+  let start = Math.max(0, prefix - 2_000)
+  const newline = left.lastIndexOf('\n', start)
+  if (newline >= 0) start = newline + 1
+  const leftEnd = Math.min(left.length, left.length - suffix + 2_000)
+  const rightEnd = Math.min(right.length, right.length - suffix + 2_000)
+  const beforeEnd = Math.min(leftEnd, start + PATCH_CHAR_CAP)
+  const afterEnd = Math.min(rightEnd, start + PATCH_CHAR_CAP)
+  const omittedBefore = start > 0 ? `…（前文省略，约 ${start} 字符）…\n` : ''
+  const omittedAfter = (end, total) =>
+    end < total ? `\n…（后文省略，约 ${total - end} 字符）…` : ''
+  return {
+    before: omittedBefore + left.slice(start, beforeEnd) + omittedAfter(beforeEnd, left.length),
+    after: omittedBefore + right.slice(start, afterEnd) + omittedAfter(afterEnd, right.length),
+    beforeTruncated: start > 0 || beforeEnd < left.length,
+    afterTruncated: start > 0 || afterEnd < right.length,
+  }
 }
 
 function applyWorkspaceWriteFenceItems(workspaceDir, items) {
   const written = []
   const errors = []
-  /** @type {Array<{ path: string, before?: string, after?: string, isNewFile?: boolean }>} */
+  /** @type {Array<{ path: string, before?: string, after?: string, checkpointBefore?: string, beforeTruncated?: boolean, afterTruncated?: boolean, isNewFile?: boolean }>} */
   const patches = []
   for (const item of items) {
     // Cursor 契约：须显式 path；content|contents；禁止 file/filePath 别名兜底
@@ -95,30 +60,24 @@ function applyWorkspaceWriteFenceItems(workspaceDir, items) {
     const contentRaw =
       item?.content != null ? item.content : item?.contents != null ? item.contents : null
     const content = contentRaw != null ? String(contentRaw) : ''
-    const abs = resolveSafeWorkspacePath(workspaceDir, rel)
-    if (!abs) {
-      errors.push(rel || '(无效路径)')
-      continue
-    }
     try {
-      let before = ''
-      let isNewFile = true
-      if (fs.existsSync(abs)) {
-        isNewFile = false
-        try {
-          before = fs.readFileSync(abs, 'utf8')
-        } catch {
-          before = ''
-        }
+      const result = applyTextEdit({
+        workspaceRoot: workspaceDir,
+        path: rel,
+        content,
+        snapshotCharCap: ROLLBACK_SNAPSHOT_CHAR_CAP,
+      })
+      if (!result.ok) {
+        errors.push(`${rel || '?'}: ${result.error || '写入失败'}`)
+        continue
       }
-      fs.mkdirSync(path.dirname(abs), { recursive: true })
-      fs.writeFileSync(abs, content, 'utf8')
+      const { before, isNewFile } = result
       const norm = rel.replace(/\\/g, '/')
       written.push(norm)
       patches.push({
         path: norm,
-        before: capPatchText(before),
-        after: capPatchText(content),
+        ...workspaceWritePatchPreview(before, content),
+        checkpointBefore: isNewFile ? '' : before,
         isNewFile,
       })
     } catch (e) {
@@ -449,7 +408,7 @@ function ingestTextAndApplyWorkspaceWrite(text, workspaceDir, meta) {
   }
 
   const missingNote = buildMissingWriteNotice(claimedPaths, [])
-  return {
+      return {
     ok: false,
     error: MISSING_WRITE_FENCE_ERROR,
     written: [],

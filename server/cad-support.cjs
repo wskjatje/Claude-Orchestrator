@@ -171,7 +171,8 @@ function readTextFileTail(absPath, maxLines, maxBytes, missingContent) {
 }
 
 function extractFrontmatterField(fm, field) {
-  const re = new RegExp(`^${field}:\\s*(.+)$`, 'm')
+  // 行内空白用 [ \\t]*（勿用 \\s*，会吞换行）；(.*) 允许 `name: ` 空值
+  const re = new RegExp(`^${field}:[ \\t]*(.*)$`, 'm')
   const m = fm.match(re)
   if (!m) return ''
   return m[1].trim().replace(/^["']|["']$/g, '').slice(0, 240)
@@ -499,6 +500,8 @@ function scanSkillMarkdownDir(skillsDir, source) {
 
   for (const d of fs.readdirSync(resolved, { withFileTypes: true })) {
     if (!d.isFile() || !d.name.toLowerCase().endsWith('.md')) continue
+    // 跳过无 stem 的垃圾文件（如字面量 `.md`）
+    if (d.name.toLowerCase() === '.md') continue
     const full = path.join(resolved, d.name)
     let description = ''
     let category = null

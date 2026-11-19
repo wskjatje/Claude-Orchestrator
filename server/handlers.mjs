@@ -449,6 +449,10 @@ export const handlers = {
       userLine: String(body.userLine || ""),
       priorMessages: Array.isArray(body.priorMessages) ? body.priorMessages : [],
       model: body.model || body.orchestratorModel,
+      modelMode:
+        body.modelMode === "local-mcp" || body.modelMode === "claude-code"
+          ? body.modelMode
+          : undefined,
       maxTurns: body.maxTurns,
       contextAppendix: typeof body.contextAppendix === "string" ? body.contextAppendix : "",
       requestId,
@@ -460,6 +464,10 @@ export const handlers = {
         typeof body.interactionMode === "string" ? body.interactionMode : undefined,
       systemConstraint:
         typeof body.systemConstraint === "string" ? body.systemConstraint : "",
+      requireAppliedWrite: body.requireAppliedWrite === true,
+      allowedMcpServers: Array.isArray(body.allowedMcpServers)
+        ? body.allowedMcpServers.map(String).filter(Boolean)
+        : undefined,
       onDelta: requestId
         ? (chunk) => {
             broadcast("message_delta", { requestId, content: chunk });
@@ -473,13 +481,13 @@ export const handlers = {
     });
   },
   "host-agent:abort": async (args) => {
-    const id =
-      typeof args?.[0] === "string"
-        ? args[0]
-        : args?.[0] && typeof args[0] === "object"
-          ? String(args[0].requestId || "")
-          : "";
-    return abortHostAgent(id);
+    const body = args?.[0] && typeof args[0] === "object" ? args[0] : {};
+    const id = String(body.requestId || "");
+    const source = String(body.source || "");
+    if (source !== "user-stop") {
+      return { ok: false, error: "拒绝无显式用户来源的任务取消请求。" };
+    }
+    return abortHostAgent(id, { source });
   },
   "claude-code:ensureCli": async () => ensureClaudeCliInstalled(),
   "workspace:runCommand": async (args) => {

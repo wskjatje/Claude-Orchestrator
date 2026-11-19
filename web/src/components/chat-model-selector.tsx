@@ -34,8 +34,9 @@ export function ChatModelSelector({
 }: Props) {
   const selectedModel = modelValue || modelFallback || "";
   const resolvedValue = isAutoModelSelection(selectedModel) ? AUTO_MODEL_ID : selectedModel;
-  // 本窗列表只列本地；云通道仍可看到本地（选中后会切到 local-mcp）
-  const listCloud = orchMode === "local-mcp" ? [] : cloudModels;
+  // 选择器始终展示两个已启用池；手选具体模型时由 onModelPick 切换执行通道。
+  // orchMode 只记录当前执行通道，不再充当模型列表过滤器。
+  const listCloud = cloudModels;
   const listLocal = localModels;
   const autoAvailable = listCloud.length > 0 || listLocal.length > 0;
 

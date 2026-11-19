@@ -55,6 +55,8 @@ export function buildStructuredCompactSummary(messages) {
   const todos = []
   const files = new Set()
   const errors = []
+  const verified = []
+  const commands = new Set()
   let currentStep = ''
 
   for (let i = 0; i < body.length; i++) {
@@ -82,6 +84,14 @@ export function buildStructuredCompactSummary(messages) {
     if (/error|失败|✗|Error:|Traceback/i.test(t) && errors.length < 6) {
       errors.push(t.slice(0, 160).replace(/\s+/g, ' '))
     }
+    if (/测试.*(?:通过|passed)|\b\d+\s+passed\b|验证成功|build.*success/i.test(t) && verified.length < 6) {
+      verified.push(t.slice(0, 180).replace(/\s+/g, ' '))
+    }
+    for (const command of t.matchAll(
+      /(?:^|[·`\s，,；;：:（(])((?:npm|pnpm|yarn|bun)\s+(?:test|run\s+[\w:-]+)|python3?\s+-m\s+pytest[^\n`]*|pytest[^\n`]*|cargo\s+test[^\n`]*|go\s+test[^\n`]*|(?:mvn|gradle|\.\/gradlew|\.\/mvnw)\s+test[^\n`]*|make\s+test[^\n`]*)/gim,
+    )) {
+      commands.add(command[1].trim().slice(0, 240))
+    }
   }
 
   const lines = [
@@ -89,8 +99,10 @@ export function buildStructuredCompactSummary(messages) {
     goals.length ? `目标 / 意图：\n- ${goals.slice(0, 5).join('\n- ')}` : null,
     tech.length ? `技术要点：\n- ${tech.slice(0, 4).join('\n- ')}` : null,
     decisions.length ? `决策：\n- ${decisions.slice(0, 5).join('\n- ')}` : null,
-    files.size ? `涉及文件：${[...files].slice(0, 20).join(', ')}` : null,
-    todos.length ? `待办：\n- ${todos.slice(0, 5).join('\n- ')}` : null,
+    files.size ? `已修改 / 涉及文件：${[...files].slice(0, 20).join(', ')}` : null,
+    verified.length ? `已验证：\n- ${verified.slice(0, 5).join('\n- ')}` : null,
+    todos.length ? `未完成 / 待办：\n- ${todos.slice(0, 5).join('\n- ')}` : null,
+    commands.size ? `关键命令：\n- ${[...commands].slice(0, 8).join('\n- ')}` : null,
     errors.length ? `近期错误与修复线索：\n- ${errors.slice(0, 4).join('\n- ')}` : null,
     currentStep ? `当前步骤：${currentStep}` : null,
     '（有损压缩；细节不足时可说明要回查的文件/工具结果路径。）',

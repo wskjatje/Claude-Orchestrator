@@ -714,9 +714,9 @@ export function ChatComposerShell({
         />
 
         <div className="relative">
-          <textarea
-            ref={textareaRef}
-            value={input}
+        <textarea
+          ref={textareaRef}
+          value={input}
             onChange={(e) => {
               const v = e.target.value;
               onInputChange(v);
@@ -727,11 +727,11 @@ export function ChatComposerShell({
               updateMentionFromInput(t.value, t.selectionStart ?? t.value.length);
             }}
             onFocus={() => refreshMentionPaths()}
-            onPaste={onPaste}
+          onPaste={onPaste}
             onKeyDown={onComposerKeyDown}
-            placeholder={placeholder}
-            rows={1}
-            disabled={disabled}
+          placeholder={placeholder}
+          rows={1}
+          disabled={disabled}
             className="scrollbar-thin box-border block w-full min-w-0 resize-none bg-transparent py-1 text-[13px] leading-[1.45] outline-none placeholder:text-muted-foreground disabled:opacity-60"
             style={{ minHeight: "24px", maxHeight: inline ? "160px" : "200px" }}
           />
@@ -905,16 +905,16 @@ export function ChatComposerShell({
               </DropdownMenuLabel>
               <div className="flex flex-wrap items-center gap-1 px-0.5 py-1">
                 <ComposerOrchHint orchMode={orchMode} />
-                <GraphifyChip
-                  graphJson={graphHealth.graphJson}
-                  graphHtml={graphHealth.graphHtml}
+          <GraphifyChip
+            graphJson={graphHealth.graphJson}
+            graphHtml={graphHealth.graphHtml}
                   needsUpdate={graphHealth.needsUpdate}
                   cli={graphHealth.cli}
-                  building={graphHealth.building}
+            building={graphHealth.building}
                   buildError={graphHealth.buildError}
-                  onOpen={openGraphHtml}
-                  onBuild={buildGraph}
-                />
+            onOpen={openGraphHtml}
+            onBuild={buildGraph}
+          />
                 <CodeIndexChip
                   ready={codeIndex.ready}
                   hybrid={codeIndex.hybrid}

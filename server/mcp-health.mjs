@@ -86,6 +86,64 @@ function probeHttp(url, timeoutMs = 6000) {
   })
 }
 
+/**
+ * 探测结束后必须释放 stdio 子进程，否则 ChildProcess/Socket 句柄会挂住事件循环。
+ * @param {InstanceType<typeof StdioClientTransport> | null} transport
+ */
+async function forceReleaseStdioProbe(transport) {
+  if (!transport) return
+  const pid = typeof transport.pid === 'number' ? transport.pid : null
+  const stderrStream = transport.stderr
+  if (stderrStream && typeof stderrStream.removeAllListeners === 'function') {
+    try {
+      stderrStream.removeAllListeners('data')
+      stderrStream.removeAllListeners('error')
+    } catch {
+      /* ignore */
+    }
+  }
+  if (stderrStream && typeof stderrStream.destroy === 'function') {
+    try {
+      stderrStream.destroy()
+    } catch {
+      /* ignore */
+    }
+  }
+  try {
+    await transport.close?.()
+  } catch {
+    /* ignore */
+  }
+  if (pid == null || pid <= 0) return
+  const alive = () => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+  if (!alive()) return
+  try {
+    process.kill(pid, 'SIGTERM')
+  } catch {
+    /* ignore */
+  }
+  await new Promise((r) => setTimeout(r, 80).unref())
+  if (!alive()) return
+  try {
+    // 负 pid：尽量打掉同组子孙（部分 MCP 会再 spawn）
+    if (process.platform !== 'win32') process.kill(-pid, 'SIGKILL')
+  } catch {
+    /* ignore */
+  }
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 与 local-mcp-orchestrator 一致：用 MCP SDK stdio 传输做 initialize + listTools */
 async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000) {
   /** @type {InstanceType<typeof Client> | null} */
@@ -94,6 +152,13 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
   let transport = null
 
   const slowNpx = timeoutMs > 20000
+  /** @type {ReturnType<typeof setTimeout>[]} */
+  const raceTimers = []
+  const raceTimeout = (ms, errFactory) =>
+    new Promise((_, reject) => {
+      const t = setTimeout(() => reject(errFactory()), ms)
+      raceTimers.push(t)
+    })
 
   /** @type {string[]} */
   const stderrChunks = []
@@ -116,24 +181,18 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
 
     await Promise.race([
       client.connect(transport),
-      new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(
-            new Error(
-              slowNpx
-                ? 'npx/uvx 首次启动需拉取依赖，当前超时时间已到。若网络较慢可稍后点「健康检查」重试；国内用户可配置 npm/pypi 镜像加速。'
-                : '检查超时',
-            ),
-          )
-        }, timeoutMs)
-      }),
+      raceTimeout(timeoutMs, () =>
+        new Error(
+          slowNpx
+            ? 'npx/uvx 冷启动超时。本仓库规范 MCP 请改用本地固定包：npm run mcp:ensure，并确认命令指向 tools/mcp-npx|mcp-fetch|mcp-sqlite。'
+            : '检查超时',
+        ),
+      ),
     ])
 
     await Promise.race([
       client.listTools(),
-      new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('listTools 超时')), Math.min(15000, timeoutMs))
-      }),
+      raceTimeout(Math.min(15000, timeoutMs), () => new Error('listTools 超时')),
     ])
 
     return { ok: true, error: null }
@@ -149,38 +208,50 @@ async function probeStdioWithSdk(command, args, envExtra = {}, timeoutMs = 20000
           ? stderrJoined.slice(-320)
           : stderrJoined.slice(0, 320)
     let hint = ''
-    if (/server-fetch|@modelcontextprotocol\/server-fetch/i.test(cmdLine)) {
+    const usesBundledLocal =
+      /tools\/mcp-(?:npx|fetch|sqlite)\b/.test(cmdLine) ||
+      /mcp-server-(?:filesystem|memory|sequential-thinking|puppeteer|fetch|sqlite)\b/.test(cmdLine)
+    if (/@modelcontextprotocol\/server-fetch/i.test(cmdLine)) {
       hint =
-        '（npm 上无 @modelcontextprotocol/server-fetch；官方 fetch 为 Python 包，请改用 uvx mcp-server-fetch，并安装 uv）'
-    } else if (/uvx|mcp-server-fetch/i.test(cmdLine) && /ENOENT|not found|spawn uvx/i.test(msg)) {
-      hint = '（请先安装 uv：curl -LsSf https://astral.sh/uv/install.sh | sh，或确认 uvx 在 PATH 中（常见路径：~/.local/bin/uvx、~/.cargo/bin/uvx），安装后重试健康检查）'
-    } else if (/uvx|mcp-server-fetch/i.test(cmdLine) && /timed? ?out|Failed to fetch|resolve.*dependency/i.test(msg)) {
-      hint = '（uvx 解析依赖超时，无法连接 PyPI。国内用户可尝试：① 配置 PyPI 镜像 `pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple`；② 检查代理 HTTP_PROXY/HTTPS_PROXY 是否正确；③ 稍后重试）'
+        '（npm 上无 @modelcontextprotocol/server-fetch；请改用仓库本地包：npm run mcp:ensure 后指向 tools/mcp-fetch/.venv/bin/mcp-server-fetch）'
+    } else if (usesBundledLocal && /ENOENT|not found|spawn /i.test(msg)) {
+      hint = '（本地 MCP 二进制缺失：请在仓库根目录执行 npm run mcp:ensure 后重试健康检查）'
+    } else if (/\buvx\b/.test(cmdLine) && /ENOENT|not found|spawn uvx/i.test(msg)) {
+      hint =
+        '（检测到遗留 uvx 启动方式。请改为 npm run mcp:ensure 生成的 tools/mcp-fetch|mcp-sqlite 本地命令，勿依赖运行时 uvx 冷拉）'
+    } else if (/\buvx\b/.test(cmdLine) && /timed? ?out|Failed to fetch|resolve.*dependency/i.test(msg)) {
+      hint =
+        '（uvx 冷拉依赖失败。请改为本地固定包：npm run mcp:ensure，命令指向 tools/mcp-fetch 或 tools/mcp-sqlite）'
     } else if (/\bnpx\b/.test(cmdLine) && /ENOENT|not found|spawn npx/i.test(msg)) {
-      hint = '（npx 未在 PATH 中，请确认 Node.js 已安装；使用桌面打包版请确保应用有 /opt/homebrew/bin 等系统 PATH 访问权限）'
+      hint =
+        '（检测到遗留 npx 启动方式。请改为 npm run mcp:ensure 生成的 tools/mcp-npx/node_modules/.bin 本地命令）'
     } else if (/\bnpx\b/.test(cmdLine) && /timed? ?out|Failed to fetch|resolve.*dependency/i.test(msg)) {
-      hint = '（npx 拉包超时，无法连接 npm 源。国内用户可尝试：① 配置 npm 镜像 `npm config set registry https://registry.npmmirror.com`；② 检查代理；③ 稍后重试）'
+      hint =
+        '（npx 冷拉依赖失败。请改为本地固定包：npm run mcp:ensure，命令指向 tools/mcp-npx）'
     } else if (
       /\bnpx\b/.test(cmdLine) &&
       /Connection closed|ERR_MODULE_NOT_FOUND|Cannot find module/i.test(msg)
     ) {
       // 仅 npx 命令才附 npx 缓存提示；uvx/其他命令禁止套用
       hint =
-        '（npx 缓存可能损坏：可删除 ~/.npm/_npx 后重试；filesystem/memory 建议使用固定版本号）'
+        '（npx 缓存可能损坏：可删除 ~/.npm/_npx 后重试；filesystem/memory 等请改用 npm run mcp:ensure 本地 bin，勿继续 npx）'
     }
     const withStderr = stderrText ? `${msg}${hint}；stderr: ${stderrText}` : `${msg}${hint}`
     return { ok: false, error: withStderr.slice(0, 520) }
   } finally {
+    for (const t of raceTimers) {
+      try {
+        clearTimeout(t)
+      } catch {
+        /* ignore */
+      }
+    }
     try {
       await client?.close?.()
     } catch {
       /* ignore */
     }
-    try {
-      await transport?.close?.()
-    } catch {
-      /* ignore */
-    }
+    await forceReleaseStdioProbe(transport)
   }
 }
 

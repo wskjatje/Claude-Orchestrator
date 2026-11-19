@@ -211,6 +211,9 @@ export type DesktopApi = {
       path: string;
       before?: string;
       after?: string;
+      checkpointBefore?: string;
+      beforeTruncated?: boolean;
+      afterTruncated?: boolean;
       isNewFile?: boolean;
     }[];
   }>;
@@ -648,6 +651,8 @@ export type DesktopApi = {
     priorMessages?: { role: string; content: string }[];
     model?: string;
     orchestratorModel?: string;
+    /** 已解析的模型归属；手选时用于禁止跨本地/云端重解释 */
+    modelMode?: "claude-code" | "local-mcp";
     maxTurns?: number;
     requestId?: string;
     /** 打开文件 / Problems 等短上下文（非占位） */
@@ -658,6 +663,9 @@ export type DesktopApi = {
     readOnlyTurn?: boolean;
     interactionMode?: "ask" | "plan" | "agent";
     systemConstraint?: string;
+    requireAppliedWrite?: boolean;
+    /** Host 可调用的 MCP 服务器；工作区写工具仍由内置编辑引擎负责。 */
+    allowedMcpServers?: string[];
   }) => Promise<{
     ok: boolean;
     content?: string;
@@ -669,9 +677,20 @@ export type DesktopApi = {
       path: string;
       before?: string;
       after?: string;
+      checkpointBefore?: string;
+      beforeTruncated?: boolean;
+      afterTruncated?: boolean;
       isNewFile?: boolean;
     }[];
     verified?: boolean;
+    todos?: {
+      id: string;
+      title: string;
+      status: "pending" | "in_progress" | "completed";
+    }[];
+    rolledBack?: boolean;
+    rolledBackPaths?: string[];
+    rollbackFailures?: { path: string; error: string }[];
     toolTrace?: {
       tool: string;
       detail?: string;
@@ -684,8 +703,12 @@ export type DesktopApi = {
     mode?: string;
     model?: string;
     backend?: string;
+    checkpointId?: string | null;
   }>;
-  hostAgentAbort?: (requestId: string) => Promise<{ ok: boolean }>;
+  hostAgentAbort?: (request: {
+    requestId: string;
+    source: "user-stop";
+  }) => Promise<{ ok: boolean; error?: string }>;
   /** 中止 Agent 工具环中的受控 run_command（可按 runId） */
   workspaceAbortRunCommand?: (
     runId?: string,
@@ -1087,6 +1110,11 @@ export type DesktopApi = {
     preferredCloudModel?: string;
     /** Auto 优先本地模型（须在启用池内；空=池首） */
     preferredLocalModel?: string;
+    /** Auto 路由锁；手选具体模型仍具有最高优先级。 */
+    modelRouteLock?: "auto" | "local" | "cloud";
+    /** 单个 Host Agent 回合 token/费用上限；0=不限。 */
+    agentTurnTokenLimit?: number;
+    agentTurnCostLimitUsd?: number;
     /** 模型能力显式覆盖 { [modelId]: { tools?, vision? } } */
     modelCapabilityOverrides?: Record<
       string,
@@ -1171,6 +1199,9 @@ export type DesktopApi = {
     chatEnabledLocalModels?: string[];
     preferredCloudModel?: string;
     preferredLocalModel?: string;
+    modelRouteLock?: "auto" | "local" | "cloud";
+    agentTurnTokenLimit?: number;
+    agentTurnCostLimitUsd?: number;
     modelCapabilityOverrides?: Record<
       string,
       { tools?: boolean; vision?: boolean; contextLength?: number | null }
@@ -1392,6 +1423,9 @@ export type DesktopApi = {
       path: string;
       before?: string;
       after?: string;
+      checkpointBefore?: string;
+      beforeTruncated?: boolean;
+      afterTruncated?: boolean;
       isNewFile?: boolean;
     }[];
   }>;
@@ -1857,7 +1891,7 @@ export type DesktopApi = {
     maxLines?: number;
     maxBytes?: number;
     source?:
-      "app" | "claudeEvents" | "claudeDebugLatest" | "claudeHistoryJsonl" | "claudeLibraryLogs";
+      "app" | "agentTurns" | "claudeEvents" | "claudeDebugLatest" | "claudeHistoryJsonl" | "claudeLibraryLogs";
   }) => Promise<{ ok: boolean; content: string; lines?: number; error?: string }>;
   logsOverviewSnapshot: () => Promise<{
     ok: boolean;

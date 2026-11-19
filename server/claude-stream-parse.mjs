@@ -341,25 +341,25 @@ export function appendStreamJsonLine(line, state) {
     const content = ev.message.content
     if (Array.isArray(content)) {
       for (const block of content) {
-        if (!block || typeof block !== 'object') continue
-        const kind = String(block.type || '')
-        if (kind === 'text' && typeof block.text === 'string') {
-          const text = block.text
-          if (text.startsWith(state.lastTextTail)) {
-            state.display += text.slice(state.lastTextTail.length)
-          } else if (!state.display.includes(text)) {
-            state.display += text
-          }
-          state.lastTextTail = text
-        } else if (kind === 'thinking' && typeof block.thinking === 'string') {
-          if (!state.display.includes(block.thinking)) {
-            state.display += `\n\n<thinking>\n${block.thinking}\n</thinking>\n\n`
+      if (!block || typeof block !== 'object') continue
+      const kind = String(block.type || '')
+      if (kind === 'text' && typeof block.text === 'string') {
+        const text = block.text
+        if (text.startsWith(state.lastTextTail)) {
+          state.display += text.slice(state.lastTextTail.length)
+        } else if (!state.display.includes(text)) {
+          state.display += text
+        }
+        state.lastTextTail = text
+      } else if (kind === 'thinking' && typeof block.thinking === 'string') {
+        if (!state.display.includes(block.thinking)) {
+          state.display += `\n\n<thinking>\n${block.thinking}\n</thinking>\n\n`
             state.events.push({ type: 'thinking' })
-          }
-        } else if (kind === 'tool_use') {
-          const key = `${block.name}:${JSON.stringify(block.input || {})}`
-          if (!state.seenTools.has(key)) {
-            state.seenTools.add(key)
+        }
+      } else if (kind === 'tool_use') {
+        const key = `${block.name}:${JSON.stringify(block.input || {})}`
+        if (!state.seenTools.has(key)) {
+          state.seenTools.add(key)
             const arg = extractToolArg(block.input)
             const path = extractToolPath(block.input)
             const toolUseId = block.id ? String(block.id) : undefined
@@ -459,7 +459,7 @@ export function appendStreamJsonLine(line, state) {
     if (ev.usage) rememberStreamUsage(state, ev.usage)
     else if (ev.message?.usage) rememberStreamUsage(state, ev.message.usage)
     if (typeof ev.result === 'string' && !state.display.trim()) {
-      state.display = ev.result
+    state.display = ev.result
       return state.display.slice(before)
     }
     return state.display.slice(before)

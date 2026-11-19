@@ -223,16 +223,16 @@ const pkgJson = fs.readFileSync(path.join(root, 'package.json'), 'utf8')
 assert(/check:ui-playwright/.test(pkgJson), 'dev-gates includes ui-playwright')
 assert(/check:ui-playwright:ci/.test(pkgJson), 'ci playwright script with CHECK_UI_PLAYWRIGHT')
 assert(
-  /chatModelPoolForMode/.test(
+  /chatModelPoolCombined/.test(
     fs.readFileSync(path.join(root, 'web/src/routes/index.tsx'), 'utf8'),
   ),
-  'index picks model from mode-scoped pool',
+  'index preserves manual selections from the combined cloud/local pool',
 )
 assert(
-  /orchMode === \"local-mcp\" \? \[\]/.test(
+  /const listCloud = cloudModels/.test(
     fs.readFileSync(path.join(root, 'web/src/components/chat-model-selector.tsx'), 'utf8'),
   ),
-  'local-mcp model picker hides cloud list',
+  'model picker always shows enabled cloud and local pools',
 )
 assert(
   /nextLocalContextOverride|点击切换本窗覆盖/.test(
@@ -608,7 +608,7 @@ assert(
     'claude stream remembers usage from assistant/result events',
   )
   const claudeCli = fs.readFileSync(path.join(root, 'server/claude-cli.mjs'), 'utf8')
-  assert(/streamState\?\.usage/.test(claudeCli), 'claude-cli returns stream usage to RPC')
+  assert(/已移除 Claude CLI/.test(claudeCli), 'claude-cli entry hard-fails instead of spawning claude')
 }
 assert(
   /cursor-sandbox-cache|回退/.test(pwUi),
@@ -720,14 +720,16 @@ assert(
   'cad-bridge hard-fails uninstalled Ollama models',
 )
 assert(
-  /routeHint === ['"]prefer-local['"]\) return pickLocal\(\)/.test(webCat) &&
-    /routeHint === ['"]prefer-local['"]\) return pickLocal\(\)/.test(srvRoute),
-  'prefer-local returns pickLocal only',
+  /routeHint === ['"]prefer-local['"]\) return pickLocal\(\) \|\| \(allowCrossPool \? pickCloud\(\) : null\)/.test(webCat) &&
+    /routeHint === ['"]prefer-local['"]\) return pickLocal\(\) \|\| \(allowCrossPool \? pickCloud\(\) : null\)/.test(srvRoute),
+  'Auto prefer-local can choose cloud only when cross-pool routing is enabled',
 )
 assert(
-  !/routeHint === ['"]prefer-local['"]\) return pickLocal\(\)\s*\|\|/.test(webCat) &&
-    !/routeHint === ['"]prefer-local['"]\) return pickLocal\(\)\s*\|\|/.test(srvRoute),
-  'prefer-local no silent cloud fallback',
+  /allowAutoCrossPool: routeLock !== ['"]local['"] && routeLock !== ['"]cloud['"]/.test(srvRoute) &&
+    /allowAutoCrossPool: settings\.modelRouteLock !== ['"]local['"] && settings\.modelRouteLock !== ['"]cloud['"]/.test(
+      fs.readFileSync(path.join(root, 'web/src/hooks/use-chat-send.ts'), 'utf8'),
+    ),
+  'manual route locks disable Auto cross-pool selection on both paths',
 )
 assert(
   sharedPol.includes('禁止硬编码固定文件名') && sharedPol.includes('optimization-plan.md'),

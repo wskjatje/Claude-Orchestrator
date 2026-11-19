@@ -1,0 +1,147 @@
+{
+  "version": 5,
+  "description": "双模型 Agent 基础任务集；只在临时工作区运行。",
+  "tasks": [
+    {
+      "id": "E01",
+      "category": "read-question",
+      "title": "基于仓库文件回答问题",
+      "mode": "ask",
+      "prompt": "请直接调用 read_file 工具读取 README.md，然后只回答这个示例项目默认使用什么存储，以及健康检查路径是什么。",
+      "workspaceFiles": {
+        "README.md": "# Sample Service\n\nThe service stores jobs in SQLite by default.\nHealth checks are available at GET /healthz.\n"
+      },
+      "assertions": [{ "type": "answerIncludes", "value": "SQLite" }, { "type": "answerIncludes", "value": "/healthz" }, { "type": "workspaceUnchanged" }]
+    },
+    {
+      "id": "E02",
+      "category": "single-file-edit",
+      "title": "单文件局部编辑",
+      "mode": "agent",
+      "prompt": "把 src/greeting.js 的默认问候语从 hello 改为 bonjour，保留函数名和导出方式；同步更新对应测试，并运行项目测试。",
+      "workspaceFiles": {
+        "src/greeting.js": "export function greeting(name) {\n  return `hello, ${name}`\n}\n",
+        "package.json": "{\"scripts\":{\"test\":\"node test.js\"},\"type\":\"module\"}\n",
+        "test.js": "import assert from 'node:assert/strict'; import { greeting } from './src/greeting.js'; assert.equal(greeting('Ada'), 'hello, Ada');\n"
+      },
+      "assertions": [{ "type": "fileContains", "path": "src/greeting.js", "value": "bonjour" }, { "type": "commandPass", "argv": ["node", "test.js"] }]
+    },
+    {
+      "id": "E03",
+      "category": "multi-file-edit",
+      "title": "多文件接口重命名",
+      "mode": "agent",
+      "prompt": "将项目里的 LegacyQueue 接口统一改名为 TaskQueue，更新定义、导入和调用点，不要改其他行为。",
+      "workspaceFiles": {
+        "src/queue.js": "export class LegacyQueue {\n  push(value) { this.items ??= []; this.items.push(value) }\n}\n",
+        "src/worker.js": "import { LegacyQueue } from './queue.js';\nexport const queue = new LegacyQueue();\n",
+        "src/index.js": "export { LegacyQueue } from './queue.js';\n"
+      },
+      "assertions": [{ "type": "workspaceContains", "value": "TaskQueue" }, { "type": "workspaceNotContains", "value": "LegacyQueue" }]
+    },
+    {
+      "id": "E04",
+      "category": "add-test",
+      "title": "为边界行为补测试",
+      "mode": "agent",
+      "prompt": "为 src/clamp.js 增加测试，覆盖低于下界、范围内和高于上界三种情况；沿用项目现有 node:test 方式，并运行测试。",
+      "workspaceFiles": {
+        "src/clamp.js": "export function clamp(value, min, max) { return Math.min(max, Math.max(min, value)) }\n",
+        "package.json": "{\"scripts\":{\"test\":\"node --test\"},\"type\":\"module\"}\n"
+      },
+      "assertions": [{ "type": "fileExistsGlob", "pattern": "*.test.js" }, { "type": "commandPass", "argv": ["node", "--test"] }]
+    },
+    {
+      "id": "E05",
+      "category": "fix-test",
+      "title": "根据失败测试修复缺陷",
+      "mode": "agent",
+      "prompt": "先运行 node test.js，根据失败断言定位并修复 src/add.js 的问题，不要改测试来绕过失败，再运行测试确认。",
+      "workspaceFiles": {
+        "src/add.js": "export function add(a, b) { return a - b }\n",
+        "package.json": "{\"scripts\":{\"test\":\"node test.js\"},\"type\":\"module\"}\n",
+        "test.js": "import assert from 'node:assert/strict'; import { add } from './src/add.js'; assert.equal(add(2, 3), 5);\n"
+      },
+      "assertions": [{ "type": "fileContains", "path": "src/add.js", "value": "a + b" }, { "type": "commandPass", "argv": ["node", "test.js"] }]
+    },
+    {
+      "id": "E06",
+      "category": "cross-directory-rename",
+      "title": "跨目录迁移模块",
+      "mode": "agent",
+      "prompt": "将 src/legacy/format.js 移到 src/shared/format.js，并更新所有引用；保持导出的 formatDate 行为不变。",
+      "workspaceFiles": {
+        "src/legacy/format.js": "export function formatDate(date) { return new Date(date).toISOString().slice(0, 10) }\n",
+        "src/pages/home.js": "import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\n",
+        "src/jobs/daily.js": "import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\n"
+      },
+      "assertions": [{ "type": "fileExists", "path": "src/shared/format.js" }, { "type": "workspaceNotContains", "value": "legacy/format.js" }, { "type": "workspaceContains", "value": "shared/format.js" }]
+    },
+    {
+      "id": "E07",
+      "category": "dependency-install",
+      "title": "受控依赖安装与使用",
+      "mode": "agent",
+      "requiresNetwork": true,
+      "prompt": "在临时项目中安装 picocolors，使用它给 scripts/status.js 的状态文字加颜色，并运行脚本验证。不要修改其他文件。",
+      "workspaceFiles": {
+        "package.json": "{\"type\":\"module\",\"scripts\":{\"test\":\"node scripts/status.js\"}}\n",
+        "scripts/status.js": "console.log('ready')\n"
+      },
+      "assertions": [{ "type": "fileContains", "path": "package.json", "value": "picocolors" }, { "type": "fileContains", "path": "scripts/status.js", "value": "picocolors" }, { "type": "commandPass", "argv": ["node", "scripts/status.js"] }]
+    },
+    {
+      "id": "E08",
+      "category": "build",
+      "title": "运行项目构建并报告结果",
+      "mode": "agent",
+      "prompt": "检查 package.json，运行现有 build 脚本；若成功，说明生成目录和关键产物。不要修改源文件。",
+      "workspaceFiles": {
+        "package.json": "{\"scripts\":{\"build\":\"node scripts/build.js\"},\"type\":\"module\"}\n",
+        "scripts/build.js": "import fs from 'node:fs'; fs.mkdirSync('dist', { recursive: true }); fs.writeFileSync('dist/app.txt', 'build-ok');\n"
+      },
+      "assertions": [{ "type": "fileContains", "path": "dist/app.txt", "value": "build-ok" }, { "type": "answerIncludes", "value": "dist/app.txt" }]
+    },
+    {
+      "id": "E09",
+      "category": "large-file-edit",
+      "title": "大文件局部修改",
+      "mode": "agent",
+      "prompt": "只把 data/large.txt 中以 TARGET= 开头的值从 old 改成 new，保留其他行及总行数。",
+      "generatedFiles": [{ "path": "data/large.txt", "lines": 7000, "targetLine": 5301, "template": "ROW_{i}=unchanged", "target": "TARGET=old" }],
+      "assertions": [{ "type": "fileContains", "path": "data/large.txt", "value": "TARGET=new" }, { "type": "fileNotContains", "path": "data/large.txt", "value": "TARGET=old" }, { "type": "lineCount", "path": "data/large.txt", "equals": 7000 }]
+    },
+    {
+      "id": "E10",
+      "category": "repository-search",
+      "title": "跨目录检索唯一线索",
+      "mode": "ask",
+      "prompt": "请用工具搜索整个项目，回答包含唯一标记 ORCHID-742 的文件路径，以及它代表的服务名。",
+      "generatedFiles": [{ "path": "src/parts", "count": 80, "template": "module_{i}.js", "contentTemplate": "export const name = 'service-{i}'\n" }],
+      "workspaceFiles": { "src/parts/module_57.js": "// ORCHID-742 belongs to billing-replay-worker\nexport const name = 'billing-replay-worker'\n" },
+      "assertions": [{ "type": "answerIncludes", "value": "module_57.js" }, { "type": "answerIncludes", "value": "billing-replay-worker" }, { "type": "workspaceUnchanged" }]
+    },
+    {
+      "id": "E11",
+      "category": "error-recovery",
+      "title": "从失败命令恢复并验证",
+      "mode": "agent",
+      "prompt": "运行 node test.js，记录失败原因，修复 src/parse.js 使测试通过；保留测试文件原样，最后再次运行测试。",
+      "workspaceFiles": {
+        "src/parse.js": "export function parseCount(value) { return Number.parseInt(value, 10) || 0 }\n",
+        "test.js": "import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\n"
+      },
+      "assertions": [{ "type": "fileContains", "path": "src/parse.js", "value": "Number.isSafeInteger" }, { "type": "commandPass", "argv": ["node", "test.js"] }, { "type": "fileUnchanged", "path": "test.js" }]
+    },
+    {
+      "id": "E12",
+      "category": "mcp-call",
+      "title": "调用本地 MCP 工具",
+      "mode": "agent",
+      "backends": ["local-mcp"],
+      "prompt": "请调用 ollama_list_models 工具列出本机已安装模型，并确认结果中是否包含 qwen2.5-coder:14b。只根据工具结果回答。",
+      "workspaceFiles": { "README.md": "MCP evaluation fixture.\n" },
+      "assertions": [{ "type": "toolCalled", "value": "ollama_list_models" }, { "type": "answerIncludes", "value": "qwen2.5-coder:14b" }]
+    }
+  ]
+}

@@ -99,15 +99,9 @@ export function ClaudeHooksPanel({ compact = false }: { compact?: boolean }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className={cn("min-w-0 text-muted-foreground", compact ? "text-[11.5px]" : "text-[12px]")}>
           <p>
-            {compact ? "只读查看本机 Hooks。" : "只读查看本机 Hooks；请在 Claude Code 侧编辑。"}{" "}
-            <a
-              href="https://code.claude.com/docs/en/hooks"
-              className="text-primary underline-offset-2 hover:underline"
-              target="_blank"
-              rel="noreferrer"
-            >
-              官方文档
-            </a>
+            {compact
+              ? "只读查看本机 Hooks。"
+              : "只读查看本机 Hooks；请在 ~/.claude/settings.json 中编辑。"}
           </p>
           <details className="mt-1.5">
             <summary className="cursor-pointer text-[11px] text-muted-foreground">

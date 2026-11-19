@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-14T05:40:55.768Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E10",
+      "title": "跨目录检索唯一线索",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "根据提供的信息，无法找到包含唯一标记 ORCHID-742 的文件路径及其代表的服务名。请检查标记是否正确或是否需要构建图谱以获得更准确的结果。\nHost · Search",
+      "error": null,
+      "turns": 3,
+      "durationMs": 6065,
+      "toolCallCount": 2,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "ORCHID-742",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[],\"semantic\":[],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "code_search",
+          "detail": "ORCHID-742",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[],\"semantic\":[],\"graphFiles\":[]}"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "80 个初始文件"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E10",
+      "title": "跨目录检索唯一线索",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        6065
+      ],
+      "turns": [
+        3
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 6065,
+      "avgTurns": 3
+    }
+  ],
+  "finishedAt": "2026-11-14T05:41:01.896Z"
+}

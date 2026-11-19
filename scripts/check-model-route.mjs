@@ -79,7 +79,19 @@ const autoAskNoLocal = resolveModelForExecution({
   localModels: [],
   routeHint: 'prefer-local',
 })
-assert(autoAskNoLocal == null, 'prefer-local + empty local → null (no silent cloud)')
+assert(
+  autoAskNoLocal?.modelId === 'claude-sonnet' && autoAskNoLocal.mode === 'claude-code',
+  'Auto ask + empty local → available cloud',
+)
+
+const lockedLocalNoLocal = resolveModelForExecution({
+  selectedModel: 'auto',
+  cloudModels: cloud,
+  localModels: [],
+  routeHint: 'prefer-local',
+  allowAutoCrossPool: false,
+})
+assert(lockedLocalNoLocal == null, 'local route lock + empty local → hard failure')
 
 const outOfPool = resolveModelForExecution({
   selectedModel: 'my-custom-ollama',
@@ -118,7 +130,18 @@ const emptyCloudPrefer = resolveModelForExecution({
   allLocalModels: local,
   routeHint: 'prefer-cloud',
 })
-assert(emptyCloudPrefer == null, 'prefer-cloud + empty cloud → null (no silent local)')
+assert(
+  emptyCloudPrefer?.modelId === 'qwen2.5-coder' && emptyCloudPrefer.mode === 'local-mcp',
+  'Auto write + empty cloud → available local',
+)
+const lockedCloudNoCloud = resolveModelForExecution({
+  selectedModel: 'auto',
+  cloudModels: [],
+  localModels: local,
+  routeHint: 'prefer-cloud',
+  allowAutoCrossPool: false,
+})
+assert(lockedCloudNoCloud == null, 'cloud route lock + empty cloud → hard failure')
 assert(String(CLOUD_PROVIDER_REQUIRED_ERROR).includes('未启用云供应商'), 'error copy single-source')
 assert(String(LOCAL_PROVIDER_REQUIRED_ERROR).includes('未启用本地模型'), 'local error copy')
 assert(String(MODEL_NOT_IN_POOL_ERROR).includes('不在已启用池内'), 'pool error copy')
@@ -191,8 +214,42 @@ const heuristicPin = resolveModelForExecution({
 })
 assert(heuristicPin == null, 'pool-out hand-pick (name heuristic) → null')
 
+const hostSource = fs.readFileSync(path.join(root, 'server/host-agent-loop.mjs'), 'utf8')
+assert(
+  /resolveChatBackend\(preferredModel,\s*opts\.modelMode\)/.test(hostSource),
+  'Host receives the resolved manual model mode',
+)
+assert(
+  /resolveEnvForModel\(model,\s*\{\s*fallback:\s*false,\s*settings\s*\}\)/.test(hostSource),
+  'Host cloud resolution is exact-match only',
+)
+assert(
+  /deepSeekRequestExtras\(backend\.model\)/.test(hostSource),
+  'Host applies provider request extras without retry fallback',
+)
+
+const providerSource = fs.readFileSync(path.join(root, 'server/cloud-providers.cjs'), 'utf8')
+assert(
+  /options\.fallback\s*!==\s*true/.test(providerSource),
+  'cloud model resolver disables cross-model fallback by default',
+)
+
 if (process.exitCode) {
   console.error('\ncheck-model-route: FAILED')
   process.exit(1)
 }
+
+const { spawnSync } = await import('node:child_process')
+const capTest = spawnSync(
+  process.execPath,
+  ['--experimental-strip-types', path.join(root, 'web/src/lib/model-capability-cache.test.mjs')],
+  { cwd: root, encoding: 'utf8', env: process.env },
+)
+if (capTest.stdout) process.stdout.write(capTest.stdout)
+if (capTest.stderr) process.stderr.write(capTest.stderr)
+if (capTest.status !== 0) {
+  console.error('\ncheck-model-route: FAILED (model-capability-cache)')
+  process.exit(capTest.status || 1)
+}
+
 console.log('\ncheck-model-route: PASSED')

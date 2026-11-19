@@ -11,6 +11,8 @@ export type AgentTurnMeta = {
   /** 写前/写后补丁（气泡 Diff / Undo 快照回源） */
   filePatches?: AgentFilePatch[];
   verified?: boolean;
+  /** Host todo_write 的最终任务状态；随会话保存，供切换模型后续跑与进度展示。 */
+  todos?: AgentTodoItem[];
   /** 回合结束时冻结的底栏（方案 / 终端命令 / 本轮文件），不随下一轮活动摘要被覆盖 */
   turnFooter?: ComposerTurnFooterSnapshot;
   /** cli=Claude CLI；host=Host 内置工具；local=本地 MCP 编排 */
@@ -21,6 +23,12 @@ export type AgentTurnMeta = {
   streamEvents?: StreamAgentEvent[];
   /** 可选短摘要，不替代过程 */
   summary?: string;
+};
+
+export type AgentTodoItem = {
+  id: string;
+  title: string;
+  status: "pending" | "in_progress" | "completed";
 };
 
 type HistMsg = {
@@ -39,6 +47,7 @@ export function lastAgentTurnMeta(history: HistMsg[]): AgentTurnMeta | null {
       m.agentTurn &&
       (m.agentTurn.writtenPaths?.length ||
         m.agentTurn.filePatches?.length ||
+        m.agentTurn.todos?.length ||
         m.agentTurn.verified != null ||
         m.agentTurn.streamEvents?.length)
     ) {
@@ -77,11 +86,22 @@ export function lastAgentTurnMeta(history: HistMsg[]): AgentTurnMeta | null {
 
 /** 注入到本轮 userLine 的短上下文（无冗余） */
 export function formatAgentTurnMetaAppendix(meta: AgentTurnMeta | null): string {
-  if (!meta?.writtenPaths?.length && !meta?.verified) return "";
+  if (!meta?.writtenPaths?.length && !meta?.verified && !meta?.todos?.length) return "";
   const paths = (meta.writtenPaths || []).slice(0, 12).join(", ");
   const lines = ["【上轮 Agent】"];
   if (paths) lines.push(`已写入：${paths}`);
   if (meta.verified != null) lines.push(`测试：${meta.verified ? "已验证" : "未验证"}`);
   if (meta.backend) lines.push(`后端：${meta.backend}`);
+  if (meta.todos?.length) {
+    const statusLabel = {
+      pending: "待处理",
+      in_progress: "进行中",
+      completed: "已完成",
+    } as const;
+    lines.push("任务状态：");
+    for (const item of meta.todos.slice(0, 12)) {
+      lines.push(`- [${statusLabel[item.status]}] ${item.title}`);
+    }
+  }
   return lines.join("\n");
 }

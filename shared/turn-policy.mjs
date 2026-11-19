@@ -21,24 +21,32 @@
  * @property {boolean} allowTools
  * @property {boolean} forceDirectChat
  * @property {boolean} autoApplyWrites
+ * @property {boolean} requireAppliedWrite
  * @property {'none'|'slim-product'|'agent-full'} contextLevel
  * @property {string} systemConstraint
  */
 
 /** 祈使 / 变更言语行为 → 需要写盘或改仓库（含「按方案执行」类，对齐 Cursor Agent 跟进） */
 const MUTATION_SPEECH_ACT_RE =
-  /(?:请?(?:帮我)?(?:把|将|给|对).{0,40}?(?:改成|改为|修改|更新|替换|写入|写到|写进|保存|落盘|删除|移除|重命名)|(?:请?修改|修复|重构|实现|添加|新增|创建|生成|写入|保存|更新|删除|改一下|改掉|补上|接上).{0,60}?(?:文件|代码|函数|组件|页面|配置|README|测试|bug|缺陷|[\w./-]+\.[a-zA-Z0-9]+)|(?:改代码|改文件|改一下代码)|(?:写(?:一?[个份])?文件)\s*[\w./-]+\.[a-zA-Z0-9]+|(?:并写入|写到|写进|写入)\s*[\w./-]+\.[a-zA-Z0-9]+|(?:按(?:照)?|根据|依据).{0,20}(?:方案|计划|建议|优化).{0,16}(?:执行|落地|实施|改)|(?:开始|请|帮我)?(?:执行|落地|实施)(?:一下|吧)?\s*(?:优化|方案|计划|改动|P\d+)?|(?:请|帮我|去|继续)?(?:动手(?:改|做)|落盘|开改)|^(?:改|写)(?:一下|吧)?$|(?:commit|apply|patch|refactor|implement|fix|add|create|write|save|update|delete|go\s*ahead|do\s*it)\b)/i
+  /(?:请?(?:帮我)?(?:把|将|给|对).{0,80}?(?:改成|改为|修改|更新|替换|写入|写到|写进|保存|落盘|删除|移除|重命名|移到|移动到|迁移到|增加|添加|补充)|(?:为|给).{0,60}?(?:增加|添加|新增|补充).{0,32}?(?:测试|文件|代码|函数|组件|页面|配置)|(?:请?修改|修复|重构|实现|添加|新增|创建|生成|写入|保存|更新|删除|迁移|移动|改一下|改掉|补上|接上).{0,60}?(?:文件|代码|函数|组件|页面|配置|README|测试|bug|缺陷|[\w./-]+\.[a-zA-Z0-9]+)|(?:改代码|改文件|改一下代码)|(?:写(?:一?[个份])?文件)\s*[\w./-]+\.[a-zA-Z0-9]+|(?:并写入|写到|写进|写入)\s*[\w./-]+\.[a-zA-Z0-9]+|(?:按(?:照)?|根据|依据).{0,20}(?:方案|计划|建议|优化).{0,16}(?:执行|落地|实施|改|进行(?:优化|修改|修复|重构|实现))|(?:开始|请|帮我)?(?:执行|落地|实施)(?:一下|吧)?\s*(?:优化|方案|计划|改动|P\d+)?|(?:请|帮我|去|继续)?(?:动手(?:改|做)|落盘|开改)|^(?:改|写)(?:一下|吧)?$|(?:commit|apply|patch|refactor|implement|fix|add|create|write|save|update|delete|go\s*ahead|do\s*it)\b)/i
+
+/** 明确要求在 Agent 中运行项目命令；可能产生构建产物，但不一定需要文件编辑工具。 */
+const EXECUTION_SPEECH_ACT_RE =
+  /(?:运行|执行|跑)(?:一下)?(?:现有|项目|仓库|工作区|指定)?[^。；;\n]{0,32}?(?:build|test|测试|构建|脚本|命令|lint|typecheck|pytest|npm|pnpm|yarn|bun|cargo|go\s+test)/i
 
 /**
  * 用户明确要求调用 MCP/工具（含本机 memory 服务器）。
- * 不以「怎么/如何/为什么」开头，避免把用法咨询送进工具环。
+ * 不以「怎么/如何/为什么/为何」开头，避免把用法咨询送进工具环。
+ * 「请用工具…」口语与「请使用/调用工具…」同等视为显式工具回合。
  */
 const EXPLICIT_TOOL_INVOCATION_RE =
-  /(?:调用|使用).{0,48}(?:\bMCP\b|mcp__|工具|\bmemory\b)|(?:\b(?:call|use|invoke)\b.{0,60}\b(?:mcp|tools?)\b)/i
+  /(?:调用|使用).{0,48}(?:\bMCP\b|mcp__|工具|\bmemory\b)|(?:请)?用(?:一下)?工具|(?:\b(?:call|use|invoke)\b.{0,60}\b(?:mcp|tools?)\b)/i
 
 export function isExplicitToolInvocation(displayLine) {
   const s = String(displayLine || '').trim()
   if (!s || /^(?:怎么|如何|为什么|为何)/.test(s)) return false
+  // 「怎么用工具 / 如何使用工具」等咨询句：整句以疑问开场已排除；句中「怎么用工具」仍勿误判
+  if (/(?:怎么|如何|怎样).{0,12}用(?:一下)?工具/.test(s)) return false
   return EXPLICIT_TOOL_INVOCATION_RE.test(s)
 }
 
@@ -110,8 +118,15 @@ export function isReadOnlyUserIntent(displayLine) {
 export function classifyTurnIntent(displayLine) {
   const s = String(displayLine || '').trim()
   if (!s) return 'chat'
+  const mutationProbe = s.replace(
+    /(?:不要|禁止|无需|不需要).{0,32}?(?:修改|改动|写入|删除|移除|创建|新增).{0,32}?(?:[，。；;]|$)/g,
+    '',
+  )
   // 变更言语优先于问句（「改成什么？」这类仍可能是变更）
-  if (MUTATION_SPEECH_ACT_RE.test(s)) return 'write'
+  if (
+    MUTATION_SPEECH_ACT_RE.test(mutationProbe) ||
+    EXECUTION_SPEECH_ACT_RE.test(mutationProbe)
+  ) return 'write'
   if (
     INTERROGATIVE_SPEECH_ACT_RE.test(s) ||
     shouldInjectProjectBootstrap(s) ||
@@ -149,6 +164,12 @@ export function resolveTurnPolicy(input) {
     explicitPlanDoc &&
     (interactionMode === 'plan' || interactionMode === 'agent') &&
     intent !== 'write'
+  const mutationProbe = line.replace(
+    /(?:不要|禁止|无需|不需要).{0,32}?(?:修改|改动|写入|删除|移除|创建|新增).{0,32}?(?:[，。；;]|$)/g,
+    '',
+  )
+  const requireAppliedWrite =
+    intent === 'write' && MUTATION_SPEECH_ACT_RE.test(mutationProbe)
 
   // 不问改就不写：变更言语 或 显式方案文档；Ask / 咨询禁写
   const allowWrites =
@@ -203,6 +224,15 @@ export function resolveTurnPolicy(input) {
       '若问「做什么/是什么」可简述产品；若问「怎么优化/如何改进/怎么用/还有哪些可以优化」，按上式短答。' +
       '禁止 ## 1/## 2 分节、禁止 - **加粗小标题**： 嵌套、禁止长开场与「三个维度」百科体、禁止 LaTeX、禁止编造未读路径。' +
       '禁止文末推销下一步、征求确认或要求用户切模式。'
+  } else if (
+    intent === 'write' &&
+    interactionMode === 'agent' &&
+    !requireAppliedWrite
+  ) {
+    systemConstraint =
+      '【回合策略·命令执行】用户要求运行项目现有命令。先读取 package.json/项目配置，再用 run_command 或 run_tests 执行并依据真实输出作答。' +
+      '用户未要求修改源码；禁止 write_file/search_replace。命令生成的正常构建产物不算源码修改。' +
+      '失败时报告真实命令与错误，禁止假报成功。'
   } else if (intent === 'write' && interactionMode === 'agent') {
     systemConstraint =
       '【回合策略·变更】用户要求修改工作区。优先用 search_replace / write_file 工具改盘；' +
@@ -232,6 +262,7 @@ export function resolveTurnPolicy(input) {
     allowTools,
     forceDirectChat,
     autoApplyWrites,
+    requireAppliedWrite,
     contextLevel,
     systemConstraint,
   }

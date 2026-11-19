@@ -1,15 +1,15 @@
-/** MCP 模板预设（不锁定版本，npx/uvx 每次拉取最新） */
+/** MCP 模板预设；带 __BUNDLED_*__ 的由 bundledMcpCommandLines 替换为仓库内固定命令 */
 export const MCP_PRESET_COMMAND_LINES: Record<string, string> = {
-  filesystem: "npx -y @modelcontextprotocol/server-filesystem ~/",
-  fetch: "uvx mcp-server-fetch",
-  memory: "npx -y @modelcontextprotocol/server-memory",
-  "sequential-thinking": "npx -y @modelcontextprotocol/server-sequential-thinking",
+  filesystem: "__BUNDLED_FILESYSTEM__",
+  fetch: "__BUNDLED_FETCH__",
+  memory: "__BUNDLED_MEMORY__",
+  "sequential-thinking": "__BUNDLED_SEQUENTIAL__",
   postgres: "npx -y @modelcontextprotocol/server-postgres <connection-string>",
-  puppeteer: "npx -y @modelcontextprotocol/server-puppeteer",
+  puppeteer: "__BUNDLED_PUPPETEER__",
   "brave-search": "npx -y @modelcontextprotocol/server-brave-search",
   "google-maps": "npx -y @modelcontextprotocol/server-google-maps",
   slack: "npx -y @modelcontextprotocol/server-slack",
-  sqlite: "uvx mcp-server-sqlite --db-path <path/to/db>",
+  sqlite: "__BUNDLED_SQLITE__",
   sanshengliubu: "node __BUNDLED_SANSHENGLIUBU__",
   "external-apps": "node __BUNDLED_EXTERNAL_APPS__",
 };
@@ -73,7 +73,7 @@ export const MCP_PRESETS: McpPresetMeta[] = [
   {
     name: "sqlite",
     label: "SQLite",
-    desc: "本地数据管理（需安装 uv / Python 3.10+）",
+    desc: "本地 SQLite（使用仓库内固定服务与 demo 库）",
     commandLine: MCP_PRESET_COMMAND_LINES.sqlite,
   },
   {
@@ -153,6 +153,12 @@ export function resolveMcpCommandLine(
 }
 
 const BUNDLED_PLACEHOLDERS = new Set([
+  MCP_PRESET_COMMAND_LINES.filesystem,
+  MCP_PRESET_COMMAND_LINES.fetch,
+  MCP_PRESET_COMMAND_LINES.memory,
+  MCP_PRESET_COMMAND_LINES["sequential-thinking"],
+  MCP_PRESET_COMMAND_LINES.puppeteer,
+  MCP_PRESET_COMMAND_LINES.sqlite,
   MCP_PRESET_COMMAND_LINES.sanshengliubu,
   MCP_PRESET_COMMAND_LINES["external-apps"],
 ]);
@@ -168,6 +174,8 @@ export function resolvePresetCommandLineForForm(
 ): string {
   if (bundledLines?.[name]) return bundledLines[name]!;
   const line = MCP_PRESET_COMMAND_LINES[name];
-  if (line && !BUNDLED_PLACEHOLDERS.has(line)) return line;
-  return line ?? "";
+  if (!line) return "";
+  // 内置占位未解析时不回填伪命令，避免启用坏配置
+  if (BUNDLED_PLACEHOLDERS.has(line)) return "";
+  return line;
 }

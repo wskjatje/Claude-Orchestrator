@@ -24,6 +24,18 @@ web/.tanstack/
 *.sqlite
 *.bak
 
+# 本地 MCP sqlite 固定环境（npm run mcp:sqlite:ensure）
+tools/mcp-sqlite/.venv/
+tools/mcp-sqlite/.uv-cache/
+.uv-cache-sqlite/
+
+# 本地官方 MCP npm 固定环境（npm run mcp:npx:ensure）
+tools/mcp-npx/node_modules/
+
+# 本地 fetch MCP 固定环境（npm run mcp:fetch:ensure）
+tools/mcp-fetch/.venv/
+tools/mcp-fetch/.uv-cache/
+
 # Desktop packaging (build locally; do not push)
 desktop/node_modules/
 desktop/release/

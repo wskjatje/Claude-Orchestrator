@@ -269,6 +269,11 @@ function defaultChatSettings() {
     /** Auto 时优先选用的云/本地模型（须在启用池内；空=取池首项） */
     preferredCloudModel: "",
     preferredLocalModel: "",
+    /** Auto 路由锁：auto=按任务；local/cloud=只走指定通道。 */
+    modelRouteLock: "auto",
+    /** Host 单回合护栏；0 表示不限制。 */
+    agentTurnTokenLimit: 0,
+    agentTurnCostLimitUsd: 0,
     /**
      * 模型能力显式覆盖（仅覆盖探测缺失；不默认全支持）
      * { [modelId]: { tools?: boolean, vision?: boolean } }
@@ -644,6 +649,22 @@ export function saveChatSettings(body) {
       typeof body?.preferredLocalModel === "string"
         ? body.preferredLocalModel.trim().slice(0, 200)
         : cur.preferredLocalModel || "",
+    modelRouteLock:
+      body?.modelRouteLock === "local" || body?.modelRouteLock === "cloud"
+        ? body.modelRouteLock
+        : body?.modelRouteLock === "auto"
+          ? "auto"
+          : cur.modelRouteLock === "local" || cur.modelRouteLock === "cloud"
+            ? cur.modelRouteLock
+            : "auto",
+    agentTurnTokenLimit:
+      Number.isFinite(Number(body?.agentTurnTokenLimit)) && Number(body.agentTurnTokenLimit) >= 0
+        ? Math.min(10_000_000, Math.floor(Number(body.agentTurnTokenLimit)))
+        : Math.max(0, Number(cur.agentTurnTokenLimit) || 0),
+    agentTurnCostLimitUsd:
+      Number.isFinite(Number(body?.agentTurnCostLimitUsd)) && Number(body.agentTurnCostLimitUsd) >= 0
+        ? Math.min(10_000, Number(body.agentTurnCostLimitUsd))
+        : Math.max(0, Number(cur.agentTurnCostLimitUsd) || 0),
     modelCapabilityOverrides:
       body?.modelCapabilityOverrides != null &&
       typeof body.modelCapabilityOverrides === "object" &&

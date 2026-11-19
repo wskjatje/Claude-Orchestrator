@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 4,
+  "startedAt": "2026-11-11T23:50:02.189Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "local-mcp"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "local-mcp",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "Thought: 我需要先查看当前工作区的目录结构，确认 `src/greeting.js` 文件是否存在，以及找到对应的测试文件。\n\nAction: \n1. 查看当前工作区的目录结构。\n2. 确认 `src/greeting.js` 文件是否存在。\n3. 查找并更新默认问候语。\n4. 查找并更新对应的测试文件。\n5. 运行项目测试。\n\n```json\n{\n  \"name\": \"list_dir\",\n  \"arguments\": {}\n}\n```",
+      "error": null,
+      "turns": 3,
+      "durationMs": 28690,
+      "toolCallCount": 0,
+      "toolNames": [],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ],
+      "workspace": "/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e02-F9pRrA/workspace"
+    }
+  ],
+  "summary": [
+    {
+      "backend": "local-mcp",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        28690
+      ],
+      "turns": [
+        3
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 28690,
+      "avgTurns": 3
+    }
+  ],
+  "finishedAt": "2026-11-11T23:50:30.972Z"
+}

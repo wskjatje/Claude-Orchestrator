@@ -1,0 +1,376 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-16T00:13:24.638Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E09",
+      "title": "大文件局部修改",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · TARGET=\n⋯ Read · ./data/large.txt\n⋯ Edit · ./data/large.txt\n⋯ Write · ./data/large.txt\n⋯ Bash · auto\n⋯ Edit · data/large.txt\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 8,
+      "durationMs": 19550,
+      "usage": {
+        "prompt_tokens": 13923,
+        "completion_tokens": 253,
+        "total_tokens": 14176
+      },
+      "toolCallCount": 6,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "write_file",
+        "run_tests",
+        "Search",
+        "Read",
+        "Edit",
+        "Write",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "TARGET=",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./data/large.txt\",\"line\":5301,\"text\":\"TARGET=old\"}],\"semantic\":[],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "read_file",
+          "detail": "./data/large.txt",
+          "path": "./data/large.txt",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "./data/large.txt",
+          "path": "./data/large.txt",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "write_file",
+          "detail": "./data/large.txt",
+          "path": "./data/large.txt",
+          "ok": false,
+          "failedArguments": "{\"path\":\"./data/large.txt\",\"content\":\"（省略大段内容，约 97598 字符）\"}",
+          "exitCode": 1,
+          "output": "文件「./data/large.txt」未被完整读取或体积较大，禁止用 write_file 整体覆盖，以免丢失未读内容。请使用 search_replace 或 apply_patch 做局部修改。"
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "未探测到项目测试命令；已完成变更文件静态诊断，未发现问题。"
+        },
+        {
+          "tool": "search_replace",
+          "detail": "./data/large.txt",
+          "path": "./data/large.txt",
+          "ok": false,
+          "failedArguments": "{\"path\":\"./data/large.txt\",\"search\":\"TARGET=old\",\"replace\":\"TARGET=new\",\"backup\":true,\"old_string\":\"TARGET=old\",\"new_string\":\"TARGET=new\"}",
+          "exitCode": 1,
+          "output": "old_string not found; nearest lines around 7001:\nROW_6999=unchanged\nROW_7000=unchanged\n"
+        }
+      ],
+      "editFailureCount": 4,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "./data/large.txt",
+        "data/large.txt"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "fileNotContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "lineCount",
+          "ok": true,
+          "detail": "data/large.txt"
+        }
+      ]
+    },
+    {
+      "taskId": "E09",
+      "title": "大文件局部修改",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · TARGET= old\n⋯ Todo · 1 items\n⋯ Search · TARGET=\n⋯ Read\n⋯ Read · ./data/large.txt\n⋯ Edit · ./data/large.txt\n⋯ Bash · auto\n⋯ Edit · data/large.txt\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 10,
+      "durationMs": 67927,
+      "usage": {
+        "prompt_tokens": 24558,
+        "completion_tokens": 250,
+        "total_tokens": 24808
+      },
+      "toolCallCount": 7,
+      "toolNames": [
+        "code_search",
+        "todo_write",
+        "read_file",
+        "search_replace",
+        "run_tests",
+        "Search",
+        "Todo",
+        "Read",
+        "Edit",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "TARGET= old",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[],\"semantic\":[],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "todo_write",
+          "detail": "1 items",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "code_search",
+          "detail": "TARGET=",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./data/large.txt\",\"line\":5301,\"text\":\"TARGET=old\"}],\"semantic\":[],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "read_file",
+          "detail": "",
+          "ok": false,
+          "failedArguments": "{\"relPath\":\"./data/large.txt\"}",
+          "exitCode": 1,
+          "output": "工具「read_file」参数无效：缺少必填参数「path」。"
+        },
+        {
+          "tool": "read_file",
+          "detail": "./data/large.txt",
+          "path": "./data/large.txt",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "./data/large.txt",
+          "path": "./data/large.txt",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "未探测到项目测试命令；已完成变更文件静态诊断，未发现问题。"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "./data/large.txt",
+        "data/large.txt"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "fileNotContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "lineCount",
+          "ok": true,
+          "detail": "data/large.txt"
+        }
+      ]
+    },
+    {
+      "taskId": "E09",
+      "title": "大文件局部修改",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · TARGET= old\n⋯ Todo · 1 items\n⋯ Search · TARGET=\n⋯ Read · ./data/large.txt\n⋯ Edit · ./data/large.txt\n⋯ Bash · auto\n⋯ Edit · data/large.txt\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 9,
+      "durationMs": 49988,
+      "usage": {
+        "prompt_tokens": 22111,
+        "completion_tokens": 228,
+        "total_tokens": 22339
+      },
+      "toolCallCount": 6,
+      "toolNames": [
+        "code_search",
+        "todo_write",
+        "read_file",
+        "search_replace",
+        "run_tests",
+        "Search",
+        "Todo",
+        "Read",
+        "Edit",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "TARGET= old",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[],\"semantic\":[],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "todo_write",
+          "detail": "1 items",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "code_search",
+          "detail": "TARGET=",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./data/large.txt\",\"line\":5301,\"text\":\"TARGET=old\"}],\"semantic\":[],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "read_file",
+          "detail": "./data/large.txt",
+          "path": "./data/large.txt",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "./data/large.txt",
+          "path": "./data/large.txt",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "未探测到项目测试命令；已完成变更文件静态诊断，未发现问题。"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "./data/large.txt",
+        "data/large.txt"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "fileNotContains",
+          "ok": true,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "lineCount",
+          "ok": true,
+          "detail": "data/large.txt"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E09",
+      "title": "大文件局部修改",
+      "attempted": 3,
+      "passed": 3,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        19550,
+        67927,
+        49988
+      ],
+      "turns": [
+        8,
+        10,
+        9
+      ],
+      "promptTokens": [
+        13923,
+        24558,
+        22111
+      ],
+      "editFailures": 4,
+      "successRate": 1,
+      "avgDurationMs": 45822,
+      "avgTurns": 9,
+      "avgPromptTokens": 20197
+    }
+  ],
+  "finishedAt": "2026-11-16T00:15:42.162Z"
+}

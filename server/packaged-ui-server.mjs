@@ -85,13 +85,17 @@ function proxyToBridge(req, res, targetPath) {
     path: targetPath,
     method: req.method,
     headers: { ...req.headers, host: `127.0.0.1:${BRIDGE_PORT}` },
-    timeout: 600_000,
   }
   const upstream = http.request(opts, (up) => {
     res.writeHead(up.statusCode || 502, up.headers)
     up.pipe(res)
   })
   upstream.on('error', (e) => {
+    if (res.destroyed || res.writableEnded) return
+    if (res.headersSent) {
+      res.destroy(e)
+      return
+    }
     res.writeHead(502, { 'Content-Type': 'application/json' })
     res.end(
       JSON.stringify({
@@ -99,6 +103,11 @@ function proxyToBridge(req, res, targetPath) {
         error: formatBridgeConnectionError(e?.message || String(e)),
       }),
     )
+  })
+  // Agent RPC 是长连接式任务：生命周期由任务取消、模型/工具预算与客户端连接决定，
+  // 代理层不得另设固定时限把仍在执行的任务误报为“本机服务断开”。
+  res.on('close', () => {
+    if (!res.writableEnded && !upstream.destroyed) upstream.destroy()
   })
   req.pipe(upstream)
 }

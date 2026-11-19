@@ -1,21 +1,15 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const __serverDir = path.dirname(fileURLToPath(import.meta.url))
+import projectDataPaths from './project-data-path.cjs'
 
 /** 仓库根目录；打包版由 Electron 注入 CLAUDE_ORCHESTRATOR_PROJECT_ROOT */
-export const PROJECT_ROOT = process.env.CLAUDE_ORCHESTRATOR_PROJECT_ROOT?.trim()
-  ? path.resolve(process.env.CLAUDE_ORCHESTRATOR_PROJECT_ROOT.trim())
-  : path.join(__serverDir, '..')
+export const PROJECT_ROOT = projectDataPaths.projectRoot
 
 /** 项目内持久化目录：SQLite + 编排链文件 + 日志 */
-export const PROJECT_DATA_DIR = process.env.CLAUDE_ORCHESTRATOR_USER_DATA?.trim()
-  ? path.join(path.resolve(process.env.CLAUDE_ORCHESTRATOR_USER_DATA.trim()), '.claudecode')
-  : path.join(PROJECT_ROOT, '.claudecode')
+export const PROJECT_DATA_DIR = projectDataPaths.projectDataDir
 
-export const PROJECT_DB_PATH = path.join(PROJECT_DATA_DIR, 'workbench.db')
+export const PROJECT_DB_PATH = projectDataPaths.projectDbPath
 
 /** 旧版全局 JSON 目录，仅用于一次性迁移 */
 export const LEGACY_DATA_DIR = path.join(os.homedir(), '.claude-workbench')

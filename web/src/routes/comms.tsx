@@ -38,6 +38,7 @@ import {
   MCP_PRESETS,
   MCP_TEMPLATE_ENV,
   type McpPresetMeta,
+  formatStdioCommandLine,
   hasAngleBracketPlaceholder,
   resolvePresetCommandLineForForm,
   resolveMcpCommandLine,
@@ -244,6 +245,8 @@ function McpPage() {
   const [form, setForm] = useState<McpForm>(EMPTY_FORM);
   const [checking, setChecking] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
+  /** 启用被占位符/服务端拒绝时，留在卡片上，不靠短 Toast */
+  const [enableBlock, setEnableBlock] = useState<Record<string, string>>({});
   const [q, setQ] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [bundledLines, setBundledLines] = useState<Record<string, string>>({});
@@ -562,14 +565,32 @@ function McpPage() {
       toast.error(MSG_API_NOT_READY);
       return;
     }
-    setToggling(row.id);
-    try {
-      const nextEnabled = !row.enabled;
-      const r = await api.setClaudeMcpServerEnabled({ name: row.name, enabled: nextEnabled });
-      if (!r.ok) {
-        toast.error(r.error || "操作失败");
+    const nextEnabled = !row.enabled;
+    if (nextEnabled) {
+      const line =
+        row.transport === "stdio"
+          ? formatStdioCommandLine(row.commandBin, row.args || [])
+          : String(row.url || "");
+      if (hasAngleBracketPlaceholder(line)) {
+        const msg = "命令或 URL 仍含 <…> 占位符，请先编辑为真实路径/连接串后再启用";
+        setEnableBlock((prev) => ({ ...prev, [row.id]: msg }));
         return;
       }
+    }
+    setToggling(row.id);
+    try {
+      const r = await api.setClaudeMcpServerEnabled({ name: row.name, enabled: nextEnabled });
+      if (!r.ok) {
+        const msg = r.error || "操作失败";
+        setEnableBlock((prev) => ({ ...prev, [row.id]: msg }));
+        return;
+      }
+      setEnableBlock((prev) => {
+        if (!prev[row.id]) return prev;
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
       toast.success(nextEnabled ? `已启用 ${row.name}` : `已停用 ${row.name}`);
       await load();
       if (activeId === row.id) {
@@ -715,13 +736,23 @@ function McpPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-              {filtered.map((s) => (
+              {filtered.map((s) => {
+                const blockMsg = enableBlock[s.id];
+                const drawerShowsBlock =
+                  Boolean(blockMsg) && drawerOpen && activeId === s.id && drawerMode === "view";
+                const blockId = blockMsg
+                  ? drawerShowsBlock
+                    ? `mcp-enable-block-drawer-${s.id}`
+                    : `mcp-enable-block-${s.id}`
+                  : undefined;
+                return (
+                <div key={s.id} className="min-w-0">
                 <button
-                  key={s.id}
                   type="button"
+                  aria-describedby={blockId}
                   onClick={() => openView(s)}
                   className={cn(
-                    "group rounded-xl border bg-surface-elevated p-4 text-left shadow-xs transition hover:border-primary/30",
+                    "group w-full rounded-xl border bg-surface-elevated p-4 text-left shadow-xs transition hover:border-primary/30",
                     s.enabled ? "border-border" : "border-border opacity-75",
                     activeId === s.id && drawerOpen && "border-primary/40 ring-1 ring-primary/20",
                   )}
@@ -772,7 +803,14 @@ function McpPage() {
                     <span className="text-[11px] text-muted-foreground">点击查看详情</span>
                   </div>
                 </button>
-              ))}
+                {blockMsg && !drawerShowsBlock ? (
+                  <p id={blockId} className="mt-1.5 text-[11px] leading-snug text-destructive" role="alert">
+                    {blockMsg}
+                  </p>
+                ) : null}
+                </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -789,6 +827,7 @@ function McpPage() {
             toggling={toggling}
             canMutate={createGate.canAct}
             mutateBlockHint={createGate.blockHint}
+            enableBlockMessage={active ? enableBlock[active.id] : undefined}
             onClose={closeDrawer}
             onFormChange={setForm}
             onSave={() => void saveServer()}
@@ -834,6 +873,7 @@ function McpDrawer({
   toggling,
   canMutate,
   mutateBlockHint,
+  enableBlockMessage,
   onClose,
   onFormChange,
   onSave,
@@ -855,6 +895,7 @@ function McpDrawer({
   toggling: string | null;
   canMutate: boolean;
   mutateBlockHint: string;
+  enableBlockMessage?: string;
   bundledLines: Record<string, string>;
   onClose: () => void;
   onFormChange: (next: McpForm) => void;
@@ -875,6 +916,8 @@ function McpDrawer({
       : configPath
         ? configPath.replace(/^\/Users\/[^/]+/, "~")
         : "~/.claude/mcp.json";
+  const drawerEnableBlockId =
+    active && enableBlockMessage ? `mcp-enable-block-drawer-${active.id}` : undefined;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -939,6 +982,7 @@ function McpDrawer({
                   <button
                     type="button"
                     disabled={toggling === active.id}
+                    aria-describedby={drawerEnableBlockId}
                     onClick={onToggleEnabled}
                     className={cn(
                       "inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[11px] transition hover:bg-secondary disabled:opacity-40",
@@ -999,47 +1043,60 @@ function McpDrawer({
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-3">
-          {isForm ? (
-            <>
-              <button
-                type="button"
-                disabled={!canMutate || saving}
-                title={!canMutate ? mutateBlockHint : undefined}
-                onClick={onSave}
-                className="btn-gradient-primary inline-flex flex-1 items-center justify-center rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-40"
-              >
-                {saving ? "保存中…" : "保存"}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg border border-border px-3 py-2 text-[12.5px] hover:bg-secondary"
-              >
-                取消
-              </button>
-            </>
-          ) : active ? (
-            <>
-              <button
-                type="button"
-                onClick={onHealthCheck}
-                disabled={checking === active.id || !active.enabled}
-                className="btn-row disabled:opacity-40"
-              >
-                <Activity className={cn("h-3 w-3", checking === active.id && "animate-pulse")} /> 健康检查
-              </button>
-              <button type="button" onClick={onEdit} className="btn-row">
-                <Pencil className="h-3 w-3" /> 编辑
-              </button>
-              <button type="button" onClick={onToggleEnabled} disabled={toggling === active.id} className="btn-row">
-                <Power className="h-3 w-3" /> {active.enabled ? "停用" : "启用"}
-              </button>
-              <button type="button" onClick={onRemove} className="btn-row text-destructive">
-                <Trash2 className="h-3 w-3" /> 删除
-              </button>
-            </>
+        <div className="space-y-2 border-t border-border px-5 py-3">
+          {enableBlockMessage && !isForm && active ? (
+            <p id={drawerEnableBlockId} className="text-[11px] leading-snug text-destructive" role="alert">
+              {enableBlockMessage}
+            </p>
           ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {isForm ? (
+              <>
+                <button
+                  type="button"
+                  disabled={!canMutate || saving}
+                  title={!canMutate ? mutateBlockHint : undefined}
+                  onClick={onSave}
+                  className="btn-gradient-primary inline-flex flex-1 items-center justify-center rounded-lg px-3 py-2 text-[12.5px] font-semibold disabled:opacity-40"
+                >
+                  {saving ? "保存中…" : "保存"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg border border-border px-3 py-2 text-[12.5px] hover:bg-secondary"
+                >
+                  取消
+                </button>
+              </>
+            ) : active ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onHealthCheck}
+                  disabled={checking === active.id || !active.enabled}
+                  className="btn-row disabled:opacity-40"
+                >
+                  <Activity className={cn("h-3 w-3", checking === active.id && "animate-pulse")} /> 健康检查
+                </button>
+                <button type="button" onClick={onEdit} className="btn-row">
+                  <Pencil className="h-3 w-3" /> 编辑
+                </button>
+                <button
+                  type="button"
+                  onClick={onToggleEnabled}
+                  disabled={toggling === active.id}
+                  aria-describedby={drawerEnableBlockId}
+                  className="btn-row"
+                >
+                  <Power className="h-3 w-3" /> {active.enabled ? "停用" : "启用"}
+                </button>
+                <button type="button" onClick={onRemove} className="btn-row text-destructive">
+                  <Trash2 className="h-3 w-3" /> 删除
+                </button>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

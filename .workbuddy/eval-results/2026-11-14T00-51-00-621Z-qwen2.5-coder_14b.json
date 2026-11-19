@@ -1,0 +1,275 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-14T00:51:00.621Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "连续 3 次验证失败；已恢复本轮修改的 1 个文件。（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 10,
+      "durationMs": 31080,
+      "toolCallCount": 6,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "run_tests",
+        "run_command",
+        "Search",
+        "Read",
+        "Edit",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "LegacyQueue",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": false,
+          "exitCode": 1,
+          "output": "未探测到可用测试、类型检查或 lint 命令；请用 run_command 指定命令"
+        },
+        {
+          "tool": "run_command",
+          "detail": "npm test",
+          "ok": false,
+          "failedArguments": "{\"command\":\"npm test\"}",
+          "exitCode": 254,
+          "output": "npm error code ENOENT\nnpm error syscall open\nnpm error path /private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e03-fTkB12/workspace/package.json\nnpm error errno -2\nnpm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e03-fTkB12/workspace/package.json'\nnpm error enoent This is related to npm not being able to find a file.\nnpm error enoent\nnpm error Log files were not written due to an error writing to the directory: /Users/barry/.npm/_logs\nnpm error You can rerun the command with `--loglevel=verbose` to see the logs in your terminal\n"
+        },
+        {
+          "tool": "run_command",
+          "detail": "npm test",
+          "ok": false,
+          "failedArguments": "{\"command\":\"npm test\",\"cwd\":\".\"}",
+          "exitCode": 254,
+          "output": "npm error code ENOENT\nnpm error syscall open\nnpm error path /private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e03-fTkB12/workspace/package.json\nnpm error errno -2\nnpm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e03-fTkB12/workspace/package.json'\nnpm error enoent This is related to npm not being able to find a file.\nnpm error enoent\nnpm error Log files were not written due to an error writing to the directory: /Users/barry/.npm/_logs\nnpm error You can rerun the command with `--loglevel=verbose` to see the logs in your terminal\n"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/worker.js"
+      ],
+      "assertions": [
+        {
+          "type": "workspaceContains",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "模型在自动执行后仍未产生任何文件修改，任务未完成。（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 7,
+      "durationMs": 10435,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "Search",
+        "Read",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "LegacyQueue",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": false,
+          "failedArguments": "{\"path\":\"src/worker.js\",\"old_string\":\"LegacyQueue\",\"new_string\":\"TaskQueue\"}",
+          "exitCode": 1,
+          "output": "old_string not unique; pass replaceAll=true or enlarge old_string"
+        }
+      ],
+      "editFailureCount": 2,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "workspaceContains",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "模型在自动执行后仍未产生任何文件修改，任务未完成。（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 7,
+      "durationMs": 10288,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "Search",
+        "Read",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "LegacyQueue",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/worker.js",
+          "path": "src/worker.js",
+          "ok": false,
+          "failedArguments": "{\"path\":\"src/worker.js\",\"old_string\":\"LegacyQueue\",\"new_string\":\"TaskQueue\"}",
+          "exitCode": 1,
+          "output": "old_string not unique; pass replaceAll=true or enlarge old_string"
+        }
+      ],
+      "editFailureCount": 2,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "workspaceContains",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        31080,
+        10435,
+        10288
+      ],
+      "turns": [
+        10,
+        7,
+        7
+      ],
+      "editFailures": 4,
+      "successRate": 0,
+      "avgDurationMs": 17268,
+      "avgTurns": 8
+    }
+  ],
+  "finishedAt": "2026-11-14T00:51:52.480Z"
+}

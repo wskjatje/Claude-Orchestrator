@@ -36,15 +36,14 @@ assert(
 )
 assert(/requireAppliedWrite/.test(sendSrc), 'use-chat-send passes requireAppliedWrite')
 assert(/intent === ["']write["']/.test(sendSrc), 'require write only on mutation intent')
-assert(/未能写入文件|未写入任何|声称已改文件/.test(sendSrc), 'local repair covers zero-write')
+assert(!/上一轮未成功落盘|只重新输出一个/.test(sendSrc), 'zero-write 不得回落到围栏修复')
 assert(/ensureLocalCodingTools/.test(orchSrc), 'local coding tools injected')
 assert(/explore nudge/.test(orchSrc), 'explore-before-write nudge')
 assert(/write nudge/.test(orchSrc), 'write-before-finish nudge')
 assert(/incomplete final → continue/.test(orchSrc), 'react incomplete continue')
 assert(/list_dir/.test(orchSrc) && /search_replace/.test(orchSrc), 'cursor-like local tools')
-assert(/isFragileOllamaToolsModel/.test(orchSrc), 'gemma fragile tools detector')
-assert(/isMeasuredOllamaToolsSchemaRejectModel/.test(orchSrc), 'qwen2.5:32b measured tools reject detector')
-assert(/qwen2\.5:32b/.test(orchSrc) && /不会改走直聊/.test(orchSrc), '32b hard-fail copy forbids direct fallback')
+assert(!/isFragileOllamaToolsModel/.test(orchSrc), '不按模型名硬编码 tools 通道')
+assert(!/isMeasuredOllamaToolsSchemaRejectModel/.test(orchSrc), 'no model-name hard block bypasses live capability detection')
 assert(!/请换 qwen2\.5 \/ qwen2\.5-coder/.test(orchSrc), 'schema reject copy must not recommend qwen2.5 family')
 assert(!/如 qwen2\.5 \/ qwen2\.5-coder/.test(orchSrc), 'probe reject copy must not recommend qwen2.5 family')
 assert(!/未测出该 400 的 qwen2\.5-coder:14b/.test(orchSrc), 'must not claim coder:14b never 400s')
@@ -54,15 +53,16 @@ assert(
   /policyAllowsTools\s*\?\s*false\s*:\s*shouldUseDirectReplyMode/.test(orchSrc),
   'policyAllowsTools overrides directReplyMode heuristic',
 )
-assert(/flattenToolMessagesForPlainChat/.test(orchSrc), 'flatten tool history for plain finish')
-assert(/flatten\+plain finish/.test(orchSrc), 'schema 400 after tool history uses plain finish')
-assert(/buildFragileModelCodingToolsOnly/.test(orchSrc), 'gemma coding-only tools')
-assert(/fragileModel=/.test(orchSrc), 'gemma strips MCP tools pack')
-assert(/tools schema reject → retry coding-only/.test(orchSrc), 'schema 400 retries coding-only')
-assert(/stripBraceNoiseForFragileModel/.test(orchSrc), 'fragile strips braces in system')
-assert(/runLocalFragileFenceWriteChat/.test(orchSrc), 'gemma fence-write path')
-assert(/fragileFenceWrite/.test(orchSrc), 'fence-write flag for direct chat')
-assert(/→ fence-write/.test(orchSrc) || /fence-write'/.test(orchSrc), 'gemma early fence-write branch')
+assert(!/flattenToolMessagesForPlainChat|flatten\+plain finish/.test(orchSrc), 'schema 拒绝后不得移除工具历史并直聊收尾')
+assert(!/buildCodingToolsOnly|retry coding-only/.test(orchSrc), 'schema 拒绝后不得缩减为 coding-only tools')
+assert(!/fragileModel=/.test(orchSrc), '不按模型名预先剥离 MCP tools')
+assert(!/stripBraceNoiseForToolRetry/.test(orchSrc), 'schema 拒绝后不得改写提示词重试')
+assert(
+  !/runLocalFenceWriteChat|allowWorkspaceWriteFence|onToolsSchemaGiveUpFenceWrite/.test(orchSrc),
+  'schema 拒绝后不得进入围栏写入通道',
+)
+assert(/工具事务已停止；不会减少工具、移除工具历史、改走直聊或围栏写入/.test(orchSrc), '运行时 schema 拒绝必须明确失败')
+assert(/工具事务未启动；不会缩减工具集、改走直聊或围栏写入/.test(orchSrc), '预检 schema 拒绝必须明确失败')
 
 const mcpHealthSrc = fs.readFileSync(path.join(root, 'server/mcp-health.mjs'), 'utf8')
 assert(/stderr:\s*['"]pipe['"]/.test(mcpHealthSrc), 'mcp-health pipes stderr')
@@ -73,6 +73,16 @@ assert(
   'npx cache hint gated on npx command',
 )
 assert(/stderr: \$\{stderrText\}/.test(mcpHealthSrc), 'health error appends stderr')
+assert(/forceReleaseStdioProbe/.test(mcpHealthSrc), 'mcp-health force-releases stdio child')
+assert(/clearTimeout\(t\)/.test(mcpHealthSrc), 'mcp-health clears race timers')
+assert(
+  /npm run mcp:ensure/.test(mcpHealthSrc) && /tools\/mcp-fetch/.test(mcpHealthSrc),
+  'mcp-health hints prefer local mcp:ensure bins',
+)
+assert(
+  !/请改用 uvx mcp-server-fetch，并安装 uv/.test(mcpHealthSrc),
+  'mcp-health must not primary-recommend uvx for fetch',
+)
 
 /** Cursor 执行反馈模板：写盘后短收尾 + 禁下一步推销 */
 const compressSrc = fs.readFileSync(

@@ -99,7 +99,7 @@ function DockTerminalOutputBlock({
       ) : trimmed ? (
         <ChatDockCollapsible lineCount={lineCount} bodyClassName="chat-terminal-output-body">
           <pre className="workbench-code m-0 whitespace-pre-wrap break-words">{trimmed}</pre>
-        </ChatDockCollapsible>
+      </ChatDockCollapsible>
       ) : null}
       {done ? <div className="chat-terminal-output-done">DONE</div> : null}
     </div>
@@ -285,10 +285,10 @@ function groupAgentTurnUnits(
   for (const edit of edits) {
     const norm = edit.path.replace(/\\/g, "/").replace(/^\.\//, "");
     if (used.has(edit.id) || usedPaths.has(norm)) continue;
-    used.add(edit.id);
+      used.add(edit.id);
     usedPaths.add(norm);
-    out.push({ kind: "file-edit", edit });
-  }
+      out.push({ kind: "file-edit", edit });
+    }
 
   const pendingEdits = edits.filter(
     (e) => (e.status === "pending" || e.status == null) && e.writeContent != null,
@@ -733,7 +733,9 @@ function useFileEditActions(opts: {
         const hit = filePatches.find(
           (p) => p.path.replace(/\\/g, "/") === edit.path.replace(/\\/g, "/"),
         );
-        if (hit && hit.before !== undefined) snap = hit.before;
+        if (hit && hit.before !== undefined && hit.beforeTruncated !== true) {
+          snap = hit.before;
+        }
       }
       if (snap === undefined) {
         toast.error("无法精确撤销：缺少写前快照（请用 Git 自行还原）");
@@ -922,6 +924,33 @@ function DockAssistantContent({
   );
 }
 
+function AgentTodoProgress({ todos }: { todos: NonNullable<AgentTurnMeta["todos"]> }) {
+  if (!todos.length) return null;
+  const completed = todos.filter((item) => item.status === "completed").length;
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2 text-xs"
+      data-testid="agent-todo-progress"
+      aria-label="任务进度"
+    >
+      <div className="mb-1.5 font-medium text-foreground">
+        任务进度 {completed}/{todos.length}
+      </div>
+      <div className="flex flex-col gap-1">
+        {todos.map((item) => (
+          <div
+            key={item.id}
+            className={item.status === "completed" ? "text-muted-foreground line-through" : "text-foreground/85"}
+          >
+            <span aria-hidden="true">{item.status === "completed" ? "✓" : item.status === "in_progress" ? "●" : "○"}</span>{" "}
+            {item.title}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function ChatAssistantContent({
   content,
   onContentPatch,
@@ -1104,6 +1133,7 @@ export function ChatAssistantContent({
   return (
     <div className="flex flex-col gap-2">
       <DockAssistantContent units={cursorUnits} actions={actions} agentMode={agentMode} />
+      {agentTurn?.todos?.length ? <AgentTodoProgress todos={agentTurn.todos} /> : null}
       {showFrozenSignals ? (
         <ComposerTurnFooterPanel
           canvas={frozenFooter?.canvas}

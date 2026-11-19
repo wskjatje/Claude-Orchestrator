@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-16T00:44:22.398Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · scripts/status.js\n⋯ Bash · auto\n⋯ Todo · 3 items\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 7,
+      "durationMs": 103326,
+      "usage": {
+        "prompt_tokens": 12993,
+        "completion_tokens": 249,
+        "total_tokens": 13242
+      },
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "run_tests",
+        "todo_write",
+        "Search",
+        "Bash",
+        "Todo"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "⠙\n> test\n> node scripts/status.js\n\n⠙ready\n⠙"
+        },
+        {
+          "tool": "todo_write",
+          "detail": "3 items",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "package.json"
+        },
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "scripts/status.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · scripts/status.js\n⋯ Bash · auto\n⋯ Bash · npm install picocolors\n⋯ Edit · package-lock.json\n⋯ Edit · package.json\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 7,
+      "durationMs": 57230,
+      "usage": {
+        "prompt_tokens": 11863,
+        "completion_tokens": 146,
+        "total_tokens": 12009
+      },
+      "toolCallCount": 4,
+      "toolNames": [
+        "code_search",
+        "run_tests",
+        "run_command",
+        "Search",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "\n> test\n> node scripts/status.js\n\nready\n⠙"
+        },
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "run_command",
+          "detail": "npm install picocolors",
+          "ok": true,
+          "exitCode": 0,
+          "output": "⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠦⠧\nadded 1 package, and audited 2 packages in 2s\n⠧\nfound 0 vulnerabilities\n⠧"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "package-lock.json",
+        "package.json"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "package.json"
+        },
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "scripts/status.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · scripts/status.js\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 5,
+      "durationMs": 23042,
+      "usage": {
+        "prompt_tokens": 6976,
+        "completion_tokens": 134,
+        "total_tokens": 7110
+      },
+      "toolCallCount": 2,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "package.json"
+        },
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "scripts/status.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        103326,
+        57230,
+        23042
+      ],
+      "turns": [
+        7,
+        7,
+        5
+      ],
+      "promptTokens": [
+        12993,
+        11863,
+        6976
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 61199,
+      "avgTurns": 6.33,
+      "avgPromptTokens": 10611
+    }
+  ],
+  "finishedAt": "2026-11-16T00:47:26.145Z"
+}

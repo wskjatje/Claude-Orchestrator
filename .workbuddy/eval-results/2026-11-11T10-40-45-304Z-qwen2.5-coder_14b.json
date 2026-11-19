@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 4,
+  "startedAt": "2026-11-11T10:40:45.304Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "local-mcp"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "本机已安装的模型中包含 qwen2.5-coder:14b。",
+      "error": null,
+      "turns": 2,
+      "durationMs": 8384,
+      "toolCallCount": 1,
+      "toolNames": [
+        "ollama-local__ollama_list_models"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": true,
+          "detail": "ollama-local__ollama_list_models, ollama-local__ollama_list_models"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "已确认本机已安装模型中包含 qwen2.5-coder:14b。",
+      "error": null,
+      "turns": 2,
+      "durationMs": 8392,
+      "toolCallCount": 1,
+      "toolNames": [
+        "ollama-local__ollama_list_models"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": true,
+          "detail": "ollama-local__ollama_list_models, ollama-local__ollama_list_models"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "已确认本机已安装的模型中包含 qwen2.5-coder:14b。",
+      "error": null,
+      "turns": 2,
+      "durationMs": 10523,
+      "toolCallCount": 1,
+      "toolNames": [
+        "ollama-local__ollama_list_models"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": true,
+          "detail": "ollama-local__ollama_list_models, ollama-local__ollama_list_models"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "local-mcp",
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "attempted": 3,
+      "passed": 3,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        8384,
+        8392,
+        10523
+      ],
+      "turns": [
+        2,
+        2,
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 1,
+      "avgDurationMs": 9100,
+      "avgTurns": 2
+    }
+  ],
+  "finishedAt": "2026-11-11T10:41:12.667Z"
+}

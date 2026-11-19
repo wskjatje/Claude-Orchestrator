@@ -7,10 +7,15 @@ export type AgentFilePatch = {
   path: string;
   before?: string;
   after?: string;
+  /** 写前完整快照，仅用于前端内存 Undo；合并进展示记录前会剥离。 */
+  checkpointBefore?: string;
+  beforeTruncated?: boolean;
+  afterTruncated?: boolean;
   isNewFile?: boolean;
 };
 
-const PATCH_CHAR_CAP = 120_000;
+// Preview excerpts include omission markers in addition to the server's 120k body cap.
+const PATCH_CHAR_CAP = 128_000;
 
 export function normAgentPatchPath(p: string): string {
   return String(p || "")
@@ -48,6 +53,14 @@ export function mergeAgentFilePatches(
           typeof raw.isNewFile === "boolean"
             ? raw.isNewFile
             : prev?.isNewFile,
+        beforeTruncated:
+          typeof raw.beforeTruncated === "boolean"
+            ? raw.beforeTruncated
+            : prev?.beforeTruncated,
+        afterTruncated:
+          typeof raw.afterTruncated === "boolean"
+            ? raw.afterTruncated
+            : prev?.afterTruncated,
       });
     }
   }
@@ -59,15 +72,21 @@ export function normalizeWritePatches(
   patches: unknown,
 ): AgentFilePatch[] {
   if (!Array.isArray(patches)) return [];
-  return mergeAgentFilePatches(
-    patches.map((p) => {
+  return patches.flatMap((p) => {
       const o = p && typeof p === "object" ? (p as Record<string, unknown>) : {};
-      return {
-        path: String(o.path || ""),
+      const path = normAgentPatchPath(String(o.path || ""));
+      if (!path) return [];
+      return [{
+        path,
         before: typeof o.before === "string" ? o.before : undefined,
         after: typeof o.after === "string" ? o.after : undefined,
+        checkpointBefore:
+          typeof o.checkpointBefore === "string" ? o.checkpointBefore : undefined,
+        beforeTruncated:
+          typeof o.beforeTruncated === "boolean" ? o.beforeTruncated : undefined,
+        afterTruncated:
+          typeof o.afterTruncated === "boolean" ? o.afterTruncated : undefined,
         isNewFile: typeof o.isNewFile === "boolean" ? o.isNewFile : undefined,
-      };
-    }),
-  );
+      }];
+    });
 }

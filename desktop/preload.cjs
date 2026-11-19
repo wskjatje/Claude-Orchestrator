@@ -142,7 +142,7 @@ const desktop = {
   workspaceCodeIndexUpdateFiles: (payload) => rpc('workspace:codeIndexUpdateFiles', payload || {}),
   workspaceCodeIndexEnsureHybrid: (payload) => rpc('workspace:codeIndexEnsureHybrid', payload || {}),
   hostAgentPrompt: (payload) => rpc('host-agent:prompt', payload),
-  hostAgentAbort: (requestId) => rpc('host-agent:abort', requestId),
+  hostAgentAbort: (request) => rpc('host-agent:abort', request),
   workspaceAbortRunCommand: (runId) =>
     rpc('workspace:abortRunCommand', runId ? { runId } : {}),
   claudeCodeEnsureCli: () => rpc('claude-code:ensureCli'),

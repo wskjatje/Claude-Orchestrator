@@ -1,15 +1,12 @@
 'use strict'
 
-const path = require('node:path')
 const projectDb = require('./project-db.cjs')
+const { projectDataDir, projectDbPath } = require('./project-data-path.cjs')
 
-const PROJECT_ROOT = path.join(__dirname, '..')
-const PROJECT_DATA_DIR = path.join(PROJECT_ROOT, '.claudecode')
-const PROJECT_DB_PATH = path.join(PROJECT_DATA_DIR, 'workbench.db')
 const MAX_LOG_ROWS = 12_000
 
 function db() {
-  return projectDb.getDb(PROJECT_DB_PATH, PROJECT_DATA_DIR)
+  return projectDb.getDb(projectDbPath, projectDataDir)
 }
 
 function parseLevel(message) {
@@ -86,6 +83,63 @@ function readLogTail(opts = {}) {
   }
 }
 
+function aggregateAgentTurnRows(rows) {
+    const groups = new Map()
+    for (const row of rows || []) {
+      let meta
+      try { meta = JSON.parse(row.meta || '{}') } catch { meta = {} }
+      const model = String(meta.model || 'unknown')
+      const backend = String(meta.backend || 'unknown')
+      const key = `${backend}\0${model}`
+      const item = groups.get(key) || {
+        model, backend, turns: 0, success: 0, failed: 0, durationMs: 0,
+        promptTokens: 0, retries: 0, toolFailures: 0, mcpCalls: 0,
+      }
+      item.turns += 1
+      if (/agent-turn success/.test(row.message)) item.success += 1
+      else item.failed += 1
+      item.durationMs += Math.max(0, Number(meta.eval_ms ?? meta.durationMs) || 0)
+      item.promptTokens += Math.max(0, Number(meta.prompt_tok) || 0)
+      item.retries += Math.max(0, Number(meta.retry) || 0)
+      item.toolFailures += Math.max(0, Number(meta.tool_fail) || 0)
+      item.mcpCalls += Math.max(0, Number(meta.mcp_calls) || 0)
+      groups.set(key, item)
+    }
+    const trends = [...groups.values()]
+      .map((item) => ({
+        ...item,
+        successRate: item.turns ? item.success / item.turns : 0,
+        avgDurationMs: item.turns ? Math.round(item.durationMs / item.turns) : 0,
+      }))
+      .sort((a, b) => b.turns - a.turns || b.successRate - a.successRate)
+    const content = trends.length
+      ? [
+          `Agent 回合指标（最近 ${(rows || []).length} 条）`,
+          '',
+          ...trends.map((item) =>
+            `${item.backend} · ${item.model}  成功 ${item.success}/${item.turns} (${Math.round(item.successRate * 100)}%)  平均 ${item.avgDurationMs}ms  prompt ${item.promptTokens} tok  重试 ${item.retries}  工具失败 ${item.toolFailures}  MCP ${item.mcpCalls}`,
+          ),
+        ].join('\n')
+      : '（暂无 Agent 回合指标；完成一次 Host Agent 任务后会自动出现）'
+    return { trends, content, lines: content.split('\n').length }
+}
+
+function readAgentTurnTrends(opts = {}) {
+  try {
+    const limit = Math.min(12_000, Math.max(1, Number(opts.limit) || 2_000))
+    const rows = db()
+      .prepare(
+        `SELECT ts, message, meta FROM log_entries
+         WHERE source = 'event' AND message LIKE 'agent-turn %'
+         ORDER BY id DESC LIMIT ?`,
+      )
+      .all(limit)
+    return { ok: true, ...aggregateAgentTurnRows(rows) }
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e), trends: [], content: '', lines: 0 }
+  }
+}
+
 function clearAppLogs() {
   try {
     const conn = db()
@@ -99,6 +153,8 @@ function clearAppLogs() {
 module.exports = {
   appendLogEntry,
   readLogTail,
+  aggregateAgentTurnRows,
+  readAgentTurnTrends,
   clearAppLogs,
   formatLogLine,
 }

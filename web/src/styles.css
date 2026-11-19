@@ -2689,7 +2689,7 @@
     transform: rotate(180deg);
   }
 
-  .chat-file-edit-card--collapsed
+    .chat-file-edit-card--collapsed
     .chat-cursor-collapsible--collapsed
     .chat-cursor-collapsible-toggle {
     background: linear-gradient(

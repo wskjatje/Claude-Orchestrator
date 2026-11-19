@@ -14,9 +14,30 @@ const require = createRequire(import.meta.url)
 
 /** @type {Map<string, ModelCapabilityRecord>} */
 const ollamaCache = new Map()
+const ollamaCacheAt = new Map()
+const OLLAMA_CAPABILITY_CACHE_TTL_MS = 2 * 60_000
 
 /** @type {string} */
 let ollamaCacheBase = ''
+
+function ollamaRoot(base) {
+  return String(base || 'http://127.0.0.1:11434').replace(/\/$/, '')
+}
+
+function setOllamaCache(name, record) {
+  ollamaCache.set(name, record)
+  ollamaCacheAt.set(name, Date.now())
+}
+
+function ensureOllamaCacheBase(base) {
+  const root = ollamaRoot(base)
+  if (ollamaCacheBase !== root) {
+    ollamaCache.clear()
+    ollamaCacheAt.clear()
+    ollamaCacheBase = root
+  }
+  return root
+}
 
 /**
  * @param {unknown} raw
@@ -50,28 +71,31 @@ export function parseOllamaCapabilitiesField(raw) {
  * @returns {number|null}
  */
 function contextLengthFromShow(show) {
+  /** @type {number[]} */
+  const candidates = []
   const info = show?.model_info
   if (info && typeof info === 'object') {
     for (const [k, v] of Object.entries(info)) {
-      if (/context_length$/i.test(k) && typeof v === 'number' && v > 0) return Math.floor(v)
+      if (/context_length$/i.test(k) && typeof v === 'number' && v > 0) candidates.push(Math.floor(v))
     }
   }
   // parameters 可能是字符串（"num_ctx 8192"）或对象
   const paramsRaw = show?.parameters
   if (typeof paramsRaw === 'string') {
     const m = paramsRaw.match(/num_ctx\s+(\d+)/i)
-    if (m) return Number(m[1]) || null
+    if (m) candidates.push(Number(m[1]))
   } else if (paramsRaw && typeof paramsRaw === 'object' && !Array.isArray(paramsRaw)) {
     const n = Number(/** @type {Record<string, unknown>} */ (paramsRaw).num_ctx)
-    if (Number.isFinite(n) && n >= 1024) return Math.floor(n)
+    if (Number.isFinite(n) && n >= 1024) candidates.push(Math.floor(n))
   }
   // Modelfile：PARAMETER num_ctx 8192
   const modelfile = String(show?.modelfile || '')
   if (modelfile) {
     const m2 = modelfile.match(/PARAMETER\s+num_ctx\s+(\d+)/i)
-    if (m2) return Number(m2[1]) || null
+    if (m2) candidates.push(Number(m2[1]))
   }
-  return null
+  const valid = candidates.filter((n) => Number.isFinite(n) && n >= 1024)
+  return valid.length ? Math.min(...valid) : null
 }
 
 /** @param {number|null|undefined} n */
@@ -83,16 +107,17 @@ function saneContextLength(n) {
 /**
  * @param {string} base
  * @param {string} name
+ * @param {{ signal?: AbortSignal }} [opts]
  * @returns {Promise<ModelCapabilityRecord>}
  */
-export async function fetchOllamaModelShow(base, name) {
-  const root = String(base || 'http://127.0.0.1:11434').replace(/\/$/, '')
+export async function fetchOllamaModelShow(base, name, opts = {}) {
+  const root = ollamaRoot(base)
   const modelName = String(name || '').trim()
   const res = await fetch(`${root}/api/show`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: modelName }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.any([opts.signal, AbortSignal.timeout(60_000)].filter(Boolean)),
   })
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
@@ -114,7 +139,7 @@ export async function fetchOllamaModelShow(base, name) {
  * @returns {Promise<{ ok: boolean, models?: ModelCapabilityRecord[], names?: string[], error?: string }>}
  */
 export async function listOllamaModelsWithCapabilities(base, opts = {}) {
-  const root = String(base || 'http://127.0.0.1:11434').replace(/\/$/, '')
+  const root = ensureOllamaCacheBase(base)
   try {
     const res = await fetch(`${root}/api/tags`, { signal: AbortSignal.timeout(30_000) })
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
@@ -123,10 +148,6 @@ export async function listOllamaModelsWithCapabilities(base, opts = {}) {
     /** @type {ModelCapabilityRecord[]} */
     const models = []
     const refreshShow = opts.refreshShow !== false
-    if (ollamaCacheBase !== root) {
-      ollamaCache.clear()
-      ollamaCacheBase = root
-    }
     for (const t of tags) {
       const name = String(t?.name || '').trim()
       if (!name) continue
@@ -137,7 +158,7 @@ export async function listOllamaModelsWithCapabilities(base, opts = {}) {
         try {
           const shown = await fetchOllamaModelShow(root, name)
           rec = { ...shown, digest, size }
-          ollamaCache.set(name, rec)
+          setOllamaCache(name, rec)
         } catch {
           rec = {
             name,
@@ -147,7 +168,7 @@ export async function listOllamaModelsWithCapabilities(base, opts = {}) {
             capabilities: {},
             source: 'ollama',
           }
-          ollamaCache.set(name, rec)
+          setOllamaCache(name, rec)
         }
       } else if (!rec) {
         rec = {
@@ -158,7 +179,12 @@ export async function listOllamaModelsWithCapabilities(base, opts = {}) {
           capabilities: {},
           source: 'ollama',
         }
-        ollamaCache.set(name, rec)
+        setOllamaCache(name, rec)
+      } else if ((digest && rec.digest !== digest) || (size && rec.size !== size)) {
+        // /api/show 通常不返回 digest；用 /api/tags 的真实指纹补全能力缓存，
+        // 供工具协议策略按 model:digest 自动失效。
+        rec = { ...rec, digest: digest || rec.digest, size: size || rec.size }
+        setOllamaCache(name, rec)
       }
       models.push(rec)
     }
@@ -180,6 +206,12 @@ export function getCachedOllamaCapability(modelId) {
   const id = String(modelId || '').trim()
   if (!id) return null
   return ollamaCache.get(id) || null
+}
+
+/** @param {string} modelId */
+function isFreshOllamaCapability(modelId) {
+  const cachedAt = ollamaCacheAt.get(modelId) || 0
+  return Date.now() - cachedAt < OLLAMA_CAPABILITY_CACHE_TTL_MS
 }
 
 /**
@@ -243,6 +275,7 @@ function providerDefaultContextLength(providerName) {
  *   settings?: Record<string, unknown>
  *   providerName?: string
  *   ollamaBase?: string
+ *   signal?: AbortSignal
  * }} opts
  * @returns {Promise<ModelCapabilityRecord>}
  */
@@ -253,14 +286,18 @@ export async function resolveModelCapabilities(opts) {
     modelId,
   )
   if (opts.pool === 'local') {
+    const root = ensureOllamaCacheBase(
+      opts.ollamaBase || opts.settings?.ollamaBase || 'http://127.0.0.1:11434',
+    )
     let base = getCachedOllamaCapability(modelId)
-    if (!base) {
-      const root = String(opts.ollamaBase || opts.settings?.ollamaBase || 'http://127.0.0.1:11434')
+    if (!base || !isFreshOllamaCapability(modelId)) {
       try {
-        base = await fetchOllamaModelShow(root, modelId)
-        ollamaCache.set(modelId, { ...base, digest: base.digest })
+        base = await fetchOllamaModelShow(root, modelId, { signal: opts.signal })
+        setOllamaCache(modelId, { ...base, digest: base.digest })
       } catch {
-        base = {
+        // Keep a prior positive record during transient outages, but never cache
+        // unknown records: the next turn can recover as soon as Ollama returns.
+        base = base || {
           name: modelId,
           capabilities: {},
           contextLength: null,
@@ -270,12 +307,11 @@ export async function resolveModelCapabilities(opts) {
     }
     // 缓存有记录但缺窗口时再 show 一次（modelfile / num_ctx 兜底）
     if (base && !saneContextLength(base.contextLength)) {
-      const root = String(opts.ollamaBase || opts.settings?.ollamaBase || 'http://127.0.0.1:11434')
       try {
-        const shown = await fetchOllamaModelShow(root, modelId)
+        const shown = await fetchOllamaModelShow(root, modelId, { signal: opts.signal })
         if (saneContextLength(shown.contextLength)) {
           base = { ...base, ...shown, digest: base.digest || shown.digest }
-          ollamaCache.set(modelId, base)
+          setOllamaCache(modelId, base)
         }
       } catch {
         /* 保持原记录 */
@@ -283,10 +319,12 @@ export async function resolveModelCapabilities(opts) {
     }
     const fromOverride = saneContextLength(overrides.contextLength)
     const contextLength = fromOverride ?? saneContextLength(base.contextLength)
+    /** @type {ModelCaps} */
+    const capabilities = { ...base.capabilities, ...overrides }
     return {
       ...base,
       name: modelId,
-      capabilities: { ...base.capabilities, ...overrides },
+      capabilities,
       contextLength,
       source: Object.keys(overrides).length ? 'override' : base.source,
     }

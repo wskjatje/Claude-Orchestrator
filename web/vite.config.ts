@@ -88,9 +88,7 @@ export default defineConfig({
           target: `http://127.0.0.1:${workbenchHttpPort}`,
           changeOrigin: true,
           rewrite: (p) => p.replace(/^\/api/, ""),
-          /** 本地 MCP + Ollama 单轮可 >2min；默认代理超时会导致浏览器 fetch failed */
-          timeout: 600_000,
-          proxyTimeout: 600_000,
+          /** Agent RPC 可长时间运行；由任务取消/模型预算终止，开发代理不另设截止时间。 */
           configure: (proxy) => {
             proxy.on("error", (_err, _req, res) => {
               if (!res || !("writeHead" in res) || res.headersSent) return;

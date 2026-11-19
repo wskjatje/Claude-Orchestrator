@@ -13,6 +13,9 @@ const {
   resolveTurnPolicy,
 } = await import(path.join(root, 'server/turn-policy.mjs'))
 const {
+  buildInterruptedAssistantMessage,
+} = await import(path.join(root, 'shared/interrupted-agent-turn.mjs'))
+const {
   CLOUD_PROVIDER_REQUIRED_ERROR,
   LOCAL_PROVIDER_REQUIRED_ERROR,
   LOCAL_MODEL_NOT_INSTALLED_ERROR,
@@ -62,6 +65,19 @@ const agentExec = resolveTurnPolicy({
 })
 ok(agentExec.allowWrites && agentExec.autoApplyWrites, 'Agent+按方案执行 → 自动写')
 
+const planAdviceExec = resolveTurnPolicy({
+  displayLine: '帮我按照建议进行优化',
+  interactionMode: 'plan',
+  isGeneralTurn: true,
+})
+ok(
+  planAdviceExec.intent === 'write' &&
+    planAdviceExec.allowTools &&
+    planAdviceExec.allowWrites &&
+    !planAdviceExec.forceDirectChat,
+  'Plan+按照建议进行优化 → 执行工具环，不误判直聊',
+)
+
 /** 服务端必须认盘上的 plan（禁止当成 agent 自动写） */
 const bridgeSrc = fs.readFileSync(path.join(root, 'server/cad-bridge.cjs'), 'utf8')
 ok(
@@ -102,24 +118,36 @@ ok(!/fenceWriteFallback/.test(orch), 'orch 无 fenceWriteFallback')
 ok(!/num_gpu:\s*0,\s*num_ctx:\s*8192/.test(orch), 'orch 无静默 GPU/ctx 换参重试')
 ok(/不会自动改 GPU\/上下文参数重试/.test(orch), 'orch runner 崩溃仅提示硬失败')
 
-ok(
-  resolveModelForExecution({
+const autoWriteLocalOnly = resolveModelForExecution({
     selectedModel: 'auto',
     cloudModels: [],
     localModels: ['qwen'],
     allCloudModels: [],
     routeHint: 'prefer-cloud',
-  }) == null,
-  'prefer-cloud 空云池 → null',
-)
+  })
 ok(
-  resolveModelForExecution({
+  autoWriteLocalOnly?.modelId === 'qwen' && autoWriteLocalOnly.mode === 'local-mcp',
+  'Auto 改码在空云池时选择可用本地模型',
+)
+const autoAskCloudOnly = resolveModelForExecution({
     selectedModel: 'auto',
     cloudModels: ['claude-sonnet'],
     localModels: [],
     routeHint: 'prefer-local',
+  })
+ok(
+  autoAskCloudOnly?.modelId === 'claude-sonnet' && autoAskCloudOnly.mode === 'claude-code',
+  'Auto 问答在空本地池时选择可用云模型',
+)
+ok(
+  resolveModelForExecution({
+    selectedModel: 'auto',
+    cloudModels: [],
+    localModels: ['qwen'],
+    routeHint: 'prefer-cloud',
+    allowAutoCrossPool: false,
   }) == null,
-  'prefer-local 空本地池 → null',
+  '只用云模型硬约束不会被 Auto 绕过',
 )
 ok(String(CLOUD_PROVIDER_REQUIRED_ERROR).includes('未启用云供应商'), '云硬错误文案')
 ok(String(LOCAL_PROVIDER_REQUIRED_ERROR).includes('未启用本地模型'), '本地硬错误文案')
@@ -143,12 +171,54 @@ ok(!/catch\s*\{\s*return\s*\{\s*ok:\s*true/.test(mcpHint), 'MCP catch 不静默 
 const send = fs.readFileSync(path.join(root, 'web/src/hooks/use-chat-send.ts'), 'utf8')
 ok(/不会自动改用 Host 或直聊/.test(send), 'CLI 失败禁 Host/直聊 文案')
 ok(!/setLiveExecChannel\(['"]falling-back['"]/.test(send), 'use-chat-send 无 falling-back 通道')
-ok(!/hostAgentPrompt\(/.test(send), 'use-chat-send 不调用 hostAgentPrompt 静默回落')
+ok(/runSelectedModelHostAgent/.test(send) && /hostAgentPrompt/.test(send), '本地/云 Agent 共用所选模型的 Host 工具闭环')
+ok(/blockHostWhenMcpEnabled/.test(send) && /localOrchestrationPrompt/.test(send), '外部 MCP 保留本地编排兼容路径')
+ok(/已移除 Claude CLI/.test(send), 'Claude 模型不再进入 CLI')
+ok(!/api\.claudeCodePrompt\(/.test(send), 'use-chat-send 不调用 claudeCodePrompt')
 ok(
-  /isClaudeCliModel\(modelId\) &&\s*\n?\s*turnPolicy\.allowTools/.test(send),
-  '云供应商模型不进 CLI；Claude 的 Agent/Plan 仍走工具环',
+  /buildInterruptedAssistantMessage/.test(send) && /requestErrorDetail/.test(send),
+  'RPC 中断保留工具过程，错误进入横幅',
 )
-ok(/!usedToolLoop && wantsToolLoop/.test(send), 'Plan/Agent 工具环失败均硬失败')
+
+const interrupted = buildInterruptedAssistantMessage(
+  [{
+    role: 'assistant',
+    content: '',
+    agentTurn: {
+      writtenPaths: ['server/example.mjs'],
+      streamEvents: [{ type: 'tool', name: 'Edited', arg: 'server/example.mjs', status: 'ok' }],
+    },
+  }],
+  '执行连接已中断',
+)
+ok(
+  interrupted.requestErrorDetail === '执行连接已中断' &&
+    interrupted.agentTurn?.writtenPaths?.[0] === 'server/example.mjs' &&
+    interrupted.agentTurn?.streamEvents?.length === 1,
+  'RPC 中断不会用错误文本覆盖已执行内容',
+)
+
+const uiProxy = fs.readFileSync(path.join(root, 'server/packaged-ui-server.mjs'), 'utf8')
+const proxyBlock = uiProxy.slice(
+  uiProxy.indexOf('function proxyToBridge'),
+  uiProxy.indexOf('\nfunction sendFile'),
+)
+ok(!/timeout\s*:\s*\d+/.test(proxyBlock), 'Agent RPC 代理无固定执行超时')
+const viteConfig = fs.readFileSync(path.join(root, 'web/vite.config.ts'), 'utf8')
+const viteApiProxy = viteConfig.slice(
+  viteConfig.indexOf('"/api"'),
+  viteConfig.indexOf('configure:', viteConfig.indexOf('"/api"')),
+)
+ok(
+  !/timeout\s*:|proxyTimeout\s*:/.test(viteApiProxy),
+  '开发态 5188 代理同样无固定执行超时',
+)
+
+const projectLogs = fs.readFileSync(path.join(root, 'server/project-logs.cjs'), 'utf8')
+ok(
+  /project-data-path\.cjs/.test(projectLogs) && !/path\.join\(__dirname, '\.\.'\)/.test(projectLogs),
+  '打包应用日志与会话共用 userData 数据目录',
+)
 
 const bridge = fs.readFileSync(path.join(root, 'server/cad-bridge.cjs'), 'utf8')
 ok(/已禁止 stub 占位成功/.test(bridge), 'workflow stub 禁假成功')
@@ -468,10 +538,9 @@ ok(
 ok(/status === "running"\s*\?\s*"running"/.test(mergeEvents), 'mergeStreamEvents 保留 running')
 
 const cliPatches = fs.readFileSync(path.join(root, 'server/claude-cli.mjs'), 'utf8')
-ok(/snapshotCliEditBefore|finalizeCliFilePatches/.test(cliPatches), 'CLI Edit/Write 写前快照')
-ok(/filePatches/.test(cliPatches) && /buildCliWriteExtras/.test(cliPatches), 'CLI 回传 filePatches')
+ok(/已移除 Claude CLI/.test(cliPatches), 'runClaudeCodePrint 硬拒绝 CLI')
 
-ok(/normalizeWritePatches\(res\?\.filePatches\)/.test(chatSendToast), '前端消费 CLI filePatches')
+ok(/normalizeWritePatches\(res\.filePatches\)/.test(chatSendToast), '本机编排仍消费 filePatches')
 ok(/capThoughtForFold|THOUGHT_FOLD_MAX/.test(mergeEvents), 'Thought 折叠截短')
 ok(/summarizeToolOutput/.test(undoSnap), '终端卡用工具 output 摘要')
 

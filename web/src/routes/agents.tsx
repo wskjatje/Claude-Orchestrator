@@ -450,7 +450,7 @@ function AgentsPage() {
       setOrchInvokeHint(
         local
           ? "编排：本地 MCP — 为该 Agent 注入 ~/.claude/agents 规则后走本机 Ollama（与对话里选同一模型）。"
-          : "编排：Claude Code — 单次调用等价于任务链一步（global:// + claude -p）；须已配置 Claude Code CLI。",
+          : "编排：请改用本机模型（本地 MCP）。Claude CLI 已移除，不再走 claude -p。",
       );
     });
   }, []);

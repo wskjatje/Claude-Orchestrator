@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-12T02:18:29.517Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E08",
+      "title": "运行项目构建并报告结果",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Bash · npm run build\n\n构建成功，生成目录和关键产物。",
+      "error": null,
+      "turns": 2,
+      "durationMs": 2557,
+      "toolCallCount": 1,
+      "toolNames": [
+        "run_command",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "run_command",
+          "detail": "npm run build",
+          "ok": true,
+          "exitCode": 0,
+          "output": "\n> build\n> node scripts/build.js\n\n⠙"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "dist/app.txt"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E08",
+      "title": "运行项目构建并报告结果",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        2557
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 2557,
+      "avgTurns": 2
+    }
+  ],
+  "finishedAt": "2026-11-12T02:18:32.132Z"
+}

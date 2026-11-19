@@ -97,8 +97,14 @@ export function shouldAutoInjectRule(
   meta: RuleMeta,
   activeRelPath: string | null,
   hasFrontmatter: boolean,
+  includeCanonicalRules = false,
 ): boolean {
-  if (EXCLUDE_FROM_PROMPT.has(relPath.replace(/\\/g, "/"))) return false;
+  if (
+    !includeCanonicalRules &&
+    EXCLUDE_FROM_PROMPT.has(relPath.replace(/\\/g, "/"))
+  ) {
+    return false;
+  }
   if (meta.alwaysApply === true) return true;
   if (meta.globs?.length) {
     if (!activeRelPath) return false;

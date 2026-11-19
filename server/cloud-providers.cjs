@@ -1345,7 +1345,9 @@ function resolveEnvForModelOnce(modelId, store = loadStore()) {
 
 function resolveEnvForModel(modelId, options = {}) {
   const primary = resolveEnvForModelOnce(modelId);
-  if (!primary.error || options.fallback === false) return primary;
+  // 具体模型解析默认必须精确命中。跨模型选择只属于上层 Auto 路由，
+  // 调用方若确有迁移场景必须显式传 fallback:true。
+  if (!primary.error || options.fallback !== true) return primary;
   let settings = options.settings;
   if (!settings && getChatSettings) {
     try {

@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 3,
+  "startedAt": "2026-11-11T01:43:52.088Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "local-mcp"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "needs_review",
+      "ok": false,
+      "answer": "以下是本机已安装的模型列表：\n\n- gemma4:31b\n- nomic-embed-text:latest\n- qwen2.5:32b\n- gemma4:26b\n- qwen2.5-coder:14b\n\n请确认您需要的模型标签。",
+      "error": null,
+      "turns": 2,
+      "durationMs": 11783,
+      "toolCallCount": 1,
+      "toolNames": [
+        "ollama-local__ollama_list_models"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": true,
+          "detail": "ollama-local__ollama_list_models, ollama-local__ollama_list_models"
+        },
+        {
+          "type": "manualReview",
+          "ok": false,
+          "detail": "将答复中的标签与本机 /api/tags 对照"
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "needs_review",
+      "ok": false,
+      "answer": "已安装的模型包括：gemma4:31b、nomic-embed-text:latest、qwen2.5:32b、gemma4:26b、qwen2.5-coder:14b。\n\n最终模型标签为：qwen2.5:32b",
+      "error": null,
+      "turns": 2,
+      "durationMs": 11731,
+      "toolCallCount": 1,
+      "toolNames": [
+        "ollama-local__ollama_list_models"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": true,
+          "detail": "ollama-local__ollama_list_models, ollama-local__ollama_list_models"
+        },
+        {
+          "type": "manualReview",
+          "ok": false,
+          "detail": "将答复中的标签与本机 /api/tags 对照"
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "local-mcp",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "Thought：首先，我将调用 ollama_list_models 工具来列出本机已安装的模型，然后从工具结果中提取一个准确的模型标签。\n\nAction：\n```json\n{\n  \"name\": \"ollama-local__ollama_list_models\",\n  \"arguments\": {}\n}\n```",
+      "error": null,
+      "turns": 3,
+      "durationMs": 14293,
+      "toolCallCount": 0,
+      "toolNames": [],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "toolCalled",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "manualReview",
+          "ok": false,
+          "detail": "将答复中的标签与本机 /api/tags 对照"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "local-mcp",
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 2,
+      "notRun": 0,
+      "durationsMs": [
+        11783,
+        11731,
+        14293
+      ],
+      "turns": [
+        2,
+        2,
+        3
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 12602,
+      "avgTurns": 2.33
+    }
+  ],
+  "finishedAt": "2026-11-11T01:44:29.962Z"
+}

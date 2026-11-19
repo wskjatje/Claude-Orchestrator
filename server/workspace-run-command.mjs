@@ -306,6 +306,94 @@ function runViaPipe(opts) {
   })
 }
 
+export function detectWorkspaceTestCommand(root, extraArgs = '') {
+  const hasPytest =
+    fs.existsSync(path.join(root, 'pytest.ini')) ||
+    fs.existsSync(path.join(root, 'tests')) ||
+    fs.existsSync(path.join(root, 'conftest.py')) ||
+    (fs.existsSync(path.join(root, 'pyproject.toml')) &&
+      /pytest/i.test(fs.readFileSync(path.join(root, 'pyproject.toml'), 'utf8').slice(0, 4000))) ||
+    (fs.existsSync(path.join(root, 'requirements.txt')) &&
+      /pytest/i.test(fs.readFileSync(path.join(root, 'requirements.txt'), 'utf8')))
+
+  const pkgPath = path.join(root, 'package.json')
+  let pkg = null
+  if (fs.existsSync(pkgPath)) {
+    try {
+      pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+    } catch {
+      /* ignore */
+    }
+  }
+  const extra = String(extraArgs || '').trim()
+  const suffix = extra ? ` ${extra}` : ''
+  const scripts = pkg?.scripts && typeof pkg.scripts === 'object' ? pkg.scripts : {}
+  const deps = { ...(pkg?.dependencies || {}), ...(pkg?.devDependencies || {}) }
+  const packageRunner = fs.existsSync(path.join(root, 'pnpm-lock.yaml'))
+    ? 'pnpm'
+    : fs.existsSync(path.join(root, 'bun.lockb')) || fs.existsSync(path.join(root, 'bun.lock'))
+      ? 'bun'
+      : fs.existsSync(path.join(root, 'yarn.lock'))
+        ? 'yarn'
+        : 'npm'
+  if (scripts.test) {
+    const command = packageRunner === 'npm'
+      ? `npm test${extra ? ` -- ${extra}` : ''}`
+      : packageRunner === 'yarn'
+        ? `yarn test${suffix}`
+        : `${packageRunner} test${suffix}`
+    return { command, detected: `${packageRunner}-test` }
+  }
+  if (hasPytest) {
+    const venvPytest = ['venv/bin/pytest', '.venv/bin/pytest']
+      .map((p) => path.join(root, p))
+      .find((p) => fs.existsSync(p))
+    if (venvPytest) {
+      return { command: `"${venvPytest}" -q${suffix}`, detected: 'pytest' }
+    }
+    return { command: `python3 -m pytest -q${suffix}`, detected: 'pytest' }
+  }
+  if (deps.vitest || fs.existsSync(path.join(root, 'vitest.config.ts')) || fs.existsSync(path.join(root, 'vitest.config.js'))) {
+    return { command: `npx vitest run${suffix}`, detected: 'vitest' }
+  }
+  if (deps.jest || fs.existsSync(path.join(root, 'jest.config.js')) || fs.existsSync(path.join(root, 'jest.config.ts'))) {
+    return { command: `npx jest${suffix}`, detected: 'jest' }
+  }
+  if (deps.mocha) return { command: `npx mocha${suffix}`, detected: 'mocha' }
+  if (fs.existsSync(path.join(root, 'Cargo.toml'))) {
+    return { command: `cargo test${suffix}`, detected: 'cargo-test' }
+  }
+  if (fs.existsSync(path.join(root, 'go.mod'))) {
+    return { command: `go test ./...${suffix}`, detected: 'go-test' }
+  }
+  if (fs.existsSync(path.join(root, 'pom.xml'))) {
+    const runner = fs.existsSync(path.join(root, 'mvnw')) ? './mvnw' : 'mvn'
+    return { command: `${runner} test${suffix}`, detected: 'maven-test' }
+  }
+  if (
+    fs.existsSync(path.join(root, 'build.gradle')) ||
+    fs.existsSync(path.join(root, 'build.gradle.kts')) ||
+    fs.existsSync(path.join(root, 'gradlew'))
+  ) {
+    const runner = fs.existsSync(path.join(root, 'gradlew')) ? './gradlew' : 'gradle'
+    return { command: `${runner} test${suffix}`, detected: 'gradle-test' }
+  }
+  const makefile = ['Makefile', 'makefile'].map((name) => path.join(root, name)).find(fs.existsSync)
+  if (makefile && /^test\s*:/m.test(fs.readFileSync(makefile, 'utf8'))) {
+    return { command: `make test${suffix}`, detected: 'make-test' }
+  }
+  if (scripts.typecheck) {
+    return { command: `${packageRunner} run typecheck${suffix}`, detected: `${packageRunner}-typecheck` }
+  }
+  if (scripts.lint) {
+    return { command: `${packageRunner} run lint${suffix}`, detected: `${packageRunner}-lint` }
+  }
+  if (fs.existsSync(path.join(root, 'tsconfig.json'))) {
+    return { command: `npx tsc --noEmit${suffix}`, detected: 'tsc' }
+  }
+  return { command: '', detected: '', error: '未探测到可用测试、类型检查或 lint 命令；请用 run_command 指定命令' }
+}
+
 /**
  * 自动探测并运行测试
  * @param {{ mode?: string, timeoutMs?: number, extraArgs?: string }} body
@@ -318,53 +406,14 @@ export async function workspaceRunTests(body) {
   if (mode === 'ask') {
     return { ok: false, error: 'Ask 模式禁止跑测试；请切换 Agent' }
   }
-
-  const hasPytest =
-    fs.existsSync(path.join(root, 'pytest.ini')) ||
-    fs.existsSync(path.join(root, 'tests')) ||
-    fs.existsSync(path.join(root, 'conftest.py')) ||
-    (fs.existsSync(path.join(root, 'pyproject.toml')) &&
-      /pytest/i.test(fs.readFileSync(path.join(root, 'pyproject.toml'), 'utf8').slice(0, 4000))) ||
-    (fs.existsSync(path.join(root, 'requirements.txt')) &&
-      /pytest/i.test(fs.readFileSync(path.join(root, 'requirements.txt'), 'utf8')))
-
-  const pkgPath = path.join(root, 'package.json')
-  let npmTest = false
-  if (fs.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
-      npmTest = Boolean(pkg?.scripts?.test)
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const extra = String(body?.extraArgs || '').trim()
-  let command = ''
-  if (hasPytest) {
-    const venvPytest = ['venv/bin/pytest', '.venv/bin/pytest']
-      .map((p) => path.join(root, p))
-      .find((p) => fs.existsSync(p))
-    if (venvPytest) {
-      command = `"${venvPytest}" -q${extra ? ` ${extra}` : ''}`
-    } else {
-      // macOS 常无 `python`，优先 python3 -m pytest
-      command = `python3 -m pytest -q${extra ? ` ${extra}` : ''}`
-    }
-  } else if (npmTest) {
-    command = `npm test${extra ? ` -- ${extra}` : ''}`
-  } else {
-    return {
-      ok: false,
-      error: '未探测到 pytest / npm test；请用 run_command 指定命令',
-    }
-  }
+  const detected = detectWorkspaceTestCommand(root, body?.extraArgs)
+  if (!detected.command) return { ok: false, error: detected.error }
 
   const r = await workspaceRunCommand({
-    command,
+    command: detected.command,
     mode,
     timeoutMs: body?.timeoutMs || 150_000,
     runId: body?.runId,
   })
-  return { ...r, detected: hasPytest ? 'pytest' : 'npm-test' }
+  return { ...r, detected: detected.detected }
 }

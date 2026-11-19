@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-14T05:31:59.232Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "连续 3 次事务验证失败；已恢复本事务修改的 1 个文件。（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 6,
+      "durationMs": 33297,
+      "toolCallCount": 11,
+      "toolNames": [
+        "run_command",
+        "read_file",
+        "search_replace",
+        "write_file",
+        "Bash",
+        "Edit",
+        "Read",
+        "Write"
+      ],
+      "toolTrace": [
+        {
+          "tool": "run_command",
+          "detail": "node test.js",
+          "ok": false,
+          "failedArguments": "{\"command\":\"node test.js\",\"cwd\":\".\"}",
+          "exitCode": 1,
+          "output": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e11-Y7XFDk/workspace/test.js:1:128\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: 12,\n  expected: 0,\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n\nNode.js v24.21.0\n"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "test.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/parse.js",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_command",
+          "detail": "node test.js",
+          "ok": false,
+          "exitCode": 1,
+          "output": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e11-Y7XFDk/workspace/test.js:1:128\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: 12,\n  expected: 0,\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n\nNode.js v24.21.0\n"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "test.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "write_file",
+          "detail": "src/parse.js",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_command",
+          "detail": "node test.js",
+          "ok": false,
+          "exitCode": 1,
+          "output": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e11-Y7XFDk/workspace/test.js:1:128\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: 12,\n  expected: 0,\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n\nNode.js v24.21.0\n"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "test.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/parse.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/parse.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eva"
+        },
+        {
+          "type": "fileUnchanged",
+          "ok": true,
+          "detail": "test.js"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        33297
+      ],
+      "turns": [
+        6
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 33297,
+      "avgTurns": 6
+    }
+  ],
+  "finishedAt": "2026-11-14T05:32:32.607Z"
+}

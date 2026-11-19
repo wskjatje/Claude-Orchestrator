@@ -1,0 +1,527 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-17T00:06:41.655Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · scripts/status.js\n⋯ Read · auto-obligation-context\n⋯ Bash · npm install picocolors\n⋯ Read\n⋯ Read · scripts/status.js\n⋯ Edit · scripts/status.js\n⋯ Bash · auto\n⋯ Read · auto-failure-context\n⋯ Search · picocolors\n⋯ Edit · package-lock.json\n⋯ Edit · package.json\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 15,
+      "durationMs": 54180,
+      "usage": {
+        "prompt_tokens": 30204,
+        "completion_tokens": 377,
+        "total_tokens": 30581
+      },
+      "toolCallCount": 13,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "run_command",
+        "search_replace",
+        "run_tests",
+        "Search",
+        "Bash",
+        "Read",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "package.json",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_command",
+          "detail": "npm install picocolors",
+          "ok": true,
+          "exitCode": 0,
+          "output": "⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏\nadded 1 package, and audited 2 packages in 3s\n⠏\nfound 0 vulnerabilities\n⠏npm notice\nnpm notice New major version of npm available! 11.19.0 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n⠏"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "",
+          "ok": false,
+          "failedArguments": "{\"relPath\":\"scripts/status.js\"}",
+          "exitCode": 1,
+          "output": "工具「read_file」参数无效：缺少必填参数「path」。"
+        },
+        {
+          "tool": "read_file",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": false,
+          "exitCode": 1,
+          "output": "\n> test\n> node scripts/status.js\n\nfile:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e07-ogzvWw/workspace/scripts/status.js:1\nconsole.log(picocolors.green('ready'))\n            ^\n\nReferenceError: picocolors is not defined\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e07-ogzvWw/workspace/scripts/status.js:1:13\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.21.0\n⠙"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "\n> test\n> node scripts/status.js\n\nready\n⠙"
+        },
+        {
+          "tool": "code_search",
+          "detail": "picocolors",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./scripts/status.js\",\"line\":1,\"text\":\"import picocolors from 'picocolors';\"},{\"relPath\":\"./scripts/status.js\",\"line\":2,\"text\":\"console.log(picocolors.green('ready'))\"},{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"},\\\"dependencies\\\":{\\\"picocolors\\\":\\\"^1.1.1\\\"}}\"},{\"relPath\":\"./package-lock.json\",\"line\":8,\"text\":\"        \\\"picocolors\\\": \\\"^1.1.1\\\"\"},{\"relPath\":\"./package-lock.json\",\"line\":11,\"text\":\"    \\\"node_modules/picocolors\\\": {\"},{\"relPath\":\"./package-lock.json\",\"line\":13,\"text\":\"      \\\"resolved\\\": \\\"https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz\\\",\"}],\"semantic\":[{\"relPath\":\"scripts/status.js\",\"line\":1,\"endLine\":3,\"text\":\"import picocolors from 'picocolors';\",\"snippet\":\"import picocolors from 'picocolors';\\nconsole.log(picocolors.green('ready'))\\n\",\"score\":8.9686}],\"graphFiles\":[\"package.json\",\"scripts/status.js\"]}"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "package-lock.json",
+        "package.json",
+        "scripts/status.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "package.json"
+        },
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "scripts/status.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · scripts/status.js\n⋯ Read · auto-obligation-context\n⋯ Bash · npm install picocolors\n⋯ Read\n⋯ Read · scripts/status.js\n⋯ Edit · scripts/status.js\n⋯ Bash · auto\n⋯ Read · auto-failure-context\n⋯ Write · scripts/status.js\n⋯ Search · picocolors\n⋯ Edit · package-lock.json\n⋯ Edit · package.json\n\n（已调用工具：search_replace）",
+      "error": null,
+      "turns": 15,
+      "durationMs": 41691,
+      "usage": {
+        "prompt_tokens": 28980,
+        "completion_tokens": 383,
+        "total_tokens": 29363
+      },
+      "toolCallCount": 14,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "run_command",
+        "search_replace",
+        "run_tests",
+        "write_file",
+        "Search",
+        "Bash",
+        "Read",
+        "Edit",
+        "Write"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "package.json",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_command",
+          "detail": "npm install picocolors",
+          "ok": true,
+          "exitCode": 0,
+          "output": "⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸\nadded 1 package, and audited 2 packages in 2s\n⠸\nfound 0 vulnerabilities\n⠸npm notice\nnpm notice New major version of npm available! 11.19.0 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n⠸"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "",
+          "ok": false,
+          "failedArguments": "{\"relPath\":\"scripts/status.js\"}",
+          "exitCode": 1,
+          "output": "工具「read_file」参数无效：缺少必填参数「path」。"
+        },
+        {
+          "tool": "read_file",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": false,
+          "exitCode": 1,
+          "output": "\n> test\n> node scripts/status.js\n\nfile:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e07-vQAybj/workspace/scripts/status.js:1\nconsole.log(picocolors.green('ready'))\n            ^\n\nReferenceError: picocolors is not defined\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e07-vQAybj/workspace/scripts/status.js:1:13\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.21.0\n⠙"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "write_file",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "\n> test\n> node scripts/status.js\n\nready\n⠙"
+        },
+        {
+          "tool": "code_search",
+          "detail": "picocolors",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./scripts/status.js\",\"line\":1,\"text\":\"import picocolors from 'picocolors';\"},{\"relPath\":\"./scripts/status.js\",\"line\":3,\"text\":\"console.log(picocolors.green('ready'))\"},{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"},\\\"dependencies\\\":{\\\"picocolors\\\":\\\"^1.1.1\\\"}}\"},{\"relPath\":\"./package-lock.json\",\"line\":8,\"text\":\"        \\\"picocolors\\\": \\\"^1.1.1\\\"\"},{\"relPath\":\"./package-lock.json\",\"line\":11,\"text\":\"    \\\"node_modules/picocolors\\\": {\"},{\"relPath\":\"./package-lock.json\",\"line\":13,\"text\":\"      \\\"resolved\\\": \\\"https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz\\\",\"}],\"semantic\":[{\"relPath\":\"scripts/status.js\",\"line\":1,\"endLine\":4,\"text\":\"import picocolors from 'picocolors';\",\"snippet\":\"import picocolors from 'picocolors';\\n\\nconsole.log(picocolors.green('ready'))\\n\",\"score\":8.9686}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "read_file",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "package-lock.json",
+        "package.json",
+        "scripts/status.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "package.json"
+        },
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "scripts/status.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · scripts/status.js\n⋯ Read · auto-obligation-context\n⋯ Bash · npm install picocolors\n⋯ Read\n⋯ Read · scripts/status.js\n⋯ Edit · scripts/status.js\n⋯ Bash · auto\n⋯ Read · auto-failure-context\n⋯ Write · scripts/status.js\n⋯ Search · picocolors\n⋯ Edit · package-lock.json\n⋯ Edit · package.json\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 15,
+      "durationMs": 42367,
+      "usage": {
+        "prompt_tokens": 28730,
+        "completion_tokens": 361,
+        "total_tokens": 29091
+      },
+      "toolCallCount": 13,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "run_command",
+        "search_replace",
+        "run_tests",
+        "write_file",
+        "Search",
+        "Bash",
+        "Read",
+        "Edit",
+        "Write"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\"}],\"semantic\":[{\"relPath\":\"package.json\",\"line\":1,\"endLine\":2,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\",\"snippet\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"}}\\n\",\"score\":10.8982}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "package.json",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_command",
+          "detail": "npm install picocolors",
+          "ok": true,
+          "exitCode": 0,
+          "output": "⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼\nadded 1 package, and audited 2 packages in 2s\n⠼\nfound 0 vulnerabilities\n⠼npm notice\nnpm notice New major version of npm available! 11.19.0 -> 12.2.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.2\nnpm notice To update run: npm install -g npm@12.2.2\nnpm notice\n⠼"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "",
+          "ok": false,
+          "failedArguments": "{\"relPath\":\"scripts/status.js\"}",
+          "exitCode": 1,
+          "output": "工具「read_file」参数无效：缺少必填参数「path」。"
+        },
+        {
+          "tool": "read_file",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": false,
+          "exitCode": 1,
+          "output": "\n> test\n> node scripts/status.js\n\nfile:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e07-M3YTTK/workspace/scripts/status.js:1\nconsole.log(picocolors.green('ready'))\n            ^\n\nReferenceError: picocolors is not defined\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e07-M3YTTK/workspace/scripts/status.js:1:13\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v24.21.0\n⠙"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "write_file",
+          "detail": "scripts/status.js",
+          "path": "scripts/status.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "\n> test\n> node scripts/status.js\n\nready\n⠙"
+        },
+        {
+          "tool": "code_search",
+          "detail": "picocolors",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./scripts/status.js\",\"line\":1,\"text\":\"import picocolors from 'picocolors';\"},{\"relPath\":\"./scripts/status.js\",\"line\":2,\"text\":\"console.log(picocolors.green('ready'));\"},{\"relPath\":\"./package.json\",\"line\":1,\"text\":\"{\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node scripts/status.js\\\"},\\\"dependencies\\\":{\\\"picocolors\\\":\\\"^1.1.1\\\"}}\"},{\"relPath\":\"./package-lock.json\",\"line\":8,\"text\":\"        \\\"picocolors\\\": \\\"^1.1.1\\\"\"},{\"relPath\":\"./package-lock.json\",\"line\":11,\"text\":\"    \\\"node_modules/picocolors\\\": {\"},{\"relPath\":\"./package-lock.json\",\"line\":13,\"text\":\"      \\\"resolved\\\": \\\"https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz\\\",\"}],\"semantic\":[{\"relPath\":\"scripts/status.js\",\"line\":1,\"endLine\":3,\"text\":\"import picocolors from 'picocolors';\",\"snippet\":\"import picocolors from 'picocolors';\\nconsole.log(picocolors.green('ready'));\\n\",\"score\":8.9646}],\"graphFiles\":[]}"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "package-lock.json",
+        "package.json",
+        "scripts/status.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "package.json"
+        },
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "scripts/status.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "attempted": 3,
+      "passed": 3,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        54180,
+        41691,
+        42367
+      ],
+      "turns": [
+        15,
+        15,
+        15
+      ],
+      "promptTokens": [
+        30204,
+        28980,
+        28730
+      ],
+      "editFailures": 0,
+      "successRate": 1,
+      "avgDurationMs": 46079,
+      "avgTurns": 15,
+      "avgPromptTokens": 29305
+    }
+  ],
+  "finishedAt": "2026-11-17T00:09:00.069Z"
+}

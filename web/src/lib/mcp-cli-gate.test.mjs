@@ -15,10 +15,23 @@ assert.deepEqual(
 
 assert.deepEqual(enabledMcpNamesRequiringCliChannel({ sanshengliubu: {} }), []);
 
-const msg = mcpCliGateFailureMessage("CLI 挂了", ["external-apps", "fetch"]);
+assert.deepEqual(
+  enabledMcpNamesRequiringCliChannel(
+    {
+      memory: { command: "npx" },
+      sqlite: { command: "uvx" },
+    },
+    { sqlite: { status: "error" }, memory: { status: "ok" } },
+  ),
+  ["memory"],
+);
+
+const msg = mcpCliGateFailureMessage("本机编排挂了", ["external-apps", "fetch"]);
 assert.match(msg, /【MCP】/);
 assert.match(msg, /external-apps/);
-assert.match(msg, /CLI 挂了/);
-assert.match(msg, /禁止静默 Host/);
+assert.match(msg, /本机编排挂了/);
+assert.match(msg, /禁止无 MCP 工具证据/);
+assert.doesNotMatch(msg, /Claude CLI/);
+assert.doesNotMatch(msg, /npm i -g/);
 
 console.log("mcp-cli-gate.test.mjs ok");

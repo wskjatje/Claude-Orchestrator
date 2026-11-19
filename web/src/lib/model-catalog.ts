@@ -189,6 +189,8 @@ export function resolveModelForExecution(input: {
   /** Auto 时优先（须在对应池内） */
   preferredCloudModel?: string;
   preferredLocalModel?: string;
+  /** Auto 是否可在首选池为空时选择另一可用池；手选模型不受影响 */
+  allowAutoCrossPool?: boolean;
 }): ResolvedExecutionModel | null {
   const cloud = input.cloudModels.map((m) => m.trim()).filter(Boolean);
   const local = input.localModels.map((m) => m.trim()).filter(Boolean);
@@ -225,7 +227,7 @@ export function resolveModelForExecution(input: {
   const auto = resolveAutoModelFromPools(cloud, local, input.preferredMode, hint, {
     preferredCloudModel: input.preferredCloudModel,
     preferredLocalModel: input.preferredLocalModel,
-  });
+  }, input.allowAutoCrossPool !== false);
   return auto ? { ...auto, userPinned: false, routeHint: hint } : null;
 }
 
@@ -235,6 +237,7 @@ function resolveAutoModelFromPools(
   preferredMode?: OrchMode,
   routeHint: ModelRouteHint = "prefer-mode",
   prefs?: { preferredCloudModel?: string; preferredLocalModel?: string },
+  allowCrossPool = true,
 ): ResolvedExecutionModel | null {
   const preferCloud = String(prefs?.preferredCloudModel || "").trim();
   const preferLocal = String(prefs?.preferredLocalModel || "").trim();
@@ -255,9 +258,10 @@ function resolveAutoModelFromPools(
     return pickCloud() || pickLocal();
   };
 
-  // prefer-cloud / prefer-local：对侧池空禁止静默换通道
-  if (routeHint === "prefer-cloud") return pickCloud();
-  if (routeHint === "prefer-local") return pickLocal();
+  // Auto 明确授权系统按任务选路；首选池不可用时可选择另一可用池。
+  // 「只用本地/只用云端」通过 allowCrossPool=false 保持硬约束。
+  if (routeHint === "prefer-cloud") return pickCloud() || (allowCrossPool ? pickLocal() : null);
+  if (routeHint === "prefer-local") return pickLocal() || (allowCrossPool ? pickCloud() : null);
   return pickByMode();
 }
 
@@ -499,6 +503,9 @@ export function chatSettingsPreservePayload(
     chatEnabledLocalModels: s.chatEnabledLocalModels ?? [],
     preferredCloudModel: s.preferredCloudModel ?? "",
     preferredLocalModel: s.preferredLocalModel ?? "",
+    modelRouteLock: s.modelRouteLock ?? "auto",
+    agentTurnTokenLimit: Math.max(0, Number(s.agentTurnTokenLimit) || 0),
+    agentTurnCostLimitUsd: Math.max(0, Number(s.agentTurnCostLimitUsd) || 0),
     modelCapabilityOverrides: s.modelCapabilityOverrides ?? {},
     personalGithubRepo: s.personalGithubRepo ?? "",
     gitUserName: s.gitUserName ?? "",

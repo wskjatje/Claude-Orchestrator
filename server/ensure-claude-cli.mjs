@@ -210,57 +210,12 @@ export async function resolveClaudeCliDetailed() {
  * npm 全局安装 @anthropic-ai/claude-code 并验证。
  */
 export async function ensureClaudeCliInstalled() {
-  const before = await resolveClaudeCliDetailed()
-  if (before.ok && before.claudePath) {
-    return { ...before, installed: false, message: '已可用' }
-  }
-
-  const npm = await runCmd(
-    'npm',
-    ['install', '-g', '@anthropic-ai/claude-code@latest'],
-    { timeout: 600_000 },
-  )
-  if (!npm.ok) {
-    return {
-      ok: false,
-      installed: false,
-      error: `npm 安装失败：${(npm.stderr || npm.stdout || '').slice(0, 400)}`,
-      hint: '请检查网络与 npm 权限后重试',
-    }
-  }
-
-  // 部分平台需跑 postinstall
-  try {
-    const root = String(
-      require('child_process').execFileSync('npm', ['root', '-g'], {
-        encoding: 'utf8',
-        timeout: 10_000,
-      }),
-    ).trim()
-    const installCjs = path.join(root, '@anthropic-ai', 'claude-code', 'install.cjs')
-    if (fs.existsSync(installCjs)) {
-      await runCmd(process.execPath, [installCjs], {
-        cwd: path.dirname(installCjs),
-        timeout: 120_000,
-      })
-    }
-  } catch {
-    /* ignore */
-  }
-
-  const after = await resolveClaudeCliDetailed()
-  if (!after.ok) {
-    return {
-      ok: false,
-      installed: true,
-      error: '已执行 npm install，但仍未解析到可执行 claude',
-      npmLog: (npm.stdout || '').slice(-500),
-      hint: after.hint,
-    }
-  }
   return {
-    ...after,
-    installed: true,
-    message: '安装并探测成功',
+    ok: false,
+    installed: false,
+    claudePath: '',
+    error: '已移除 Claude CLI。不会执行 npm 安装 @anthropic-ai/claude-code。',
+    hint: '请使用本机模型。',
   }
 }
+

@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-14T06:05:36.168Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5:32b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5:32b",
+    "digest": "9f13ba1299afea09d9a956fc6a85becc99115a6d596fae201a5487a03bdc4368",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "32.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5:32b",
+      "status": "passed",
+      "ok": true,
+      "answer": "这个示例项目默认使用 SQLite 作为存储，健康检查路径是 GET /healthz。\nHost · Read",
+      "error": null,
+      "turns": 2,
+      "durationMs": 34277,
+      "usage": {
+        "prompt_tokens": 3683,
+        "completion_tokens": 42,
+        "total_tokens": 3725
+      },
+      "toolCallCount": 1,
+      "toolNames": [
+        "read_file",
+        "Read"
+      ],
+      "toolTrace": [
+        {
+          "tool": "read_file",
+          "detail": "README.md",
+          "path": "README.md",
+          "ok": true,
+          "exitCode": 0
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "1 个初始文件"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "attempted": 1,
+      "passed": 1,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        34277
+      ],
+      "turns": [
+        2
+      ],
+      "promptTokens": [
+        3683
+      ],
+      "editFailures": 0,
+      "successRate": 1,
+      "avgDurationMs": 34277,
+      "avgTurns": 2,
+      "avgPromptTokens": 3683
+    }
+  ],
+  "finishedAt": "2026-11-14T06:06:10.490Z"
+}

@@ -401,8 +401,8 @@ export function buildComposerUserLine(
 }
 
 /**
- * 按编排模式从「该通道池」选取会话 modelId。
- * 调用方应传入 chatModelPoolForMode(...)，勿传云+本地合并池（否则本窗会残留云模型 id）。
+ * 从聊天已启用的云+本地合并池校验会话 modelId。
+ * 模型归属由发送前 resolveModelForExecution 解析，切换通道不再清除另一池的手选模型。
  * Auto / inherit 保留为 auto 哨兵值。
  */
 export function pickOrchestratorModel(raw: string | undefined, pool: string[], mode: OrchMode): string {
@@ -412,7 +412,7 @@ export function pickOrchestratorModel(raw: string | undefined, pool: string[], m
   if (t && list.includes(t)) return t;
   // 仅云通道保留 Claude CLI 别名（可不在启用池）
   if (mode === "claude-code" && /^(sonnet|opus|haiku|claude-)/i.test(t)) return t;
-  // 本窗/云窗池非空时落到池首，避免 local-mcp 仍显示 deepseek 等云 id
+  // 已移除的模型落到当前聊天池首；有效的云/本地手选模型均保持不变。
   if (list.length) return list[0]!;
   return AUTO_MODEL_ID;
 }

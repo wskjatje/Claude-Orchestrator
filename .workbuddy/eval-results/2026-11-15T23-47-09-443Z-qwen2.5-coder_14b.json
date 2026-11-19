@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-15T23:47:09.443Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "任务完成条件未满足：迁移任务尚未闭合：必须用 move_file 将 src/legacy/format.js 移到 src/shared/format.js，并清除所有对 legacy/format.js 的旧引用。已恢复本事务修改的 3 个文件。（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 9,
+      "durationMs": 39868,
+      "usage": {
+        "prompt_tokens": 18767,
+        "completion_tokens": 417,
+        "total_tokens": 19184
+      },
+      "toolCallCount": 20,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "move_file",
+        "search_replace",
+        "Search",
+        "Move",
+        "Read",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "formatDate",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./src/pages/home.js\",\"line\":1,\"text\":\"import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\"},{\"relPath\":\"./src/jobs/daily.js\",\"line\":1,\"text\":\"import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\"},{\"relPath\":\"./src/legacy/format.js\",\"line\":1,\"text\":\"export function formatDate(date) { return new Date(date).toISOString().slice(0, 10) }\"}],\"semantic\":[{\"relPath\":\"src/legacy/format.js\",\"line\":1,\"endLine\":2,\"text\":\"export function formatDate(date) { return new Date(date).toISOString().slice(0, 10) }\",\"snippet\":\"export function formatDate(date) { return new Date(date).toISOString().slice(0, 10) }\\n\",\"score\":9.0146},{\"relPath\":\"src/pages/home.js\",\"line\":1,\"endLine\":2,\"text\":\"import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\",\"snippet\":\"import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\\n\",\"score\":8.6909},{\"relPath\":\"src/jobs/daily.js\",\"line\":1,\"endLine\":2,\"text\":\"import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\",\"snippet\":\"import { formatDate } from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\\n\",\"score\":8.6446}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/legacy/format.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "./src/pages/home.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "./src/jobs/daily.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/pages/home.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/jobs/daily.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "move_file",
+          "detail": "src/legacy/format.js → ",
+          "ok": false,
+          "failedArguments": "{\"src\":\"src/legacy/format.js\",\"dst\":\"src/shared/format.js\",\"from\":\"src/legacy/format.js\"}",
+          "exitCode": 1,
+          "output": "工具「move_file」参数无效：参数「to」类型错误，应为 string。"
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/legacy/format.js",
+          "path": "src/legacy/format.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/legacy/format.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "./src/pages/home.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "./src/jobs/daily.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/pages/home.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/jobs/daily.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "move_file",
+          "detail": "src/legacy/format.js → src/shared/format.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/legacy/format.js",
+          "ok": false,
+          "failedArguments": "{\"path\":\"src/legacy/format.js\"}",
+          "exitCode": 1,
+          "output": "not found"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "./src/pages/home.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "./src/jobs/daily.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/pages/home.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-obligation-context",
+          "path": "src/jobs/daily.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "./src/pages/home.js",
+          "path": "./src/pages/home.js",
+          "ok": true,
+          "exitCode": 0
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "./src/pages/home.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileExists",
+          "ok": false,
+          "detail": "src/shared/format.js"
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceContains",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        39868
+      ],
+      "turns": [
+        9
+      ],
+      "promptTokens": [
+        18767
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 39868,
+      "avgTurns": 9,
+      "avgPromptTokens": 18767
+    }
+  ],
+  "finishedAt": "2026-11-15T23:47:49.363Z"
+}

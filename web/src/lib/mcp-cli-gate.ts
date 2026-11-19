@@ -1,20 +1,30 @@
 /**
- * P1-B：用户启用了需 MCP 通道的服务器时，CLI/本地编排失败不得静默 Host 回落
- *（Host 无 MCP；禁止无工具证据的兜底回答）。
+ * 返回已启用且健康的 MCP 服务器列表，供 Host 或本地编排显式连接。
+ * 任一执行通道连接失败时仍禁止无工具证据的兜底回答。
  *
  * 排除产品自动补全的 sanshengliubu，避免人人被闸死 Host。
+ * 健康检查为 error 的服务器不算「可用 MCP」，不列入闸门名单。
  */
 export const BUNDLED_PRODUCT_MCP_NAMES = new Set(["sanshengliubu"]);
 
+export type McpHealthServerRow = {
+  status?: string;
+  error?: string | null;
+};
+
 export function enabledMcpNamesRequiringCliChannel(
   mcpServers: Record<string, unknown> | null | undefined,
+  healthServers?: Record<string, McpHealthServerRow> | null,
 ): string[] {
   if (!mcpServers || typeof mcpServers !== "object") return [];
   return Object.entries(mcpServers)
     .filter(([name, cfg]) => {
       if (BUNDLED_PRODUCT_MCP_NAMES.has(name)) return false;
       const c = cfg && typeof cfg === "object" ? (cfg as Record<string, unknown>) : {};
-      return c.disabled !== true;
+      if (c.disabled === true) return false;
+      const health = healthServers?.[name];
+      if (health && String(health.status || "").toLowerCase() === "error") return false;
+      return true;
     })
     .map(([name]) => name);
 }
@@ -28,8 +38,8 @@ export function mcpCliGateFailureMessage(
   return [
     "【MCP】已启用需 MCP 通道的服务器（",
     names,
-    "），CLI/本地编排失败后禁止静默 Host 回落（Host 无 MCP，禁止无证据兜底）。",
+    "），执行通道连接失败后禁止无 MCP 工具证据继续回答。",
     detail ? ` 原因：${detail}` : "",
-    " 请修复 Claude CLI 或本地 MCP 编排后重试；或在设置→高级→MCP 中禁用相关服务器后再用 Host。",
+    " 请修复本机编排或 MCP 服务器后重试；健康检查异常的服务器请先停用。",
   ].join("");
 }

@@ -112,7 +112,7 @@ ok(extractToolResultOutput({}) === '', 'empty object not [object Object]')
   )
   ok(s.usage?.prompt_tokens === 55 && s.usage?.completion_tokens === 4, 'result.usage 覆盖为终态')
   const cli = fs.readFileSync(path.join(root, 'server/claude-cli.mjs'), 'utf8')
-  ok(/streamState\?\.usage/.test(cli), 'claude-cli 透传 streamState.usage')
+  ok(/已移除 Claude CLI/.test(cli), 'claude-cli 入口已硬拒绝，不再透传 CLI usage')
 }
 
 // —— 前端 fromEvents 不得写死 output:"" ——

@@ -41,6 +41,11 @@ export type DiskMsg = {
       isNewFile?: boolean;
     }[];
     verified?: boolean;
+    todos?: {
+      id: string;
+      title: string;
+      status: "pending" | "in_progress" | "completed";
+    }[];
     backend?: "cli" | "host" | "local";
     mcpUsed?: boolean;
     streamEvents?: Array<{

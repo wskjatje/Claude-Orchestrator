@@ -57,7 +57,8 @@ export async function autoAcceptPendingFromAssistantReply(
   for (const p of opts?.alreadyPatches || []) {
     const path = normPath(p.path);
     if (!path) continue;
-    if (p.before !== undefined) stashWorkspaceWriteCheckpoint(path, p.before);
+    const checkpoint = p.checkpointBefore ?? p.before;
+    if (checkpoint !== undefined) stashWorkspaceWriteCheckpoint(path, checkpoint);
     patches.push({ ...p, path });
   }
 

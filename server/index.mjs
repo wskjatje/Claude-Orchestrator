@@ -239,25 +239,8 @@ wss.on('connection', (ws) => {
 
 console.log(`[bridge] WebSocket ws://127.0.0.1:${WS_PORT}`)
 
-/** 启动时真实探测/安装 CLI，并尽力拉起 hybrid 语义索引（非占位） */
+/** 启动时拉起 hybrid 语义索引。Claude CLI 已移除，不再探测或安装。 */
 void (async () => {
-  try {
-    const { resolveClaudeCliDetailed, ensureClaudeCliInstalled } = await import(
-      './ensure-claude-cli.mjs'
-    )
-    let cli = await resolveClaudeCliDetailed()
-    if (!cli.ok) {
-      console.log('[bridge] Claude CLI 未找到，执行 ensureCli（npm 全局安装）…')
-      cli = await ensureClaudeCliInstalled()
-    }
-    if (cli.ok) {
-      console.log(`[bridge] Claude CLI 就绪: ${cli.claudePath} ${cli.versionLine || ''}`)
-    } else {
-      console.warn('[bridge] Claude CLI 仍不可用:', cli.error || cli.hint)
-    }
-  } catch (e) {
-    console.warn('[bridge] Claude CLI 初始化异常:', e?.message || e)
-  }
   try {
     const { ensureCodeIndexHybrid } = await import('./ensure-code-index-hybrid.mjs')
     const h = await ensureCodeIndexHybrid()

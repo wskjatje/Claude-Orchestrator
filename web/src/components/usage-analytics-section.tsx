@@ -145,10 +145,10 @@ function buildUsageKpis(agg: UsageStatsSummary | null, totalMsgs: number, hideMs
       soft: avg == null,
     },
     {
-      label: "工具调用",
+      label: "写入",
       value: String(a?.workspaceWriteHints ?? 0),
-      caption: "写入次数",
-      hint: "助手回复里的写入标记。",
+      caption: "助手回复里的写入标记",
+      hint: "统计 workspace-write / 写盘提示次数；读工具不计入。",
     },
     {
       label: "错误率",

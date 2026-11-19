@@ -1,0 +1,394 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-16T00:19:26.420Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · test.js\n⋯ Bash · node test.js\n⋯ Read · auto-failure-context\n⋯ Edit · src/parse.js\n⋯ Search\n⋯ Read · src/parse.js\n\n（已调用工具：run_tests）",
+      "error": null,
+      "turns": 11,
+      "durationMs": 33598,
+      "usage": {
+        "prompt_tokens": 23201,
+        "completion_tokens": 306,
+        "total_tokens": 23507
+      },
+      "toolCallCount": 9,
+      "toolNames": [
+        "code_search",
+        "run_command",
+        "read_file",
+        "search_replace",
+        "Search",
+        "Bash",
+        "Edit",
+        "Read"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "test.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[],\"semantic\":[{\"relPath\":\"test.js\",\"line\":1,\"endLine\":2,\"text\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\",\"snippet\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\\n\",\"score\":8.728}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "run_command",
+          "detail": "node test.js",
+          "ok": false,
+          "failedArguments": "{\"command\":\"node test.js\"}",
+          "exitCode": 1,
+          "output": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e11-WSDtAD/workspace/test.js:1:128\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: 12,\n  expected: 0,\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n\nNode.js v24.21.0\n"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "test.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "",
+          "ok": false,
+          "failedArguments": "{\"file_path\":\"src/parse.js\",\"search_pattern\":\"Number.parseInt(value, 10)\",\"replace_pattern\":\"Number(value)\"}",
+          "exitCode": 1,
+          "output": "工具「search_replace」参数无效：缺少必填参数「path」。"
+        },
+        {
+          "tool": "code_search",
+          "detail": "",
+          "ok": false,
+          "failedArguments": "{\"relPath\":\"src/parse.js\"}",
+          "exitCode": 1,
+          "output": "工具「code_search」参数无效：缺少必填参数「query」。"
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/parse.js",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/parse.js",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_command",
+          "detail": "node test.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "（无输出）"
+        }
+      ],
+      "editFailureCount": 2,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/parse.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "src/parse.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        },
+        {
+          "type": "fileUnchanged",
+          "ok": true,
+          "detail": "test.js"
+        }
+      ]
+    },
+    {
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · test.js\n⋯ Bash · node test.js\n⋯ Read · auto-failure-context\n⋯ Edit · src/parse.js\n⋯ Search · parseCount\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 8,
+      "durationMs": 29277,
+      "usage": {
+        "prompt_tokens": 14828,
+        "completion_tokens": 205,
+        "total_tokens": 15033
+      },
+      "toolCallCount": 7,
+      "toolNames": [
+        "code_search",
+        "run_command",
+        "read_file",
+        "search_replace",
+        "Search",
+        "Bash",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "test.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[],\"semantic\":[{\"relPath\":\"test.js\",\"line\":1,\"endLine\":2,\"text\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\",\"snippet\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\\n\",\"score\":8.728}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "run_command",
+          "detail": "node test.js",
+          "ok": false,
+          "failedArguments": "{\"command\":\"node test.js\"}",
+          "exitCode": 1,
+          "output": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e11-jQcDMY/workspace/test.js:1:128\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: 12,\n  expected: 0,\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n\nNode.js v24.21.0\n"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "test.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/parse.js",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_command",
+          "detail": "node test.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "（无输出）"
+        },
+        {
+          "tool": "code_search",
+          "detail": "parseCount",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./src/parse.js\",\"line\":1,\"text\":\"export function parseCount(value) { const parsed = Number(value); return Number.isSafeInteger(parsed) ? parsed : 0 }\"},{\"relPath\":\"./test.js\",\"line\":1,\"text\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\"}],\"semantic\":[{\"relPath\":\"src/parse.js\",\"line\":1,\"endLine\":2,\"text\":\"export function parseCount(value) { const parsed = Number(value); return Number.isSafeInteger(parsed) ? parsed : 0 }\",\"snippet\":\"export function parseCount(value) { const parsed = Number(value); return Number.isSafeInteger(parsed) ? parsed : 0 }\\n\",\"score\":8.4324},{\"relPath\":\"test.js\",\"line\":1,\"endLine\":2,\"text\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\",\"snippet\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\\n\",\"score\":7.9095}],\"graphFiles\":[]}"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/parse.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "src/parse.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        },
+        {
+          "type": "fileUnchanged",
+          "ok": true,
+          "detail": "test.js"
+        }
+      ]
+    },
+    {
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "⋯ Search · test.js\n⋯ Bash · node test.js\n⋯ Read · auto-failure-context\n⋯ Edit · 1 edits\n⋯ Search · parseCount\n⋯ Edit · src/parse.js\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 8,
+      "durationMs": 28790,
+      "usage": {
+        "prompt_tokens": 14302,
+        "completion_tokens": 216,
+        "total_tokens": 14518
+      },
+      "toolCallCount": 7,
+      "toolNames": [
+        "code_search",
+        "run_command",
+        "read_file",
+        "multi_edit",
+        "Search",
+        "Bash",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "test.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[],\"semantic\":[{\"relPath\":\"test.js\",\"line\":1,\"endLine\":2,\"text\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\",\"snippet\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\\n\",\"score\":8.728}],\"graphFiles\":[]}"
+        },
+        {
+          "tool": "run_command",
+          "detail": "node test.js",
+          "ok": false,
+          "failedArguments": "{\"command\":\"node test.js\"}",
+          "exitCode": 1,
+          "output": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e11-SKhDuw/workspace/test.js:1:128\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: 12,\n  expected: 0,\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n\nNode.js v24.21.0\n"
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "test.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "auto-failure-context",
+          "path": "src/parse.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "1 edits",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_command",
+          "detail": "node test.js",
+          "ok": true,
+          "exitCode": 0,
+          "output": "（无输出）"
+        },
+        {
+          "tool": "code_search",
+          "detail": "parseCount",
+          "ok": true,
+          "exitCode": 0,
+          "output": "{\"ripgrep\":[{\"relPath\":\"./src/parse.js\",\"line\":1,\"text\":\"export function parseCount(value) { const parsed = Number(value); return Number.isSafeInteger(parsed) ? parsed : 0 }\"},{\"relPath\":\"./test.js\",\"line\":1,\"text\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\"}],\"semantic\":[{\"relPath\":\"src/parse.js\",\"line\":1,\"endLine\":2,\"text\":\"export function parseCount(value) { const parsed = Number(value); return Number.isSafeInteger(parsed) ? parsed : 0 }\",\"snippet\":\"export function parseCount(value) { const parsed = Number(value); return Number.isSafeInteger(parsed) ? parsed : 0 }\\n\",\"score\":8.4324},{\"relPath\":\"test.js\",\"line\":1,\"endLine\":2,\"text\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\",\"snippet\":\"import assert from 'node:assert/strict'; import { parseCount } from './src/parse.js'; assert.equal(parseCount('0'), 0); assert.equal(parseCount('12x'), 0);\\n\",\"score\":7.9095}],\"graphFiles\":[]}"
+        }
+      ],
+      "editFailureCount": 0,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/parse.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "src/parse.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        },
+        {
+          "type": "fileUnchanged",
+          "ok": true,
+          "detail": "test.js"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "attempted": 3,
+      "passed": 3,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        33598,
+        29277,
+        28790
+      ],
+      "turns": [
+        11,
+        8,
+        8
+      ],
+      "promptTokens": [
+        23201,
+        14828,
+        14302
+      ],
+      "editFailures": 2,
+      "successRate": 1,
+      "avgDurationMs": 30555,
+      "avgTurns": 9,
+      "avgPromptTokens": 17444
+    }
+  ],
+  "finishedAt": "2026-11-16T00:20:58.255Z"
+}

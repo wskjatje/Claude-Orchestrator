@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-12T02:18:42.603Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "达到工具轮次上限时验证仍未通过；已恢复本轮修改的 1 个文件。（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 28,
+      "durationMs": 44159,
+      "toolCallCount": 5,
+      "toolNames": [
+        "code_search",
+        "search_replace",
+        "read_file",
+        "run_tests",
+        "Search",
+        "Edit",
+        "Read",
+        "Bash"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": false,
+          "exitCode": 1,
+          "output": "\n> test\n> node test.js\n\nnode:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ 'bonjour, Ada'\n- 'hello, Ada'\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eval-e02-WGX2GV/workspace/test.js:1:95\n    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)\n    at async node:internal/modules/esm/loader:647:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: 'bonjour, Ada',\n  expected: 'hello, Ada',\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n\nNode.js v24.21.0\n⠙"
+        }
+      ],
+      "editFailureCount": 2,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/greeting.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        44159
+      ],
+      "turns": [
+        28
+      ],
+      "editFailures": 2,
+      "successRate": 0,
+      "avgDurationMs": 44159,
+      "avgTurns": 28
+    }
+  ],
+  "finishedAt": "2026-11-12T02:19:26.845Z"
+}

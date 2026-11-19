@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-14T05:26:56.499Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "⋯ Search · src/legacy/format.js\n⋯ Move · src/legacy/format.js → src/shared/format.js\n⋯ Diagnostics · auto-static-fallback\n⋯ Bash · auto\n⋯ Search · import formatDate from '../legacy/format.js'\n⋯ Edit · src/pages/home.js\n⋯ Edit · src/jobs/daily.js\n⋯ Edit · src/legacy/format.js\n⋯ Edit · src/shared/format.js\n\n（已调用工具：read_file）",
+      "error": null,
+      "turns": 8,
+      "durationMs": 24406,
+      "toolCallCount": 9,
+      "toolNames": [
+        "code_search",
+        "move_file",
+        "get_diagnostics",
+        "run_tests",
+        "search_replace",
+        "Search",
+        "Move",
+        "Bash",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "src/legacy/format.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "move_file",
+          "detail": "src/legacy/format.js → src/shared/format.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "get_diagnostics",
+          "detail": "auto-static-fallback",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "未探测到项目测试命令；已完成本事务变更文件的静态诊断，未发现问题。"
+        },
+        {
+          "tool": "code_search",
+          "detail": "import formatDate from '../legacy/format.js'",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/pages/home.js",
+          "path": "src/pages/home.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "get_diagnostics",
+          "detail": "auto-static-fallback",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "run_tests",
+          "detail": "auto",
+          "ok": true,
+          "exitCode": 0,
+          "output": "未探测到项目测试命令；已完成本事务变更文件的静态诊断，未发现问题。"
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/jobs/daily.js",
+          "path": "src/jobs/daily.js",
+          "ok": false,
+          "failedArguments": "{\"path\":\"src/jobs/daily.js\",\"before\":\"import   formatDate   from '../legacy/format.js'; export const shown = formatDate('2020-01-02');\\n\",\"after\":\"import   formatDate   from '../shared/format.js'; export const shown = formatDate('2020-01-02');\\n\",\"strategy\":\"exact\"}",
+          "exitCode": 1,
+          "output": "工具「search_replace」参数无效：缺少必填参数「old_string」。"
+        }
+      ],
+      "editFailureCount": 2,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [
+        "src/legacy/format.js",
+        "src/shared/format.js",
+        "src/pages/home.js"
+      ],
+      "assertions": [
+        {
+          "type": "fileExists",
+          "ok": true,
+          "detail": "src/shared/format.js"
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceContains",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        24406
+      ],
+      "turns": [
+        8
+      ],
+      "editFailures": 2,
+      "successRate": 0,
+      "avgDurationMs": 24406,
+      "avgTurns": 8
+    }
+  ],
+  "finishedAt": "2026-11-14T05:27:20.958Z"
+}

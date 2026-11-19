@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { PROJECT_ROOT } from './paths.mjs'
@@ -458,142 +459,18 @@ export async function getWorkbenchGitStatus() {
   }
 }
 
-export async function pullClaudeCodeFromGithub(opts = {}) {
-  const settings = loadChatSettings()
-  const upstreamUrl =
-    (opts.upstreamGithubRepo || settings.upstreamGithubRepo || DEFAULT_UPSTREAM_REPO).trim()
-  const ensure = await ensureUpstreamRemote(upstreamUrl)
-  if (!ensure.ok) return { ok: false, error: ensure.error, combined: ensure.error }
-
-  const branch = await currentBranch()
-  const fetch = await runGit(['fetch', 'upstream'])
-  if (!fetch.ok) return { ok: false, error: fetch.combined || fetch.error, combined: fetch.combined }
-
-  const upstreamRef = await resolveUpstreamRef(branch)
-  if (!upstreamRef) {
-    return {
-      ok: false,
-      error: '未找到 upstream 分支（尝试过 upstream/' + branch + ' 与 upstream/main）',
-      combined: fetch.combined,
-    }
-  }
-
-  const manifest = loadUpstreamSyncManifest()
-  const targets = [...manifest.syncPaths, ...manifest.syncFiles]
-  const syncedPaths = []
-  const failedPaths = []
-
-  for (const target of targets) {
-    const checkout = await runGit(['checkout', upstreamRef, '--', target])
-    if (checkout.ok) {
-      syncedPaths.push(target)
-    } else {
-      failedPaths.push({
-        path: target,
-        error: (checkout.combined || checkout.error || 'checkout 失败').trim().slice(0, 500),
-      })
-    }
-  }
-
-  const head = await runGit(['log', '-1', '--oneline', upstreamRef])
-  const lines = [
-    `已从 ${upstreamRef} 同步官方逻辑（workbench 配置、server/web、.claudecode 未修改）：`,
-    ...syncedPaths.map((p) => `  ✓ ${p}`),
-  ]
-  if (failedPaths.length) {
-    lines.push('', '以下路径未能同步（可能 upstream 已移除）：')
-    for (const f of failedPaths) {
-      lines.push(`  ✗ ${f.path}${f.error ? ` — ${f.error.split('\n')[0]}` : ''}`)
-    }
-  }
-  if (head.stdout.trim()) lines.push('', `upstream @ ${head.stdout.trim()}`)
-
-  if (!syncedPaths.length) {
-    return {
-      ok: false,
-      pathScoped: true,
-      branch,
-      upstreamRef,
-      syncedPaths,
-      failedPaths,
-      error: '未能同步任何官方路径，请检查网络与 upstream 仓库结构。',
-      combined: lines.join('\n'),
-      upstreamUrl: ensure.url || upstreamUrl,
-    }
-  }
-
-  const rev = await runGit(['rev-parse', upstreamRef])
-  if (rev.ok && rev.stdout.trim()) {
-    saveChatSettings({ lastUpstreamSyncSha: rev.stdout.trim() })
-  }
-
+export async function pullClaudeCodeFromGithub(_opts = {}) {
   return {
-    ok: true,
-    pathScoped: true,
-    branch,
-    upstreamRef,
-    syncedPaths,
-    failedPaths,
-    headLine: head.stdout.trim(),
-    upstreamUrl: ensure.url || upstreamUrl,
-    combined: lines.join('\n'),
+    ok: false,
+    error: '已移除官方仓同步。不会 fetch/checkout anthropics/claude-code。能力更新请用个人仓库。',
   }
 }
 
-export async function checkUpstreamUpdates(opts = {}) {
-  const settings = loadChatSettings()
-  const upstreamUrl =
-    (opts.upstreamGithubRepo || settings.upstreamGithubRepo || DEFAULT_UPSTREAM_REPO).trim()
-  const ensure = await ensureUpstreamRemote(upstreamUrl)
-  if (!ensure.ok) return { ok: false, error: ensure.error }
-
-  const fetch = await runGit(['fetch', 'upstream'], { timeout: 300_000 })
-  if (!fetch.ok) {
-    return {
-      ok: false,
-      error: fetch.combined || fetch.error || '无法连接官方 GitHub 仓库',
-    }
-  }
-
-  const branch = await currentBranch()
-  const upstreamRef = await resolveUpstreamRef(branch)
-  if (!upstreamRef) {
-    return { ok: false, error: `未找到 upstream 分支（尝试过 upstream/${branch} 与 upstream/main）` }
-  }
-
-  const rev = await runGit(['rev-parse', upstreamRef])
-  if (!rev.ok) return { ok: false, error: rev.combined || rev.error }
-  const upstreamSha = rev.stdout.trim()
-
-  const head = await runGit(['log', '-1', '--oneline', upstreamRef])
-  const headLine = head.stdout.trim()
-
-  const lastSha = String(settings.lastUpstreamSyncSha || '').trim()
-  let hasUpdates = !lastSha || lastSha !== upstreamSha
-
-  if (!lastSha) {
-    const manifest = loadUpstreamSyncManifest()
-    const targets = [...manifest.syncPaths, ...manifest.syncFiles]
-    hasUpdates = false
-    for (const target of targets) {
-      const diff = await runGit(['diff', '--quiet', upstreamRef, '--', target])
-      if (!diff.ok && !/fatal:/i.test(diff.combined || diff.error || '')) {
-        hasUpdates = true
-        break
-      }
-    }
-  }
-
+export async function checkUpstreamUpdates(_opts = {}) {
   return {
-    ok: true,
-    hasUpdates,
-    upstreamRef,
-    upstreamSha,
-    headLine,
-    lastSyncSha: lastSha || null,
-    message: hasUpdates
-      ? '官方 Claude Code 有新版本，可点击「同步官方插件与逻辑」。'
-      : '官方同步范围内已与 upstream 最新一致。',
+    ok: false,
+    hasUpdates: false,
+    error: '已移除官方仓同步。不会检测 anthropics/claude-code。',
   }
 }
 
@@ -604,64 +481,66 @@ export async function pullFromPersonalGithub(opts = {}) {
     return { ok: false, error: '请先填写个人 GitHub 仓库地址' }
   }
 
-  const personalRoot = resolvePersonalRoot()
-
-  const ensure = await ensurePersonalOrigin(personalUrl, personalRoot)
-  if (!ensure.ok) return { ok: false, error: ensure.error, combined: ensure.error }
-
-  const identity = await ensureGitIdentity(settings, personalRoot)
-  if (!identity.ok) return { ok: false, error: identity.error, combined: identity.error }
-
-  const history = await ensureFullHistoryFromRemote('origin', { remoteUrl: personalUrl, cwd: personalRoot })
-  if (!history.ok) {
-    return { ok: false, error: history.error, combined: history.combined }
-  }
-
-  const branch = await currentBranch(personalRoot)
-  const fetch = await runGit(['fetch', 'origin'], { cwd: personalRoot, timeout: 600_000 })
-  if (!fetch.ok) return { ok: false, error: fetch.combined || fetch.error, combined: fetch.combined }
-
-  const originRef = await resolveOriginRef(branch, personalRoot)
-  if (!originRef) {
-    return {
-      ok: false,
-      error: `未找到 origin 分支（尝试过 origin/${branch} 与 origin/main）`,
-      combined: fetch.combined,
+  // 安全路径：浅克隆到临时目录再 import，禁止对当前工作区 reset --hard / clean -fd
+  const tmpParent = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-orchestrator-pull-'))
+  const tmpRoot = path.join(tmpParent, 'repo')
+  try {
+    const clone = await runGit(
+      ['clone', '--depth', '1', personalUrl, tmpRoot],
+      { cwd: tmpParent, timeout: 600_000 },
+    )
+    if (!clone.ok) {
+      return {
+        ok: false,
+        error: clone.combined || clone.error || '克隆个人仓库失败',
+        combined: clone.combined,
+      }
     }
-  }
 
-  const reset = await runGit(['reset', '--hard', originRef], { cwd: personalRoot })
-  if (!reset.ok) {
-    return {
-      ok: false,
-      error: reset.combined || reset.error || '重置本地分支失败',
-      combined: reset.combined,
+    const head = await runGit(['log', '-1', '--oneline'], { cwd: tmpRoot })
+    const branch = await currentBranch(tmpRoot)
+    const deployed = importPersonalGithubArtifacts({ personalRoot: tmpRoot })
+    if (!deployed.ok) {
+      return {
+        ok: false,
+        error: deployed.error || '部署到本地失败',
+        combined: [
+          `已浅克隆 ${personalUrl}（未改动当前工作区）`,
+          head.stdout.trim() ? `HEAD @ ${head.stdout.trim()}` : '',
+          `部署失败：${deployed.error || '未知错误'}`,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        deployed,
+      }
     }
-  }
 
-  const clean = await runGit(['clean', '-fd'], { cwd: personalRoot })
-  const head = await runGit(['log', '-1', '--oneline'], { cwd: personalRoot })
-  const deployed = importPersonalGithubArtifacts({ personalRoot })
-  const lines = [
-    `已从个人仓库 ${originRef} 拉取并强制覆盖本地（直接覆盖，忽略本地变更）：`,
-    history.unshallowed ? history.combined : '',
-    reset.combined?.trim() || 'Reset successful',
-    clean.combined?.trim() || '',
-    deployed.ok
-      ? `已部署到本地：${deployed.summary}`
-      : `部署到本地失败：${deployed.error || '未知错误'}`,
-    head.stdout.trim() ? `\n当前 @ ${head.stdout.trim()}` : '',
-  ].filter(Boolean).join('\n')
+    const lines = [
+      `已从个人仓库浅克隆并导入编排配置（未对当前工作区执行 reset/clean）：`,
+      `临时克隆：${tmpRoot}`,
+      head.stdout.trim() ? `HEAD @ ${head.stdout.trim()}` : '',
+      `已部署到本地：${deployed.summary}`,
+    ]
+      .filter(Boolean)
+      .join('\n')
 
-  return {
-    ok: true,
-    fullSync: true,
-    branch,
-    originRef,
-    headLine: head.stdout.trim(),
-    personalUrl: ensure.url,
-    deployed,
-    combined: lines,
+    return {
+      ok: true,
+      fullSync: false,
+      safeImport: true,
+      branch,
+      headLine: head.stdout.trim(),
+      personalUrl,
+      cloneDir: tmpRoot,
+      deployed,
+      combined: lines,
+    }
+  } finally {
+    try {
+      fs.rmSync(tmpParent, { recursive: true, force: true })
+    } catch {
+      /* 临时目录清理失败不阻断主结果 */
+    }
   }
 }
 

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Claude Orchestrator 整体功能测试与优化报告 · 2026-11-05</title>
+<style>
+  :root { --ink:#1f2328; --muted:#57606a; --line:#d8dee4; --bg:#ffffff; --soft:#f6f8fa;
+          --red:#cf222e; --green:#1a7f37; --amber:#9a6700; --blue:#0969da; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         color: var(--ink); background: var(--bg); margin: 0; padding: 40px 24px 80px; line-height: 1.65; }
+  main { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 26px; border-bottom: 2px solid var(--line); padding-bottom: 12px; }
+  h2 { font-size: 20px; margin-top: 44px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  h3 { font-size: 16px; margin-top: 28px; }
+  code, pre { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; }
+  code { background: var(--soft); border-radius: 4px; padding: 1px 5px; }
+  pre { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0 22px; font-size: 13.5px; }
+  th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); font-weight: 600; }
+  .tag { display:inline-block; border-radius: 20px; padding: 1px 10px; font-size: 12px; font-weight:600; margin-right:6px; }
+  .p0 { background:#ffebe9; color:var(--red); } .p1 { background:#fff8c5; color:var(--amber); }
+  .p2 { background:#ddf4ff; color:var(--blue); } .ok { color:var(--green); font-weight:600; }
+  .bad { color:var(--red); font-weight:600; } .warn { color:var(--amber); font-weight:600; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:14px 18px; margin:16px 0; background:var(--soft); }
+  .muted { color: var(--muted); font-size: 13px; }
+  img.shot { max-width: 100%; border:1px solid var(--line); border-radius:10px; margin:10px 0; }
+  .toc a { color: var(--blue); text-decoration: none; }
+  .toc li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Claude Orchestrator · 整体功能测试与优化报告</h1>
+<p class="muted">测试时间：2026-11-05 16:00–16:40 · 测试对象：本仓库（桌面端已运行实例 + Bridge 18790 / UI 5188）· 方式：项目门禁脚本 + RPC 接口实测 + 浏览器模拟真人操作 + 执行日志审计</p>
+
+<div class="toc">
+<b>目录</b>
+<ol>
+  <li><a href="#summary">结论摘要</a></li>
+  <li><a href="#gates">一、代码级测试（项目门禁）结果</a></li>
+  <li><a href="#functests">二、功能实测（模拟人）结果与问题</a></li>
+  <li><a href="#logs">三、执行日志分析：你提的三个问题的根因</a></li>
+  <li><a href="#fix">四、优化方案（按优先级）</a></li>
+  <li><a href="#cursor">五、与 Cursor IDE 的功能对比与差距清单</a></li>
+  <li><a href="#appendix">附录：复现命令</a></li>
+</ol>
+</div>
+
+<h2 id="summary">结论摘要</h2>
+<div class="card">
+<p>静态门禁（模型路由、回合策略、共享单源、web tsc、Cursor 视觉对齐等 <b>17 类脚本全部通过</b>），但<b>真实链路实测发现 4 个确证缺陷 + 2 个高危设计缺陷</b>，其中两个可以直接解释你提的三个问题：</p>
+<table>
+<tr><th>#</th><th>问题（实测确证）</th><th>严重级</th><th>对应你的反馈</th></tr>
+<tr><td>B1</td><td>本地流式输出合并算法<b>丢字符</b>：要求输出 30 个「的」，流式路径只返回 1 个；非流式/直连 Ollama 均正常（24–26 个）</td><td><span class="tag p0">P0</span></td><td>问题2「本地模型断断续续」</td></tr>
+<tr><td>B2</td><td>对话模型选择器在本地模式下<b>完全不显示云模型</b>（截图确证），云模型只能去设置页绕行</td><td><span class="tag p0">P0</span></td><td>问题3「无法在对话中选择云模型」</td></tr>
+<tr><td>B3</td><td>云模型永远走「纯文本直聊」：<code>buildPlainChatPrompt</code> 明确告知模型「你是普通聊天助手，没有实时工具」，<b>无工具环、无读文件、无 MCP</b>，写盘只靠 <code>```workspace-write```</code> 文本围栏</td><td><span class="tag p0">P0</span></td><td>问题1「云模型无法像 Cursor 一样工作」</td></tr>
+<tr><td>B4</td><td>只读意图（「读取X/告诉我X」）被强制直聊且<b>不下发任何只读工具</b>，实测模型凭空编造了不存在的 <code>package.json</code> 的 name=<code>my-project</code></td><td><span class="tag p0">P0</span></td><td>问题1/2 的「答非所问」体感</td></tr>
+<tr><td>B5</td><td>本地 Agent 工具环整体 <code>stream:false</code>，每轮 20–60s 黑屏等待、成段蹦字；配合 18–20GB 模型在 32GB 内存上跑，出现换页卡顿</td><td><span class="tag p1">P1</span></td><td>问题2「断断续续」</td></tr>
+<tr><td>B6</td><td><code>isClaudeCliModel</code> 命中（claude/sonnet/opus/haiku 开头）直接硬报错「已移除 Claude CLI」，而设置里 cloudModelCatalog 恰好编目了 sonnet/opus/haiku —— 选了必炸</td><td><span class="tag p1">P1</span></td><td>问题1/3</td></tr>
+</table>
+<p class="muted">另发现 5 个 P2 级问题（设置脏数据、num_predict 截断等），见第四节。</p>
+</div>
+
+<h2 id="gates">一、代码级测试（项目门禁）结果</h2>
+<table>
+<tr><th>门禁脚本</th><th>结果</th><th>说明</th></tr>
+<tr><td>check-model-route</td><td class="ok">PASSED（29 项断言）</td><td>手选 &gt; Agent frontmatter &gt; Auto 路由逻辑正确；禁止静默换通道的硬闸都在</td></tr>
+<tr><td>check-turn-policy</td><td class="ok">PASSED（29 项断言）</td><td>意图分类（write/readonly/chat）边界用例全部通过</td></tr>
+<tr><td>check-shared-parity</td><td class="ok">PASSED（13 项断言）</td><td>TS/MJS 双端单源一致；未安装模型硬闸在位</td></tr>
+<tr><td>check-web-tsc</td><td class="ok">PASSED</td><td>前端 TypeScript 0 错误</td></tr>
+<tr><td>check-cursor-parity-e2e</td><td class="ok">PASSED（40+ 项断言）</td><td>diff 样式、文件卡、字体 token 等 Cursor 视觉对齐通过</td></tr>
+<tr><td>check-ui-smoke / eslint-hot 等</td><td class="ok">PASSED</td><td>UI 契约冒烟通过</td></tr>
+</table>
+<p class="muted">结论：<b>「门禁全绿但真实体验坏」</b>——现有门禁几乎全是源码静态断言，没有覆盖「流式内容正确性」「云端工具环」「选择器可见性」这三类端到端行为，这正是本次实测抓到问题的地方。建议把下文 B1/B2/B3 做成回归用例补进 <code>scripts/check-*.mjs</code>。</p>
+
+<h2 id="functests">二、功能实测（模拟人）结果与问题</h2>
+
+<h3>2.1 用例总表</h3>
+<table>
+<tr><th>用例</th><th>操作（模拟人）</th><th>预期</th><th>实际</th><th>结论</th></tr>
+<tr><td>T1 UI 冒烟</td><td>浏览器打开 http://127.0.0.1:5188，检查工作台、聊天页、设置页</td><td>页面正常、无 JS 报错</td><td>渲染正常，0 个 pageerror/console error</td><td class="ok">通过</td></tr>
+<tr><td>T2 云模型直连</td><td>RPC <code>cloud-direct:prompt</code>（deepseek-flash，10 token 小请求）</td><td>正常返回</td><td class="ok">ok，0.9s，用量 10 token</td><td class="ok">通过</td></tr>
+<tr><td>T3 本地直聊（无流式）</td><td>RPC <code>local-orchestration:prompt</code>（qwen2.5-coder:14b，不带 requestId）</td><td>正常返回</td><td class="ok">ok，26 个「的」全量返回</td><td class="ok">通过</td></tr>
+<tr><td>T4 本地直聊（流式，即 UI 实际路径）</td><td>同上但带 requestId（触发流式）</td><td>内容完整</td><td class="bad">只返回 1 个「的」（要求 30 个）</td><td class="bad">缺陷 B1</td></tr>
+<tr><td>T5 Ollama 直连对照</td><td>绕过应用直 POST 127.0.0.1:11434/api/chat（stream:false）</td><td>—</td><td class="ok">24 个「的」，说明模型与 Ollama 本身正常，问题在应用层</td><td>对照证据</td></tr>
+<tr><td>T6 本地 Agent·读文件（只读意图）</td><td>RPC：Agent 模式问「读取当前工作区的 package.json，告诉我 name 字段」</td><td>调用 read_file 并回答真实值</td><td class="bad">0.8–2.5s 即返回，无任何工具调用，编造「my-project」（该工作区根本没有 package.json）</td><td class="bad">缺陷 B4</td></tr>
+<tr><td>T7 对话区选择云模型</td><td>点击聊天输入框左下角模型胶囊，查看下拉列表</td><td>云 + 本地模型都可选</td><td class="bad">只有 Auto(仅本地) + 4 个本地模型，<b>0 个云模型</b></td><td class="bad">缺陷 B2</td></tr>
+<tr><td>T8 云模型 Agent 能力（代码审查）</td><td>审 use-chat-send.ts 云分支 + cloud-direct.cjs</td><td>云模型应有工具环</td><td class="bad">云模型只发一段拼接的纯文本 prompt，系统提示明写「没有实时工具」</td><td class="bad">缺陷 B3</td></tr>
+</table>
+
+<h3>2.2 关键截图：对话区模型菜单无云模型</h3>
+<img class="shot" src="screenshot-model-menu-no-cloud.png" alt="模型菜单只有本地模型"/>
+<p class="muted">下拉里是 Auto（标注「仅本地」）、qwen2.5:32b、gemma4:26b、qwen2.5-coder:14b、gemma4:31b —— 设置里已启用且可调用的 deepseek-flash / deepseek-v4-pro 完全没有出现。</p>
+
+<h2 id="logs">三、执行日志分析：三个问题的根因</h2>
+
+<h3>3.1 日志概览</h3>
+<p>审计数据有两处：<code>.claudecode/logs/app.log</code>（968 行）与 <code>.claudecode/workbench.db → log_entries</code>（1702 条，全部 INFO，无 WARN/ERROR 落库——<b>告警级别缺失本身是个日志问题</b>，失败回合只记在 INFO 行的 err= 字段里）。日志中的通道字段 <code>ch=</code> 共 5 种：<code>direct / local / orch / cloud / cli</code>。</p>
+<table>
+<tr><th>统计（截至 2026-10-28）</th><th>数值</th></tr>
+<tr><td>[turn] 回合审计总数</td><td>约 90 回合；云通道仅 11 回合且全部是 direct/chat 或围栏写盘，<b>0 回合云工具环</b></td></tr>
+<tr><td>失败回合典型错误</td><td>① <code>Ollama HTTP 400 "Value looks like object, but can't find closing '}'"</code>（gemma4:26b / qwen2.5:32b 带 tools，共 7 次）② <code>qwen2.5-coder:latest not found (404)</code> ③ 语言不一致拒发 ④ workspace-write 围栏解析失败</td></tr>
+<tr><td>耗时分布</td><td>本地直聊 1.4s–224s；本地工具环 17s–166s；云直聊 0.9s–20s</td></tr>
+</table>
+
+<h3>3.2 问题1：使用云模型后，无法像 Cursor 一样正常工作</h3>
+<p><b>根因链（代码确证）：</b></p>
+<ol>
+<li><code>web/src/hooks/use-chat-send.ts</code> 云分支：非 Claude 系云模型一律 <code>cloudDirectPrompt</code> → <code>buildPlainChatPrompt()</code> 把多轮历史压成「用户：…/助手：…」的纯文本，并注入提示 <b>「你是普通聊天助手，没有实时工具」</b>（chat-send-helpers.ts:344）。<b>没有 tools、没有 read_file/code_search、没有 MCP、没有流式工具事件</b>。</li>
+<li>写盘只能靠提示词要求模型输出 <code>```workspace-write```</code> JSON 围栏，再由前端正则解析落盘。日志里 <code>parsed=4 applied=4</code> 的云回合都是这个机制——脆弱（日志中已有 3 次「围栏无法解析」失败），且无法做「先探索再改」的 Cursor 式流程。</li>
+<li>读文件只有一个补救 hack：<code>preReadInstructedWorkspaceFiles()</code> 预读用户消息里点名的文件拼进 prompt。没点名的文件、路径写错、文件过大 → 模型只能猜（T6 同款风险）。</li>
+<li>讽刺的是：<b>带完整工具环的 <code>server/host-agent-loop.mjs</code> 本来就支持云后端</b>（OpenAI 兼容 tools，含 code_search/read_file/write_file/run_tests 等 8 个工具），但它只在 <code>local-mcp</code> 模式被调用。云模型被硬编码排除在自己的工具环之外。</li>
+<li><code>isClaudeCliModel()</code>（sonnet/opus/haiku/claude-*）直接返回「已移除 Claude CLI」硬错误 → Anthropic 系模型即使配置了也 100% 不可用，而设置页还在把它们编目进 cloudModelCatalog。</li>
+</ol>
+
+<h3>3.3 问题2：使用本地模型时总是断断续续</h3>
+<p>四个叠加根因，按影响排序：</p>
+<ol>
+<li><b>流式合并丢字符（P0，实测复现）</b>：<code>server/vendor/cad/local-mcp-orchestrator.js → ollamaChatStream()</code> 里有一段启发式去重：
+<pre>let piece = delta
+if (content && delta.startsWith(content)) piece = delta.slice(content.length)
+else if (content && content.endsWith(delta)) piece = ''   // ← 重复 token 被整块丢弃</pre>
+Ollama 流式返回的是<b>增量</b> token，不是累积文本。当新 delta 恰好是已累积内容的尾部重复（如连续两个「的」、连续换行、代码中的重复缩进），整段被丢弃——且 <code>content</code> 同时是最终落库文本，<b>丢失是永久的</b>。这就是「断断续续/文字缺块」的直接来源。</li>
+<li><b>Agent 工具环整体非流式</b>：本地工具环每轮 <code>stream:false</code>（local-mcp-orchestrator.js:2862），thought 一轮结束才整体 emit 一次；每轮间隔 20–60s，UI 只能成段蹦字、长时间无响应。</li>
+<li><b>硬件压力</b>：32GB M1 Max 上启用的是 18–20GB 的 32B 级模型（qwen2.5:32b 19.9GB、gemma4:31b 19.4GB），叠加 Electron + 常驻 8–10 个 MCP 服务器，必然换页；日志里本地回合 224s、166s 的极端值与此吻合。<code>ollama ps</code> 显示模型平时不常驻，每轮冷加载再叠加。</li>
+<li><b>生成预算</b>：工具环 <code>num_predict: 4096</code>、未设 <code>num_ctx</code>（回落模型默认 8k/32k），长回复被截断后进入「补写→再补写」的循环，观感也是卡顿/断续。日志中多次 400「closing '}'」就是 gemma/qwen2.5 系模型在带 tools 请求上的已知脆弱性，失败重试进一步拉长等待。</li>
+</ol>
+
+<h3>3.4 问题3：无法在对话中选择云模型</h3>
+<ol>
+<li><b>直接原因（UI 确证）</b>：<code>web/src/components/chat-model-selector.tsx:47</code>
+<pre>const listCloud = orchMode === "local-mcp" ? [] : cloudModels;</pre>
+当前设置 <code>orchestrationMode: "local-mcp"</code>（读取自 workbench.db chat_settings KV），云列表被整体置空。</li>
+<li><b>死循环设计</b>：设置页「运行模式」卡片的说明文字是「聊天页切换」，但聊天页唯一能切运行模式的入口是「选中一个云模型」（handleModelPick 里选中云模型才会把 orchestrationMode 写回 claude-code）——而云模型恰恰被隐藏了。用户被锁死在本地模式。</li>
+<li><b>Auto 也被绑架</b>：Auto 的 hint 直接显示「仅本地」；Auto 在写盘意图下其实会路由到云（routeHint=prefer-cloud），但 UI 不让手选，行为与提示互相矛盾。</li>
+<li>次要脏数据：cloudModelCatalog 中混入了 <code>auto</code>、<code>sonnet/opus/haiku</code>（claude-code:listModels 回退时把别名写进了目录），这些条目即使显示出来也不能正常用（见 B6）。</li>
+</ol>
+
+<h2 id="fix">四、优化方案（按优先级）</h2>
+
+<h3>P0-1 修复流式丢字（B1，一处小改，立竿见影）</h3>
+<p>文件：<code>server/vendor/cad/local-mcp-orchestrator.js → ollamaChatStream()</code>。Ollama NDJSON 本来就是增量，直接累加即可，删除全部启发式：</p>
+<pre>res.on('data') → onJsonLine(j) 内：
+  const piece = j?.message?.content ?? ''
+  if (piece) { content += piece; onDelta(piece) }
+// 终包：last.message?.content 若非空且不同于 content，以流式累积为准（或取二者较长者）</pre>
+<p>同步补一条回归门禁：mock NDJSON 流（含连续重复 token），断言拼接结果无损。</p>
+
+<h3>P0-2 云模型接入现成工具环（B3，对齐 Cursor 的关键一步）</h3>
+<p>不需要新写后端——<code>host-agent-loop.mjs</code> 已支持 OpenAI 兼容云后端 + 8 个工具。改法：</p>
+<ol>
+<li><code>use-chat-send.ts</code> 云分支：当 <code>turnPolicy.allowTools</code> 且非直聊时，改调 <code>host-agent:prompt</code>（后端已有 RPC，前端类型也已声明，只是从未使用），把 <code>model</code> 传给 <code>resolveChatBackend</code> 走云；纯问答/Ask 仍走 cloud-direct。</li>
+<li>host-agent-loop 云后端加流式：OpenAI <code>stream:true</code> + 增量解析 <code>tool_calls</code>（delta 拼接），thought 逐段 emit 到 <code>message_delta</code>。</li>
+<li><code>```workspace-write```</code> 围栏保留为「模型不支持 tools 时的降级」，不再作为默认路径。</li>
+<li>验收标准：云模型在 Agent 模式能完成「搜索→读文件→改文件→跑测试」一轮闭环，日志出现 <code>ch=cloud</code> 且 toolTrace 非空。</li>
+</ol>
+
+<h3>P0-3 对话区永远显示云模型（B2）</h3>
+<pre>// chat-model-selector.tsx
+const listCloud = cloudModels;            // 删除 orchMode 三元
+const listLocal = localModels;</pre>
+<ul>
+<li>选中云模型时沿用现有 handleModelPick 逻辑（写 orchestrationMode=claude-code）；选中本地模型同理写 local-mcp，让「选模型」本身就是「切通道」，与设置页「聊天页切换」的文案自洽。</li>
+<li>Auto 的 hint 改为「改码偏云 / 问答偏本地」，与实际路由一致。</li>
+<li>顺手清洗 catalog：从 cloudModelCatalog 移除 <code>auto</code>；sonnet/opus/haiku 别名不再落库（见 P1-2）。</li>
+</ul>
+
+<h3>P0-4 只读回合下发只读工具（B4，消灭编造）</h3>
+<ul>
+<li>turn-policy 增加一档：<code>intent === 'readonly'</code> 且 Agent/Plan 模式时 <code>allowTools = true</code>，但工具白名单只含 <code>code_search / read_file / get_diagnostics / git_status</code>（禁 write/run_tests）。local-mcp-orchestrator 相应支持「只读工具子集」参数。</li>
+<li>兜底：直聊路径当模型回答中出现具体文件内容断言但本轮未注入该文件内容时，前端展示「未读盘，回答可能无依据」水印（现有 audit 机制可复用）。</li>
+</ul>
+
+<h3>P1-1 本地工具环流式化 + 生成预算</h3>
+<ul>
+<li>工具环 <code>/api/chat</code> 改 <code>stream:true</code>（Ollama ≥0.3 支持 tools+stream），边流边累积 thought/tool_calls；若模型流式 tools 不稳，则退而求其次：每轮开始先 emit「第 N 轮 · 正在调用 X…」，消除长黑屏。</li>
+<li><code>num_ctx</code> 从模型能力缓存（modelsCapabilities 已有 contextLength）注入；<code>num_predict</code> 提到 8192 或按模型配置；请求体加 <code>keep_alive: "30m"</code> 避免每轮冷加载。</li>
+<li>UI 增加内存适配提示：启用 ≥16GB 模型时提示「32GB 内存机型建议 Agent 用 14B 级模型」。</li>
+</ul>
+
+<h3>P1-2 处理 Anthropic 系模型的死路（B6）</h3>
+<p>三选一：① 实现 Anthropic Messages API 的 cloud-direct + tools（工作量最大，收益是与 Claude Code 对齐）；② 供应商里接一个 OpenAI 兼容的 Anthropic 网关（如已有 cc-switch 链路）；③ 短期至少在模型目录/选择器中隐藏 sonnet/opus/haiku 别名或标注「未接通」，不再编目、不再可选中，避免选中即报错。</p>
+
+<h3>P1-3 日志分级修正</h3>
+<p><code>logsAppend</code> 前端固定传 level:"INFO"；失败回合（ok=false）应记 WARN/ERROR。改 <code>appendTurnAudit</code>：ok=false → level "WARN"，err 非空 → "ERROR"。这样 log_entries 的分级统计才有意义。</p>
+
+<h3>P2 其他</h3>
+<ul>
+<li><code>settings.localOllamaModel</code> 残留未安装标签 <code>qwen2.5-coder:latest</code>（日志 404 来源）。保存设置时校验 tags，或启动时静默迁移到已安装最近似标签。</li>
+<li><code>resolveModelForExecution</code> 在 TS/MJS 双份实现，靠 check-shared-parity 文本比对维系——建议编译期单源（shared 目录 → 双端 tsc 产物）。</li>
+<li>云直聊请求不含真实 system role（历史拼成文本），接通工具环后应改为 messages 数组结构，减少 token 与指令漂移。</li>
+<li>当前工作区指向 ComfyUI：测试「本仓库功能」时注意先切工作区，避免把别项目上下文注入对话。</li>
+</ul>
+
+<h2 id="cursor">五、与 Cursor IDE 的功能对比与差距清单</h2>
+<table>
+<tr><th>能力</th><th>Cursor</th><th>本项目现状</th><th>差距结论</th></tr>
+<tr><td>对话模式 Ask/Plan/Agent</td><td>有</td><td>有（Ask/Plan/Agent，turn-policy 单源）</td><td class="ok">持平</td></tr>
+<tr><td>Agent 工具环（读/搜/写/跑命令/测试）</td><td>全模型可用</td><td>本地模型可用；<b>云模型被排除（B3）</b></td><td class="bad">最大差距，P0-2 解决</td></tr>
+<tr><td>模型任意切换（不绑执行模式）</td><td>任意</td><td>绑定 orchestrationMode，本地模式隐藏云模型（B2）</td><td class="bad">P0-3 解决</td></tr>
+<tr><td>流式输出完整性</td><td>稳定</td><td>本地流式丢字（B1）</td><td class="bad">P0-1 解决</td></tr>
+<tr><td>Diff 预览 / Accept / 逐文件回滚</td><td>有</td><td>有（CursorDiff 行样式已对齐，文件卡 + Review）</td><td class="ok">持平</td></tr>
+<tr><td>@codebase / @文件 / @git / @problems 上下文注入</td><td>有</td><td>有（expandUserLineWithWorkspaceFiles 等）</td><td class="ok">持平</td></tr>
+<tr><td>Tab 补全 / Ghost Text</td><td>有（自研 FIM）</td><td>有（codemirror-ghost-text + tab-complete），质量取决于本地模型</td><td class="warn">机制有，效果弱于 Cursor 专训模型</td></tr>
+<tr><td>终端集成 / 运行命令</td><td>有</td><td>有（node-pty + 终端回显 + Add to Chat）</td><td class="ok">持平</td></tr>
+<tr><td>MCP</td><td>有</td><td>有（健康检查 + 通道闸）</td><td class="ok">持平</td></tr>
+<tr><td>内嵌浏览器预览 / DOM 附带</td><td>无此内置</td><td><b>强于 Cursor</b>（embedded-browser + DOM 附带）</td><td class="ok">优势</td></tr>
+<tr><td>多 Agent 编排 / 任务链 / 定时任务</td><td>无（Background Agent 部分覆盖）</td><td><b>强于 Cursor</b>（chains / scheduler / agents）</td><td class="ok">优势</td></tr>
+<tr><td>Rules（项目规则注入）</td><td>.cursor/rules</td><td>有 project-rules + 工作区注入</td><td class="ok">持平</td></tr>
+<tr><td>Checkpoint / 一键回滚整个会话改动</td><td>有</td><td>有 stashWorkspaceWriteCheckpoint / chat-checkpoint-prefs，粒度到文件</td><td class="warn">基本持平，缺会话级快照 UI</td></tr>
+<tr><td>BugBot / 自动代码评审</td><td>有</td><td>无对应物（可用任务链+Agent 拼装）</td><td class="warn">P2 可用任务链模板补齐</td></tr>
+<tr><td>后台 Agent（云端托管执行）</td><td>有</td><td>无（全部本机执行）</td><td class="warn">架构差异，短期不追</td></tr>
+</table>
+
+<h2 id="appendix">附录：复现命令</h2>
+<pre># 流式丢字（B1）：带 requestId=流式 → 丢字；去掉 requestId → 正常
+curl -s -X POST http://127.0.0.1:18790/rpc -H 'Content-Type: application/json' \
+  -d '{"channel":"local-orchestration:prompt","args":[{"userLine":"请只输出30个连续的汉字「的」，不要空格、不要标点、不要任何其他内容。","languageSourceLine":"请只输出30个连续的汉字「的」","priorMessages":[],"orchestratorModel":"qwen2.5-coder:14b","requestId":"test-dup-1","agentBasenameOverride":"__general__","interactionMode":"ask","allowWrites":false,"autoApplyWrites":false,"forceDirectChat":true,"readOnlyTurn":true}]}'
+
+# Ollama 直连对照（正常返回 ~24 个「的」）
+curl -s http://127.0.0.1:11434/api/chat -H 'Content-Type: application/json' \
+  -d '{"model":"qwen2.5-coder:14b","stream":false,"think":false,"messages":[{"role":"user","content":"请只输出30个连续的汉字「的」，不要空格、不要标点、不要任何其他内容。"}]}'
+
+# 云模型可用性（当前供应商配置可正常调用）
+curl -s -X POST http://127.0.0.1:18790/rpc -H 'Content-Type: application/json' \
+  -d '{"channel":"cloud-direct:prompt","args":[{"prompt":"只回复两个字：收到","model":"deepseek-flash","timeoutMs":60000}]}'
+
+# 只读意图无工具 → 编造（B4）
+curl -s -X POST http://127.0.0.1:18790/rpc -H 'Content-Type: application/json' \
+  -d '{"channel":"local-orchestration:prompt","args":[{"userLine":"读取当前工作区的 package.json，只告诉我 name 字段的值，不要做别的。","languageSourceLine":"读取当前工作区的 package.json","priorMessages":[],"orchestratorModel":"qwen2.5-coder:14b","requestId":"t","agentBasenameOverride":"__general__","interactionMode":"agent","allowWrites":true,"autoApplyWrites":true}]}'
+
+# 模型池与运行模式（chat.pools 有云模型，但 orchestrationMode=local-mcp）
+curl -s -X POST http://127.0.0.1:18790/rpc -H 'Content-Type: application/json' -d '{"channel":"cloud-providers:getModelPools","args":[]}'
+curl -s -X POST http://127.0.0.1:18790/rpc -H 'Content-Type: application/json' -d '{"channel":"chat-settings:get","args":[]}'</pre>
+
+<p class="muted" style="margin-top:40px">报告生成：WorkBuddy · 2026-11-05 · 测试均通过本机已运行实例执行，未修改任何项目文件与设置。</p>
+</main>
+</body>
+</html>

@@ -464,7 +464,8 @@ export async function ingestWorkspaceWritesDetailed(
       (res as { patches?: unknown })?.patches,
     );
     for (const p of patches) {
-      if (p.before !== undefined) stashWorkspaceWriteCheckpoint(p.path, p.before);
+      const checkpoint = p.checkpointBefore ?? p.before;
+      if (checkpoint !== undefined) stashWorkspaceWriteCheckpoint(p.path, checkpoint);
     }
     const failedFromApi = Array.isArray(res?.errors)
       ? res.errors.map((e) => String(e)).filter(Boolean)

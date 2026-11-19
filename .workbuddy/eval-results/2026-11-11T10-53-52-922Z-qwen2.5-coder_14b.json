@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 4,
+  "startedAt": "2026-11-11T10:53:52.922Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "local-mcp"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "local-mcp",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "根据当前工作区结构，`src/greeting.js` 文件存在。我将读取该文件内容，确认默认问候语的位置，然后进行替换。接着，我将读取测试文件并同步更新测试用例。最后，我将运行项目测试。\n\nAction: \n1. 读取 `src/greeting.js` 文件内容。\n2. 查找并替换默认问候语。\n3. 读取测试文件内容。\n4. 更新测试用例。\n5. 运行项目测试。\n\n```json\n{\n  \"name\": \"read_file\",\n  \"arguments\": {\n    \"path\": \"src/greeting.js\"\n  }\n}\n```",
+      "error": null,
+      "turns": 3,
+      "durationMs": 22836,
+      "toolCallCount": 1,
+      "toolNames": [
+        "list_dir"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "local-mcp",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "抱歉，模型 'test-runner' 未找到，无法运行项目测试。请检查模型配置或联系管理员。",
+      "error": null,
+      "turns": 6,
+      "durationMs": 36053,
+      "toolCallCount": 1,
+      "toolNames": [
+        "ollama-local__ollama_chat"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "local-mcp",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "Thought: 我需要先查看 `src/greeting.js` 文件的内容，确认默认问候语的位置，然后进行替换。接着，我需要查看并更新相应的测试文件，最后运行项目测试。\n\nAction: \n1. 查看 `src/greeting.js` 文件内容。\n2. 查看并更新相应的测试文件。\n3. 运行项目测试。\n\n```json\n{\n  \"name\": \"read_file\",\n  \"arguments\": {\n    \"path\": \"src/greeting.js\"\n  }\n}\n```",
+      "error": null,
+      "turns": 3,
+      "durationMs": 21006,
+      "toolCallCount": 0,
+      "toolNames": [],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "local-mcp",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        22836,
+        36053,
+        21006
+      ],
+      "turns": [
+        3,
+        6,
+        3
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 26632,
+      "avgTurns": 4
+    }
+  ],
+  "finishedAt": "2026-11-11T10:55:13.009Z"
+}

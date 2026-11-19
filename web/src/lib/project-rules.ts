@@ -18,7 +18,8 @@ export {
   shouldAutoInjectRule,
 } from "@/lib/project-rules-parse";
 
-const MAX_CHARS = 12_000;
+// 常驻规则约束在约 800 token；需要全文时仍可通过 @rule 显式读取。
+const MAX_CHARS = 3_200;
 
 type RuleFileMeta = { relPath: string; mtimeMs: number; size: number };
 
@@ -26,8 +27,12 @@ let cachedFingerprint = "";
 let cachedSnippet = "";
 let listenersBound = false;
 
-function fingerprint(files: RuleFileMeta[], activeRel: string | null): string {
-  return `${activeRel || ""}::${files
+function fingerprint(
+  files: RuleFileMeta[],
+  activeRel: string | null,
+  includeCanonicalRules: boolean,
+): string {
+  return `${includeCanonicalRules ? "host" : "default"}::${activeRel || ""}::${files
     .map((f) => `${f.relPath}:${Math.round(f.mtimeMs)}:${f.size}`)
     .join("|")}`;
 }
@@ -51,7 +56,11 @@ function ensureRulesInvalidationHooks(api: DesktopApi) {
  */
 export async function loadProjectRulesSnippet(
   api: DesktopApi | null | undefined,
-  opts?: { activeRelPath?: string | null },
+  opts?: {
+    activeRelPath?: string | null;
+    /** Host Agent 执行环使用；CLI/普通聊天保持 false，防止重复注入。 */
+    includeCanonicalRules?: boolean;
+  },
 ): Promise<string> {
   if (!api?.readWorkspaceTextFile) return "";
   ensureRulesInvalidationHooks(api);
@@ -85,6 +94,7 @@ export async function loadProjectRulesSnippet(
       ".claudecode/rules.md",
       "RULES.md",
       ".cursorrules",
+      ...(opts?.includeCanonicalRules ? ["AGENTS.md", "CLAUDE.md"] : []),
     ];
     for (const rel of fallback) {
       try {
@@ -109,7 +119,11 @@ export async function loadProjectRulesSnippet(
     return ap - bp || a.relPath.localeCompare(b.relPath);
   });
 
-  files = files.filter((f) => !EXCLUDE_FROM_PROMPT.has(f.relPath.replace(/\\/g, "/")));
+  files = files.filter(
+    (f) =>
+      opts?.includeCanonicalRules ||
+      !EXCLUDE_FROM_PROMPT.has(f.relPath.replace(/\\/g, "/")),
+  );
 
   if (!files.length) {
     cachedFingerprint = "";
@@ -117,7 +131,7 @@ export async function loadProjectRulesSnippet(
     return "";
   }
 
-  const fp = fingerprint(files, activeRel);
+  const fp = fingerprint(files, activeRel, opts?.includeCanonicalRules === true);
   if (fp && fp === cachedFingerprint && cachedSnippet) return cachedSnippet;
 
   type Chunk = { relPath: string; body: string; priority: number };
@@ -135,15 +149,30 @@ export async function loadProjectRulesSnippet(
         : { meta: {} as RuleMeta, body: raw };
       const cleaned = body.trim();
       if (!cleaned) continue;
-      if (!shouldAutoInjectRule(f.relPath, meta, activeRel, hasFrontmatter)) continue;
+      if (
+        !shouldAutoInjectRule(
+          f.relPath,
+          meta,
+          activeRel,
+          hasFrontmatter,
+          opts?.includeCanonicalRules === true,
+        )
+      ) {
+        continue;
+      }
       // 用户偏好最高优先（-1），其余 alwaysApply=0 / globs=1 / 其他=2
+      const normalizedRel = f.relPath.replace(/\\/g, "/");
       const priority = isUserPreferencesPath(f.relPath)
-        ? -1
-        : meta.alwaysApply
-          ? 0
-          : meta.globs?.length
-            ? 1
-            : 2;
+        ? -3
+        : normalizedRel === "AGENTS.md"
+          ? -2
+          : normalizedRel === "CLAUDE.md"
+            ? -1
+            : meta.alwaysApply
+              ? 0
+              : meta.globs?.length
+                ? 1
+                : 2;
       chunks.push({ relPath: f.relPath, body: cleaned, priority });
     } catch {
       /* next */
@@ -158,35 +187,45 @@ export async function loadProjectRulesSnippet(
     return "";
   }
 
-  // 分桶：偏好 25% + alwaysApply 40% + globs 25% + 其余 10%
+  // 分桶保护高优先级来源，避免某个超长规则独占全部常驻上下文。
   const budgets = [
-    Math.floor(MAX_CHARS * 0.25),
-    Math.floor(MAX_CHARS * 0.4),
-    Math.floor(MAX_CHARS * 0.25),
-    Math.floor(MAX_CHARS * 0.1),
+    Math.floor(MAX_CHARS * 0.2), // 用户偏好
+    Math.floor(MAX_CHARS * 0.25), // AGENTS.md
+    Math.floor(MAX_CHARS * 0.15), // CLAUDE.md
+    Math.floor(MAX_CHARS * 0.2), // alwaysApply
+    Math.floor(MAX_CHARS * 0.15), // globs
+    Math.floor(MAX_CHARS * 0.05), // 其他根规则
   ];
-  const used = [0, 0, 0, 0];
+  const used = [0, 0, 0, 0, 0, 0];
   const parts: string[] = [];
   let total = 0;
   for (const c of chunks) {
-    const bucket = Math.min(3, Math.max(0, c.priority + 1));
+    const bucket = Math.min(5, Math.max(0, c.priority + 3));
     const heading = isUserPreferencesPath(c.relPath)
       ? `### 用户偏好（${c.relPath}）`
       : `### ${c.relPath}`;
     const block = `${heading}\n${c.body}`;
-    if (used[bucket]! + block.length > budgets[bucket]! && parts.length) continue;
-    if (total + block.length > MAX_CHARS && parts.length) break;
-    parts.push(block);
-    used[bucket]! += block.length + 2;
-    total += block.length + 2;
+    const bucketRemaining = Math.max(0, budgets[bucket]! - used[bucket]!);
+    const totalRemaining = Math.max(0, MAX_CHARS - total);
+    const take = Math.min(block.length, bucketRemaining, totalRemaining);
+    if (take <= 0) continue;
+    parts.push(take < block.length ? `${block.slice(0, Math.max(0, take - 2))}…` : block);
+    used[bucket]! += take + 2;
+    total += take + 2;
   }
 
   let text = parts.join("\n\n");
   if (text.length > MAX_CHARS) text = text.slice(0, MAX_CHARS) + "\n…";
   const hasPrefs = chunks.some((c) => isUserPreferencesPath(c.relPath));
-  const snippet = hasPrefs
-    ? `【用户偏好与项目规则】须遵守：\n${text}`
-    : `【项目规则】须遵守：\n${text}`;
+  const conflictPolicy =
+    "若规则冲突，按用户当前要求 > 用户偏好 > AGENTS.md > CLAUDE.md > 路径匹配规则 > 通用规则执行，并明确说明冲突。";
+  const rawSnippet = hasPrefs
+    ? `【用户偏好与项目规则】须遵守：\n${conflictPolicy}\n${text}`
+    : `【项目规则】须遵守：\n${conflictPolicy}\n${text}`;
+  const snippet =
+    rawSnippet.length > MAX_CHARS
+      ? `${rawSnippet.slice(0, Math.max(0, MAX_CHARS - 2))}…`
+      : rawSnippet;
   cachedFingerprint = fp;
   cachedSnippet = snippet;
   return snippet;

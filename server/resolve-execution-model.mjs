@@ -55,7 +55,14 @@ export function inferModelRouteHint(input = {}) {
  * @param {'prefer-cloud'|'prefer-local'|'prefer-mode'} [routeHint]
  * @param {{ preferredCloudModel?: string, preferredLocalModel?: string }} [prefs]
  */
-function resolveAutoModelFromPools(cloud, local, preferredMode, routeHint = 'prefer-mode', prefs = {}) {
+function resolveAutoModelFromPools(
+  cloud,
+  local,
+  preferredMode,
+  routeHint = 'prefer-mode',
+  prefs = {},
+  allowCrossPool = true,
+) {
   const preferCloud = String(prefs.preferredCloudModel || '').trim()
   const preferLocal = String(prefs.preferredLocalModel || '').trim()
   const pickFrom = (list, preferred) => {
@@ -74,9 +81,10 @@ function resolveAutoModelFromPools(cloud, local, preferredMode, routeHint = 'pre
     if (preferredMode === 'local-mcp') return pickLocal() || pickCloud()
     return pickCloud() || pickLocal()
   }
-  // prefer-cloud / prefer-local：对侧池空禁止静默换通道
-  if (routeHint === 'prefer-cloud') return pickCloud()
-  if (routeHint === 'prefer-local') return pickLocal()
+  // Auto 明确授权系统按任务选路；首选池不可用时可选择另一可用池。
+  // 「只用本地/只用云端」通过 allowCrossPool=false 保持硬约束。
+  if (routeHint === 'prefer-cloud') return pickCloud() || (allowCrossPool ? pickLocal() : null)
+  if (routeHint === 'prefer-local') return pickLocal() || (allowCrossPool ? pickCloud() : null)
   return pickByMode()
 }
 
@@ -134,7 +142,7 @@ export function resolveModelForExecution(input) {
   const auto = resolveAutoModelFromPools(cloud, local, input.preferredMode, hint, {
     preferredCloudModel: input.preferredCloudModel,
     preferredLocalModel: input.preferredLocalModel,
-  })
+  }, input.allowAutoCrossPool !== false)
   return auto ? { ...auto, userPinned: false, routeHint: hint } : null
 }
 
@@ -184,8 +192,13 @@ export async function resolveExecutionModel({
   }
   const chatPools = pools || (await loadChatModelPools(settings))
   const fullPools = await loadConfiguredModelPools(settings)
+  const routeLock = settings?.modelRouteLock
   const hint =
-    routeHint ||
+    (routeLock === 'local'
+      ? 'prefer-local'
+      : routeLock === 'cloud'
+        ? 'prefer-cloud'
+        : routeHint) ||
     (turnPolicy
       ? inferModelRouteHint({
           allowWrites: turnPolicy.allowWrites,
@@ -205,6 +218,7 @@ export async function resolveExecutionModel({
     routeHint: hint,
     preferredCloudModel: settings?.preferredCloudModel,
     preferredLocalModel: settings?.preferredLocalModel,
+    allowAutoCrossPool: routeLock !== 'local' && routeLock !== 'cloud',
   })
   if (!resolved) {
     const cloudEmpty = !(fullPools.cloudModels?.length || chatPools.cloudModels?.length)

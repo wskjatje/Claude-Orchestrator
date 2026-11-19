@@ -84,27 +84,27 @@ export function GlobalChatPanel() {
         try {
           const disk = await api.loadChatSessions();
           if (!disk?.sessions) return;
-          const curAid = activeIdRef.current;
+            const curAid = activeIdRef.current;
           const updatedSession = disk.sessions.find((s) => s.id === curAid);
           if (!updatedSession?.history?.length) return;
           if (!activeStreamRequestId) {
-            syncSending(false);
-            syncSendingSessions({});
+              syncSending(false);
+              syncSendingSessions({});
             return;
           }
-          const lastMsg = updatedSession.history[updatedSession.history.length - 1];
+              const lastMsg = updatedSession.history[updatedSession.history.length - 1];
           if (
             lastMsg?.role === "assistant" &&
             lastMsg.content &&
             lastMsg.content !== "__WAITING__"
           ) {
-            syncSending(false);
-            syncSendingSessions({});
-            syncActiveStreamRequestId(null);
-          }
+                syncSending(false);
+                syncSendingSessions({});
+                syncActiveStreamRequestId(null);
+              }
         } catch {
           /* ignore */
-        }
+          }
       })();
     });
     return () => {

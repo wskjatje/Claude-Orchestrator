@@ -24,6 +24,12 @@ assert(classifyTurnIntent('告诉我这个项目是做什么的') === 'readonly'
 assert(classifyTurnIntent('这个项目主要做了什么') === 'readonly', 'Q2 → readonly')
 assert(classifyTurnIntent('请把登录文案改成中文并写入 templates/login.html') === 'write', 'mutation → write')
 assert(classifyTurnIntent('修复 auth.py 里的 token 过期 bug') === 'write', 'fix → write')
+assert(classifyTurnIntent('为 src/clamp.js 增加测试并运行') === 'write', 'object-first add test → write')
+assert(classifyTurnIntent('将 src/legacy/format.js 移到 src/shared/format.js') === 'write', 'move module → write')
+assert(
+  classifyTurnIntent('运行现有 build 脚本并报告结果，不要修改源文件。') === 'write',
+  'build execution enters the Agent tool loop',
+)
 assert(shouldInjectProjectBootstrap('告诉我这个项目是做什么的'), 'slim context')
 
 assert(classifyTurnIntent('架构怎么样') === 'readonly', 'tech: 架构 → readonly')
@@ -34,6 +40,8 @@ assert(classifyTurnIntent('告诉我这个项目该怎么优化') === 'readonly'
 assert(shouldInjectProjectBootstrap('架构怎么样'), 'tech: slim bootstrap')
 assert(classifyTurnIntent('按照方案执行') === 'write', 'execute plan → write')
 assert(classifyTurnIntent('按上面的优化方案执行') === 'write', 'execute prior plan → write')
+assert(classifyTurnIntent('帮我按照建议进行优化') === 'write', 'referential optimization follow-up → write')
+assert(classifyTurnIntent('请根据上述计划进行重构') === 'write', 'referential refactor follow-up → write')
 assert(classifyTurnIntent('开始执行优化方案') === 'write', 'start execute → write')
 assert(classifyTurnIntent('请按方案改代码并落盘') === 'write', '改代码落盘 → write')
 assert(classifyTurnIntent('执行P2') === 'write', '执行P2 → write')
@@ -115,6 +123,22 @@ assert(
   agentExec.allowWrites && agentExec.autoApplyWrites && !agentExec.forceDirectChat,
   'Agent+按方案执行 → write tools',
 )
+const planExecByAdvice = resolveTurnPolicy({
+  displayLine: '帮我按照建议进行优化',
+  interactionMode: 'plan',
+  isGeneralTurn: true,
+})
+assert(
+  planExecByAdvice.intent === 'write' &&
+    planExecByAdvice.allowTools &&
+    planExecByAdvice.allowWrites &&
+    !planExecByAdvice.forceDirectChat,
+  'Plan+按照建议进行优化 → 工具执行而非直聊',
+)
+assert(
+  !planExecByAdvice.autoApplyWrites,
+  'Plan+执行跟进仍尊重 Plan 的 Accept 边界',
+)
 const askExec = resolveTurnPolicy({
   displayLine: '按照方案执行',
   interactionMode: 'ask',
@@ -152,6 +176,19 @@ const agentW = resolveTurnPolicy({
   isGeneralTurn: true,
 })
 assert(agentW.allowWrites && agentW.autoApplyWrites && !agentW.forceDirectChat, 'Agent+mutation → write')
+
+const agentBuildOnly = resolveTurnPolicy({
+  displayLine: '运行现有 build 脚本并报告结果，不要修改源文件。',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  agentBuildOnly.allowTools &&
+    agentBuildOnly.autoApplyWrites &&
+    !agentBuildOnly.forceDirectChat &&
+    !agentBuildOnly.requireAppliedWrite,
+  'Agent+build-only → tools without requiring file edits',
+)
 
 const agentWriteYiGe = resolveTurnPolicy({
   displayLine: '写一个文件 test-mcp.txt 内容 hello',
@@ -194,6 +231,34 @@ const howToCall = resolveTurnPolicy({
   isGeneralTurn: true,
 })
 assert(howToCall.forceDirectChat && !howToCall.allowTools, '怎么调用 → not a tool turn')
+
+const agentUseToolOral = resolveTurnPolicy({
+  displayLine: '请用工具列出当前目录的一个文件名，只回文件名',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  !agentUseToolOral.allowWrites &&
+    agentUseToolOral.allowTools &&
+    !agentUseToolOral.forceDirectChat &&
+    /只读工具/.test(agentUseToolOral.systemConstraint),
+  'Agent+请用工具… → tools, no writes',
+)
+const agentUseToolOnce = resolveTurnPolicy({
+  displayLine: '用一下工具读 package.json',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(
+  agentUseToolOnce.allowTools && !agentUseToolOnce.forceDirectChat,
+  'Agent+用一下工具… → tools',
+)
+const howToUseTool = resolveTurnPolicy({
+  displayLine: '怎么用工具列出目录',
+  interactionMode: 'agent',
+  isGeneralTurn: true,
+})
+assert(howToUseTool.forceDirectChat && !howToUseTool.allowTools, '怎么用工具… → not a tool turn')
 
 const agentChatNamed = resolveTurnPolicy({
   displayLine: '继续说说架构',

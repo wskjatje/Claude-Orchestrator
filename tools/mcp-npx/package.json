@@ -1,0 +1,19 @@
+{
+  "name": "mcp-npx",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@modelcontextprotocol/server-filesystem": "^2.0.1",
+    "@modelcontextprotocol/server-memory": "^2.0.0",
+    "@modelcontextprotocol/server-puppeteer": "^2025.5.12",
+    "@modelcontextprotocol/server-sequential-thinking": "^2.0.0"
+  }
+}

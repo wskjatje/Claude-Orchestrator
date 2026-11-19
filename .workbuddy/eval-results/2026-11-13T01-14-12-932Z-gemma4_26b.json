@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-13T01:14:12.932Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "gemma4:26b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "gemma4:26b",
+    "digest": "5571076f3d70050487b26b341705799e0ab29b808164f90d20d4cf84f699d251",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "gemma4",
+      "families": [
+        "gemma4"
+      ],
+      "parameter_size": "25.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 262144,
+      "embedding_length": 2816,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 1,
+      "model": "gemma4:26b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "达到工具轮次上限，但任务未产生任何文件修改。（已试：ollama:gemma4:26b）",
+      "turns": 21,
+      "durationMs": 270646,
+      "toolCallCount": 18,
+      "toolNames": [
+        "todo_write",
+        "code_search",
+        "read_file",
+        "multi_edit",
+        "write_file",
+        "Todo",
+        "Search",
+        "Read",
+        "Edit",
+        "Write"
+      ],
+      "toolTrace": [
+        {
+          "tool": "todo_write",
+          "detail": "1 items",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "code_search",
+          "detail": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "test.js",
+          "path": "test.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "2 edits",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "write_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "write_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "write_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "read_file",
+          "detail": "test.js",
+          "path": "test.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "2 edits",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "write_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "2 edits",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "2 edits",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "2 edits",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "multi_edit",
+          "detail": "2 edits",
+          "ok": false,
+          "exitCode": 1
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        }
+      ],
+      "editFailureCount": 20,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        270646
+      ],
+      "turns": [
+        21
+      ],
+      "editFailures": 20,
+      "successRate": 0,
+      "avgDurationMs": 270646,
+      "avgTurns": 21
+    }
+  ],
+  "finishedAt": "2026-11-13T01:18:43.729Z"
+}

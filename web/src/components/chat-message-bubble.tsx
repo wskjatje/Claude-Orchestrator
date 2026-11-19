@@ -121,7 +121,7 @@ function MessageBubbleInner({
   onWriteToWorkspace?: (content: string) => void;
   onGenerateChain?: (content: string) => void;
   onEditUserMessage?: (historyIndex: number) => void;
-  onRequestResendUserMessage?: (historyIndex: number) => void;
+  onRequestResendUserMessage?: (historyIndex: number, retryMode?: "same" | "auto" | "diagnose") => void;
   onAssistantContentPatch?: (historyIndex: number, nextContent: string) => void | Promise<void>;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
@@ -207,6 +207,16 @@ function MessageBubbleInner({
         priorUserHistoryIndex != null &&
         onRequestResendUserMessage
           ? () => onRequestResendUserMessage(priorUserHistoryIndex)
+          : undefined
+      }
+      onRetryAuto={
+        m.requestError && priorUserHistoryIndex != null && onRequestResendUserMessage
+          ? () => onRequestResendUserMessage(priorUserHistoryIndex, "auto")
+          : undefined
+      }
+      onRetryDiagnose={
+        m.requestError && priorUserHistoryIndex != null && onRequestResendUserMessage
+          ? () => onRequestResendUserMessage(priorUserHistoryIndex, "diagnose")
           : undefined
       }
     >
@@ -337,6 +347,7 @@ function agentTurnEqual(a?: AgentTurnMeta, b?: AgentTurnMeta): boolean {
     a.mcpUsed === b.mcpUsed &&
     a.verified === b.verified &&
     a.summary === b.summary &&
+    JSON.stringify(a.todos || []) === JSON.stringify(b.todos || []) &&
     (a.writtenPaths || []).join("\0") === (b.writtenPaths || []).join("\0") &&
     (a.filePatches || [])
       .map((p) => `${p.path}:${(p.before || "").length}:${(p.after || "").length}`)

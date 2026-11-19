@@ -1,0 +1,644 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 1,
+  "startedAt": "2026-11-11T00:36:14.978Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 2,
+      "durationMs": 10885,
+      "toolCallCount": 1,
+      "toolNames": [
+        "read_file",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "1 个初始文件"
+        }
+      ]
+    },
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 2,
+      "durationMs": 20896,
+      "toolCallCount": 1,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 2,
+      "durationMs": 1844,
+      "toolCallCount": 1,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "workspaceContains",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E04",
+      "title": "为边界行为补测试",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 2,
+      "durationMs": 1850,
+      "toolCallCount": 1,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileExistsGlob",
+          "ok": false,
+          "detail": "*.test.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E05",
+      "title": "根据失败测试修复缺陷",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 2,
+      "durationMs": 2110,
+      "toolCallCount": 1,
+      "toolNames": [
+        "run_command",
+        "Bash"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/add.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n-1 !== 5\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eva"
+        }
+      ]
+    },
+    {
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 2,
+      "durationMs": 1616,
+      "toolCallCount": 1,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileExists",
+          "ok": false,
+          "detail": "src/shared/format.js"
+        },
+        {
+          "type": "workspaceNotContains",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceContains",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "skipped",
+      "reason": "该任务需要网络；须显式传 --allow-network 才会在临时工作区运行",
+      "turns": 0,
+      "durationMs": 0,
+      "toolCallCount": 0,
+      "editFailureCount": 0,
+      "assertions": []
+    },
+    {
+      "taskId": "E08",
+      "title": "运行项目构建并报告结果",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 2,
+      "durationMs": 1972,
+      "toolCallCount": 1,
+      "toolNames": [
+        "run_command",
+        "Bash"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": true,
+          "detail": "dist/app.txt"
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "taskId": "E09",
+      "title": "大文件局部修改",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 2,
+      "durationMs": 1717,
+      "toolCallCount": 1,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "fileNotContains",
+          "ok": false,
+          "detail": "data/large.txt"
+        },
+        {
+          "type": "lineCount",
+          "ok": true,
+          "detail": "data/large.txt"
+        }
+      ]
+    },
+    {
+      "taskId": "E10",
+      "title": "跨目录检索唯一线索",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 2,
+      "durationMs": 2910,
+      "toolCallCount": 1,
+      "toolNames": [
+        "code_search",
+        "Search"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": false,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "80 个初始文件"
+        }
+      ]
+    },
+    {
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "Ollama HTTP 400（qwen2.5-coder:14b）：{\"error\":\"Value looks like object, but can't find closing '}' symbol\"}（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 2,
+      "durationMs": 1917,
+      "toolCallCount": 1,
+      "toolNames": [
+        "run_command",
+        "Bash"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/parse.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": false,
+          "detail": "node:internal/modules/run_main:107\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n12 !== 0\n\n    at file:///private/var/folders/zl/br6npchj35j_bt8g0r1_77bm0000gn/T/claude-agent-eva"
+        },
+        {
+          "type": "fileUnchanged",
+          "ok": true,
+          "detail": "test.js"
+        }
+      ]
+    },
+    {
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "skipped",
+      "reason": "任务不适用于 host",
+      "turns": 0,
+      "durationMs": 0,
+      "toolCallCount": 0,
+      "editFailureCount": 0,
+      "assertions": []
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        10885
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 10885,
+      "avgTurns": 2
+    },
+    {
+      "backend": "host",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        20896
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 20896,
+      "avgTurns": 2
+    },
+    {
+      "backend": "host",
+      "taskId": "E03",
+      "title": "多文件接口重命名",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        1844
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 1844,
+      "avgTurns": 2
+    },
+    {
+      "backend": "host",
+      "taskId": "E04",
+      "title": "为边界行为补测试",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        1850
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 1850,
+      "avgTurns": 2
+    },
+    {
+      "backend": "host",
+      "taskId": "E05",
+      "title": "根据失败测试修复缺陷",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        2110
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 2110,
+      "avgTurns": 2
+    },
+    {
+      "backend": "host",
+      "taskId": "E06",
+      "title": "跨目录迁移模块",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        1616
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 1616,
+      "avgTurns": 2
+    },
+    {
+      "backend": "host",
+      "taskId": "E07",
+      "title": "受控依赖安装与使用",
+      "attempted": 0,
+      "passed": 0,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 1,
+      "durationsMs": [],
+      "turns": [],
+      "editFailures": 0,
+      "successRate": null,
+      "avgDurationMs": null,
+      "avgTurns": null
+    },
+    {
+      "backend": "host",
+      "taskId": "E08",
+      "title": "运行项目构建并报告结果",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        1972
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 1972,
+      "avgTurns": 2
+    },
+    {
+      "backend": "host",
+      "taskId": "E09",
+      "title": "大文件局部修改",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        1717
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 1717,
+      "avgTurns": 2
+    },
+    {
+      "backend": "host",
+      "taskId": "E10",
+      "title": "跨目录检索唯一线索",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        2910
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 2910,
+      "avgTurns": 2
+    },
+    {
+      "backend": "host",
+      "taskId": "E11",
+      "title": "从失败命令恢复并验证",
+      "attempted": 1,
+      "passed": 0,
+      "failed": 1,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        1917
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 0,
+      "avgDurationMs": 1917,
+      "avgTurns": 2
+    },
+    {
+      "backend": "host",
+      "taskId": "E12",
+      "title": "调用本地 MCP 工具",
+      "attempted": 0,
+      "passed": 0,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 1,
+      "durationsMs": [],
+      "turns": [],
+      "editFailures": 0,
+      "successRate": null,
+      "avgDurationMs": null,
+      "avgTurns": null
+    }
+  ],
+  "finishedAt": "2026-11-11T00:37:02.952Z"
+}

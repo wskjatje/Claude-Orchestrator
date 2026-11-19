@@ -70,6 +70,15 @@ const sum = buildStructuredCompactSummary(dialogue)
 assert(sum && /会话摘要/.test(sum.summary), 'structured summary')
 assert(/目标|意图|技术要点|当前步骤/.test(sum.summary), 'Cursor-like summary fields')
 
+const stateCard = buildStructuredCompactSummary([
+  ...dialogue,
+  { role: 'assistant', content: '已修改 server/a.ts；npm test，12 passed；未完成：补云端回归。' },
+])
+assert(/已修改 \/ 涉及文件/.test(stateCard.summary), 'state card keeps modified files')
+assert(/已验证/.test(stateCard.summary), 'state card keeps verification')
+assert(/未完成 \/ 待办/.test(stateCard.summary), 'state card keeps unfinished work')
+assert(/关键命令/.test(stateCard.summary), 'state card keeps commands')
+
 const fat = [{ role: 'system', content: 's' }]
 for (let i = 0; i < 40; i++) {
   fat.push({ role: 'user', content: `task ${i} ` + 'z'.repeat(3000) })

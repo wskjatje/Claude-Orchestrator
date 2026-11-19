@@ -39,21 +39,59 @@ function stripKnownMcpPackageVersion(command, arg) {
   return s
 }
 
-/** 官方 fetch 为 Python 包（PyPI），无 npm 版 @modelcontextprotocol/server-fetch */
-export const CANONICAL_FETCH_MCP = {
-  command: 'uvx',
-  args: ['mcp-server-fetch'],
+/** 官方 fetch 为 Python 包（PyPI）；仓库内固定 venv：tools/mcp-fetch/.venv */
+export function bundledFetchMcpServerPath() {
+  return path.join(__dirname, '..', 'tools', 'mcp-fetch', '.venv', 'bin', 'mcp-server-fetch')
 }
 
-export const CANONICAL_FILESYSTEM_MCP = {
-  command: 'npx',
-  args: ['-y', '@modelcontextprotocol/server-filesystem', '~'],
+export function canonicalFetchMcp() {
+  return {
+    command: bundledFetchMcpServerPath(),
+    args: [],
+  }
 }
 
-export const CANONICAL_MEMORY_MCP = {
-  command: 'npx',
-  args: ['-y', '@modelcontextprotocol/server-memory'],
+/** 兼容旧引用：本地 bin 存在则用固定路径，否则退回 uvx */
+export const CANONICAL_FETCH_MCP = fs.existsSync(bundledFetchMcpServerPath())
+  ? canonicalFetchMcp()
+  : { command: 'uvx', args: ['mcp-server-fetch'] }
+
+/** 仓库内固定 npm 包：tools/mcp-npx（由 scripts/ensure-mcp-npx.mjs 安装） */
+export function bundledOfficialMcpBinPath(binName) {
+  return path.join(__dirname, '..', 'tools', 'mcp-npx', 'node_modules', '.bin', binName)
 }
+
+export function canonicalFilesystemMcp() {
+  return {
+    command: bundledOfficialMcpBinPath('mcp-server-filesystem'),
+    args: ['~'],
+  }
+}
+
+export function canonicalMemoryMcp() {
+  return {
+    command: bundledOfficialMcpBinPath('mcp-server-memory'),
+    args: [],
+  }
+}
+
+export function canonicalSequentialThinkingMcp() {
+  return {
+    command: bundledOfficialMcpBinPath('mcp-server-sequential-thinking'),
+    args: [],
+  }
+}
+
+export function canonicalPuppeteerMcp() {
+  return {
+    command: bundledOfficialMcpBinPath('mcp-server-puppeteer'),
+    args: [],
+  }
+}
+
+/** @deprecated 保留旧名：repair / 测试若仍引用 */
+export const CANONICAL_FILESYSTEM_MCP = canonicalFilesystemMcp()
+export const CANONICAL_MEMORY_MCP = canonicalMemoryMcp()
 
 export function bundledSanshengliubuMcpServerPath() {
   return path.join(__dirname, 'mcp-sanshengliubu', 'server.mjs')
@@ -61,6 +99,22 @@ export function bundledSanshengliubuMcpServerPath() {
 
 export function bundledExternalAppsMcpServerPath() {
   return path.join(__dirname, 'mcp-external-apps', 'server.mjs')
+}
+
+/** 仓库内固定 venv：tools/mcp-sqlite/.venv（由 scripts/ensure-mcp-sqlite.mjs 安装） */
+export function bundledSqliteMcpServerPath() {
+  return path.join(__dirname, '..', 'tools', 'mcp-sqlite', '.venv', 'bin', 'mcp-server-sqlite')
+}
+
+export function bundledSqliteDemoDbPath() {
+  return path.join(__dirname, '..', 'data', 'mcp', 'sqlite', 'demo.db')
+}
+
+export function canonicalSqliteMcp() {
+  return {
+    command: bundledSqliteMcpServerPath(),
+    args: ['--db-path', bundledSqliteDemoDbPath()],
+  }
 }
 
 export const CANONICAL_SANSHENGLIUBU_MCP = {
@@ -87,10 +141,65 @@ export function withExternalAppsWorkspaceEnv(cfg, workspaceRoot) {
 }
 
 export function bundledMcpPresetCommandLines() {
-  return {
+  const lines = {
     sanshengliubu: formatMcpCommandLine(CANONICAL_SANSHENGLIUBU_MCP),
     'external-apps': formatMcpCommandLine(CANONICAL_EXTERNAL_APPS_MCP),
   }
+  if (fs.existsSync(bundledSqliteMcpServerPath())) {
+    lines.sqlite = formatMcpCommandLine(canonicalSqliteMcp())
+  }
+  if (fs.existsSync(bundledOfficialMcpBinPath('mcp-server-filesystem'))) {
+    lines.filesystem = formatMcpCommandLine(canonicalFilesystemMcp())
+  }
+  if (fs.existsSync(bundledOfficialMcpBinPath('mcp-server-memory'))) {
+    lines.memory = formatMcpCommandLine(canonicalMemoryMcp())
+  }
+  if (fs.existsSync(bundledOfficialMcpBinPath('mcp-server-sequential-thinking'))) {
+    lines['sequential-thinking'] = formatMcpCommandLine(canonicalSequentialThinkingMcp())
+  }
+  if (fs.existsSync(bundledOfficialMcpBinPath('mcp-server-puppeteer'))) {
+    lines.puppeteer = formatMcpCommandLine(canonicalPuppeteerMcp())
+  }
+  if (fs.existsSync(bundledFetchMcpServerPath())) {
+    lines.fetch = formatMcpCommandLine(canonicalFetchMcp())
+  }
+  return lines
+}
+
+function isLegacyUvxSqliteEntry(cfg) {
+  if (!cfg || typeof cfg !== 'object') return false
+  if (String(cfg.command || '').trim() !== 'uvx') return false
+  const args = Array.isArray(cfg.args) ? cfg.args.map(String) : []
+  return args.some((a) => a === 'mcp-server-sqlite' || a.includes('mcp-server-sqlite'))
+}
+
+function isLegacyNpxOfficialMcpEntry(cfg, packageName) {
+  if (!cfg || typeof cfg !== 'object') return false
+  if (String(cfg.command || '').trim() !== 'npx') return false
+  const args = Array.isArray(cfg.args) ? cfg.args.map(String) : []
+  return args.some((a) => a === packageName || a.includes(packageName))
+}
+
+function maybeRepairToBundled(name, raw, want, binPath, repairs) {
+  if (!fs.existsSync(binPath)) return { next: null, changed: false }
+  const cmd = String(raw?.command || '').trim()
+  const isNpx = cmd === 'npx'
+  const already =
+    expandHome(cmd) === want.command ||
+    path.resolve(expandHome(cmd)) === path.resolve(want.command)
+  if (!isNpx && already) {
+    // args 也可能漂移（如 filesystem 缺 ~）
+    const curArgs = Array.isArray(raw.args) ? raw.args.map((a) => expandHome(String(a))) : []
+    const wantArgs = Array.isArray(want.args) ? want.args.map((a) => expandHome(String(a))) : []
+    if (JSON.stringify(curArgs) === JSON.stringify(wantArgs)) {
+      return { next: null, changed: false }
+    }
+  }
+  if (!isNpx && !already) return { next: null, changed: false }
+  const next = { ...want }
+  if (raw.env && typeof raw.env === 'object') next.env = raw.env
+  repairs.push(`${name}: 改用仓库内固定 MCP 二进制（免运行时 npx 拉包）`)
+  return { next, changed: true }
 }
 
 function isBrokenFetchNpxEntry(cfg) {
@@ -142,28 +251,83 @@ export function repairMcpConfigData(data) {
   for (const [name, raw] of Object.entries(data.mcpServers)) {
     let next = normalizeMcpServerEntry(raw)
     if (isBrokenFetchNpxEntry(raw)) {
-      next = { ...CANONICAL_FETCH_MCP }
+      next = fs.existsSync(bundledFetchMcpServerPath())
+        ? { ...canonicalFetchMcp() }
+        : { command: 'uvx', args: ['mcp-server-fetch'] }
       if (raw.env && typeof raw.env === 'object') next.env = raw.env
-      repairs.push(`${name}: fetch 改为 uvx（npm 无 server-fetch 包）`)
+      repairs.push(
+        fs.existsSync(bundledFetchMcpServerPath())
+          ? `${name}: fetch 改为仓库内固定 mcp-server-fetch`
+          : `${name}: fetch 改为 uvx（npm 无 server-fetch 包）`,
+      )
       changed = true
-    } else if (name === 'filesystem' && String(raw?.command || '').trim() === 'npx') {
-      const normalized = normalizeMcpServerEntry(raw)
-      const canonical = JSON.stringify(CANONICAL_FILESYSTEM_MCP)
-      const current = JSON.stringify({ command: normalized.command, args: normalized.args })
-      if (current !== canonical) {
-        next = { ...CANONICAL_FILESYSTEM_MCP }
-        if (raw.env && typeof raw.env === 'object') next.env = raw.env
-        repairs.push('filesystem: 使用 ~/ 路径与最新包名')
+    } else if (
+      name === 'fetch' &&
+      fs.existsSync(bundledFetchMcpServerPath()) &&
+      String(raw?.command || '').trim() === 'uvx'
+    ) {
+      next = { ...canonicalFetchMcp() }
+      if (raw.env && typeof raw.env === 'object') next.env = raw.env
+      repairs.push('fetch: 改用仓库内固定 mcp-server-fetch（免 uvx 冷拉）')
+      changed = true
+    } else if (
+      name === 'filesystem' &&
+      isLegacyNpxOfficialMcpEntry(raw, '@modelcontextprotocol/server-filesystem')
+    ) {
+      const r = maybeRepairToBundled(
+        name,
+        raw,
+        canonicalFilesystemMcp(),
+        bundledOfficialMcpBinPath('mcp-server-filesystem'),
+        repairs,
+      )
+      if (r.changed) {
+        next = r.next
         changed = true
       }
-    } else if (name === 'memory' && String(raw?.command || '').trim() === 'npx') {
-      const normalized = normalizeMcpServerEntry(raw)
-      const canonical = JSON.stringify(CANONICAL_MEMORY_MCP)
-      const current = JSON.stringify({ command: normalized.command, args: normalized.args })
-      if (current !== canonical) {
-        next = { ...CANONICAL_MEMORY_MCP }
-        if (raw.env && typeof raw.env === 'object') next.env = raw.env
-        repairs.push('memory: 使用最新包名')
+    } else if (
+      name === 'memory' &&
+      isLegacyNpxOfficialMcpEntry(raw, '@modelcontextprotocol/server-memory')
+    ) {
+      const r = maybeRepairToBundled(
+        name,
+        raw,
+        canonicalMemoryMcp(),
+        bundledOfficialMcpBinPath('mcp-server-memory'),
+        repairs,
+      )
+      if (r.changed) {
+        next = r.next
+        changed = true
+      }
+    } else if (
+      name === 'sequential-thinking' &&
+      isLegacyNpxOfficialMcpEntry(raw, '@modelcontextprotocol/server-sequential-thinking')
+    ) {
+      const r = maybeRepairToBundled(
+        name,
+        raw,
+        canonicalSequentialThinkingMcp(),
+        bundledOfficialMcpBinPath('mcp-server-sequential-thinking'),
+        repairs,
+      )
+      if (r.changed) {
+        next = r.next
+        changed = true
+      }
+    } else if (
+      name === 'puppeteer' &&
+      isLegacyNpxOfficialMcpEntry(raw, '@modelcontextprotocol/server-puppeteer')
+    ) {
+      const r = maybeRepairToBundled(
+        name,
+        raw,
+        canonicalPuppeteerMcp(),
+        bundledOfficialMcpBinPath('mcp-server-puppeteer'),
+        repairs,
+      )
+      if (r.changed) {
+        next = r.next
         changed = true
       }
     } else if (name === 'sanshengliubu' && String(raw?.command || '').trim() === 'node') {
@@ -187,6 +351,16 @@ export function repairMcpConfigData(data) {
         changed = true
       }
       // 工作区白名单在 read/write 路径由调用方注入；此处仅保证结构
+    } else if (
+      name === 'sqlite' &&
+      fs.existsSync(bundledSqliteMcpServerPath()) &&
+      isLegacyUvxSqliteEntry(raw)
+    ) {
+      const want = canonicalSqliteMcp()
+      next = { ...want }
+      if (raw.env && typeof raw.env === 'object') next.env = raw.env
+      repairs.push('sqlite: 改用仓库内固定 mcp-server-sqlite（免 uvx --with 冷拉）')
+      changed = true
     } else if (JSON.stringify(next) !== JSON.stringify(raw)) {
       if (name === 'filesystem') repairs.push('filesystem: 规范化启动参数')
       else if (name === 'memory') repairs.push('memory: 规范化启动参数')
@@ -314,6 +488,17 @@ export function removeMcpServer(customPath, name) {
   return { ok: true, path: written.path, name: nameKey }
 }
 
+function mcpServerHasAngleBracketPlaceholder(cfg) {
+  if (!cfg || typeof cfg !== 'object') return false
+  const parts = []
+  if (typeof cfg.command === 'string') parts.push(cfg.command)
+  if (Array.isArray(cfg.args)) {
+    for (const a of cfg.args) parts.push(String(a ?? ''))
+  }
+  if (typeof cfg.url === 'string') parts.push(cfg.url)
+  return parts.some((p) => /<[^>]+>/.test(p))
+}
+
 export function setMcpServerEnabled(customPath, name, enabled) {
   const nameKey = String(name || '').trim()
   if (!nameKey) return { ok: false, error: '缺少 name' }
@@ -322,6 +507,12 @@ export function setMcpServerEnabled(customPath, name, enabled) {
   if (read.missing) return { ok: false, error: '配置文件不存在' }
   const raw = read.data?.mcpServers?.[nameKey]
   if (!raw || typeof raw !== 'object') return { ok: false, error: `未找到 MCP：${nameKey}` }
+  if (enabled && mcpServerHasAngleBracketPlaceholder(raw)) {
+    return {
+      ok: false,
+      error: '命令或 URL 仍含 <…> 占位符，请先编辑为真实路径/连接串后再启用',
+    }
+  }
   const next = { ...raw }
   if (enabled) {
     delete next.disabled

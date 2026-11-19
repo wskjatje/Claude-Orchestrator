@@ -1,25 +1,18 @@
 {
   "mcpServers": {
     "filesystem": {
-      "command": "npx",
+      "command": "/Users/barry/Desktop/其他文件/claudecode/tools/mcp-npx/node_modules/.bin/mcp-server-filesystem",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
         "~"
       ]
     },
     "fetch": {
-      "command": "uvx",
-      "args": [
-        "mcp-server-fetch"
-      ]
+      "command": "/Users/barry/Desktop/其他文件/claudecode/tools/mcp-fetch/.venv/bin/mcp-server-fetch",
+      "args": []
     },
     "memory": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-memory"
-      ]
+      "command": "/Users/barry/Desktop/其他文件/claudecode/tools/mcp-npx/node_modules/.bin/mcp-server-memory",
+      "args": []
     },
     "sanshengliubu": {
       "command": "node",
@@ -34,25 +27,18 @@
       ]
     },
     "sequential-thinking": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
-      ]
+      "command": "/Users/barry/Desktop/其他文件/claudecode/tools/mcp-npx/node_modules/.bin/mcp-server-sequential-thinking",
+      "args": []
     },
     "puppeteer": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-puppeteer"
-      ]
+      "command": "/Users/barry/Desktop/其他文件/claudecode/tools/mcp-npx/node_modules/.bin/mcp-server-puppeteer",
+      "args": []
     },
     "sqlite": {
-      "command": "uvx",
+      "command": "/Users/barry/Desktop/其他文件/claudecode/tools/mcp-sqlite/.venv/bin/mcp-server-sqlite",
       "args": [
-        "mcp-server-sqlite",
         "--db-path",
-        "<path/to/db>"
+        "/Users/barry/Desktop/其他文件/claudecode/data/mcp/sqlite/demo.db"
       ]
     }
   }

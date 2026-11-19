@@ -15,7 +15,7 @@ import { WorkbenchMainLayout } from "@/components/workbench-main-layout";
 import { getDesktop } from "@/lib/desktop-api";
 import {
   AUTO_MODEL_ID,
-  chatModelPoolForMode,
+  chatModelPoolCombined,
   isAutoModelSelection,
   loadChatModelPools,
   loadConfiguredModelPools,
@@ -1559,7 +1559,7 @@ function ChatPage() {
       setLocalOllamaTags(localPool);
 
       const pools = { cloudModels: claudePool, localModels: localPool };
-      const modePool = chatModelPoolForMode(pools, mode);
+      const modePool = chatModelPoolCombined(pools);
       /** 先按 settings 解析；会话加载后再与活跃会话统一 */
       let migratedGlobal = pickOrchestratorModel(settings.model, modePool, mode);
 
@@ -2207,9 +2207,9 @@ function ChatPage() {
       setMessages(liveMsgs);
     } else if (!streamLive) {
       const sess = list.find((s) => s.id === aid);
-      if (sess?.history?.length) {
-        const ml = sess.modelId?.trim() || globalModel || "模型";
-        setMessages(diskToDisplay(sess.history, ml));
+    if (sess?.history?.length) {
+      const ml = sess.modelId?.trim() || globalModel || "模型";
+      setMessages(diskToDisplay(sess.history, ml));
       }
     }
     // 优先从 context 恢复已打开的标签页（跨路由切换保留），否则回退到仅打开活跃会话
@@ -2409,7 +2409,7 @@ function ChatPage() {
           /* fall through */
         }
         const sess = sessionsRef.current.find((s) => s.id === sessionId);
-        syncMessagesFromSession(sess);
+    syncMessagesFromSession(sess);
         loadComposerDraft(sessionId);
       })();
       return;
@@ -2603,10 +2603,10 @@ function ChatPage() {
       setMessages(live);
       chatCtx.syncMessages(live);
     } else if (!streamLive) {
-      syncMessagesFromSession(s);
+    syncMessagesFromSession(s);
       if (s) {
-        const ml = s.modelId?.trim() || globalModel || "模型";
-        chatCtx.syncMessages(diskToDisplay(s.history, ml));
+      const ml = s.modelId?.trim() || globalModel || "模型";
+      chatCtx.syncMessages(diskToDisplay(s.history, ml));
       }
     }
     if (api) await persist(sessionsRef.current, id);
@@ -2750,10 +2750,10 @@ function ChatPage() {
         setMessages(live2);
         chatCtx.syncMessages(live2);
       } else if (!streamLive2) {
-        syncMessagesFromSession(sess);
+      syncMessagesFromSession(sess);
         if (sess) {
-          const ml2 = sess.modelId?.trim() || globalModel || "模型";
-          chatCtx.syncMessages(diskToDisplay(sess.history, ml2));
+        const ml2 = sess.modelId?.trim() || globalModel || "模型";
+        chatCtx.syncMessages(diskToDisplay(sess.history, ml2));
         }
       }
       if (api) await persist(sessionsRef.current, sessionId);
@@ -2791,10 +2791,10 @@ function ChatPage() {
         title: "新对话",
         modelId: pickOrchestratorModel(
           settings.model,
-          chatModelPoolForMode(
-            { cloudModels: orchestratorModels, localModels: localOllamaTags },
-            mode,
-          ),
+          chatModelPoolCombined({
+            cloudModels: orchestratorModels,
+            localModels: localOllamaTags,
+          }),
           mode,
         ),
         history: [],
@@ -2897,16 +2897,10 @@ function ChatPage() {
     if (visible.length <= 1) return;
     setOpenTabIds((prev) => prev.filter((tid) => tid !== id));
     resetScrollFollow();
-    const reqId = chatCtx.activeRequestIdsRef.current.get(id);
-    const api = getDesktop();
-    if (reqId && api?.claudeCodeAbort) void api.claudeCodeAbort(reqId);
-    if (reqId && api?.localOrchestrationAbort) void api.localOrchestrationAbort(reqId);
-    if (reqId && api?.hostAgentAbort) void api.hostAgentAbort(reqId);
-    chatCtx.activeRequestIdsRef.current.delete(id);
-    setSessionSending(id, false);
     delete composerDraftsRef.current[id];
 
-    // 关闭标签页 ≠ 删除对话：保留 session 在内存中，以便历史下拉仍可访问
+    // 关闭标签页 ≠ 停止任务 ≠ 删除对话。运行中的任务留在后台继续，
+    // activeRequestIds / sending 由发送流程在真正结束时清理。
     const nextActiveCandidates = sessionsRef.current.filter((s) => s.id !== id);
     const visibleAfter = filterSessionsForWorkspaceTabs(
       nextActiveCandidates,
@@ -2944,7 +2938,7 @@ function ChatPage() {
     }
     setSessions(pruned);
     sessionsRef.current = pruned;
-    if (api) await persist(pruned, aid || activeIdRef.current);
+    await persist(pruned, aid || activeIdRef.current);
     closingSessionTargetRef.current = null;
   };
 
@@ -3234,25 +3228,25 @@ function ChatPage() {
       const mode = getWorkbenchInteractionMode();
       if (mode === "ask") {
         toast.message(PLAN_BUILD_ASK_BLOCKED);
-        return;
-      }
+      return;
+    }
       setWorkbenchInteractionMode("agent");
-      sendPayloadOverrideRef.current = {
+        sendPayloadOverrideRef.current = {
         text: `按方案执行：${path}`,
-        pendingImages: [],
-        pendingFiles: [],
-        pendingTerminalSnippets: [],
+          pendingImages: [],
+          pendingFiles: [],
+          pendingTerminalSnippets: [],
         pendingDomElements: [],
       };
       void sendChat();
     });
     setAgentFixHandler((snippet) => {
       setWorkbenchInteractionMode("agent");
-      sendPayloadOverrideRef.current = {
+        sendPayloadOverrideRef.current = {
         text: `请根据以下终端失败输出修复相关代码并落盘：\n\n\`\`\`\n${snippet}\n\`\`\``,
-        pendingImages: [],
-        pendingFiles: [],
-        pendingTerminalSnippets: [],
+          pendingImages: [],
+          pendingFiles: [],
+          pendingTerminalSnippets: [],
         pendingDomElements: [],
       };
       void sendChat();
@@ -3291,13 +3285,13 @@ function ChatPage() {
           setMessages(display);
           chatCtx.syncMessages(display);
           chatCtx.syncSessionMessages(sessionId, display);
-        } else {
+      } else {
           toast.success("已恢复检查点（请切换到对应会话查看）");
           return true;
         }
         toast.success("已恢复检查点之后的消息");
         return true;
-      } catch (e) {
+    } catch (e) {
         toast.error(e instanceof Error ? e.message : "恢复检查点失败");
         return false;
       }
@@ -3372,8 +3366,26 @@ function ChatPage() {
 
   /** 点气泡 Icon / 右键「重新发送」：弹出检查点确认 */
   const requestResendUserMessage = useCallback(
-    (historyIndex: number) => requestCheckpointAction(historyIndex, "resend"),
-    [requestCheckpointAction],
+    async (historyIndex: number, retryMode: "same" | "auto" | "diagnose" = "same") => {
+      if (retryMode === "same") {
+        requestCheckpointAction(historyIndex, "resend");
+        return;
+      }
+      const sessionId = activeIdRef.current;
+      if (sendingSessionsRef.current[sessionId]) {
+        toast.warning("请等待当前回复完成后再重试。");
+        return;
+      }
+      if (retryMode === "auto") {
+        await patchSession(sessionId, (session) => ({ ...session, modelId: "auto" }));
+        toast.message("已切换为 Auto，将按任务重新选择模型");
+      } else {
+        setWorkbenchInteractionMode("ask");
+        toast.message("已切换为 Ask，只读诊断不会修改文件");
+      }
+      runCheckpointAction(historyIndex, "resend");
+    },
+    [patchSession, requestCheckpointAction, runCheckpointAction],
   );
 
   useEffect(() => {
@@ -3417,10 +3429,10 @@ function ChatPage() {
         setLocalAgentBasename(agentBasenameForWorkspace(settings, nextWs));
         const modelId = pickOrchestratorModel(
           settings.model,
-          chatModelPoolForMode(
-            { cloudModels: orchestratorModels, localModels: localOllamaTags },
-            mode,
-          ),
+          chatModelPoolCombined({
+            cloudModels: orchestratorModels,
+            localModels: localOllamaTags,
+          }),
           mode,
         );
         const resolved = resolveWorkspaceChatSessions(
@@ -3487,20 +3499,11 @@ function ChatPage() {
     }
     try {
       const runningNow = await syncExecutionState();
-      if (opts?.autoRun && (runningNow || sending)) {
-        stopChainExecution();
-        stopChat();
-        const deadline = Date.now() + 6000;
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 120));
-          const running = await syncExecutionState();
-          if (!running && !sendingRef.current) break;
-        }
-        const stillBusy = await syncExecutionState();
-        if (stillBusy || sendingRef.current) {
-          const error = "旧流程仍在收尾，请稍后再试。";
-          return { ok: false, error };
-        }
+      if (opts?.autoRun && (runningNow || sendingRef.current)) {
+        // 自动任务不得抢占式终止已在执行的用户任务。
+        // 只有 Composer 上的显式“停止生成”操作才能进入取消通道。
+        const error = "当前任务仍在执行，未启动新任务链；请等待完成或手动点击停止。";
+        return { ok: false, error };
       }
       if (!api.orchestrationCreateChain || !api.orchestrationActivateChain) {
         const error = "当前版本未暴露任务链注册接口，请重启到最新桌面应用。";

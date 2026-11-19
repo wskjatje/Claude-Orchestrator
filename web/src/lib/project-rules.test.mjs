@@ -34,6 +34,8 @@ x`);
   it("shouldAutoInjectRule follows project rule injection rules", () => {
     assert.equal(globToRegExp("**/*.tsx").test("web/src/a.tsx"), true);
     assert.equal(shouldAutoInjectRule("AGENTS.md", {}, null, false), false);
+    assert.equal(shouldAutoInjectRule("AGENTS.md", {}, null, false, true), true);
+    assert.equal(shouldAutoInjectRule("CLAUDE.md", {}, null, false, true), true);
     assert.equal(shouldAutoInjectRule("RULES.md", {}, null, false), true);
     assert.equal(shouldAutoInjectRule("x.mdc", { alwaysApply: true }, null, true), true);
     assert.equal(shouldAutoInjectRule("x.mdc", { globs: ["**/*.ts"] }, "a.js", true), false);

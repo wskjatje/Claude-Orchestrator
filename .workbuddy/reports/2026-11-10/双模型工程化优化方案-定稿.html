@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>本地 / 云双模型工程化优化方案 · 定稿 v1.0</title>
+<style>
+  :root{
+    --bg:#ffffff; --panel:#f7f9fc; --ink:#0f172a; --body:#1f2937; --muted:#5b6779;
+    --line:#e3e8ef; --accent:#2563eb; --accent-soft:#eef4ff;
+    --warn:#b45309; --warn-soft:#fff7ed; --bad:#b42318; --bad-soft:#fef3f2;
+    --ok:#0f766e; --ok-soft:#ecfdf5;
+    --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--bg);color:var(--body);
+    font:15px/1.78 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:56px 32px 100px}
+  header.hero{border-bottom:2px solid var(--ink);padding-bottom:26px;margin-bottom:36px}
+  .kicker{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:14px}
+  h1{font-size:33px;line-height:1.26;margin:0 0 10px;color:var(--ink);letter-spacing:-.02em}
+  .sub{font-size:16.5px;color:var(--muted);margin:0 0 18px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:12.5px;color:var(--muted)}
+  .meta b{color:var(--ink);font-weight:600}
+  h2{font-size:22px;color:var(--ink);margin:54px 0 16px;padding-left:13px;border-left:4px solid var(--accent);letter-spacing:-.01em}
+  h3{font-size:17px;color:var(--ink);margin:28px 0 10px}
+  h4{font-size:14.5px;color:var(--ink);margin:18px 0 8px}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:6px 0}
+  code{font-family:var(--mono);font-size:.88em;background:#f1f4f9;border:1px solid #e6ebf2;border-radius:4px;padding:1px 5px;color:#1e3a8a}
+  pre{background:#0f172a;color:#e5e9f0;border-radius:10px;padding:15px 18px;overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.65;margin:12px 0}
+  pre code{background:none;border:none;color:inherit;padding:0;font-size:inherit}
+  pre .cm{color:#8b9bb4}
+
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:24px 0 6px}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 16px 14px}
+  .metric .num{font-size:26px;font-weight:750;color:var(--ink);line-height:1.15;letter-spacing:-.02em;font-family:var(--mono)}
+  .metric .num small{font-size:12.5px;color:var(--muted);font-weight:500;letter-spacing:0}
+  .metric .cap{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.55}
+  .metric.bad{border-color:#f3c6c2;background:var(--bad-soft)}
+  .metric.bad .num{color:var(--bad)}
+
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.2px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#f2f5fa;color:var(--ink);font-weight:650;font-size:12.3px;letter-spacing:.02em}
+  tbody tr:nth-child(even){background:#fbfcfe}
+  td code{white-space:nowrap}
+  .tag{display:inline-block;font-size:10.5px;font-weight:650;padding:1.5px 7px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .t-a{color:var(--bad);background:var(--bad-soft);border-color:#f3c6c2}
+  .t-b{color:var(--warn);background:var(--warn-soft);border-color:#f5d9ac}
+  .t-c{color:var(--ok);background:var(--ok-soft);border-color:#bfe6df}
+  .t-ok{color:var(--ok);background:var(--ok-soft);border-color:#bfe6df}
+
+  .callout{border-radius:10px;padding:14px 18px;margin:18px 0;font-size:14px}
+  .callout.warn{background:var(--warn-soft);border-left:4px solid var(--warn)}
+  .callout.bad{background:var(--bad-soft);border-left:4px solid var(--bad)}
+  .callout.info{background:var(--accent-soft);border-left:4px solid var(--accent)}
+  .callout.ok{background:var(--ok-soft);border-left:4px solid var(--ok)}
+  .callout .h{font-weight:700;color:var(--ink);display:block;margin-bottom:4px}
+
+  .layer{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin:16px 0}
+  .layer h3{margin:0 0 6px;font-size:16px}
+  .layer .evi{font-family:var(--mono);font-size:11.8px;background:#fff;border:1px dashed #cbd5e1;border-radius:8px;padding:10px 12px;margin:10px 0;color:#334155;white-space:pre-wrap}
+  .layer p{margin:8px 0}
+
+  .item{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:15px 19px;margin:14px 0;background:#fff}
+  .item.a{border-left-color:var(--bad)}
+  .item.b{border-left-color:var(--warn)}
+  .item.c{border-left-color:var(--ok)}
+  .item h3{margin:0 0 5px;font-size:15.5px}
+  .item .where{font-size:11.8px;color:var(--muted);font-family:var(--mono);margin-bottom:8px}
+  .item .row{display:grid;grid-template-columns:76px 1fr;gap:10px;font-size:13.3px;margin:5px 0}
+  .item .row .k{color:var(--muted);font-size:12.3px;padding-top:2px}
+  .item .row .v{color:var(--body)}
+
+  .phase{display:grid;grid-template-columns:118px 1fr;gap:18px;border-top:1px solid var(--line);padding:20px 0}
+  .phase:last-of-type{border-bottom:1px solid var(--line)}
+  .phase .label{font-family:var(--mono);font-size:11.8px;color:var(--muted)}
+  .phase .label b{display:block;font-size:14.5px;color:var(--ink);font-family:inherit;margin-bottom:4px}
+  .phase ul{margin:0}
+
+  .adr{border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:12px 0;background:#fcfdff}
+  .adr .t{font-weight:700;color:var(--ink);font-size:14px}
+  .adr .d{font-size:13.2px;color:var(--body);margin-top:4px}
+
+  footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);font-size:12.4px;color:var(--muted)}
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 22px;margin:24px 0 0;columns:2;column-gap:32px;font-size:13.3px}
+  .toc a{color:var(--body);text-decoration:none;display:block;padding:2.5px 0}
+  .toc a:hover{color:var(--accent)}
+  @media (max-width:860px){
+    .metrics{grid-template-columns:1fr 1fr}
+    .phase{grid-template-columns:1fr}
+    .wrap{padding:32px 18px 64px}
+    h1{font-size:25px}
+    .toc{columns:1}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">定稿 v1.0 · 唯一执行口径</div>
+  <h1>本地 / 云双模型工程化优化方案</h1>
+  <p class="sub">让任何模型——无论跑在本机还是云端——都能完整走通「读码 → 改码 → 跑测 → 修错 → 交付」</p>
+  <div class="meta">
+    <span><b>定稿日期</b> 2026-11-10</span>
+    <span><b>适用范围</b> server/host-agent-loop · cad-bridge · 前端 composer 链路</span>
+    <span><b>取代</b> 前两份报告的诊断与建议部分（证据附件保留）</span>
+    <span><b>工作量</b> 约 17–22 人日 / 21 个任务</span>
+  </div>
+</header>
+
+<div class="toc">
+  <a href="#s1">一、方案总览与判断</a>
+  <a href="#s2">二、问题全景（合并后 9 类）</a>
+  <a href="#s3">三、目标架构与三项关键决策</a>
+  <a href="#s4">四、工作分解 T01–T21</a>
+  <a href="#s5">五、关键实现附录</a>
+  <a href="#s6">六、排期与并行建议</a>
+  <a href="#s7">七、验收标准与发布门槛</a>
+  <a href="#s8">八、灰度、回滚与风险</a>
+  <a href="#s9">九、30 分钟见效清单</a>
+  <a href="#s10">十、附录：复现命令</a>
+</div>
+
+<h2 id="s1">一、方案总览与判断</h2>
+
+<p>两轮诊断（功能测试 + 代码链路 + 运行实例实测）得到同一个判断：<b>当前的问题不在模型能力，而在执行内核</b>。同一个 14B 模型，在 Cursor 式内核里能完成常规改码；在本项目的内核里，它连第一次读文件都过不去。原因可以压成四个数字：</p>
+
+<div class="metrics">
+  <div class="metric bad">
+    <div class="num">4,096 <small>tok</small></div>
+    <div class="cap">Ollama 实际加载窗口。应用按 32,768 算预算，压缩永不触发，首轮即静默截断。</div>
+  </div>
+  <div class="metric bad">
+    <div class="num">0 <small>个</small></div>
+    <div class="cap">qwen2.5-coder:14b 返回的原生 <code>tool_calls</code>。调用体在 <code>content</code> 里，执行环看不见。</div>
+  </div>
+  <div class="metric bad">
+    <div class="num">8 → 0</div>
+    <div class="cap">项目已配 8 个 MCP 服务器，执行环可用 0 个；启用 MCP 还会被门禁禁止回落。</div>
+  </div>
+  <div class="metric bad">
+    <div class="num">1–2 / 12</div>
+    <div class="cap">当前本地模型在 12 个真实任务上的预估通过数。目标：阶段 C 达到 10–11 / 12。</div>
+  </div>
+</div>
+
+<div class="callout bad">
+  <span class="h">核心结论</span>
+  现在要求模型"像 Cursor 一样工作"，等于<b>把 32k 的模型塞进 4k 窗口、把工具调用当普通文本读、把 8 个工具全部丢掉</b>，然后再怪模型不行。这三处修完之前，换任何模型都不会有本质改善；修完之后，14B 级本地模型完成常规任务是可预期的。
+</div>
+
+<p><b>方案由三条主线构成，顺序不可颠倒：</b></p>
+<ol>
+  <li><b>打通</b>（阶段 A）：窗口协商 + 协议降级 + MCP 接入 + 云模型入环 → 从"不能干活"变成"能干活"</li>
+  <li><b>稳定</b>（阶段 B）：读文件、编辑引擎、规则注入、验证闭环 → 从"能干一次"变成"能连续干对"</li>
+  <li><b>对齐</b>（阶段 C）：检查点、仓库地图、计划、路由、可解释 → 从"能用"变成"像 Cursor"</li>
+</ol>
+
+<h2 id="s2">二、问题全景（合并后 9 类）</h2>
+
+<p>两轮共记录 21 个具体缺陷，去重后归为 9 类。分类的意义在于：<b>同一类的修法是同一个</b>，按类推进比按缺陷推进少一半返工。</p>
+
+<table>
+  <thead>
+    <tr><th style="width:34px">#</th><th style="width:160px">问题类</th><th style="width:70px">等级</th><th>具体表现（已实测）</th><th style="width:150px">归属任务</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td><td>上下文窗口错配</td><td><span class="tag t-a">阻断</span></td>
+      <td>请求体无 <code>options</code> → 实际 4096；应用按 32768 算阈值；<code>read_file</code> 默认读 16000 字符≈5000 tok，首轮即溢出；<code>LOCAL_*_NUM_CTX</code> 写死 8192，即使接上也压不回 32k</td>
+      <td>T02</td>
+    </tr>
+    <tr>
+      <td>2</td><td>工具协议不兼容</td><td><span class="tag t-a">阻断</span></td>
+      <td>A. qwen2.5-coder:14b 原生 <code>tool_calls=null</code>，调用在 <code>content</code>；B. qwen2.5:32b / gemma 带 tools 直接 HTTP 400</td>
+      <td>T03</td>
+    </tr>
+    <tr>
+      <td>3</td><td>工具供给缺失</td><td><span class="tag t-a">阻断</span></td>
+      <td>执行环只有 7 个硬编码工具；8 个 MCP 服务器不可见；<code>mcp-cli-gate</code> 反而禁止回落</td>
+      <td>T06</td>
+    </tr>
+    <tr>
+      <td>4</td><td>云模型被排除在工具环外</td><td><span class="tag t-a">阻断</span></td>
+      <td>云模型走纯文本直聊（prompt 明写"没有实时工具"）；Gemini 被 <code>!isGemini</code> 显式排除；Anthropic 官方端点无 <code>/messages</code> 适配；选择器在 local-mcp 模式下隐藏云模型形成死循环</td>
+      <td>T07 / T08</td>
+    </tr>
+    <tr>
+      <td>5</td><td>流式与反馈缺失</td><td><span class="tag t-b">高</span></td>
+      <td>工具轮 <code>stream:false</code>，每轮静默 20–60s 后整段蹦出；另有 vendor 侧去重启发式导致丢字（30 个"的"只回 1 个）</td>
+      <td>T00 / T04</td>
+    </tr>
+    <tr>
+      <td>6</td><td>执行保障缺失</td><td><span class="tag t-b">高</span></td>
+      <td>无 429/5xx 重试；<code>cancelState</code> 只在轮次边界检查，停止需等满 180s；<code>HOST_MAX_TURNS=16</code>；云端失败静默降级到本地</td>
+      <td>T05</td>
+    </tr>
+    <tr>
+      <td>7</td><td>编辑可靠性不足</td><td><span class="tag t-b">高</span></td>
+      <td><code>search_replace</code> 只做严格字符串匹配；无行号读取；无冲突检测；非原子写；<code>filePatches</code> 超 120k 字符置空导致大文件无 diff、无法回滚</td>
+      <td>T10 / T11 / T17</td>
+    </tr>
+    <tr>
+      <td>8</td><td>上下文工程缺失</td><td><span class="tag t-b">高</span></td>
+      <td>规则文件（.cursorrules / .mdc / AGENTS.md）只列不注入；无仓库地图；无 <code>@</code> 引用协议；压缩是启发式截断，丢任务状态</td>
+      <td>T12 / T15 / T18</td>
+    </tr>
+    <tr>
+      <td>9</td><td>验证与度量缺失</td><td><span class="tag t-a">阻断</span></td>
+      <td><code>run_tests</code> 只认 pytest / npm test（本仓库自身都探测不到）；17 类门禁全绿却漏掉全部真实断链；无成功率指标</td>
+      <td>T09 / T14 / T16</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <span class="h">为什么第 9 类也是"阻断"</span>
+  没有端到端评测，就无法证明 1–8 类修好了；更危险的是，团队会持续用"门禁全绿"误判为"功能可用"。所以评测集不是收尾工作，而是 T09 放在阶段 A 的原因。
+</div>
+
+<h2 id="s3">三、目标架构与三项关键决策</h2>
+
+<h3>3.1 唯一执行内核</h3>
+
+<p>当前有两套并行执行环：<code>vendor/cad/local-mcp-orchestrator.js</code>（有 MCP、仅本地、有自己的去重与解析逻辑）和 <code>host-agent-loop.mjs</code>（有云、无 MCP、只有 7 个工具）。两者已经产生三处行为不一致（丢字、400 处理、内容内嵌解析），这正是本轮多数缺陷的来源。</p>
+
+<pre><code>┌────────────────────────────────────────────────────────────────┐
+│ Composer / Turn Policy（意图 · 模式 · 上下文级别 · 模型选择）    │
+└──────────────────────────────┬─────────────────────────────────┘
+                               ▼
+┌────────────────────────────────────────────────────────────────┐
+│ server/agent-runtime.mjs —— 唯一执行环                          │
+│                                                                │
+│  ① Model Adapters   openai │ anthropic │ gemini │ ollama       │
+│  ② Tool Protocol    native │ simplified │ content-JSON          │
+│  ③ Tool Registry    builtin(≤15) + MCP(n, 动态裁剪)             │
+│  ④ Context Manager  真实窗口预算 · 规则 · 仓库地图 · 状态卡压缩  │
+│  ⑤ Edit Engine      四级匹配 · 冲突检测 · 原子写 · 写后校验      │
+│  ⑥ Verifier         test / typecheck / lint / 自愈重试          │
+│  ⑦ Telemetry        ctx · tokens · 失败分类 · 轮次              │
+└──────────────────────────────┬─────────────────────────────────┘
+                               ▼
+        workspace FS / MCP servers / PTY / LSP / 内置浏览器</code></pre>
+
+<table>
+  <thead><tr><th style="width:148px">模块</th><th style="width:270px">职责</th><th>硬约束</th></tr></thead>
+  <tbody>
+    <tr><td><code>model-adapters.mjs</code></td><td>统一消息与工具 schema → 各供应商方言</td><td>能力（tools / vision / window）来自 <code>resolveModelCapabilities()</code>，禁止猜</td></tr>
+    <tr><td><code>tool-call-protocol.mjs</code></td><td>工具调用的下发与回收策略</td><td>策略按 <code>model:digest</code> 缓存；失败一次即降级并记忆</td></tr>
+    <tr><td><code>tool-registry.mjs</code></td><td>内置 + MCP 统一注册、权限、超时</td><td>按窗口裁剪工具数；MCP 工具走与内置相同的权限门</td></tr>
+    <tr><td><code>context-manager.mjs</code></td><td>预算分配：system / 工具 / 历史 / 工具结果 / 预留输出</td><td>预算以<b>真实</b>窗口为分母；压缩后必须保留任务状态卡</td></tr>
+    <tr><td><code>edit-engine.mjs</code></td><td>所有写盘的唯一入口</td><td>写前快照、写后校验、失败必回滚</td></tr>
+    <tr><td><code>verifier.mjs</code></td><td>按项目类型选验证方式</td><td>验证不通过不得声明完成</td></tr>
+  </tbody>
+</table>
+
+<p class="where" style="font-size:12px;color:var(--muted);font-family:var(--mono)">迁移策略：先抽取（T01，无行为变更）→ 再逐项接管（T02–T07）→ 最后把 vendor 环降级为 <code>LOCAL_ORCH_LEGACY=1</code> 的回退开关，默认关闭。不做"一次性重写"。</p>
+
+<h3>3.2 三项关键决策（ADR）</h3>
+
+<div class="adr">
+  <div class="t">ADR-1 · 合并执行环，而不是新增第三套</div>
+  <div class="d">理由：现有两套已证明会漂移（同一模型在两条路径上表现不同）。新增第三套只会让"改一处漏两处"变成"改一处漏三处"。代价是前期 1.5 人日的抽取工作，收益是后续每个需求只改一处。</div>
+</div>
+<div class="adr">
+  <div class="t">ADR-2 · 协议降级，而不是绑定某几个"支持 tools 的模型"</div>
+  <div class="d">理由：实测显示工具调用形态取决于<b>模型 + Ollama 版本 + 模板</b>三者组合，无法用白名单覆盖。三层降级（原生 → 简化 schema → 文本 JSON）能从机制上兜住，且对云端同样适用。代价是需要严格的调用校验（JSON 必须含已知工具名 + 合法参数）。</div>
+</div>
+<div class="adr">
+  <div class="t">ADR-3 · 云端失败不自动降级到本地</div>
+  <div class="d">理由：静默换模型会让用户在不知情下拿到更差结果，也让日志无法归因。改为"明示失败 + 询问是否用本地继续"，并保留已完成的工具轨迹，避免从零重来。</div>
+</div>
+
+<h2 id="s4">四、工作分解 T01–T21</h2>
+
+<p>每项包含：改哪里、怎么改、验收判据、依赖。任务编号可直接作为事项标题使用（配套 <code>执行清单.md</code> 可逐条勾选）。</p>
+
+<h3>阶段 A · 打通（T00–T09，约 8–9 人日）</h3>
+
+<div class="item a">
+  <h3>T00 删除流式去重启发式（上一轮 P0-1）</h3>
+  <div class="where">server/vendor/cad/local-mcp-orchestrator.js · ollamaChatStream</div>
+  <div class="row"><div class="k">问题</div><div class="v">把"与已累积内容尾部重复的 token"整块丢弃，导致输出被吃掉（30 个"的"只回 1 个）。</div></div>
+  <div class="row"><div class="k">改法</div><div class="v">直接累加增量 token，不做任何重叠推断；如需去重，只在"整段重发"的明确信号下按前缀长度裁剪。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">"输出 30 个的"用例返回 ≥ 28 个；与直连 Ollama 输出一致。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">0.2 人日 · 无依赖</div></div>
+</div>
+
+<div class="item a">
+  <h3>T01 抽取执行内核骨架（无行为变更）</h3>
+  <div class="where">新增 server/model-adapters.mjs · shared/tool-call-protocol.mjs · server/tool-registry.mjs</div>
+  <div class="row"><div class="k">做什么</div><div class="v">把 <code>chatOnce</code> 的三种后端分支抽成 adapter 接口（<code>complete(messages, tools) → {text, toolCalls, usage}</code>）；把 vendor 的 <code>parseOllamaAssistantMessageForTools</code>（1411 行）与原 <code>extractToolCalls</code> 合并为共享协议模块；工具定义搬进 registry，行为保持不变。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">现有 17 类门禁全绿；<code>scripts/check-shared-parity.mjs</code> 通过；单聊与工具环回归无差异。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1.5 人日 · 无依赖（可与 T02 并行）</div></div>
+</div>
+
+<div class="item a">
+  <h3>T02 上下文窗口协商（C1）</h3>
+  <div class="where">server/agent-runtime.mjs · model-adapters/ollama · shared/context-budget.mjs</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">① 请求前 <code>resolveModelCapabilities()</code> 取真实窗口；② 显式下发 <code>options.num_ctx</code>（默认=模型窗口，受新设置"本地上下文上限"约束，可下调不可上调）；③ 下发 <code>num_predict</code>（按模式）、<code>keep_alive:'30m'</code>、<code>temperature:0.2</code>；④ <code>LOCAL_*_NUM_CTX</code> 从固定 8192 改为"窗口感知的默认值"。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v"><code>/api/ps</code> 的 <code>context_length</code> 等于预期值；连续 3 次 read_file 后 <code>prompt_eval_count</code> &lt; 窗口 × 0.8；4k 模型不再出现"忘规则"。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1 人日 · 依赖 T01</div></div>
+</div>
+
+<div class="item a">
+  <h3>T03 工具协议三层降级（C2）</h3>
+  <div class="where">shared/tool-call-protocol.mjs · agent-runtime.mjs</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">① 原生 <code>tool_calls</code>；② 空则从 <code>content</code> 提取（去围栏、平衡括号、容错尾逗号、支持一次多个调用、校验工具名在白名单）；③ 若该模型历史上出现 400/解析失败，改用"提示词内嵌协议"（system 给 2 个示例，要求仅输出 JSON）。策略按 <code>model:digest</code> 缓存到设置。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">qwen2.5-coder:14b 连续完成 read→edit→test；qwen2.5:32b 不再 400，自动走文本协议；误触发率 0（普通文本不被当调用）。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1.5 人日 · 依赖 T01</div></div>
+</div>
+
+<div class="item a">
+  <h3>T04 全链路流式（C11-1）</h3>
+  <div class="where">model-adapters/* · agent-runtime.mjs · 前端 use-chat-stream</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">文本与工具轮都开流式：Ollama NDJSON、OpenAI/DeepSeek SSE、Anthropic <code>message_delta</code>、Gemini <code>streamGenerateContent</code>。流式只用于"展示"，最终文本仍以完整响应为准（避免重蹈 T00 的坑）；工具调用开始时先发 <code>running</code> 事件再执行。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">首 token &lt; 3s（本地）/ &lt; 2s（云）；过程中可见"正在读 xxx / 正在改 xxx"；最终文本与一次性返回一致。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1.5 人日 · 依赖 T01</div></div>
+</div>
+
+<div class="item a">
+  <h3>T05 重试、退避与真取消（C11-2）</h3>
+  <div class="where">agent-runtime.mjs · workspace-run-command.mjs</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">429/5xx 指数退避（100/400/1200ms，读 <code>Retry-After</code>，最多 3 次）；区分"可重试/致命/需用户决策"；requestId → AbortController 贯穿 fetch 与子进程；子进程用进程组 kill 避免孤儿；<b>云端失败不静默降级</b>，改为返回可操作提示并保留轨迹。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">注入 429 后自动恢复；点停止 &lt; 300ms 生效且无残留进程；云端断网时提示明确、不偷换模型。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1 人日 · 依赖 T01</div></div>
+</div>
+
+<div class="item a">
+  <h3>T06 MCP 接入执行环 + 拆门禁（C3）</h3>
+  <div class="where">新增 server/mcp-client.mjs · tool-registry · web/src/lib/mcp-cli-gate.ts</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">复用 vendor 已有的 listTools/callTool 路径（orchestrator 1586 / 1722），抽成 <code>mcp-client</code>；轮次开始拉取已启用服务器的工具，命名 <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>，统一 schema 与超时；按窗口裁剪（≤48，相关性优先）；<code>@modelcontextprotocol/sdk</code> 从 vendor 依赖提升为根依赖；门禁从"阻断"改为"能力提示"。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">本地与云都能调用 <code>memory</code>/<code>fetch</code>/<code>sqlite</code>；MCP 写操作受 Ask/Plan 权限约束；停用 MCP 行为不变。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">2 人日 · 依赖 T01、T03</div></div>
+</div>
+
+<div class="item a">
+  <h3>T07 云模型进入执行环 + 方言适配（C4）</h3>
+  <div class="where">model-adapters/openai|anthropic|gemini · resolve-execution-model</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">删除"云模型走纯文本直聊"分支；补 Anthropic <code>/v1/messages</code> 与 Gemini <code>generateContent</code> 适配（含工具 schema 转换）；去掉 <code>!isGemini</code> 排除；allowlist 之外的模型走 OpenAI 兼容。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">DeepSeek / OpenAI / Claude / Gemini 各跑通一次"读→改→测"；同一任务在本地与云的结果结构一致。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">2 人日 · 依赖 T01、T03</div></div>
+</div>
+
+<div class="item a">
+  <h3>T08 模型选择器与通道切换（上一轮 P0-3）</h3>
+  <div class="where">web/src/components/chat-model-selector.tsx · routes/index.tsx</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">选择器恒显本地与云两组，不再因 <code>orchestrationMode=local-mcp</code> 清空云列表；选中即切通道并持久化；切换时提示"将使用工具环 / 上下文窗口 N k"；失效模型（如 <code>qwen2.5-coder:latest</code> 404）在列表中标记并给一键修正。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">对话中可随时切换本地/云；切换后上下文不丢；失效模型不再静默失败。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1 人日 · 依赖 T07</div></div>
+</div>
+
+<div class="item a">
+  <h3>T09 真实任务评测集（C5）</h3>
+  <div class="where">新增 scripts/eval-agent-suite.mjs + eval/tasks/*.json</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">12 个任务（见第七节），每个任务给定仓库快照、初始 prompt、判据（文件断言 + 命令退出码 + 测试结果）。支持 <code>--model local|cloud|&lt;name&gt;</code>、<code>--repeat N</code>，输出 JSON + Markdown 报告，可入 CI（nightly）。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">一条命令出报告；同一任务重复 3 次结果稳定；报告含成功率/轮次/耗时/编辑失败数。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1.5 人日 · 无依赖（建议第 1 天就开工）</div></div>
+</div>
+
+<h3>阶段 B · 稳定（T10–T16，约 7–8 人日）</h3>
+
+<div class="item b">
+  <h3>T10 读文件：行号 + 区间 + 窗口自适应（C6）</h3>
+  <div class="where">tool-registry · read_file</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">schema 增加 <code>offset / limit</code>；返回 <code>行号│代码</code>；默认读取量 = min(窗口 35%, 4000 字符)，并返回 <code>nextOffset</code>；大文件自动提示"本次读了 1–120 行，共 2000 行"。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">4k 窗口下连续读 3 个文件不触发截断；模型能准确引用行号做编辑。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1 人日 · 依赖 T02</div></div>
+</div>
+
+<div class="item b">
+  <h3>T11 编辑引擎：四级回退 + 冲突检测 + 原子写（C7）</h3>
+  <div class="where">新增 server/edit-engine.mjs</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">① 精确匹配 → ② 空白/换行归一（保留原缩进）→ ③ 首尾行锚点 → ④ unified patch；失败返回"最接近的 3 个片段 + 行号"供自修正；写前比对 mtime（变了则要求重读）；tmp+rename 原子写；写后语法校验（tsc / py_compile / go vet，按扩展名选）。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">评测集中"编辑失败率"从 30–40% 降到 &lt; 10%；并发修改不覆盖；写坏可即时发现。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">2 人日 · 依赖 T10</div></div>
+</div>
+
+<div class="item b">
+  <h3>T12 项目规则注入（C8）</h3>
+  <div class="where">server/project-rules.mjs（新增 buildRulesAppendix）· context-manager</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">读取 <code>.cursorrules</code> / <code>.cursor/rules/*.mdc</code> / <code>AGENTS.md</code> / <code>CLAUDE.md</code> / <code>.claudecode/user-preferences.mdc</code>；按预算注入（常驻 ≤800 tok）；<code>.mdc</code> 解析 <code>globs</code>，命中当前编辑文件时追加；超出按"优先级 + 最近修改"截断；UI 显示已注入条数与来源。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">评测任务 8（按 .cursorrules 风格改码）通过；规则冲突时提示而非静默选一个。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1 人日 · 依赖 T02</div></div>
+</div>
+
+<div class="item b">
+  <h3>T13 工具集补齐（C9）</h3>
+  <div class="where">tool-registry</div>
+  <div class="row"><div class="k">新增</div><div class="v"><code>list_dir</code> / <code>glob</code> · <code>multi_edit</code> · <code>move_file</code> / <code>delete_file</code>（带确认）· <code>web_fetch</code> · <code>todo_write</code> · <code>shell_start/read/kill</code> · <code>browser_*</code>（复用内置浏览器）。</div></div>
+  <div class="row"><div class="k">约束</div><div class="v">内置工具总数 ≤15；按任务类型裁剪下发（只读任务只给 4–5 个），避免 schema 挤占本地窗口。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">任务 7（跑起来并报告端口）通过；本地 4k 窗口下工具 schema 占比 &lt; 25%。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">2 人日 · 依赖 T03、T06</div></div>
+</div>
+
+<div class="item b">
+  <h3>T14 验证闭环扩展（C10）</h3>
+  <div class="where">server/workspace-run-command.mjs · workspaceRunTests</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">探测顺序：<code>package.json scripts.test</code> → vitest/jest/mocha → <code>cargo test</code> → <code>go test</code> → mvn/gradle → pnpm/bun/make；都无则回落 <code>tsc --noEmit</code> 或 lint。失败时聚合"失败用例 + 相关文件诊断 + 最近改动行"，一次给全。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">本仓库（node scripts）能被探测到；6 类技术栈各跑通一次；失败信息一轮内足够定位。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1 人日 · 依赖 T05</div></div>
+</div>
+
+<div class="item b">
+  <h3>T15 压缩升级为"摘要 + 任务状态卡"（C12）</h3>
+  <div class="where">server/session-compact.mjs · shared/compact-summary.mjs</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">压缩时生成固定结构状态卡：目标 / 已改文件与关键改动 / 已通过验证 / 未完成项 / 待决策点 / 关键命令；由模型生成并校验长度（本地用同模型低预算，云用便宜档）；压缩事件在时间线可见、可回看原文归档。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">任务 11（连续 20 轮）通过；压缩后模型仍能复述目标与未完成项。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1.5 人日 · 依赖 T02</div></div>
+</div>
+
+<div class="item b">
+  <h3>T16 turn 指标与可观测（C16-1）</h3>
+  <div class="where">shared/turn-audit.mjs · project-logs</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">turn 日志增补：<code>ctx_window</code> / <code>prompt_tok</code> / <code>eval_ms</code> / <code>protocol</code>(native|json) / <code>retry</code> / <code>tool_fail</code> / <code>compact</code> / <code>ollama_ver</code> / <code>model_digest</code>；提供按模型聚合的查询。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">任一失败回合可仅凭日志定位到"哪层出问题"；可出"各模型成功率"趋势。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">0.5 人日 · 无强依赖</div></div>
+</div>
+
+<h3>阶段 C · 对齐（T17–T21，约 6–7 人日）</h3>
+
+<div class="item c">
+  <h3>T17 检查点与逐块 diff（C13）</h3>
+  <div class="where">新增 server/checkpoints.mjs · workbench-diff-review.tsx</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">写盘前把受影响文件快照到 <code>.claudecode/checkpoints/&lt;turnId&gt;/</code>（存变更前内容 + 哈希）；支持"恢复本回合 / 恢复本会话"；diff 按 hunk 接受/拒绝；取消 120k 字符上限，大文件只显示变更 hunk。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">任意回合可一键回滚且字节级一致；100k+ 文件改动有 diff 可审。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">2 人日 · 依赖 T11</div></div>
+</div>
+
+<div class="item c">
+  <h3>T18 仓库地图与符号摘要（C14）</h3>
+  <div class="where">server/code-index.mjs（新增 repo-map 摘要）</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">每轮注入 ≤1,500 tok 的"目录树 + 高频入口 + 导出符号"，按窗口比例缩放（4k 窗口只给一层目录 + 5 个入口）；与 <code>glob</code> 配合，基本消除猜路径。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">"某函数在哪被调用"（任务 1）一次命中率 &gt; 80%。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1.5 人日 · 依赖 T10</div></div>
+</div>
+
+<div class="item c">
+  <h3>T19 任务计划与多步可视化（C15）</h3>
+  <div class="where">agent-runtime · 前端计划面板</div>
+  <div class="row"><div class="k">怎么改</div><div class="v"><code>todo_write</code> 维护结构化清单，每轮把"当前项"注入提示；≥5 步任务强制先建计划；轮次上限从固定 16 改为 <code>计划项×6+4</code> 并随进展动态放宽。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">多文件重构（任务 2/4）不再中途触顶；用户能看到"正在做第 2/5 步"。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1.5 人日 · 依赖 T13</div></div>
+</div>
+
+<div class="item c">
+  <h3>T20 模型路由与成本护栏（C16-2）</h3>
+  <div class="where">server/resolve-execution-model.mjs · usage-stats</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">按任务类型路由（检索/改码→本地；复杂规划→云端）；单回合 token 与费用上限，超限停止并汇报；用户可锁定"只用本地/只用云"。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">同一任务可固定后端复现；超限时明确告警而非静默截断。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1 人日 · 依赖 T16</div></div>
+</div>
+
+<div class="item c">
+  <h3>T21 失败可解释与一键重试（C17）</h3>
+  <div class="where">web/src/lib/agent-failure-hint.ts</div>
+  <div class="row"><div class="k">怎么改</div><div class="v">失败分类：模型不支持 tools / 窗口不足 / 网络 / 权限 / 编辑冲突 / 测试失败；每类给具体动作（"切 32k 窗口模型"、"关闭 MCP 或换通道"）；提供"原样重试 / 换模型重试 / 降上下文重试"。</div></div>
+  <div class="row"><div class="k">验收</div><div class="v">评测中人为制造 6 类失败，提示均可直接执行且能恢复。</div></div>
+  <div class="row"><div class="k">工作量</div><div class="v">1 人日 · 依赖 T16</div></div>
+</div>
+
+<h2 id="s5">五、关键实现附录</h2>
+
+<h4>A. 窗口协商（T02 核心片段）</h4>
+<pre><code><span class="cm">// agent-runtime · ollama adapter</span>
+const caps = await resolveModelCapabilities({ model: backend.model, local: true })
+const window = caps.contextLength ?? 8192
+const budget = resolveLocalGenBudget({ forceDirectChat: mode === 'ask' })
+const cap = settings.localContextCap || 32768        <span class="cm">// 新增设置项，允许下调</span>
+const num_ctx = Math.min(window, cap, Math.max(4096, budget.num_ctx))
+
+await fetch(`${base}/api/chat`, {
+  method: 'POST',
+  body: JSON.stringify({
+    model, messages, tools, stream: true,          <span class="cm">// T04</span>
+    keep_alive: '30m',
+    options: { num_ctx, num_predict: budget.num_predict, temperature: 0.2, top_p: 0.9 },
+  }),
+})</code></pre>
+
+<h4>B. 协议降级（T03 核心片段）</h4>
+<pre><code><span class="cm">// shared/tool-call-protocol.mjs</span>
+export function readToolCalls(message, knownNames) {
+  const native = normalizeNative(message?.tool_calls)
+  if (native.length) return { calls: native, protocol: 'native' }
+
+  const text = stripFences(String(message?.content || ''))
+  for (const obj of balancedJsonObjects(text)) {      <span class="cm">// 容错尾逗号、多重调用</span>
+    const call = coerceCall(obj, knownNames)          <span class="cm">// name 必须在白名单</span>
+    if (call) return { calls: [call], protocol: 'content-json' }
+  }
+  return { calls: [], protocol: 'none' }
+}
+
+<span class="cm">// 模型历史上 400 过 → 直接走提示词内嵌协议，不再试探原生</span>
+const strategy = protocolCache.get(`${model}:${digest}`) ?? 'auto'</code></pre>
+
+<h4>C. MCP 注册（T06 核心片段）</h4>
+<pre><code><span class="cm">// tool-registry</span>
+const mcpTools = await mcpClient.listToolsFor(settings.enabledMcpServers)
+const ranked = rankByRelevance(mcpTools, userLine).slice(0, maxByWindow(num_ctx))
+
+export const tools = [...builtinFor(mode), ...ranked.map(t => ({
+  type: 'function',
+  function: { name: `mcp__${t.server}__${t.name}`, description: t.description, parameters: t.inputSchema },
+}))]
+
+<span class="cm">// 执行分派：MCP 工具走与内置相同的权限门</span>
+if (name.startsWith('mcp__')) return guard(mode, () => mcpClient.callTool(name, args))</code></pre>
+
+<h4>D. 编辑四级回退（T11 核心片段）</h4>
+<pre><code><span class="cm">// edit-engine</span>
+export function applyEdit(src, oldStr, newStr, opts) {
+  let hit = exact(src, oldStr)
+  if (!hit) hit = normalized(src, oldStr)      <span class="cm">// 空白/换行归一，保留原缩进</span>
+  if (!hit) hit = anchored(src, oldStr)        <span class="cm">// 首尾行锚点</span>
+  if (!hit) hit = fromPatch(src, opts.patch)   <span class="cm">// unified diff</span>
+  if (!hit) return { ok: false, nearest: nearestSnippets(src, oldStr, 3) }
+  return { ok: true, content: hit.apply(newStr) }
+}</code></pre>
+
+<h2 id="s6">六、排期与并行建议</h2>
+
+<p>关键路径是 <b>T01 → T02/T03 → T06/T07</b>。T09 与 T16 是"度量先行"，建议第一天就开工，与主线并行，避免最后才发现无法验证。</p>
+
+<table>
+  <thead><tr><th style="width:86px">周次</th><th style="width:300px">主线（关键路径）</th><th style="width:230px">并行</th><th>里程碑</th></tr></thead>
+  <tbody>
+    <tr><td>第 1 周</td><td>T01 抽取 → T02 窗口协商 → T03 协议降级</td><td>T00 去重、T09 评测集搭建、T16 指标字段</td><td>本地模型首次"能调工具"</td></tr>
+    <tr><td>第 2 周</td><td>T04 流式 → T05 重试/取消 → T06 MCP</td><td>T08 选择器（依赖 T07 可先做 UI）</td><td>首 token &lt;3s；MCP 可用</td></tr>
+    <tr><td>第 3 周</td><td>T07 云模型入环 + 方言 → T10 行号读取 → T11 编辑引擎</td><td>T12 规则注入</td><td>本地 6/12、云端 10/12</td></tr>
+    <tr><td>第 4 周</td><td>T13 工具补齐 → T14 验证扩展 → T15 状态卡</td><td>T17 检查点起步</td><td>编辑失败率 &lt;10%，连续 20 回合不崩</td></tr>
+    <tr><td>第 5–6 周</td><td>T17 → T18 → T19 → T20 → T21</td><td>评测夜间回归、文档</td><td>本地 10/12、云端 12/12</td></tr>
+  </tbody>
+</table>
+
+<div class="callout info">
+  <span class="h">并行注意</span>
+  T02/T03/T04 都改 adapter 层，建议由同一人串行完成，避免冲突；T06（MCP）与 T07（云）可以两人并行，但都要基于 T01 的接口。
+</div>
+
+<h2 id="s7">七、验收标准与发布门槛</h2>
+
+<h3>7.1 十二个真实任务</h3>
+
+<table>
+  <thead><tr><th style="width:34px">#</th><th style="width:240px">任务</th><th style="width:120px">考察</th><th>通过判据</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>某函数在哪被调用</td><td>检索 + 读码</td><td>正确文件与行号，无编造</td></tr>
+    <tr><td>2</td><td>给函数加参数并更新调用点</td><td>单/多文件编辑</td><td>测试通过，无残留旧签名</td></tr>
+    <tr><td>3</td><td>修复一个失败单测</td><td>验证闭环</td><td>由红转绿，改动 ≤20 行</td></tr>
+    <tr><td>4</td><td>跨目录重命名模块</td><td>移动 + 引用更新</td><td>构建通过，无断链 import</td></tr>
+    <tr><td>5</td><td>为纯函数补 3 个测试</td><td>新建 + 运行</td><td>新测试执行且通过</td></tr>
+    <tr><td>6</td><td>编辑 2,000 行文件</td><td>行号 + 精确编辑</td><td>仅目标 hunk 变化</td></tr>
+    <tr><td>7</td><td>按 README 跑起来并报告端口</td><td>命令 + 后台进程</td><td>输出真实端口，无编造</td></tr>
+    <tr><td>8</td><td>按 .cursorrules 风格改码</td><td>规则遵循</td><td>符合条目 ≥90%</td></tr>
+    <tr><td>9</td><td>调用 MCP <code>memory</code> 记录决策</td><td>MCP 工具</td><td>记录可回查</td></tr>
+    <tr><td>10</td><td>中断后继续</td><td>重试与恢复</td><td>不丢任务状态</td></tr>
+    <tr><td>11</td><td>连续 20 轮不重复读同一文件</td><td>上下文管理</td><td>无循环，压缩后仍知目标</td></tr>
+    <tr><td>12</td><td>Ask 模式拒绝越权写盘</td><td>权限</td><td>明确拒绝并说明原因</td></tr>
+  </tbody>
+</table>
+
+<h3>7.2 指标门槛与发布判定</h3>
+
+<table>
+  <thead><tr><th style="width:230px">指标</th><th style="width:150px">当前（估）</th><th style="width:150px">阶段 A</th><th style="width:150px">阶段 B</th><th>阶段 C（发布）</th></tr></thead>
+  <tbody>
+    <tr><td>本地 14B 通过率</td><td>1–2 / 12</td><td>≥6 / 12</td><td>≥9 / 12</td><td>≥10 / 12</td></tr>
+    <tr><td>云端通过率</td><td>≈3 / 12</td><td>≥10 / 12</td><td>≥11 / 12</td><td>12 / 12</td></tr>
+    <tr><td>编辑失败率</td><td>30–40%</td><td>&lt;15%</td><td>&lt;10%</td><td>&lt;8%</td></tr>
+    <tr><td>首 token 延迟</td><td>20–60s</td><td>&lt;3s</td><td>&lt;3s</td><td>&lt;2s</td></tr>
+    <tr><td>上下文静默截断</td><td>几乎每轮</td><td>0</td><td>0</td><td>0</td></tr>
+    <tr><td>停止生效</td><td>≤180s</td><td>&lt;300ms</td><td>&lt;300ms</td><td>&lt;300ms</td></tr>
+  </tbody>
+</table>
+
+<div class="callout ok">
+  <span class="h">发布判定（三者同时满足）</span>
+  ① 阶段 C 指标全绿；② 评测集连续 3 次运行波动 &lt;10%；③ 关闭 <code>LOCAL_ORCH_LEGACY</code> 后无一票否决项（越权写盘、编造文件、静默换模型）。
+</div>
+
+<h2 id="s8">八、灰度、回滚与风险</h2>
+
+<h4>灰度策略</h4>
+<ul>
+  <li>按通道灰度：先"仅本地"，再"仅云"，最后"混合"。每个通道保留独立开关（<code>AGENT_RUNTIME_*</code>）。</li>
+  <li>按用户灰度：设置里提供"新执行内核（Beta）"开关，默认关闭，内部同学先开。</li>
+  <li>双跑对比：灰度期同一请求可同时记录旧环结果（不写盘），比较工具选择与耗时。</li>
+</ul>
+
+<h4>回滚</h4>
+<ul>
+  <li><code>LOCAL_ORCH_LEGACY=1</code> → 回退到 vendor 环（T00 的修复保留，其余不影响）。</li>
+  <li>协议层可按模型回退：<code>protocol=legacy-native</code> 只发原生 tools，不做内容解析。</li>
+  <li>检查点目录自带还原能力，误改可即时恢复。</li>
+</ul>
+
+<h4>风险登记册</h4>
+<table>
+  <thead><tr><th style="width:210px">风险</th><th style="width:70px">概率</th><th style="width:70px">影响</th><th>缓解</th></tr></thead>
+  <tbody>
+    <tr><td>Ollama 版本/模板差异导致行为变化</td><td>高</td><td>中</td><td>协议层不依赖单一返回形态；日志记录版本与 digest</td></tr>
+    <tr><td>文本 JSON 误触发（普通文本被当调用）</td><td>中</td><td>高</td><td>工具名白名单 + 参数 schema 校验 + 仅单次执行</td></tr>
+    <tr><td>MCP 工具过多撑爆窗口</td><td>高</td><td>中</td><td>按窗口裁剪 + 相关性排序 + 硬上限 48</td></tr>
+    <tr><td>流式改造引入新的拼接问题</td><td>中</td><td>中</td><td>流式仅用于展示，终稿以完整响应为准</td></tr>
+    <tr><td>统一内核迁移期双路径不一致</td><td>中</td><td>中</td><td>T01 先做无行为变更抽取；双跑对比期只读观测</td></tr>
+    <tr><td>小模型做多步计划产生噪声</td><td>中</td><td>低</td><td>&lt;14B 默认不开计划与并行子任务</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s9">九、30 分钟见效清单</h2>
+
+<p>如果只想先验证判断、再决定投入，按下面顺序做，每项都是分钟级，且不改架构：</p>
+
+<ol>
+  <li><b>给 Ollama 请求加 <code>options.num_ctx</code> + <code>keep_alive</code></b>（改动 5 行）——本地模型"忘规则/重复读"会立刻缓解，是最快验证根因的一步。</li>
+  <li><b>删流式去重启发式</b>（T00）——输出不再丢字。</li>
+  <li><b><code>read_file</code> 默认 maxChars 从 16000 降到 4000</b>——单次读取不再撑爆 4k 窗口。</li>
+  <li><b>选择器恒显云模型</b>（T08 最小版）——解开"选不到云模型"的死循环。</li>
+  <li><b><code>HOST_MAX_TURNS</code> 16 → 32</b>——多文件任务的轮次够用。</li>
+  <li><b>启动时校验模型名</b>（对 <code>/api/tags</code> 比对）——消除 <code>qwen2.5-coder:latest not found</code> 这类静默失败。</li>
+</ol>
+
+<div class="callout warn">
+  <span class="h">这 6 项只是"止血"</span>
+  它们能让本地模型从"完全不能用"变成"偶尔能用"，但不会解决工具协议、MCP、编辑可靠性。正式方案仍按 T01–T21 推进；止血项可作为阶段 A 的第一批提交。
+</div>
+
+<h2 id="s10">十、附录：复现命令</h2>
+
+<p>全部命令在本机可复现，且不修改项目代码：</p>
+
+<pre><code><span class="cm"># 1) 实际上下文窗口（核心证据）</span>
+curl -s http://127.0.0.1:11434/api/chat -d '{"model":"qwen2.5-coder:14b","stream":false,
+  "messages":[{"role":"user","content":"hi"}]}' >/dev/null
+curl -s http://127.0.0.1:11434/api/ps | python3 -m json.tool | grep -E 'context_length|expires_at'
+
+<span class="cm"># 2) 显式 num_ctx 生效</span>
+curl -s http://127.0.0.1:11434/api/chat -d '{"model":"qwen2.5-coder:14b","stream":false,
+  "messages":[{"role":"user","content":"hi"}],"options":{"num_ctx":32768},"keep_alive":"30m"}' >/dev/null
+curl -s http://127.0.0.1:11434/api/ps | python3 -m json.tool | grep context_length
+
+<span class="cm"># 3) 原生 tool_calls 是否返回（应为 null）</span>
+curl -s http://127.0.0.1:11434/api/chat -d '{"model":"qwen2.5-coder:14b","stream":false,
+  "messages":[{"role":"user","content":"读取 package.json"}],
+  "tools":[{"type":"function","function":{"name":"read_file","description":"Read a file",
+    "parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}}]}' \
+  | python3 -c "import sys,json;m=json.load(sys.stdin)['message'];print('tool_calls=',m.get('tool_calls'));print(m.get('content'))"
+
+<span class="cm"># 4) 提示与工具 schema 体积</span>
+node -e "const fs=require('fs');const L=fs.readFileSync('server/host-agent-loop.mjs','utf8').split('\n');
+console.log('tools',L.slice(298,425).join('').length,'system',L.slice(1025,1042).join('').length)"
+
+<span class="cm"># 5) MCP 配置盘点</span>
+node -e "console.log(Object.keys(require('./.mcp.json').mcpServers).join(', '))"</code></pre>
+
+<footer>
+  本文件为定稿 v1.0，是对《整体功能测试与优化报告》与《双模型工程化优化方案》两份材料的合并与收敛，诊断结论不变、仅重整执行口径。<br>
+  所有数字来自 2026-11-05 本机实测（Ollama 0.40.14 / qwen2.5-coder:14b / 32GB macOS）；标注"估"者为推算。本轮未修改任何项目代码与设置。
+</footer>
+
+</div>
+</body>
+</html>

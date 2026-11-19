@@ -16,7 +16,9 @@ export async function loadAgentContextAppendix(
   const parts: string[] = [];
 
   try {
-    const rules = await loadProjectRulesSnippet(api);
+    const rules = await loadProjectRulesSnippet(api, {
+      includeCanonicalRules: true,
+    });
     if (rules.trim()) parts.push(rules.trim());
   } catch {
     /* ignore */

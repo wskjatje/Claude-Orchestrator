@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 2,
+  "startedAt": "2026-11-11T00:44:23.658Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 1,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "passed",
+      "ok": true,
+      "answer": "示例项目默认使用 SQLite 存储，健康检查路径是 GET /healthz。\nHost · Read",
+      "error": null,
+      "turns": 2,
+      "durationMs": 5897,
+      "toolCallCount": 1,
+      "toolNames": [
+        "read_file",
+        "Read"
+      ],
+      "editFailureCount": 0,
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "answerIncludes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "type": "workspaceUnchanged",
+          "ok": true,
+          "detail": "1 个初始文件"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E01",
+      "title": "基于仓库文件回答问题",
+      "attempted": 1,
+      "passed": 1,
+      "failed": 0,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        5897
+      ],
+      "turns": [
+        2
+      ],
+      "editFailures": 0,
+      "successRate": 1,
+      "avgDurationMs": 5897,
+      "avgTurns": 2
+    }
+  ],
+  "finishedAt": "2026-11-11T00:44:29.608Z"
+}

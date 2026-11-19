@@ -8,7 +8,6 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { getDesktop } from "@/lib/desktop-api";
-import { buildClaudeCodePrompt } from "@/lib/claude-prompt";
 import {
   collectAtSkillStems,
   loadComposerSkillSnippet,
@@ -23,22 +22,15 @@ import {
   toastMcpHealthIfDegraded,
 } from "@/lib/mcp-health-hint";
 import {
-  agentForceContinueInstruction,
-  hasAgentWriteEvidence,
-  looksLikeAgentAskingConfirmation,
-} from "@/lib/agent-no-confirm";
-import {
   formatAgentTurnMetaAppendix,
   lastAgentTurnMeta,
+  type AgentTurnMeta,
 } from "@/lib/agent-turn-meta";
 import {
   resetLiveComposerTurnSignals,
   snapshotComposerTurnFooter,
 } from "@/lib/workbench-composer-turn-footer";
-import {
-  cliPermissionModeForTurn,
-  getWorkbenchInteractionMode,
-} from "@/lib/workbench-interaction-mode";
+import { getWorkbenchInteractionMode } from "@/lib/workbench-interaction-mode";
 import { toastWorkspaceWriteSuccess } from "@/lib/toast-workspace-write";
 import {
   mergeAgentFilePatches,
@@ -87,7 +79,6 @@ import { isBulkWriteProjectMessage } from "@/lib/confirm-write";
 import {
   BROWSER_MODE_CHAT_MESSAGE,
   RPC_REQUEST_CANCELLED,
-  RPC_REQUEST_INTERRUPTED,
 } from "@/lib/ui-copy";
 import {
   isRpcUserAbortError,
@@ -110,9 +101,11 @@ import {
   buildSlimProjectBrief,
 } from "@/lib/expand-user-line-workspace-files";
 import { resolveTurnPolicy } from "@/lib/turn-policy";
+import { shouldUseUnifiedAgentLoop } from "@/lib/agent-execution-route";
 import { assertAgentWriteCloseLoop } from "@/lib/turn-write-close";
 import { echoAgentRunsInWorkbenchTerminal } from "@/lib/workbench-terminal-run-bridge";
 import { formatTurnAuditMessage } from "../../../shared/turn-audit.mjs";
+import { buildInterruptedAssistantMessage } from "../../../shared/interrupted-agent-turn.mjs";
 import { buildAgentRoutedInstruction } from "@/lib/agent-skill-routing";
 import { buildSubagentUserLine } from "@/lib/parse-agent-command";
 import { isAutoAgentBasename } from "@/lib/agent-basename";
@@ -130,6 +123,7 @@ import {
 import {
   getCachedContextLength,
   getCachedModelCapability,
+  recommendToolsCapableModel,
   rememberModelCapability,
 } from "@/lib/model-capability-cache";
 import { resolvePriorBudget, slimPriorMessagesForApi } from "@/lib/slim-prior-messages";
@@ -331,7 +325,9 @@ export function useChatSend(args: UseChatSendArgs) {
     // 与 Cursor 一致：先 abort 后端（含本地 Ollama destroy），再收 UI
     if (id && api?.claudeCodeAbort) void api.claudeCodeAbort(id);
     if (id && api?.localOrchestrationAbort) void api.localOrchestrationAbort(id);
-    if (id && api?.hostAgentAbort) void api.hostAgentAbort(id);
+    if (id && api?.hostAgentAbort) {
+      void api.hostAgentAbort({ requestId: id, source: "user-stop" });
+    }
     if (id && api?.cloudDirectAbort) void api.cloudDirectAbort(id);
     // 立刻去掉 Thinking / busy，避免「钮已恢复但模型还在跑」的错觉
     const markStopped = (msgs: any[]) => {
@@ -778,12 +774,17 @@ export function useChatSend(args: UseChatSendArgs) {
 
     // 手选模型优先；Auto 时：改码偏云、问答偏本地
     const selectedRaw = sess.modelId || settings.model;
-    const routeHint = inferModelRouteHint({
-      allowWrites: turnPolicy.allowWrites,
-      forceDirectChat: turnPolicy.forceDirectChat,
-      allowTools: turnPolicy.allowTools,
-      intent: turnPolicy.intent,
-    });
+    const routeHint =
+      settings.modelRouteLock === "local"
+        ? "prefer-local"
+        : settings.modelRouteLock === "cloud"
+          ? "prefer-cloud"
+          : inferModelRouteHint({
+              allowWrites: turnPolicy.allowWrites,
+              forceDirectChat: turnPolicy.forceDirectChat,
+              allowTools: turnPolicy.allowTools,
+              intent: turnPolicy.intent,
+            });
     const resolvedExec = resolveModelForExecution({
       selectedModel: selectedRaw,
       cloudModels: orchestratorModels,
@@ -795,6 +796,7 @@ export function useChatSend(args: UseChatSendArgs) {
       routeHint,
       preferredCloudModel: settings.preferredCloudModel,
       preferredLocalModel: settings.preferredLocalModel,
+      allowAutoCrossPool: settings.modelRouteLock !== "local" && settings.modelRouteLock !== "cloud",
     });
     if (!resolvedExec) {
       const cloudEmpty =
@@ -840,8 +842,17 @@ export function useChatSend(args: UseChatSendArgs) {
     if (needsToolsGate && typeof api.modelsCapabilities === "function") {
       const cached = getCachedModelCapability(modelId);
       if (cached?.tools === false) {
+        const alt = recommendToolsCapableModel(
+          [
+            ...(localOllamaTags || []),
+            ...(configuredPoolsRef.current.localModels || []),
+          ],
+          modelId,
+        );
         toast.error("当前模型不支持工具调用", {
-          description: `${modelId}：请换支持 tools 的模型，或改用 Ask 纯问答。`,
+          description: alt
+            ? `${modelId}：请换已标「工具」的本机模型（如 ${alt}），或改用 Ask 纯问答。`
+            : `${modelId}：请换支持 tools 的模型，或改用 Ask 纯问答。`,
           duration: 8_000,
         });
         return;
@@ -895,26 +906,26 @@ export function useChatSend(args: UseChatSendArgs) {
     });
     const priorForApi: PriorTurn[] = slimPriorMessagesForApi(
       priorBase
-        .filter((m) => {
-          // Auto 模式：过滤掉携带 Agent 标签的旧助手回复（避免跨模式污染）
-          if (isAgentMode) return true;
-          return m.role === "user" || !m.agentStem;
-        })
-        .map((m) => {
-          if (m.role === "user") {
-            const t: PriorTurn = { role: "user", content: m.content };
+      .filter((m) => {
+        // Auto 模式：过滤掉携带 Agent 标签的旧助手回复（避免跨模式污染）
+        if (isAgentMode) return true;
+        return m.role === "user" || !m.agentStem;
+      })
+      .map((m) => {
+        if (m.role === "user") {
+          const t: PriorTurn = { role: "user", content: m.content };
             // Ask/直聊不带历史附图，避免视觉/base64 把输入 token 打爆
             if (m.attachments?.length && !turnPolicy.forceDirectChat) {
               t.attachments = m.attachments;
             }
-            return t;
-          }
+          return t;
+        }
           return { role: "assistant" as const, content: m.content };
-        })
-        // __general__ 模式：滤除含 workspace-write fence 的旧助手回复，防止历史污染驱动重复写盘
-        .filter((m): m is PriorTurn => {
-          if (route.stem !== "__general__" || m.role === "user") return true;
-          return !/```workspace-write\b[\s\S]*?```/i.test(m.content);
+      })
+      // __general__ 模式：滤除含 workspace-write fence 的旧助手回复，防止历史污染驱动重复写盘
+      .filter((m): m is PriorTurn => {
+        if (route.stem !== "__general__" || m.role === "user") return true;
+        return !/```workspace-write\b[\s\S]*?```/i.test(m.content);
         }),
       priorBudget,
     );
@@ -949,22 +960,40 @@ export function useChatSend(args: UseChatSendArgs) {
       }
     }
 
-    if (mode === "local-mcp") {
-      if (!api.localOrchestrationPrompt) {
+    // 执行通道由实际交互模式/回合策略决定；具名 Agent 只负责人格与上下文元数据。
+    // 否则通用 Agent 写任务会绕过 Host，被旧的一次性围栏写入误判为完成。
+    const wantsUnifiedAgentLoop = shouldUseUnifiedAgentLoop(turnPolicy);
+    if (wantsUnifiedAgentLoop) {
+      if (!api.hostAgentPrompt) {
         setMessages((m) => [
           ...m,
           {
             role: "assistant",
-            content: "当前预加载脚本未暴露本地 MCP 编排接口，请完全退出并重启桌面应用。",
+            content:
+              "Host Agent 工具闭环不可用，本回合已停止。不会降级到本地编排、直聊或围栏写入；请完全退出并重启桌面应用后重试。",
             name: "系统",
           },
         ]);
         return;
       }
-    } else if (!api.claudeCodePrompt) {
+    } else if (mode === "local-mcp" && !api.localOrchestrationPrompt) {
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: "Claude Code 接口不可用，请重启应用后重试。", name: "系统" },
+        {
+          role: "assistant",
+          content: "当前预加载脚本未暴露本地 MCP 编排接口，请完全退出并重启桌面应用。",
+          name: "系统",
+        },
+      ]);
+      return;
+    } else if (!isClaudeCliModel(modelId) && !api.cloudDirectPrompt) {
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          content: "云端直连不可用，且 Claude CLI 已移除。请改用本机模型。",
+          name: "系统",
+        },
       ]);
       return;
     }
@@ -1080,40 +1109,40 @@ export function useChatSend(args: UseChatSendArgs) {
         localUserLineFinal = slimLine;
         cloudUserLineFinal = slimLine;
       } else {
-        const baseForExpand = await expandSpecialMentions(route.body);
-        const { expanded: expandedBase, injectedPaths: expandInjectedPaths } =
-          await expandUserLineWithWorkspaceFiles(api, baseForExpand, {
-            settings,
-            cmd,
-            displayLine,
-            chainRunning: chainRunningRef.current,
-          });
-        expandInjectedPathsRef.current = expandInjectedPaths || [];
-        const routedBase = buildAgentRoutedInstruction(route.stem, expandedBase, mode, {
-          mcpChatToolName: settings.mcpChatToolName || undefined,
-          mcpListModelsToolName: settings.mcpListModelsToolName || undefined,
+      const baseForExpand = await expandSpecialMentions(route.body);
+      const { expanded: expandedBase, injectedPaths: expandInjectedPaths } =
+        await expandUserLineWithWorkspaceFiles(api, baseForExpand, {
+          settings,
+          cmd,
+          displayLine,
+          chainRunning: chainRunningRef.current,
         });
-        await syncOfficialGenericChains();
-        const chainListR = await api.orchestrationListChains?.();
-        chainCatalogSnippet = buildAgentChainCatalogMarkdown(
-          route.stem,
-          chainListR?.ok ? (chainListR.items ?? []) : [],
-          [],
-        );
-        // 链模式：追加真实 docs/ 文件清单（每链第一轮注入一次，避免后续追问重复注入）
-        if (chainRunningRef.current && !chainDocsInjectedRef.current) {
-          const docsHint = await buildDocsFileListHint(api);
-          if (docsHint) {
-            chainCatalogSnippet += docsHint;
-            chainDocsInjectedRef.current = true;
-          }
+      expandInjectedPathsRef.current = expandInjectedPaths || [];
+      const routedBase = buildAgentRoutedInstruction(route.stem, expandedBase, mode, {
+        mcpChatToolName: settings.mcpChatToolName || undefined,
+        mcpListModelsToolName: settings.mcpListModelsToolName || undefined,
+      });
+      await syncOfficialGenericChains();
+      const chainListR = await api.orchestrationListChains?.();
+      chainCatalogSnippet = buildAgentChainCatalogMarkdown(
+        route.stem,
+        chainListR?.ok ? (chainListR.items ?? []) : [],
+        [],
+      );
+      // 链模式：追加真实 docs/ 文件清单（每链第一轮注入一次，避免后续追问重复注入）
+      if (chainRunningRef.current && !chainDocsInjectedRef.current) {
+        const docsHint = await buildDocsFileListHint(api);
+        if (docsHint) {
+          chainCatalogSnippet += docsHint;
+          chainDocsInjectedRef.current = true;
         }
-        localUserLineFinal = visionEnrichedNote
-          ? `${chainCatalogSnippet ? `${routedBase}\n\n${chainCatalogSnippet}` : routedBase}\n${visionEnrichedNote}`
-          : chainCatalogSnippet
-            ? `${routedBase}\n\n${chainCatalogSnippet}`
-            : routedBase;
-        cloudUserLineFinal = buildSubagentUserLine(route.stem, localUserLineFinal);
+      }
+      localUserLineFinal = visionEnrichedNote
+        ? `${chainCatalogSnippet ? `${routedBase}\n\n${chainCatalogSnippet}` : routedBase}\n${visionEnrichedNote}`
+        : chainCatalogSnippet
+          ? `${routedBase}\n\n${chainCatalogSnippet}`
+          : routedBase;
+      cloudUserLineFinal = buildSubagentUserLine(route.stem, localUserLineFinal);
       }
     }
 
@@ -1133,6 +1162,7 @@ export function useChatSend(args: UseChatSendArgs) {
       if (skillSnippet) {
         // local-mcp / Host 走 userLine；CLI 另经 buildClaudeCodePrompt.skillSnippet
         localUserLineFinal = prependSkillSnippet(localUserLineFinal, skillSnippet);
+        cloudUserLineFinal = prependSkillSnippet(cloudUserLineFinal, skillSnippet);
       }
     }
 
@@ -1199,14 +1229,14 @@ export function useChatSend(args: UseChatSendArgs) {
         return next;
       });
       chatCtx.syncSessions(sessionsRef.current);
-      // 异步调用 AI 生成更智能的标题
+      // 标题只用云端直连；不调用已移除的 Claude CLI
       const _api = getDesktop();
-      if (_api?.claudeCodePrompt) {
+      if (_api?.cloudDirectPrompt && !isClaudeCliModel(modelId)) {
         const _sid = sendSessionId;
         const _model = modelId;
         const _userLine = displayLine;
         _api
-          .claudeCodePrompt({
+          .cloudDirectPrompt({
             prompt: `为这个编程对话生成一个简洁的标题（3-8个字）。标题要准确反映用户的请求意图。
 要求：
 - 使用中文
@@ -1310,12 +1340,31 @@ export function useChatSend(args: UseChatSendArgs) {
         deferredWritePaths?: string[];
         writeMode?: "ask" | "plan" | "agent";
         writtenPaths?: string[];
+        verified?: boolean;
+        todos?: {
+          id: string;
+          title: string;
+          status: "pending" | "in_progress" | "completed";
+        }[];
+        toolTrace?: {
+          tool: string;
+          detail?: string;
+          path?: string;
+          args?: Record<string, unknown>;
+          ok?: boolean;
+          output?: string;
+          exitCode?: number;
+        }[];
+        rolledBack?: boolean;
+        rolledBackPaths?: string[];
+        rollbackFailures?: { path: string; error: string }[];
         toolsTrace?: { offered: string[]; called: number };
       } = { ok: false, content: "", error: "未执行" };
       /** Host / 本地工具直写路径（无 workspace-write 围栏亦可闭环） */
       let hostWrittenPaths: string[] = [];
       let turnFilePatches: AgentFilePatch[] = [];
       let hostVerified: boolean | undefined;
+      let hostTodos: NonNullable<AgentTurnMeta["todos"]> = [];
       let hostToolTrace: Array<{
         tool: string;
         detail?: string;
@@ -1328,7 +1377,7 @@ export function useChatSend(args: UseChatSendArgs) {
       /** Agent 本轮执行后端：cli | host | local（气泡标注） */
       let agentExecBackend: "cli" | "host" | "local" | null = null;
       const basenameOverride = `${cmd.stem}.md`;
-      /** P1-B：已启用非内置 MCP 时，禁止 CLI/本地编排失败后静默 Host（Host 无 MCP） */
+      /** P1-B：已启用且健康检查非 error 的非内置 MCP 时，禁止本机编排失败后静默 Host（Host 无 MCP） */
       let mcpNamesRequiringCli: string[] = [];
       if (typeof api.readClaudeConfigJson === "function") {
         try {
@@ -1337,12 +1386,75 @@ export function useChatSend(args: UseChatSendArgs) {
             mcpRead?.ok && mcpRead.data && typeof mcpRead.data === "object"
               ? (mcpRead.data as { mcpServers?: Record<string, unknown> }).mcpServers
               : undefined;
-          mcpNamesRequiringCli = enabledMcpNamesRequiringCliChannel(ms);
+          let healthServers: Record<string, { status?: string }> | null = null;
+          if (typeof api.mcpGetHealthSnapshot === "function") {
+            try {
+              const snap = await api.mcpGetHealthSnapshot();
+              healthServers = snap?.snapshot?.servers || null;
+            } catch {
+              healthServers = null;
+            }
+          }
+          mcpNamesRequiringCli = enabledMcpNamesRequiringCliChannel(ms, healthServers);
         } catch {
           mcpNamesRequiringCli = [];
         }
       }
       const blockHostWhenMcpEnabled = mcpNamesRequiringCli.length > 0;
+      const runSelectedModelHostAgent = async () => {
+        setLiveExecChannel("host", modelId);
+        try {
+          res = await api.hostAgentPrompt!({
+            priorMessages: priorTurnsToOrchestrationMessages(priorForApi),
+            userLine: cloudUserLineFinal,
+            model: modelId,
+            modelMode: mode,
+            requestId: reqId,
+            ...(contextAppendix && turnPolicy.contextLevel === "agent-full"
+              ? { contextAppendix }
+              : {}),
+            allowWrites: turnPolicy.allowWrites,
+            autoApplyWrites: turnPolicy.autoApplyWrites,
+            readOnlyTurn: !turnPolicy.allowWrites,
+            interactionMode: turnPolicy.interactionMode,
+            requireAppliedWrite:
+              turnPolicy.autoApplyWrites && turnPolicy.requireAppliedWrite,
+            ...(mcpNamesRequiringCli.length
+              ? { allowedMcpServers: mcpNamesRequiringCli }
+              : {}),
+            ...(turnPolicy.systemConstraint
+              ? { systemConstraint: turnPolicy.systemConstraint }
+              : {}),
+          });
+          agentExecBackend = "host";
+          hostWrittenPaths = Array.isArray(res.writtenPaths)
+            ? [
+                ...new Set(
+                  res.writtenPaths
+                    .map((p) => String(p || "").trim().replace(/\\/g, "/"))
+                    .filter(Boolean),
+                ),
+              ]
+            : [];
+          hostToolTrace = Array.isArray(res.toolTrace) ? res.toolTrace : [];
+          hostVerified = Boolean(res.verified);
+          hostTodos = Array.isArray(res.todos) ? res.todos : [];
+          if (!res?.ok) return;
+          const fromPatches = normalizeWritePatches(res.filePatches);
+          if (!fromPatches.length) return;
+          for (const p of fromPatches) {
+            const checkpoint = p.checkpointBefore ?? p.before;
+            if (checkpoint !== undefined) stashWorkspaceWriteCheckpoint(p.path, checkpoint);
+          }
+          turnFilePatches = mergeAgentFilePatches(turnFilePatches, fromPatches);
+        } catch (e) {
+          res = {
+            ok: false,
+            content: "",
+            error: e instanceof Error ? e.message : "Agent 执行异常",
+          };
+        }
+      };
       if (isAgentMode) {
         await appendAgentExecEvent({
           agent: cmd.stem,
@@ -1358,9 +1470,15 @@ export function useChatSend(args: UseChatSendArgs) {
         setLiveExecChannel("direct");
       }
 
-      if (mode === "local-mcp") {
+      const useUnifiedHostAgent =
+        wantsUnifiedAgentLoop &&
+        typeof api.hostAgentPrompt === "function";
+
+      if (useUnifiedHostAgent) {
+        await runSelectedModelHostAgent();
+      } else if (mode === "local-mcp") {
         setLiveExecChannel("local");
-        // 本地池：只走 Ollama 编排/直连 chat；失败明确报错，禁止静默改 Host（Host 会注入编码 Agent 人格）
+        // 外部 MCP / 直聊兼容路径；普通 Agent 写任务统一走上方 Host 工具闭环。
         let localOrchError: string | null = null;
         if (typeof api.localOrchestrationPrompt === "function") {
           try {
@@ -1399,8 +1517,9 @@ export function useChatSend(args: UseChatSendArgs) {
               const fromPatches = normalizeWritePatches(res.filePatches);
               if (fromPatches.length) {
                 for (const p of fromPatches) {
-                  if (p.before !== undefined) {
-                    stashWorkspaceWriteCheckpoint(p.path, p.before);
+                  const checkpoint = p.checkpointBefore ?? p.before;
+                  if (checkpoint !== undefined) {
+                    stashWorkspaceWriteCheckpoint(p.path, checkpoint);
                   }
                 }
                 turnFilePatches = mergeAgentFilePatches(turnFilePatches, fromPatches);
@@ -1423,11 +1542,11 @@ export function useChatSend(args: UseChatSendArgs) {
           res = { ok: false, content: "", error: localOrchError };
         }
         if (!res?.ok && blockHostWhenMcpEnabled) {
-          res = {
-            ok: false,
-            content: "",
+            res = {
+              ok: false,
+              content: "",
             error: mcpCliGateFailureMessage(localOrchError, mcpNamesRequiringCli),
-          };
+            };
         }
       } else {
         const workspaceDir = await api.getWorkspace();
@@ -1458,262 +1577,50 @@ export function useChatSend(args: UseChatSendArgs) {
           const saved = await api.saveChatImageAttachments(attachmentsToSave);
           if (saved.ok && saved.paths?.length) savedImagePaths = saved.paths;
         }
-        const ixMode = getWorkbenchInteractionMode();
-        // Cursor：手选的云供应商模型（DeepSeek / Gemini / GPT 等）本轮直接打该 API。
-        // 只有 Claude 系进入 CLI 工具环。CLI 失败仍硬报错，不改道到别的模型。
-        // 附图不整轨跳过：Claude 的 Agent/Plan 仍走 CLI。
-        if (!isClaudeCliModel(modelId)) {
+        if (wantsUnifiedAgentLoop) {
+          res = {
+            ok: false,
+            content: "",
+            error: mcpCliGateFailureMessage(
+              "Host Agent 当前不可用，无法连接已启用的 MCP 工具",
+              mcpNamesRequiringCli,
+            ),
+          };
+        } else if (isClaudeCliModel(modelId)) {
+            res = {
+              ok: false,
+              content: "",
+            error:
+              "已移除 Claude CLI。请改用本机模型。不会安装或调用 claude，也不会自动改用 Host 或直聊。",
+          };
+        } else if (api.cloudDirectPrompt) {
           setLiveExecChannel("direct", modelId);
-        }
-        const wantsToolLoop =
-          isClaudeCliModel(modelId) &&
-          turnPolicy.allowTools &&
-          !turnPolicy.forceDirectChat &&
-          (ixMode === "agent" || ixMode === "plan");
-        const cliPerm = cliPermissionModeForTurn({
-          interactionMode: ixMode,
-          allowWrites: turnPolicy.allowWrites,
-          autoApplyWrites: turnPolicy.autoApplyWrites,
-        });
-        const skipCloudRoleBody =
-          turnPolicy.forceDirectChat || !turnPolicy.allowWrites || !isAgentMode;
-
-        // Agent/Plan 工具环：优先 Claude CLI；失败硬报错，禁止静默 Host/cloudDirect
-        let usedToolLoop = false;
-        let toolLoopError: string | null = null;
-        if (wantsToolLoop) {
-          let cliReady = false;
-          if (typeof api.claudeCodePrompt === "function") {
-            if (api.claudeCodeCliStatus) {
-              try {
-                const st = await api.claudeCodeCliStatus();
-                cliReady = Boolean(st?.claudePath && !st?.hint?.includes?.("不存在"));
-              } catch {
-                cliReady = false;
-              }
-            }
-            if (!cliReady && typeof api.claudeCodeEnsureCli === "function") {
-              try {
-                if (ixMode === "agent" && turnPolicy.allowWrites) {
-                  toast.message("正在安装 / 修复 Claude CLI…");
-                }
-                const ens = await api.claudeCodeEnsureCli();
-                if (ens?.ok && ens?.claudePath) {
-                  cliReady = true;
-                  if (ixMode === "agent" && turnPolicy.allowWrites) {
-                    toast.success("Claude CLI 已就绪");
-                  }
-                } else {
-                  const ensErr = String(ens?.error || ens?.hint || "ensureCli 未得到可执行 claude");
-                  toolLoopError = `Claude CLI：${ensErr}`;
-                }
-              } catch (e) {
-                toolLoopError = `Claude CLI ensureCli：${
-                  e instanceof Error ? e.message : String(e)
-                }`;
-              }
-            }
-          }
-          if (cliReady && api.claudeCodePrompt) {
-            setLiveExecChannel("cli");
-            const prompt = await buildClaudeCodePrompt(api, {
-              workspaceDir,
-              priorHistory: priorForApi,
-              userLine: cloudUserLineFinal,
-              userAttachments: useInlineVision ? undefined : attachmentsToSave,
-              savedImagePaths: useInlineVision ? undefined : savedImagePaths,
-              inlineVision: useInlineVision,
-              sessionResume: claudeSessionResume,
-              localAgentBasename: basenameOverride,
-              skipDefaultRoleBlock: true,
-              skipAgentRoleBody: skipCloudRoleBody,
-              systemConstraint: turnPolicy.systemConstraint || undefined,
-              chainCatalogSnippet,
-              skillSnippet: skillSnippet || undefined,
-              mcpChatToolName: settings.mcpChatToolName || undefined,
-              mcpListModelsToolName: settings.mcpListModelsToolName || undefined,
-              orchestration: {
-                orchestratorModel: modelId,
-                localOllamaModel: settings.localOllamaModel,
-                ollamaBase: settings.ollamaBase,
-              },
-            });
-            res = await api.claudeCodePrompt({
-              prompt,
-              model: modelId,
-              requestId: reqId,
-              claudeSessionId: sess?.claudeSessionId ?? undefined,
-              isNewClaudeSession: !sess?.claudeSessionId,
-              attachmentCount: inlineAttachments?.length ?? attachmentsToSave?.length ?? 0,
-              attachments: useInlineVision ? inlineAttachments : attachmentsToSave,
-              permissionMode: cliPerm,
-            });
-            usedToolLoop = Boolean(res?.ok);
-            if (usedToolLoop) {
-              agentExecBackend = "cli";
-              // CLI Edit/Write：写前快照 → filePatches（对齐 Host/本地 Diff 卡）
-              const cliPaths = [
-                ...(Array.isArray(res?.writtenPaths) ? res.writtenPaths : []),
-                ...(Array.isArray(res?.toolWrittenPaths) ? res.toolWrittenPaths : []),
-              ]
-                .map((p) => String(p || "").trim().replace(/\\/g, "/"))
-                .filter(Boolean);
-              if (cliPaths.length) {
-                hostWrittenPaths = [...new Set([...hostWrittenPaths, ...cliPaths])];
-              }
-              const cliPatches = normalizeWritePatches(res?.filePatches);
-              if (cliPatches.length) {
-                for (const p of cliPatches) {
-                  if (p.before !== undefined) {
-                    stashWorkspaceWriteCheckpoint(p.path, p.before);
-                  }
-                }
-                turnFilePatches = mergeAgentFilePatches(turnFilePatches, cliPatches);
-              }
-              // 仅可写 Agent：征求确认且未写盘时强制续写（只读/Ask 禁止）
-              const cliText = String(res?.content || "");
-              if (
-                turnPolicy.allowWrites &&
-                turnPolicy.autoApplyWrites &&
-                ixMode === "agent" &&
-                looksLikeAgentAskingConfirmation(cliText) &&
-                !hasAgentWriteEvidence(cliText)
-              ) {
-                const forceLine = agentForceContinueInstruction();
-                const contPrompt = await buildClaudeCodePrompt(api, {
-                  workspaceDir,
-                  priorHistory: [
-                    ...priorForApi,
-                    { role: "assistant" as const, content: cliText },
-                  ],
-                  userLine: forceLine,
-                  sessionResume: Boolean(res?.claudeSessionId || sess?.claudeSessionId),
-                  localAgentBasename: basenameOverride,
-                  skipDefaultRoleBlock: true,
-                  systemConstraint: turnPolicy.systemConstraint || undefined,
-                  chainCatalogSnippet,
-                  skillSnippet: skillSnippet || undefined,
-                  mcpChatToolName: settings.mcpChatToolName || undefined,
-                  mcpListModelsToolName: settings.mcpListModelsToolName || undefined,
-                  orchestration: {
-                    orchestratorModel: modelId,
-                    localOllamaModel: settings.localOllamaModel,
-                    ollamaBase: settings.ollamaBase,
-                  },
-                });
-                const contRes = await api.claudeCodePrompt({
-                  prompt: contPrompt,
-                  model: modelId,
-                  requestId: reqId,
-                  claudeSessionId:
-                    res?.claudeSessionId ?? sess?.claudeSessionId ?? undefined,
-                  isNewClaudeSession: false,
-                  permissionMode: cliPerm,
-                });
-                if (contRes?.ok) {
-                  const contPaths = [
-                    ...(Array.isArray(contRes.writtenPaths) ? contRes.writtenPaths : []),
-                    ...(Array.isArray(contRes.toolWrittenPaths)
-                      ? contRes.toolWrittenPaths
-                      : []),
-                  ]
-                    .map((p) => String(p || "").trim().replace(/\\/g, "/"))
-                    .filter(Boolean);
-                  if (contPaths.length) {
-                    hostWrittenPaths = [...new Set([...hostWrittenPaths, ...contPaths])];
-                  }
-                  const contPatches = normalizeWritePatches(contRes.filePatches);
-                  if (contPatches.length) {
-                    for (const p of contPatches) {
-                      if (p.before !== undefined) {
-                        stashWorkspaceWriteCheckpoint(p.path, p.before);
-                      }
-                    }
-                    turnFilePatches = mergeAgentFilePatches(turnFilePatches, contPatches);
-                  }
-                  res = {
-                    ...contRes,
-                    // 勿用 ⋯ 前缀：会被当成工具行渲染成扳手「系统强制续写」
-                    content: `${cliText}\n\n${contRes.content || ""}`,
-                    claudeSessionId: contRes.claudeSessionId || res?.claudeSessionId,
-                    writtenPaths: [
-                      ...new Set([
-                        ...(Array.isArray(res?.writtenPaths) ? res.writtenPaths : []),
-                        ...contPaths,
-                      ]),
-                    ],
-                    filePatches: mergeAgentFilePatches(
-                      normalizeWritePatches(res?.filePatches),
-                      contPatches,
-                    ),
-                  };
-                }
-              }
-            } else {
-              toolLoopError = String(res?.error || "Claude CLI 执行失败");
-            }
-          }
-          if (!usedToolLoop && blockHostWhenMcpEnabled) {
-            // 已启用需 MCP 的服务器 → 禁止 Host / cloudDirect 静默兜底
-            res = {
-              ok: false,
-              content: "",
-              error: mcpCliGateFailureMessage(toolLoopError, mcpNamesRequiringCli),
-            };
-            usedToolLoop = true;
-          }
-          // Agent/Plan 已进入工具环意图：CLI 失败硬报错，禁止静默 Host / cloudDirect
-          if (!usedToolLoop && wantsToolLoop) {
-            res = {
-              ok: false,
-              content: "",
-              error: toolLoopError
-                ? `工具环不可用（Claude CLI）：${toolLoopError}。不会自动改用 Host 或直聊。`
-                : "工具环不可用（Claude CLI 未成功）。不会自动改用 Host 或直聊。",
-            };
-            usedToolLoop = true; // 阻断下方 cloudDirect
-          }
-        }
-
-        if (!usedToolLoop) {
-          let prompt: string;
-          prompt = await buildPlainChatPrompt(
+          let prompt = await buildPlainChatPrompt(
             priorForApi,
             cloudUserLineFinal,
             workspaceDir,
             api,
             { systemConstraint: turnPolicy.systemConstraint || undefined },
           );
-          // 问答/Ask/只读：cloudDirect；可写 Agent 已在上方硬失败
-          if (api.cloudDirectPrompt) {
-            let finalPrompt = prompt;
             const preReadAppendix = await preReadInstructedWorkspaceFiles(
               api,
               prompt,
               expandInjectedPathsRef.current,
             ).catch(() => "");
             if (preReadAppendix) {
-              finalPrompt = `${preReadAppendix}\n\n---\n\n${prompt}`;
+            prompt = `${preReadAppendix}\n\n---\n\n${prompt}`;
             }
             res = await api.cloudDirectPrompt({
-              prompt: finalPrompt,
-              model: modelId,
-              requestId: reqId,
-            });
-          } else if (api.claudeCodePrompt) {
-            res = await api.claudeCodePrompt({
               prompt,
               model: modelId,
               requestId: reqId,
-              claudeSessionId: sess?.claudeSessionId ?? undefined,
-              isNewClaudeSession: !sess?.claudeSessionId,
-              attachmentCount: inlineAttachments?.length ?? attachmentsToSave?.length ?? 0,
-              attachments: useInlineVision ? inlineAttachments : attachmentsToSave,
-              permissionMode: cliPerm,
             });
           } else {
-            res = { ok: false, error: "无可用发送后端", content: "" };
-          }
+          res = {
+            ok: false,
+            content: "",
+            error: "无可用发送后端（Claude CLI 已移除）。",
+          };
         }
       }
       toastIfLocalOrchestrationHints(res);
@@ -1765,7 +1672,8 @@ export function useChatSend(args: UseChatSendArgs) {
       };
 
       if (!res.ok) {
-        // 失败回合：只保留错误文案，禁止解析 fence/diff 成「待应用」卡片
+        // 失败回合：错误进横幅，已完成的工具轨迹仍作为正文证据保留。
+        // 禁止把连接错误覆盖到已经执行过的过程上。
         const line = formatAssistantFailure({
           ...res,
           error: String(res.error || "").slice(0, 1200),
@@ -1774,13 +1682,28 @@ export function useChatSend(args: UseChatSendArgs) {
           ok: false,
           error: String(res.error || line).slice(0, 240),
         });
+        const failureStreamEvents = toolTraceToStreamEvents(hostToolTrace);
+        const failureAgentTurn: AgentTurnMeta | undefined =
+          agentExecBackend ||
+          hostWrittenPaths.length ||
+          hostTodos.length ||
+          failureStreamEvents.length
+            ? {
+                writtenPaths: hostWrittenPaths,
+                verified: false,
+                ...(hostTodos.length ? { todos: hostTodos } : {}),
+                ...(agentExecBackend ? { backend: agentExecBackend } : {}),
+                ...(failureStreamEvents.length ? { streamEvents: failureStreamEvents } : {}),
+              }
+            : undefined;
         hist = [
           ...hist,
           {
             role: "assistant",
-            content: line,
+            content: failureAgentTurn ? "" : line,
             ts: Date.now(),
             requestError: true,
+            ...(failureAgentTurn ? { requestErrorDetail: line } : {}),
             billingSource: mode === "local-mcp" ? "local" : "cloud",
             modelId,
             // 失败也如实标通道，避免写盘 tools 失败却显示「本地直聊」
@@ -1792,6 +1715,7 @@ export function useChatSend(args: UseChatSendArgs) {
                 }
               : {}),
             ...(!turnPolicy.allowWrites ? { suppressFileEdits: true as const } : {}),
+            ...(failureAgentTurn ? { agentTurn: failureAgentTurn } : {}),
             ...turnAgent,
           },
         ];
@@ -1799,7 +1723,7 @@ export function useChatSend(args: UseChatSendArgs) {
         let reply = res.content || "";
         // Ask：仅 toast 提醒；Agent 自动写盘走硬闭环（禁止 toast 后当成功）
         if (!turnPolicy.autoApplyWrites) {
-          maybeToastMissingWorkspaceWrite(reply);
+        maybeToastMissingWorkspaceWrite(reply);
         }
         // 回合策略：Ask/只读意图禁止自动落盘，并剥掉全部写盘载荷（避免 UI 刷文件卡）
         let auto: {
@@ -1825,10 +1749,10 @@ export function useChatSend(args: UseChatSendArgs) {
           auto = { nextContent: reply, written: [], failed: [] };
         } else {
           auto = await autoAcceptPendingFromAssistantReply(reply, {
-            alreadyWrittenPaths: hostWrittenPaths,
+          alreadyWrittenPaths: hostWrittenPaths,
             alreadyPatches: turnFilePatches,
-          });
-          reply = auto.nextContent;
+        });
+        reply = auto.nextContent;
           if (auto.patches?.length) {
             turnFilePatches = mergeAgentFilePatches(turnFilePatches, auto.patches);
           }
@@ -1839,50 +1763,12 @@ export function useChatSend(args: UseChatSendArgs) {
         let writtenForTurn = !turnPolicy.allowWrites
           ? []
           : [
-              ...new Set(
-                [...hostWrittenPaths, ...auto.written, ...pathsFromReply].filter(
-                  isPlausibleWorkspaceRelPath,
-                ),
-              ),
-            ];
-        // 仅 CLI Agent 可写意图：用 git status 补路径；禁止无 commit 脏树冒充问答写入
-        if (
-          turnPolicy.allowWrites &&
-          turnPolicy.autoApplyWrites &&
-          !writtenForTurn.length &&
-          agentExecBackend === "cli" &&
-          typeof api.workspaceGetGitDiff === "function"
-        ) {
-          try {
-            const gd = await api.workspaceGetGitDiff();
-            const statusLine = String(gd?.statusLine || "").trim();
-            const gitUsable =
-              gd?.ok !== false &&
-              statusLine &&
-              !/^(fatal|error|（git status)/i.test(statusLine) &&
-              !/not a git repository|Command failed|不可用|no commits yet/i.test(
-                statusLine,
-              );
-            if (gitUsable) {
-              const dirty = statusLine
-                .split("\n")
-                .map((l) => l.trim())
-                .filter((l) => l && !l.startsWith("##"))
-                .map((l) =>
-                  l
-                    .replace(/^[ MADRCU?!]{1,2}\s+/, "")
-                    .replace(/^.*\s->\s/, "")
-                    .replace(/\\/g, "/"),
-                )
-                .filter(isPlausibleWorkspaceRelPath)
-                .slice(0, 40);
-              if (dirty.length) writtenForTurn = dirty;
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-
+          ...new Set(
+            [...hostWrittenPaths, ...auto.written, ...pathsFromReply].filter(
+              isPlausibleWorkspaceRelPath,
+            ),
+          ),
+        ];
         // Finalize：只读回合禁止 ingest 落盘；Agent 自动落盘走 detailed + 硬闭环
         const ingest = await ingestWorkspaceWritesDetailed(
           api,
@@ -1913,7 +1799,7 @@ export function useChatSend(args: UseChatSendArgs) {
         // 仅真实变更意图才强制「至少写 1 个文件」；咨询/方案口述对齐 Cursor，零写入不算失败
         const requireAppliedWrite =
           Boolean(turnPolicy.autoApplyWrites) && turnPolicy.intent === "write";
-        let closeLoop = assertAgentWriteCloseLoop({
+        const closeLoop = assertAgentWriteCloseLoop({
           allowWrites: turnPolicy.allowWrites,
           autoApplyWrites: turnPolicy.autoApplyWrites,
           replyRaw: replyBeforeWrite,
@@ -1921,63 +1807,6 @@ export function useChatSend(args: UseChatSendArgs) {
           failed: auto.failed,
           requireAppliedWrite,
         });
-        // 仅本地编排：围栏无法解析 / 0 写入时再问一次，只要一块 JSON。不改云端通道，也不把说明文字兜底写成文件。
-        if (
-          !closeLoop.ok &&
-          mode === "local-mcp" &&
-          requireAppliedWrite &&
-          /未能写入文件|未写入任何|声称已改文件/.test(closeLoop.error) &&
-          typeof api.localOrchestrationPrompt === "function"
-        ) {
-          try {
-            const repair = await api.localOrchestrationPrompt({
-              priorMessages: priorTurnsToOrchestrationMessages([
-                ...priorForApi,
-                { role: "assistant", content: replyBeforeWrite.slice(0, 6000) },
-              ]),
-              userLine:
-                "上一轮未成功落盘。只重新输出一个 ```workspace-write 围栏，正文必须是 JSON 对象 " +
-                '{"path":"<相对路径>","content":"完整文件内容"}。不要在围栏外写说明；禁止空落盘收尾。',
-              languageSourceLine: displayLine,
-              orchestratorModel: modelId,
-              requestId: reqId,
-              agentBasenameOverride: isAgentMode ? basenameOverride : "__general__",
-              interactionMode: turnPolicy.interactionMode,
-              allowWrites: true,
-              autoApplyWrites: true,
-              systemConstraint:
-                "只输出一个 ```workspace-write JSON 围栏。path 与 content 都必须是 JSON 字符串。",
-            });
-            const repaired = String(repair?.content || "");
-            if (repair?.ok && parseWorkspaceWriteItemsFromBubble(repaired).length) {
-              const repairedIngest = await ingestWorkspaceWritesDetailed(
-                api,
-                repaired,
-                toastIngestWorkspaceHint,
-                { allowApply: true },
-              );
-              if (repairedIngest.written.length) {
-                reply = repaired;
-                replyBeforeWrite = repaired;
-                writtenForTurn = [
-                  ...new Set([...writtenForTurn, ...repairedIngest.written]),
-                ];
-                displayContent =
-                  stripLargeAssistantArtifacts(repairedIngest.text) || repaired;
-                closeLoop = assertAgentWriteCloseLoop({
-                  allowWrites: true,
-                  autoApplyWrites: true,
-                  replyRaw: repaired,
-                  written: writtenForTurn,
-                  failed: repairedIngest.failed,
-                  requireAppliedWrite: true,
-                });
-              }
-            }
-          } catch {
-            /* 补救失败则保留原来的硬错误 */
-          }
-        }
         const writeParsed =
           closeLoop.parsed ||
           (turnPolicy.allowWrites
@@ -2050,9 +1879,9 @@ export function useChatSend(args: UseChatSendArgs) {
           /测试[：:].*已跑|· verified|143 passed|\d+ passed/i.test(displayContent);
         let streamEvents = turnPolicy.allowWrites
           ? mergeStreamEvents(
-              extractStreamEventsFromContent(reply),
-              extractStreamEventsFromContent(displayContent),
-              toolTraceToStreamEvents(hostToolTrace),
+          extractStreamEventsFromContent(reply),
+          extractStreamEventsFromContent(displayContent),
+          toolTraceToStreamEvents(hostToolTrace),
             )
           : [];
         const summary = buildShortAgentSummary(
@@ -2064,8 +1893,8 @@ export function useChatSend(args: UseChatSendArgs) {
         if (
           turnPolicy.allowWrites &&
           (writtenForTurn.length ||
-            agentExecBackend ||
-            getWorkbenchInteractionMode() === "agent" ||
+          agentExecBackend ||
+          getWorkbenchInteractionMode() === "agent" ||
             looksLikeAgentTurnReport(displayContent))
         ) {
           const shaped = shapeAgentTurnDisplay({
@@ -2165,6 +1994,7 @@ export function useChatSend(args: UseChatSendArgs) {
                     ? { filePatches: turnFilePatches }
                     : {}),
                   verified: verifiedForTurn,
+                  ...(hostTodos.length ? { todos: hostTodos } : {}),
                   ...(agentExecBackend ? { backend: agentExecBackend } : {}),
                   ...(mcpUsed ? { mcpUsed: true } : {}),
                   ...(streamEvents.length ? { streamEvents } : {}),
@@ -2234,19 +2064,39 @@ export function useChatSend(args: UseChatSendArgs) {
         isRpcUserAbortError(e) ||
         normalized === RPC_REQUEST_CANCELLED ||
         normalized === "生成已停止";
-      const interrupted = normalized === RPC_REQUEST_INTERRUPTED;
       // 仅用户取消可静默收束；中断/桥离线/其它错误一律硬展示（禁 Failed to fetch 兜底软化）
       const quietStop = userCancel;
       const display = quietStop
         ? formatAssistantFailure({ aborted: true, error: normalized })
         : formatAssistantFailure({ error: normalized });
+      const liveMessages =
+        chatCtx.perSessionMessagesRef.current[sendSessionId] ||
+        (sendSessionId === activeIdRef.current ? chatCtx.messagesRef.current : []);
+      const preserved: {
+        content: string;
+        requestError: boolean;
+        requestErrorDetail?: string;
+        agentTurn?: unknown;
+        localChannel?: "direct" | "orch";
+      } = quietStop
+        ? { content: display, requestError: false as const }
+        : buildInterruptedAssistantMessage(liveMessages, display);
       hist = [
         ...hist,
         {
           role: "assistant",
-          content: display,
+          content: preserved.content,
           ts: Date.now(),
           requestError: !quietStop,
+          ...(preserved.requestErrorDetail
+            ? { requestErrorDetail: preserved.requestErrorDetail }
+            : {}),
+          ...(preserved.agentTurn
+            ? { agentTurn: preserved.agentTurn as AgentTurnMeta }
+            : {}),
+          ...(preserved.localChannel
+            ? { localChannel: preserved.localChannel }
+            : {}),
           billingSource: mode === "local-mcp" ? "local" : "cloud",
           modelId,
           ...turnAgent,

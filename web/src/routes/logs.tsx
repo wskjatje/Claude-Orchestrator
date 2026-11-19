@@ -10,7 +10,7 @@ import { useDesktopReady, useHasDesktop } from "@/hooks/use-desktop-ready";
 import { DesktopGateBanner } from "@/components/desktop-gate-banner";
 import { cn } from "@/lib/utils";
 
-type LogTab = "workbench" | "claude" | "trace";
+type LogTab = "workbench" | "metrics" | "claude" | "trace";
 type ClaudeSource = "claudeEvents" | "claudeDebugLatest" | "claudeHistoryJsonl" | "claudeLibraryLogs";
 
 const CLAUDE_SOURCES: { value: ClaudeSource; label: string }[] = [
@@ -23,7 +23,7 @@ const CLAUDE_SOURCES: { value: ClaudeSource; label: string }[] = [
 export const Route = createFileRoute("/logs")({
   head: () => ({ meta: [{ title: "日志 · Claude Orchestrator" }] }),
   validateSearch: (search: Record<string, unknown>) => ({
-    tab: search.tab === "claude" || search.tab === "trace" ? (search.tab as LogTab) : ("workbench" as LogTab),
+    tab: search.tab === "metrics" || search.tab === "claude" || search.tab === "trace" ? (search.tab as LogTab) : ("workbench" as LogTab),
     stem: typeof search.stem === "string" ? search.stem : "",
   }),
   component: LogsPage,
@@ -97,7 +97,7 @@ function LogsPage() {
         setText(r.content || "");
         return;
       }
-      const source = tab === "workbench" ? "app" : claudeSource;
+      const source = tab === "workbench" ? "app" : tab === "metrics" ? "agentTurns" : claudeSource;
       const r = await api.logsReadTail({ source, maxLines: 400, maxBytes: 280_000 });
       if (!r.ok) {
         setText("");
@@ -128,6 +128,8 @@ function LogsPage() {
   const tabLabel =
     tab === "workbench"
       ? "工作台日志"
+      : tab === "metrics"
+        ? "Agent 指标"
       : tab === "claude"
         ? CLAUDE_SOURCES.find((x) => x.value === claudeSource)?.label
         : `追踪 · ${traceStem || "?"}`;
@@ -154,7 +156,8 @@ function LogsPage() {
               {(
                 [
                   ["workbench", "工作台"],
-                  ["claude", "Claude"],
+                  ["metrics", "Agent 指标"],
+                  ["claude", "本机配置"],
                   ["trace", "追踪"],
                 ] as const
               ).map(([id, label]) => (
@@ -224,7 +227,7 @@ function LogsPage() {
           {tab === "claude" && (
             <details className="mb-3 shrink-0 rounded-xl border border-border bg-surface-elevated/60">
               <summary className="cursor-pointer px-4 py-2 text-[12px] font-medium text-foreground">
-                Claude Hooks（只读）
+                本机 Hooks（只读）
               </summary>
               <div className="border-t border-border px-4 py-3">
                 <ClaudeHooksPanel compact />

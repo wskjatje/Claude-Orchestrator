@@ -90,11 +90,23 @@ assert(/紧扣本轮所问/.test(localOrch), 'direct: answer current question')
 assert(/looksLikeIncompleteAssistantReply/.test(localOrch), 'direct: incomplete detector')
 assert(/auto-continue/.test(localOrch) && /maxContinues/.test(localOrch), 'direct: auto-continue on truncate')
 assert(/sanitizeToolDescriptionForOllama/.test(localOrch), 'tools: sanitize descriptions')
-assert(!/fence-write fallback/.test(localOrch), 'tools: no fence-write 兜底')
+assert(!/runLocalFenceWriteChat|allowWorkspaceWriteFence/.test(localOrch), 'tools: no fence-write 兜底')
+assert(!/buildCodingToolsOnly|flattenToolMessagesForPlainChat/.test(localOrch), 'tools: no reduced/plain-chat 兜底')
 assert(/think: false/.test(localOrch), 'tools loop: think false')
 assert(/ensureWorkspaceWriteTool/.test(localOrch), 'tools: inject workspace-write for writes')
 assert(/probeOllamaToolsAccepted/.test(localOrch), 'tools: preflight probe')
 assert(/本地写盘不绕开 tools/.test(localOrch), 'tools: fail-fast no silent degrade')
+
+/** 规则监听只递归 .cursor/rules；禁止把 code-index/、日志、SQLite 一并递归监听到 EMFILE。 */
+const projectRules = fs.readFileSync(path.join(root, 'server/project-rules.mjs'), 'utf8')
+assert(
+  /const recursive = st\.isDirectory\(\) && t === cursorRules/.test(projectRules),
+  'rules watcher: recursive only for .cursor/rules',
+)
+assert(
+  !/targets\.push\(claudecodeDir\)/.test(projectRules),
+  'rules watcher: never watches runtime .claudecode directory',
+)
 
 if (process.exitCode) {
   console.error('\ncheck-workspace-fidelity: FAILED')

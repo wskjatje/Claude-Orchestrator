@@ -23,7 +23,7 @@ export type ChatMessagesPaneProps = {
   onWriteToWorkspace?: (content: string) => void;
   onGenerateChain?: (content: string) => void;
   onEditUserMessage?: (historyIndex: number) => void;
-  onRequestResendUserMessage?: (historyIndex: number) => void;
+  onRequestResendUserMessage?: (historyIndex: number, retryMode?: "same" | "auto" | "diagnose") => void;
   onAssistantContentPatch?: (historyIndex: number, nextContent: string) => void | Promise<void>;
 };
 

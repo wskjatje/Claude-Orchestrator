@@ -44,6 +44,8 @@ type ChatMessageContextMenuProps = {
   onEdit?: () => void;
   onResend?: () => void;
   onRetry?: () => void;
+  onRetryAuto?: () => void;
+  onRetryDiagnose?: () => void;
   children: ReactNode;
 };
 
@@ -64,6 +66,8 @@ export function ChatMessageContextMenu({
   onEdit,
   onResend,
   onRetry,
+  onRetryAuto,
+  onRetryDiagnose,
   children,
 }: ChatMessageContextMenuProps) {
   const actionable =
@@ -82,7 +86,10 @@ export function ChatMessageContextMenu({
   const canEdit = role === "user" && actionable && historyIndex != null && typeof onEdit === "function";
   const canResend =
     role === "user" && actionable && historyIndex != null && typeof onResend === "function";
-  const canRetry = role === "assistant" && actionable && typeof onRetry === "function";
+  const canRetry =
+    role === "assistant" &&
+    actionable &&
+    (typeof onRetry === "function" || typeof onRetryAuto === "function" || typeof onRetryDiagnose === "function");
 
   const onCopy = async () => {
     if (!actionable) return;
@@ -144,7 +151,11 @@ export function ChatMessageContextMenu({
               </ContextMenuItem>
             ) : null}
             {canRetry ? (
-              <ContextMenuItem onSelect={() => onRetry!()}>重试本轮</ContextMenuItem>
+              <>
+                {onRetry ? <ContextMenuItem onSelect={() => onRetry()}>用当前模型重试</ContextMenuItem> : null}
+                {onRetryAuto ? <ContextMenuItem onSelect={() => onRetryAuto()}>使用 Auto 重试</ContextMenuItem> : null}
+                {onRetryDiagnose ? <ContextMenuItem onSelect={() => onRetryDiagnose()}>只读诊断重试</ContextMenuItem> : null}
+              </>
             ) : null}
           </>
         ) : null}

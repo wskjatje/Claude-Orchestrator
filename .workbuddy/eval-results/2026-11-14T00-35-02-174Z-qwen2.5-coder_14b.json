@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": 5,
+  "startedAt": "2026-11-14T00:35:02.174Z",
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.21.0",
+    "ollamaBase": "http://127.0.0.1:11434"
+  },
+  "model": "qwen2.5-coder:14b",
+  "repeat": 3,
+  "backends": [
+    "host"
+  ],
+  "runtime": {
+    "version": "0.40.16",
+    "model": "qwen2.5-coder:14b",
+    "digest": "9ec8897f747e246e970bc5cfdda85d22f1123dc2e3d34978a010a75968716849",
+    "details": {
+      "parent_model": "",
+      "format": "gguf",
+      "family": "qwen2",
+      "families": [
+        "qwen2"
+      ],
+      "parameter_size": "14.8B",
+      "quantization_level": "Q4_K_M",
+      "context_length": 32768,
+      "embedding_length": 5120,
+      "runner": "ggml"
+    }
+  },
+  "runs": [
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 1,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "模型在自动执行后仍未产生任何文件修改，任务未完成。（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 7,
+      "durationMs": 10662,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "Search",
+        "Read",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": false,
+          "exitCode": 1,
+          "output": "old_string not found; nearest lines around 4:\n  return `hello, ${name}`\n}\n"
+        }
+      ],
+      "editFailureCount": 2,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 2,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "模型在自动执行后仍未产生任何文件修改，任务未完成。（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 7,
+      "durationMs": 10608,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "Search",
+        "Read",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": false,
+          "exitCode": 1,
+          "output": "old_string not found; nearest lines around 4:\n  return `hello, ${name}`\n}\n"
+        }
+      ],
+      "editFailureCount": 2,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    },
+    {
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "backend": "host",
+      "repeat": 3,
+      "model": "qwen2.5-coder:14b",
+      "status": "failed",
+      "ok": false,
+      "answer": "",
+      "error": "模型在自动执行后仍未产生任何文件修改，任务未完成。（已试：ollama:qwen2.5-coder:14b）",
+      "turns": 7,
+      "durationMs": 10588,
+      "toolCallCount": 3,
+      "toolNames": [
+        "code_search",
+        "read_file",
+        "search_replace",
+        "Search",
+        "Read",
+        "Edit"
+      ],
+      "toolTrace": [
+        {
+          "tool": "code_search",
+          "detail": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "read_file",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "tool": "search_replace",
+          "detail": "src/greeting.js",
+          "path": "src/greeting.js",
+          "ok": false,
+          "exitCode": 1,
+          "output": "old_string not found; nearest lines around 4:\n  return `hello, ${name}`\n}\n"
+        }
+      ],
+      "editFailureCount": 2,
+      "writeRepairAttempted": false,
+      "writeRepairPaths": [],
+      "writtenPaths": [],
+      "assertions": [
+        {
+          "type": "fileContains",
+          "ok": false,
+          "detail": "src/greeting.js"
+        },
+        {
+          "type": "commandPass",
+          "ok": true,
+          "detail": "exit=0"
+        }
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "backend": "host",
+      "taskId": "E02",
+      "title": "单文件局部编辑",
+      "attempted": 3,
+      "passed": 0,
+      "failed": 3,
+      "needsReview": 0,
+      "notRun": 0,
+      "durationsMs": [
+        10662,
+        10608,
+        10588
+      ],
+      "turns": [
+        7,
+        7,
+        7
+      ],
+      "editFailures": 6,
+      "successRate": 0,
+      "avgDurationMs": 10619,
+      "avgTurns": 7
+    }
+  ],
+  "finishedAt": "2026-11-14T00:35:34.208Z"
+}

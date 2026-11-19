@@ -280,8 +280,8 @@ async function runClaudeChainStep(agentName, taskId, instruction, modelId, reque
   const fin = await finalizeChainStepWrite({
     reply: out,
     workspaceDir,
-    agentName,
-    taskId,
+      agentName,
+      taskId,
     instruction,
     applyWrites: writeMode === 'agent',
     retryOnce: async (nudge) => {
@@ -608,9 +608,9 @@ async function orchestrationChainLoop() {
             : String(res.content || '')
 
         let mergedWritten = [
-          ...new Set([
+            ...new Set([
             ...(Array.isArray(res.writtenPaths) ? res.writtenPaths : []),
-            ...(Array.isArray(res.toolWrittenPaths) ? res.toolWrittenPaths : []),
+              ...(Array.isArray(res.toolWrittenPaths) ? res.toolWrittenPaths : []),
           ]),
         ]
 
@@ -675,9 +675,9 @@ async function orchestrationChainLoop() {
           reply = support.stripLargeAssistantArtifactsMain(reply)
         }
 
-        if (mergedWritten.length) {
-          appendAppLog(`[chain-run] wrote ${mergedWritten.join(', ')}`)
-        }
+          if (mergedWritten.length) {
+            appendAppLog(`[chain-run] wrote ${mergedWritten.join(', ')}`)
+          }
         if (workspaceDir && mergedWritten.length) {
           try {
             const { updateNodesStatus, STATUS_COMPLETED } = require(path.join(CAD, 'node-status-tracker.js'))
@@ -1218,7 +1218,7 @@ function applyWritesInWorkspace(items, writeMode) {
     }
   }
   if (mode === 'agent') {
-    const workspaceDir = loadWorkspace()
+  const workspaceDir = loadWorkspace()
     if (workspaceDir && typeof applyWorkspaceWriteFenceItems === 'function') {
       return applyWorkspaceWriteFenceItems(workspaceDir, list)
     }
@@ -1702,8 +1702,8 @@ function createHandlers() {
       const fin = await finalizeChainStepWrite({
         reply: out,
         workspaceDir,
-        agentName,
-        taskId,
+          agentName,
+          taskId,
         instruction,
         applyWrites: writeMode === 'agent',
         retryOnce: async (nudge) => {
@@ -1856,8 +1856,8 @@ function createHandlers() {
             const fin = await finalizeChainStepWrite({
               reply: out,
               workspaceDir: loadWorkspace(),
-              agentName: step.agentName,
-              taskId: step.taskId,
+                agentName: step.agentName,
+                taskId: step.taskId,
               instruction: routed,
               applyWrites: writeMode === 'agent',
               retryOnce: async (nudge) => {
@@ -1951,8 +1951,8 @@ function createHandlers() {
               const fin = await finalizeChainStepWrite({
                 reply: out,
                 workspaceDir: loadWorkspace(),
-                agentName: step.agentName,
-                taskId: step.taskId,
+                  agentName: step.agentName,
+                  taskId: step.taskId,
                 instruction: routed,
                 toolWrittenPaths: [
                   ...stepToolWritten,
@@ -2405,7 +2405,7 @@ category: 通用
         typeof payload.workspacePath === 'string' ? payload.workspacePath.trim() : ''
       const workspaceRoot = fromArg || loadWorkspace() || null
       return {
-        ok: true,
+      ok: true,
         text: buildCrossAgentContextMarkdown({ workspaceRoot }),
       }
     },
@@ -2652,6 +2652,9 @@ category: 通用
       const maxBytes =
         typeof opts.maxBytes === 'number' && opts.maxBytes > 0 ? Math.min(500_000, opts.maxBytes) : 120_000
       const source = typeof opts.source === 'string' ? opts.source : 'app'
+      if (source === 'agentTurns') {
+        return projectLogs.readAgentTurnTrends({ limit: maxLines })
+      }
       if (source === 'claudeEvents') {
         return support.readTextFileTail(
           support.claudeMemoryEventsPath(),
@@ -3004,18 +3007,18 @@ category: 通用
             error: '须 useLocalMcpNodes:true 才能真实执行工作流节点（已禁止 stub 占位成功）',
           }
         }
-        const { createMcpWorkflowNodeExecutor } = require(path.join(CAD, 'workflow-node-executor.js'))
+          const { createMcpWorkflowNodeExecutor } = require(path.join(CAD, 'workflow-node-executor.js'))
         const execute_workflow_node = createMcpWorkflowNodeExecutor({
-          runLocalMcpOrchestration,
-          getWorkspace: loadWorkspace,
-          getSettings: loadChatSettings,
-          bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
-          readAgentMarkdown: support.readClaudeAgentMarkdownContent,
-          stemFromBasename: support.stemFromAgentBasenameForOrchestration,
-          buildCrossAgent: buildCrossAgentContextMarkdown,
-          applyWorkspaceWrites: applyWritesInWorkspace,
-          shouldAbort: () => false,
-        })
+            runLocalMcpOrchestration,
+            getWorkspace: loadWorkspace,
+            getSettings: loadChatSettings,
+            bundledMcpServerJs: support.bundledOllamaMcpServerPath(),
+            readAgentMarkdown: support.readClaudeAgentMarkdownContent,
+            stemFromBasename: support.stemFromAgentBasenameForOrchestration,
+            buildCrossAgent: buildCrossAgentContextMarkdown,
+            applyWorkspaceWrites: applyWritesInWorkspace,
+            shouldAbort: () => false,
+          })
         const out = await wf.execute_workflow_async({
           graph: g,
           execute_workflow_node,
